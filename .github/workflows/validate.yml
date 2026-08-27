@@ -1,0 +1,46 @@
+name: Validate release bundle
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - BENCHMARKS.md
+      - CHANGELOG.md
+      - Containerfile
+      - release.json
+      - stack.lock.json
+      - patches/**
+      - scripts/**
+      - RUN.md
+      - examples/serve-glm53-flash.sh
+      - .github/workflows/validate.yml
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: debian:trixie-slim
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            bash coreutils curl git jq nodejs ca-certificates
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh examples/*.sh
+
+      - name: Check JSON syntax
+        run: jq -e . release.json stack.lock.json >/dev/null
+
+      - name: Validate documentation contract
+        run: ./scripts/validate-docs.sh
+
+      - name: Verify release contract and source trees
+        run: ./scripts/verify-patches.sh
