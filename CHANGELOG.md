@@ -1,0 +1,40 @@
+# Changelog
+
+## v0.1.0-rc.1
+
+Initial candidate. Not yet built, not yet qualified on hardware.
+
+- Pin `lmsysorg/sglang:glm-5.3-flash-amd64` by immutable digest
+  (`sha256:44cb2eed…`, linux/amd64 manifest `sha256:0836f016…`, pushed
+  2026-08-27T05:22:01Z, CUDA 13.0.3, FlashInfer 0.6.17).
+- **Provenance is weaker than the sibling Qwen3.8-Flash-Next build, and this is
+  recorded rather than papered over.** `glm5_next` is not in `sgl-project/sglang`
+  main as of 2026-08-27, and the vendor image is built from `ADD sglang.tar.gz`
+  with `SGLANG_BUILD_COMMIT=unknown`. There is no upstream commit or tree to
+  verify, so the base is pinned by digest only. `verify-patches.sh` asserts what
+  is actually verifiable and refuses to imply more.
+- Rebuild FlashInfer 0.6.18 from source at
+  `e4b7fa4b7c3ba5e17286d9c59f2bcf2ca07e0a6d` with
+  `FLASHINFER_CUDA_ARCH_LIST=12.0f` and `BUILD_NVEP=0`, plus the matching cubin
+  package from the same tree. The vendor wheel carries no 12.0f cubins, and
+  workstation Blackwell lacks TMEM/`tcgen05`/`wgmma` so sm_100 and Hopper
+  kernels do not run on it. This head is the one already qualified on these
+  cards by the sibling Qwen build.
+- Add build-time gates that fail before the ~40-minute FlashInfer compile:
+  base CUDA version match, `glm5_next` model class importable, and the
+  `mxfp4-pack-quantized` contract (GROUP strategy, `group_size` 32, uint8 E8M0
+  scales, `("weight_packed", "weight_scale")` parameter names).
+- Target the locally produced MXFP4A16 artifact quantized from
+  `zai-org/GLM-5.3-Flash@04c4e9e9…`: 37,152 quantized tensors (routed experts
+  only, layers 3-44 plus the layer-45 MTP block), 4.25 bits/weight, everything
+  else BF16.
+
+### Known limitations at rc.1
+
+- **No native SM120 MXFP4 MoE kernel.** FlashInfer #2847 and vLLM #31085 leave
+  three runtime guards filtering SM120 (SM103/TRTLLM modules filter to
+  `supported_major_versions=[10]`; SM120 is major 12). Expect the Marlin
+  fallback — measured ~28 % slower prefill on gpt-oss-120b. Carrying that patch
+  is the intended rc.2 work.
+- sglang #36596, #36653, #36599, #36550, #36669 are open and relevant; see
+  `stack.lock.json` → `known_limitations`.

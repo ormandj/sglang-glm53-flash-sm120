@@ -1,0 +1,71 @@
+name: Build immutable test image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [test/**]
+    paths:
+      - Containerfile
+      - release.json
+      - stack.lock.json
+      - patches/**
+      - .forgejo/workflows/build-test.yml
+
+env:
+  CONTAINER_REGISTRY: git.home.corenode.com
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build immutable commit-tagged test image
+    runs-on: linux
+    timeout-minutes: 240
+    container:
+      image: debian:trixie-slim
+    env:
+      CONTAINER_HOST: unix:///run/podman/podman.sock
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            podman skopeo nodejs git jq ca-certificates util-linux
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Verify source trees
+        run: ./scripts/verify-patches.sh
+
+      - name: Build and push immutable test tag
+        run: |
+          repository="${CONTAINER_REGISTRY}/${IMAGE_NAME}"
+          test_image="${repository}:test-${GITHUB_SHA}"
+
+          printf '%s' "${{ secrets.PACKAGE_TOKEN }}" \
+            | podman login --username "${{ secrets.PACKAGE_USER }}" \
+                --password-stdin "${CONTAINER_REGISTRY}"
+
+          tag_lock_name=$(printf '%s' "${test_image}" | sha256sum | cut -d' ' -f1)
+          exec 8>"/run/podman-lock/test-${tag_lock_name}.lock"
+          flock 8
+
+          if skopeo inspect "docker://${test_image}" >/dev/null 2>&1; then
+            echo "${test_image} already exists; test tags are immutable" >&2
+            exit 1
+          fi
+
+          exec 9>/run/podman-lock/graphroot.lock
+          flock 9
+          podman build --layers=true \
+            --file "${GITHUB_WORKSPACE}/Containerfile" \
+            --target runtime \
+            --build-arg "IMAGE_SOURCE=https://git.home.corenode.com/${GITHUB_REPOSITORY}" \
+            --build-arg "IMAGE_SOURCE_REVISION=${GITHUB_SHA}" \
+            -t "${test_image}" \
+            "${GITHUB_WORKSPACE}"
+          flock -u 9
+
+          podman push "${test_image}"
+          digest=$(skopeo inspect --format '{{.Digest}}' "docker://${test_image}")
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "pushed ${test_image}@${digest}"

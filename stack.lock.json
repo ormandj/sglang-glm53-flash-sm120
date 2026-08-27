@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "release": {
+    "manifest": "release.json",
+    "version": "0.1.0",
+    "candidate": 1,
+    "candidate_tag": "v0.1.0-rc.1",
+    "stable_tag": "v0.1.0",
+    "cache_schema": "v1"
+  },
+  "image": {
+    "repository": "sglang-glm53-flash-sm120-container",
+    "tag": "v0.1.0-rc.1",
+    "platform": "linux/amd64",
+    "containerfile_target": "runtime"
+  },
+  "model": {
+    "served_artifact": "/models/zai-org/GLM-5.3-Flash-MXFP4",
+    "source_repository": "zai-org/GLM-5.3-Flash",
+    "source_revision": "04c4e9e95c5da8862dced7e5056455116f83a7e0",
+    "source_storage_bytes": 328366172315,
+    "source_format": "fp8 (block 128x128, weight_scale_inv sidecars)",
+    "architecture": "Glm5NextForConditionalGeneration",
+    "model_type": "glm5_next",
+    "quantization": {
+      "format": "mxfp4-pack-quantized",
+      "scheme": "MXFP4A16",
+      "bits_per_weight": 4.25,
+      "group_size": 32,
+      "scale_dtype": "uint8 (E8M0)",
+      "quantized_tensors": 37152,
+      "quantized_scope": "routed experts only (layers 3-44 plus the layer-45 MTP block)",
+      "roundtrip_rel_l2_err": 0.122,
+      "produced_by": "homelab/gitops tooling/glm53-flash/quantize-glm53-flash-mxfp4-job.yaml",
+      "toolchain": {
+        "torch": "2.13.0",
+        "compressed-tensors": "0.18.0",
+        "safetensors": "0.6.2"
+      }
+    },
+    "native_context_length": 1048576,
+    "served_model_name": "glm53-flash"
+  },
+  "hardware": {
+    "compute_capability": "sm_120",
+    "platform": "linux/amd64",
+    "gpus": "2x RTX PRO 6000 Blackwell Max-Q (96 GiB each), no NVLink, PCIe Gen4 x16"
+  },
+  "pins": [
+    {
+      "arg": "GLM53_RELEASE_VERSION",
+      "value": "0.1.0"
+    },
+    {
+      "arg": "GLM53_RELEASE_CANDIDATE",
+      "value": "1"
+    },
+    {
+      "arg": "GLM53_CACHE_SCHEMA",
+      "value": "v1"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE",
+      "value": "lmsysorg/sglang@sha256:44cb2eed3ff808541cc2be6a4fc3b34429a55d8986e9f21660f0ae9a1233a743"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_TAG",
+      "value": "glm-5.3-flash-amd64"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST",
+      "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_CREATED",
+      "value": "2026-08-27T04:58:48Z"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_CUDA_VERSION",
+      "value": "13.0.3"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_FLASHINFER_VERSION",
+      "value": "0.6.17"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_VERSION",
+      "value": "0.6.18"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_MAIN_HEAD",
+      "value": "e4b7fa4b7c3ba5e17286d9c59f2bcf2ca07e0a6d"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_MAIN_TREE",
+      "value": "2c9c021eb87fb09c982076b8a0b63514bc399e56"
+    },
+    {
+      "arg": "GLM53_MODEL_REPOSITORY",
+      "value": "zai-org/GLM-5.3-Flash"
+    },
+    {
+      "arg": "GLM53_MODEL_REVISION",
+      "value": "04c4e9e95c5da8862dced7e5056455116f83a7e0"
+    }
+  ],
+  "patches": [],
+  "integration": {
+    "sglang": {
+      "provenance": "vendor per-model image",
+      "note": "glm5_next is not in sgl-project/sglang main as of 2026-08-27; the vendor image is built from a tarball and reports SGLANG_BUILD_COMMIT=unknown. Pinned by immutable digest only.",
+      "base_tag": "glm-5.3-flash-amd64",
+      "base_index_digest": "sha256:44cb2eed3ff808541cc2be6a4fc3b34429a55d8986e9f21660f0ae9a1233a743",
+      "base_amd64_manifest": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf",
+      "base_created": "2026-08-27T04:58:48Z",
+      "base_cuda_version": "13.0.3",
+      "base_flashinfer_version": "0.6.17"
+    },
+    "flashinfer": {
+      "head": "e4b7fa4b7c3ba5e17286d9c59f2bcf2ca07e0a6d",
+      "tree": "2c9c021eb87fb09c982076b8a0b63514bc399e56",
+      "package_version": "0.6.18",
+      "base_package_version": "0.6.17",
+      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f, plus the matching cubin package built from the same tree",
+      "rationale": "the vendor wheel carries no 12.0f cubins; workstation Blackwell lacks TMEM/tcgen05/wgmma so sm_100 and Hopper kernels do not run"
+    }
+  },
+  "verification": {
+    "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
+    "sglang_repository": null,
+    "sglang_source_verifiable": false,
+    "base_registry": "docker.io/lmsysorg/sglang"
+  },
+  "known_limitations": [
+    "MXFP4 MoE has no native SM120 CUTLASS path: FlashInfer #2847 and vLLM #31085 leave three runtime guards filtering SM120 (SM103/TRTLLM modules filter to supported_major_versions=[10]; SM120 is major 12). Expect the Marlin fallback, measured ~28% slower prefill on gpt-oss-120b.",
+    "sglang #36596: is_layer_excluded misses fused module names and model.-prefixed names for mixed-precision checkpoints.",
+    "sglang #36653: MTP MoE weights fail to load under TP>1.",
+    "sglang #36599: deepseek_nextn hardcodes quant_config=None for FP4 drafts.",
+    "sglang #36550: CUDA-graph abort at first decode after cold prefill > 262144 tokens.",
+    "sglang #36669: thinking output degenerates into repeated '!' under multi-tool agentic prompts (native FP8, not a quantization artifact)."
+  ]
+}

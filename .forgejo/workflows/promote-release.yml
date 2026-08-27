@@ -1,0 +1,62 @@
+name: Promote validated SemVer image
+
+on:
+  workflow_dispatch:
+
+env:
+  CONTAINER_REGISTRY: git.home.corenode.com
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  promote:
+    name: Promote candidate manifest without rebuilding
+    runs-on: linux
+    timeout-minutes: 30
+    container:
+      image: debian:trixie-slim
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            skopeo nodejs git jq ca-certificates
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Validate release contract
+        run: ./scripts/validate-release.sh
+
+      - name: Promote the tested digest
+        run: |
+          repository="${CONTAINER_REGISTRY}/${IMAGE_NAME}"
+          candidate_tag=$(jq -er '.candidate_tag' release.json)
+          stable_tag=$(jq -er '.stable_tag' release.json)
+          candidate_image="${repository}:${candidate_tag}"
+          stable_image="${repository}:${stable_tag}"
+
+          if skopeo inspect \
+            --creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
+            "docker://${stable_image}" >/dev/null 2>&1; then
+            echo "${stable_image} already exists; SemVer tags are immutable" >&2
+            exit 1
+          fi
+
+          candidate_digest=$(skopeo inspect \
+            --creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
+            --format '{{.Digest}}' "docker://${candidate_image}")
+          [[ "${candidate_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          skopeo copy --all \
+            --src-creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
+            --dest-creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
+            "docker://${candidate_image}@${candidate_digest}" \
+            "docker://${stable_image}"
+
+          stable_digest=$(skopeo inspect \
+            --creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
+            --format '{{.Digest}}' "docker://${stable_image}")
+          [[ "${stable_digest}" == "${candidate_digest}" ]] || {
+            echo "promotion changed digest: ${candidate_digest} -> ${stable_digest}" >&2
+            exit 1
+          }
+          echo "promoted ${candidate_image}@${candidate_digest} to ${stable_image}"

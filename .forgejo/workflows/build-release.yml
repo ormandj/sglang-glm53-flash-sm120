@@ -1,0 +1,86 @@
+name: Build SemVer GLM-5.3-Flash SM120 candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Only changes to image inputs start a build. Validation, documentation,
+    # and workflow changes cannot replace an already-published immutable tag.
+    paths:
+      - Containerfile
+      - release.json
+      - stack.lock.json
+      - patches/**
+
+env:
+  CONTAINER_REGISTRY: git.home.corenode.com
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build immutable SemVer candidate
+    runs-on: linux
+    timeout-minutes: 240
+    container:
+      image: debian:trixie-slim
+    env:
+      CONTAINER_HOST: unix:///run/podman/podman.sock
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            podman skopeo nodejs git jq ca-certificates util-linux
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Verify release contract and source trees
+        run: ./scripts/verify-patches.sh
+
+      - name: Build and push immutable candidate tags
+        run: |
+          repository="${CONTAINER_REGISTRY}/${IMAGE_NAME}"
+          candidate_tag=$(jq -er '.candidate_tag' release.json)
+          candidate_image="${repository}:${candidate_tag}"
+          build_image="${repository}:build-${{ github.run_number }}"
+
+          printf '%s' "${{ secrets.PACKAGE_TOKEN }}" \
+            | podman login --username "${{ secrets.PACKAGE_USER }}" \
+                --password-stdin "${CONTAINER_REGISTRY}"
+
+          # Serialize each immutable repository:tag contract across runner jobs.
+          # The registry check must happen while this lock is held and the lock
+          # must remain held through the push; otherwise two jobs that start
+          # before either push can both pass the check and replace the same tag.
+          tag_lock_name=$(printf '%s' "${candidate_image}" | sha256sum | cut -d' ' -f1)
+          exec 8>"/run/podman-lock/release-${tag_lock_name}.lock"
+          flock 8
+
+          if skopeo inspect "docker://${candidate_image}" >/dev/null 2>&1; then
+            echo "${candidate_image} already exists; SemVer tags are immutable" >&2
+            exit 1
+          fi
+
+          # The runner shares Podman's graphroot with a garbage collector.
+          # Hold its established lock for the build, then release it before
+          # registry pushes so GC cannot prune an active build.
+          exec 9>/run/podman-lock/graphroot.lock
+          flock 9
+          podman build --layers=true \
+            --file "${GITHUB_WORKSPACE}/Containerfile" \
+            --target runtime \
+            --build-arg "IMAGE_SOURCE=https://git.home.corenode.com/${GITHUB_REPOSITORY}" \
+            --build-arg "IMAGE_SOURCE_REVISION=${GITHUB_SHA}" \
+            -t "${candidate_image}" \
+            -t "${build_image}" \
+            "${GITHUB_WORKSPACE}"
+          flock -u 9
+
+          podman push "${candidate_image}"
+          podman push "${build_image}"
+
+          candidate_digest=$(skopeo inspect --format '{{.Digest}}' "docker://${candidate_image}")
+          build_digest=$(skopeo inspect --format '{{.Digest}}' "docker://${build_image}")
+          [[ "${candidate_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${build_digest}" == "${candidate_digest}" ]]
+          echo "pushed ${candidate_image}@${candidate_digest}"

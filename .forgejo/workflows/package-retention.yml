@@ -1,0 +1,31 @@
+name: Retain six container releases
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  prune:
+    name: Prune old container tags
+    runs-on: linux
+    timeout-minutes: 15
+    container:
+      image: debian:trixie-slim
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            bash coreutils curl git jq nodejs ca-certificates
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Retain six releases and build aliases
+        env:
+          FORGEJO_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+          FORGEJO_URL: https://git.home.corenode.com
+          PACKAGE_OWNER: homelab
+          PACKAGE_NAME: sglang-glm53-flash-sm120-container
+          KEEP_RELEASES: '6'
+        run: ./scripts/prune-container-releases.sh --apply
