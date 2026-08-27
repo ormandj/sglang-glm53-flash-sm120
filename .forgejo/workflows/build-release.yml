@@ -30,7 +30,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            podman skopeo nodejs git jq ca-certificates util-linux
+            podman skopeo nodejs curl git jq ca-certificates util-linux
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 

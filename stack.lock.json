@@ -114,7 +114,25 @@
       "base_amd64_manifest": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf",
       "base_created": "2026-08-27T04:58:48Z",
       "base_cuda_version": "13.0.3",
-      "base_flashinfer_version": "0.6.17"
+      "base_flashinfer_version": "0.6.17",
+      "upstream_tracking": {
+        "model_support_pr": 36507,
+        "model_support_pr_title": "GLM-5.3-Flash support",
+        "model_support_pr_state": "open as of 2026-08-27",
+        "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
+        "related_merged": [
+          36440,
+          36513,
+          36519,
+          36608,
+          36660
+        ],
+        "related_open": [
+          36544,
+          36607,
+          36708
+        ]
+      }
     },
     "flashinfer": {
       "head": "e4b7fa4b7c3ba5e17286d9c59f2bcf2ca07e0a6d",
