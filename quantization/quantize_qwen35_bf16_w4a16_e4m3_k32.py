@@ -67,7 +67,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-source-revision", required=True)
     parser.add_argument("--expected-fused-layers", type=int, default=40)
     parser.add_argument("--expected-experts", type=int, default=256)
+    parser.add_argument("--expected-hidden-size", type=int, default=2048)
+    parser.add_argument("--expected-intermediate-size", type=int, default=512)
+    parser.add_argument("--expected-mtp-tensors", type=int, default=785)
     parser.add_argument("--max-shard-bytes", type=int, default=2_000_000_000)
+    parser.add_argument("--max-aggregate-relative-l2", type=float, default=0.15)
+    parser.add_argument("--min-matrix-cosine", type=float, default=0.95)
     return parser.parse_args()
 
 
@@ -81,6 +86,12 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_tensor(tensor: torch.Tensor) -> str:
+    """Hash exact tensor bytes without dtype conversions."""
+    tensor = tensor.detach().cpu().contiguous()
+    return hashlib.sha256(tensor.reshape(-1).view(torch.uint8).numpy().tobytes()).hexdigest()
 
 
 def json_dump(path: Path, value: Any) -> None:
@@ -130,6 +141,10 @@ def quantize_matrix(
         raise ValueError(f"unexpected scale shape: {tuple(emitted_scale.shape)}")
     if qtensor._quantized_data.dtype != torch.uint8:
         raise TypeError(f"unexpected packed dtype: {qtensor._quantized_data.dtype}")
+    if not torch.isfinite(emitted_scale.float()).all():
+        raise ValueError("non-finite E4M3 block scale")
+    if not torch.isfinite(emitted_global).all() or emitted_global.item() <= 0:
+        raise ValueError(f"invalid emitted global scale: {emitted_global.item()}")
 
     dequant = qtensor.dequantize(
         dtype=torch.float32,
@@ -170,6 +185,9 @@ class ShardWriter:
         self.weight_map: dict[str, str] = {}
         self.total_size = 0
         self.category_bytes: dict[str, int] = defaultdict(int)
+        self.tensor_specs: dict[
+            str, tuple[tuple[int, ...], torch.dtype, str, str | None]
+        ] = {}
 
     def add(self, name: str, tensor: torch.Tensor, category: str) -> None:
         if name in self.weight_map or name in self.pending:
@@ -182,6 +200,8 @@ class ShardWriter:
         self.pending_bytes += size
         self.total_size += size
         self.category_bytes[category] += size
+        digest = sha256_tensor(tensor) if category == "protected_source_precision" else None
+        self.tensor_specs[name] = (tuple(tensor.shape), tensor.dtype, category, digest)
 
     def flush(self) -> None:
         if not self.pending:
@@ -209,15 +229,73 @@ class ShardWriter:
         return index
 
 
+def validate_output_roundtrip(
+    root: Path,
+    writer: ShardWriter,
+    output_index: dict[str, Any],
+) -> dict[str, int]:
+    expected_names = set(writer.tensor_specs)
+    indexed_names = set(output_index["weight_map"])
+    if indexed_names != expected_names:
+        missing = sorted(expected_names - indexed_names)[:10]
+        extra = sorted(indexed_names - expected_names)[:10]
+        raise ValueError(f"output index mismatch: missing={missing} extra={extra}")
+
+    seen: set[str] = set()
+    category_counts: dict[str, int] = defaultdict(int)
+    for shard_path in sorted(root.glob("model-*-of-*.safetensors")):
+        with safe_open(shard_path, framework="pt", device="cpu") as handle:
+            for name in handle.keys():
+                if name in seen:
+                    raise ValueError(f"duplicate tensor in output shards: {name}")
+                seen.add(name)
+                if output_index["weight_map"].get(name) != shard_path.name:
+                    raise ValueError(f"index points {name} at the wrong shard")
+                tensor = handle.get_tensor(name)
+                shape, dtype, category, expected_digest = writer.tensor_specs[name]
+                if tuple(tensor.shape) != shape or tensor.dtype != dtype:
+                    raise ValueError(
+                        f"round-trip mismatch for {name}: "
+                        f"{tuple(tensor.shape)}/{tensor.dtype} != {shape}/{dtype}"
+                    )
+                if expected_digest is not None and sha256_tensor(tensor) != expected_digest:
+                    raise ValueError(f"protected tensor changed during round trip: {name}")
+                if category in (
+                    "routed_expert_e4m3_scale",
+                    "routed_expert_global_scale",
+                    "routed_expert_input_scale",
+                ) and not torch.isfinite(tensor.float()).all():
+                    raise ValueError(f"non-finite quantization scale in {name}")
+                if category == "routed_expert_global_scale" and not torch.all(tensor > 0):
+                    raise ValueError(f"non-positive global scale in {name}")
+                if category == "routed_expert_input_scale" and not torch.equal(
+                    tensor, torch.ones_like(tensor)
+                ):
+                    raise ValueError(f"non-neutral W4A16 input scale in {name}")
+                category_counts[category] += 1
+    if seen != expected_names:
+        missing = sorted(expected_names - seen)[:10]
+        extra = sorted(seen - expected_names)[:10]
+        raise ValueError(f"output shard traversal mismatch: missing={missing} extra={extra}")
+    return dict(sorted(category_counts.items()))
+
+
 def add_quantized_gate_up(
     writer: ShardWriter,
     source_name: str,
     tensor: torch.Tensor,
     expected_experts: int,
+    expected_hidden_size: int,
+    expected_intermediate_size: int,
     device: torch.device,
     metric_rows: list[dict[str, Any]],
 ) -> None:
-    if tensor.ndim != 3 or tensor.shape[0] != expected_experts or tensor.shape[1] % 2:
+    expected_shape = (
+        expected_experts,
+        2 * expected_intermediate_size,
+        expected_hidden_size,
+    )
+    if tuple(tensor.shape) != expected_shape:
         raise ValueError(f"unexpected fused gate/up shape for {source_name}: {tuple(tensor.shape)}")
     prefix = source_name[: -len(GATE_UP_SUFFIX)]
     half = tensor.shape[1] // 2
@@ -246,10 +324,17 @@ def add_quantized_down(
     source_name: str,
     tensor: torch.Tensor,
     expected_experts: int,
+    expected_hidden_size: int,
+    expected_intermediate_size: int,
     device: torch.device,
     metric_rows: list[dict[str, Any]],
 ) -> None:
-    if tensor.ndim != 3 or tensor.shape[0] != expected_experts:
+    expected_shape = (
+        expected_experts,
+        expected_hidden_size,
+        expected_intermediate_size,
+    )
+    if tuple(tensor.shape) != expected_shape:
         raise ValueError(f"unexpected fused down shape for {source_name}: {tuple(tensor.shape)}")
     prefix = source_name[: -len(DOWN_SUFFIX)]
     one = torch.tensor(1.0, dtype=torch.float32)
@@ -305,9 +390,35 @@ def main() -> None:
         )
 
     config = json.loads((source / "config.json").read_text())
-    configured_experts = int(config["text_config"]["num_experts"])
+    if config.get("architectures") != ["Qwen3_5MoeForConditionalGeneration"]:
+        raise ValueError(f"unexpected architecture: {config.get('architectures')}")
+    if config.get("quantization_config"):
+        raise ValueError("canary source is already quantized")
+    if (config.get("vision_config") or {}).get("depth") != 27:
+        raise ValueError("missing or unexpected Qwen3.5 vision tower")
+    text_config = config["text_config"]
+    configured_experts = int(text_config["num_experts"])
     if configured_experts != args.expected_experts:
         raise ValueError(f"expected {args.expected_experts} experts, got {configured_experts}")
+    source_contract = {
+        "num_hidden_layers": args.expected_fused_layers,
+        "hidden_size": args.expected_hidden_size,
+        "moe_intermediate_size": args.expected_intermediate_size,
+        "num_experts_per_tok": 8,
+        "mtp_num_hidden_layers": 1,
+    }
+    for field, expected in source_contract.items():
+        if text_config.get(field) != expected:
+            raise ValueError(
+                f"unexpected text_config.{field}: {text_config.get(field)!r} != {expected!r}"
+            )
+    mtp_names = sorted(name for name in source_weight_map if "mtp" in name)
+    if len(mtp_names) != args.expected_mtp_tensors or not all(
+        name.startswith("mtp.") for name in mtp_names
+    ):
+        raise ValueError(
+            f"expected {args.expected_mtp_tensors} mtp.* tensors, got {len(mtp_names)}"
+        )
     quant_config = {
         "config_groups": {
             "group_0": {
@@ -359,11 +470,25 @@ def main() -> None:
                 tensor = handle.get_tensor(name)
                 if name.endswith(GATE_UP_SUFFIX):
                     add_quantized_gate_up(
-                        writer, name, tensor, args.expected_experts, device, metrics
+                        writer,
+                        name,
+                        tensor,
+                        args.expected_experts,
+                        args.expected_hidden_size,
+                        args.expected_intermediate_size,
+                        device,
+                        metrics,
                     )
                 elif name.endswith(DOWN_SUFFIX):
                     add_quantized_down(
-                        writer, name, tensor, args.expected_experts, device, metrics
+                        writer,
+                        name,
+                        tensor,
+                        args.expected_experts,
+                        args.expected_hidden_size,
+                        args.expected_intermediate_size,
+                        device,
+                        metrics,
                     )
                 else:
                     writer.add(name, tensor, "protected_source_precision")
@@ -375,11 +500,30 @@ def main() -> None:
         raise ValueError(f"source traversal mismatch: missing={missing} extra={extra}")
 
     output_index = writer.finish()
+    expected_quantized_matrices = (
+        args.expected_fused_layers * args.expected_experts * 2
+    )
+    if len(metrics) != expected_quantized_matrices:
+        raise ValueError(
+            f"expected {expected_quantized_matrices} quantized matrices, got {len(metrics)}"
+        )
+    error_sq = sum(row["error_sq"] for row in metrics)
+    reference_sq = sum(row["reference_sq"] for row in metrics)
+    aggregate_relative_l2 = math.sqrt(error_sq / reference_sq)
+    min_cosine = min(row["cosine"] for row in metrics)
+    if not math.isfinite(aggregate_relative_l2) or (
+        aggregate_relative_l2 > args.max_aggregate_relative_l2
+    ):
+        raise ValueError(
+            f"aggregate relative L2 {aggregate_relative_l2} exceeds "
+            f"{args.max_aggregate_relative_l2}"
+        )
+    if not math.isfinite(min_cosine) or min_cosine < args.min_matrix_cosine:
+        raise ValueError(f"minimum matrix cosine {min_cosine} is below {args.min_matrix_cosine}")
+    roundtrip_counts = validate_output_roundtrip(incomplete, writer, output_index)
     config["quantization_config"] = quant_config
     json_dump(incomplete / "config.json", config)
 
-    error_sq = sum(row["error_sq"] for row in metrics)
-    reference_sq = sum(row["reference_sq"] for row in metrics)
     summary = {
         "schema": 1,
         "purpose": "Qwen BF16 platform canary for the GLM E4M3-K32 W4A16 path",
@@ -401,13 +545,19 @@ def main() -> None:
             "fused_down_layers": len(down_names),
             "experts_per_layer": args.expected_experts,
             "quantized_matrices": len(metrics),
+            "protected_mtp_tensors": len(mtp_names),
         },
         "reconstruction": {
-            "aggregate_relative_l2": math.sqrt(error_sq / reference_sq),
+            "aggregate_relative_l2": aggregate_relative_l2,
             "mean_relative_l2": sum(row["relative_l2"] for row in metrics) / len(metrics),
             "max_relative_l2": max(row["relative_l2"] for row in metrics),
-            "min_cosine": min(row["cosine"] for row in metrics),
+            "min_cosine": min_cosine,
+            "gates": {
+                "max_aggregate_relative_l2": args.max_aggregate_relative_l2,
+                "min_matrix_cosine": args.min_matrix_cosine,
+            },
         },
+        "roundtrip_tensor_counts": roundtrip_counts,
         "tensor_bytes": dict(sorted(writer.category_bytes.items())),
         "total_tensor_bytes": output_index["metadata"]["total_size"],
         "tensor_count": len(output_index["weight_map"]),

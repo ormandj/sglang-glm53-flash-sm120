@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.17`
+# Running `v0.1.0-rc.18`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.17
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.18
 export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-E4M3-K32-MSE
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v10
 ./examples/serve-glm53-flash.sh

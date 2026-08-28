@@ -1,9 +1,9 @@
 # Qualification status
 
-**`v0.1.0-rc.17` is not built and not qualified.** It has no served-model
+**`v0.1.0-rc.18` is not built and not qualified.** It has no served-model
 correctness, quality, capacity, or performance claim yet.
 
-## Required v0.1.0-rc.17 evidence
+## Required v0.1.0-rc.18 evidence
 
 Every row must record the complete image name and digest, model artifact path
 and manifest hash, SGLang/FlashInfer/ModelOpt commits, exact hardware, command
@@ -31,7 +31,7 @@ to weaken the quant or silently shrink the pool.
 ## Controls already established
 
 These controls used earlier candidates or different checkpoints. They guide the
-new work but cannot qualify v0.1.0-rc.17.
+new work but cannot qualify v0.1.0-rc.18.
 
 | Control | Result | Evidence |
 |---|---|---|
@@ -48,6 +48,6 @@ hybrid-model allocation, while the invalid `-1`-to-live-slot workaround is not.
 
 ## Claims discipline
 
-A successful container build makes `v0.1.0-rc.17` built. A health endpoint makes
+A successful container build makes `v0.1.0-rc.18` built. A health endpoint makes
 it booted. Coherent text makes one correctness control pass. None of those alone
 qualifies quality, vision, MTP, 500K capacity, C4/C8, or performance.

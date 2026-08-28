@@ -5,13 +5,18 @@ GLM-5.3-Flash inference on two RTX PRO 6000 Blackwell Server Edition GPUs.
 The intended serving profile is TP=2, EP=1, vision enabled, native adaptive
 MTP, FP8 KV, a roughly 500K shared token pool, and practical C4 agentic fanout.
 
-Current image: `sglang-glm53-flash-sm120:v0.1.0-rc.17`.
+Current image: `sglang-glm53-flash-sm120:v0.1.0-rc.18`.
 
-**v0.1.0-rc.17 is a source candidate, not a qualified release.** Build success,
+**v0.1.0-rc.18 is a source candidate, not a qualified release.** Build success,
 model load, coherent output, quality, context capacity, MTP acceptance, vision,
 and performance are separate gates recorded in [BENCHMARKS.md](BENCHMARKS.md).
 
-## What changed in v0.1.0-rc.17
+## What changed in v0.1.0-rc.18
+
+The rc.18 source and runtime trees are identical to rc.17. It additionally
+fetches and verifies ModelOpt's exact `0.47.0rc0` tag at the pinned commit so
+`setuptools-scm` produces the locked package version during the immutable
+container build. The cache schema remains `v10` because no runtime code changed.
 
 The failed in-house MXFP4 artifact and all of its runtime diagnostic patches
 were removed from the active build. Its persistent evidence remains so the
@@ -75,7 +80,7 @@ host-resident blocks into active GPU token capacity.
 docker build \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.17 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.18 .
 ```
 
 The last verifier uses the network to reproduce all three pinned source trees

@@ -5,7 +5,7 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=17
+ARG GLM53_RELEASE_CANDIDATE=18
 ARG GLM53_CACHE_SCHEMA=v10
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
@@ -20,6 +20,7 @@ ARG GLM53_FLASHINFER_HEAD=008122fa75c7a27c839feea57a6ef8e8846fa265
 ARG GLM53_FLASHINFER_TREE=0462b5c545eb145cb96001285afe4cc89de30605
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
+ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
 ARG GLM53_MODELOPT_HEAD=022767c7ab3d7d36211affd85e5c496770cde768
 ARG GLM53_MODELOPT_TREE=9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9
 ARG GLM53_MODEL_REPOSITORY=zai-org/GLM-5.3-Flash-BF16
@@ -43,6 +44,7 @@ ARG GLM53_FLASHINFER_HEAD
 ARG GLM53_FLASHINFER_TREE
 ARG GLM53_MODELOPT_REPOSITORY
 ARG GLM53_MODELOPT_VERSION
+ARG GLM53_MODELOPT_RELEASE_TAG
 ARG GLM53_MODELOPT_HEAD
 ARG GLM53_MODELOPT_TREE
 ARG GLM53_MODEL_REPOSITORY
@@ -99,9 +101,12 @@ RUN set -eux; \
     cd /tmp/modelopt-source; \
     git remote add origin "${GLM53_MODELOPT_REPOSITORY}"; \
     git fetch --depth=1 origin "${GLM53_MODELOPT_HEAD}"; \
+    git fetch --depth=1 origin \
+      "refs/tags/${GLM53_MODELOPT_RELEASE_TAG}:refs/tags/${GLM53_MODELOPT_RELEASE_TAG}"; \
     git checkout --detach FETCH_HEAD; \
     test "$(git rev-parse HEAD)" = "${GLM53_MODELOPT_HEAD}"; \
     test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_MODELOPT_TREE}"; \
+    test "$(git rev-parse "${GLM53_MODELOPT_RELEASE_TAG}^{commit}")" = "${GLM53_MODELOPT_HEAD}"; \
     uv pip install --python /opt/sglang/bin/python --reinstall --no-deps .; \
     cd /; \
     rm -rf /tmp/modelopt-source
@@ -146,5 +151,6 @@ LABEL org.opencontainers.image.title="sglang-glm53-flash-sm120" \
       ai.flashinfer.head=${GLM53_FLASHINFER_HEAD} \
       ai.flashinfer.tree=${GLM53_FLASHINFER_TREE} \
       ai.modelopt.repository=${GLM53_MODELOPT_REPOSITORY} \
+      ai.modelopt.release-tag=${GLM53_MODELOPT_RELEASE_TAG} \
       ai.modelopt.head=${GLM53_MODELOPT_HEAD} \
       ai.modelopt.tree=${GLM53_MODELOPT_TREE}

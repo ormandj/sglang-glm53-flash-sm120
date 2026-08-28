@@ -5,7 +5,7 @@ through independent MoE and attention backends, and actual expert tensors had
 roughly 0.20 one-layer relative-L2 error. Its scripts were removed from the
 active repository; historical receipts remain under `evidence/`.
 
-The v0.1.0-rc.17 target is a new ModelOpt W4A16 artifact produced directly from
+The v0.1.0-rc.18 target is a new ModelOpt W4A16 artifact produced directly from
 `zai-org/GLM-5.3-Flash-BF16` revision
 `f12e0fe1f6b2ea274c11a569582edfd99d993c5e`.
 
