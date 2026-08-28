@@ -23,6 +23,7 @@ qualification:
 | DFlash2 artifact | 2,342,175,855 bytes, block 8, window 2,048, capture layers 5/14/24/33/42 | immutable HF revision `7d74cdd…` |
 | SGLang patch preimages | vendor `mxfp4.py` and `glm5_next.py` match exact pinned SHA-256 values | vendor image digest only; no git-provenance claim |
 | physical GPU framebuffer | 95.592 GiB/card; 191.184 GiB/pair; 189.938 GiB free before model load | DCGM/driver 595.71.05; [`evidence/preflight-gpu-memory-20260828.txt`](evidence/preflight-gpu-memory-20260828.txt) |
+| target KV format | 584 bytes/token/layer: 448 E4M3 NOPE bytes with seven per-token E8M0 scales, 64 BF16 RoPE values, one scale pad byte | exact pinned vendor source; [`evidence/v0.1.0-rc.5-fp8-kv-source-audit-20260828.txt`](evidence/v0.1.0-rc.5-fp8-kv-source-audit-20260828.txt) |
 | fused KPool vendor preimage | all 4 draft-PR regressions fail, including 100% mismatch for exact ties and coarse-bin overflow | exact v0.1.0-rc.5 image on SM120; [`evidence/v0.1.0-rc.5-kpool-topk-regressions-20260828.txt`](evidence/v0.1.0-rc.5-kpool-topk-regressions-20260828.txt) |
 
 The production quantizer repeated and expanded the structural checks, including

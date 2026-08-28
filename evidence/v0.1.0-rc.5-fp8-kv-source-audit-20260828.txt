@@ -1,0 +1,45 @@
+GLM-5.3-Flash SM120 packed FP8 KV source audit
+Date: 2026-08-28 (America/Chicago)
+
+Scope
+-----
+Image inspected:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5
+Image digest:
+  sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e
+Vendor source file:
+  /sgl-workspace/sglang/python/sglang/kernels/ops/attention/flash_mla_sm120.py
+Source SHA-256:
+  39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5
+
+The image was started in a temporary no-GPU source-inspection pod.  No model
+server was started.  The pod was deleted after inspection.
+
+Findings
+--------
+The dedicated GLM/DSv4 sparse-MLA cache is a page-internal 584-byte/token
+format, not an unscaled 512-byte FP8 vector:
+
+  448 bytes  NOPE values, FP8 E4M3
+  128 bytes  64 RoPE values, BF16
+    8 bytes  seven per-64-value NOPE scales plus one pad byte
+
+Both the Triton and CUDA writers derive each NOPE group's scale from that
+token's absolute maximum.  They round the scale upward to a power of two,
+encode it as UE8M0/E8M0, divide before the E4M3 store, and retain a distinct
+scale byte for each of the seven 64-value groups.  RoPE remains BF16.  The
+reference gather path reads those seven scale bytes and dequantizes the NOPE
+groups to BF16 before attention.
+
+The FlashInfer SM120 dispatch preserves the scale footer while splitting
+256-token SGLang pages into 64-token FlashInfer pages, and calls the sparse MLA
+kernel with kv_scale_format="arbitrary_fp32".  Therefore the generic SGLang
+warning that an unspecified scalar FP8 KV scale defaults to 1.0 does not
+describe this dedicated packed DSA cache.
+
+Implication
+-----------
+Plain BF16 storage for the same 512 dimensions would use 1,024 bytes/token,
+75.34% more than the 584-byte packed cache.  Packed FP8 NOPE plus BF16 RoPE is
+the capacity baseline for this two-card profile.  This source audit does not
+substitute for exact-candidate text, vision, or long-context quality tests.
