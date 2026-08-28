@@ -1,236 +1,114 @@
-# GLM-5.3-Flash BF16 to MXFP4 quantization
+# Quantization contract
 
-This is the quantization contract for the artifact served by `v0.1.0-rc.14`.
-The artifact is complete and independently hash-verified, but the served model
-is not yet qualified. Numbers described as estimates are not hardware
-measurements.
+The old BF16-to-MXFP4 artifact is rejected. It produced corrupt served output
+through independent MoE and attention backends, and actual expert tensors had
+roughly 0.20 one-layer relative-L2 error. Its scripts were removed from the
+active repository; historical receipts remain under `evidence/`.
 
-## Decision
+The v0.1.0-rc.17 target is a new ModelOpt W4A16 artifact produced directly from
+`zai-org/GLM-5.3-Flash-BF16` revision
+`f12e0fe1f6b2ea274c11a569582edfd99d993c5e`.
 
-Start from the official BF16 checkpoint, not the official FP8 checkpoint:
+## Selected representation
 
-- repository: `zai-org/GLM-5.3-Flash-BF16`
-- immutable revision: `f12e0fe1f6b2ea274c11a569582edfd99d993c5e`
-- 120 safetensors shards
-- 642,646,653,816 indexed tensor bytes
+Only routed-expert gate/up/down weights are quantized initially:
 
-Quantize only the routed expert projections in language-model layers 3 through
-45 with compressed-tensors `MXFP4A16`. Layer 45 is the checkpoint's native MTP
-block and is deliberately retained. Everything else remains BF16, including the
-entire vision tower.
+- value format: signed E2M1, two weights packed per uint8;
+- activation format: BF16 (W4A16), never FP4/MXFP8 activation quantization;
+- group axis: input/K dimension, 32 consecutive values per group;
+- block scale: E4M3FN, logical shape `[out, K/32]` per expert projection;
+- global weight scale: one FP32 scalar per down projection and one shared FP32
+  scalar for each fused gate+up pair;
+- input scales: neutral FP32 `1.0`, because the SM120 W4A16 kernel consumes BF16
+  activations and its alphas are pure weight-global scales.
 
-The exact target is 37,152 tensors:
+Gate and up must be calibrated jointly before splitting so both halves carry
+the same `weight_scale_2`. Latest ModelOpt explicitly preserves this invariant;
+violating it is a known way to get coherent-looking but wrong MoE output.
 
-```text
-43 layers x 288 experts x 3 projections = 37,152
+The checkpoint metadata is ModelOpt's flat schema:
+
+```json
+{
+  "quant_method": "modelopt",
+  "quant_algo": "W4A16_NVFP4",
+  "group_size": 32,
+  "kv_cache_scheme": null,
+  "producer": {
+    "name": "modelopt",
+    "version": "0.47.0rc0",
+    "commit": "022767c7ab3d7d36211affd85e5c496770cde768"
+  }
+}
 ```
 
-The projections are `gate_proj`, `up_proj`, and `down_proj`. The quantizer uses
-an anchored regex over the full checkpoint name and fails if the resulting
-namespace differs by even one tensor.
+The final `ignore` list is derived from the published GLM ModelOpt layout and
+must protect the vision stack, embeddings/LM head, attention and KDA/mHC
+linears, routers, shared experts, and any dense MLP. Routed `*.mlp.experts.*`
+weights are the inclusion set. Selection is validated against tensor names and
+byte counts before any output is published; a zero-match or unexpected-match
+pattern is fatal.
 
-## Why the FP8-derived artifact was rejected
+## Static MSE calculation
 
-The deleted artifact was structurally loadable, but it performed FP8 to MXFP4
-requantization. That is unnecessary compound quantization now that the official
-BF16 source exists.
+For each BF16 expert matrix (or joint gate+up matrix), let `A` be its global
+absolute maximum. Latest pinned ModelOpt performs a 126-candidate E4M3 scale
+sweep per K=32 block and returns the block amax minimizing weight reconstruction
+MSE. The stored values are:
 
-Checks against corresponding BF16 and FP8 tensors found:
+```text
+weight_scale_2 = A / (6 * 448)
+weight_scale   = E4M3FN(best_block_amax / A * 448), clamped to [2^-9, 448]
+weight          = pack_E2M1(original / (weight_scale * weight_scale_2))
+```
 
-- ordinary routed experts differ by roughly 0.0017 relative L2 before MXFP4;
-- the layer-45 MTP expert sample differs by roughly 0.021, indicating that the
-  two published checkpoints are not interchangeable at the draft layer;
-- on sampled expert projections, direct BF16 to MXFP4 error was approximately
-  0.109 to 0.122 relative L2;
-- using FP8 as the source increased that MXFP4 error by 2.35% on average and up
-  to 7.17% in the sampled set.
+`6` is the largest E2M1 magnitude and `448` is the E4M3FN normalization maximum.
+All-zero blocks use ModelOpt's nonzero scale sentinel before E4M3 clamping; the
+packed values remain exactly zero.
+The producer calls pinned ModelOpt's `nvfp4_fp8_scale_sweep` and
+`NVFP4QTensor.quantize(..., block_size=32, try_tensorrt=False)` rather than a
+locally approximated rounding implementation.
 
-These are tensor reconstruction checks, not model-quality scores. They are
-sufficient to reject the avoidable FP8 intermediate, but not to qualify the
-finished model.
+## Protected tensors and staged sensitivity
 
-The old FP8 source, old output, and old serving copy were removed from the
-scratch and model volumes before the new run began.
+The first valid artifact keeps these in BF16:
 
-## Why MXFP4, not NVFP4
+- visual encoder, merger/projector, and all multimodal support tensors;
+- token embeddings and LM head;
+- routers/gates and shared experts;
+- attention, DSA indexer, KDA, mHC, normalization, and convolution tensors;
+- all non-expert layer-45 MTP tensors.
 
-This is a system-level choice, not a claim that MXFP4 always has lower weight
-error.
+Layer-45 MTP routed experts use the same W4A16 recipe. Retaining the complete
+draft expert bank in BF16 would consume roughly ten extra GiB and defeat the KV
+target. Any later FP8 attention experiment is a separate artifact and may be
+accepted only if it passes teacher KLD and all modality/long-context gates.
 
-MXFP4 stores E2M1 values with one E8M0 scale per 32 weights, for exactly 4.25
-bits/weight. NVFP4 uses finer scale granularity and costs approximately 4.5
-bits/weight. Across this model's routed experts, that quarter-bit difference is
-about 8.9 GiB of total residency. On the measured 191.184 GiB framebuffer pair,
-those bytes are a large fraction of the memory left for KV after weights.
+## Output and size gates
 
-The current SGLang paths also matter:
+The producer writes to a temporary sibling directory and publishes atomically
+only after all checks pass. It records source revision, ModelOpt/SGLang/
+FlashInfer commits, selection counts, tensor dtypes/shapes, per-component byte
+totals, per-shard hashes, and the complete quantization config.
 
-- the SM120 `flashinfer_mxfp4` path uses MXFP8 activations with MXFP4 weights;
-- the native NVFP4 MoE path is effectively an FP4-activation path;
-- a per-layer NVFP4/MXFP4 mixture is not currently routed correctly by SGLang's
-  quantization-scheme selection, and the latest model-free fusion matcher does
-  not make that hybrid checkpoint safe.
+Expected tensor payload is approximately 166--170 GiB if the later measured
+attention-FP8 option is accepted, or several GiB larger with every protected
+linear in BF16. These are planning estimates, not artifact measurements. The
+actual model must fit without CPU offload while leaving enough per-rank memory
+for FP8 KV, C4 recurrent state, MTP workspaces, and CUDA graphs.
 
-For this hardware and software stack, routed-expert MXFP4 plus BF16 protected
-components gives the best credible quality/capacity starting point. NVFP4
-remains a valid future A/B only if its end-to-end runtime, model quality, and KV
-capacity are measured on the same cards.
+## Quality gates
 
-That choice was rechecked against upstream on 2026-08-28, after the production
-artifact completed. The open GLM-5.3-Flash support PR reports that routed-expert
-ModelOpt NVFP4 conversions incorrectly apply packed expert shape assumptions to
-protected BF16 KDA projections and fail during load. The related TP>1 NEXTN
-report constructs the quantized draft inconsistently and fails while loading its
-MoE weights. Our compressed-tensors artifact has already loaded both the target
-and native layer-45 MTP on TP=2; its first hardware failure occurred later in an
-independent SM120 mHC dispatch path. See SGLang
-[PR #36507](https://github.com/sgl-project/sglang/pull/36507),
-[issue #36596](https://github.com/sgl-project/sglang/issues/36596), and
-[issue #36653](https://github.com/sgl-project/sglang/issues/36653).
+Packed-kernel agreement is necessary but not sufficient. Qualification compares
+the final artifact to the pinned BF16 teacher with speculation disabled:
 
-FlashInfer's current SM12x NVFP4 work also remains active rather than settled:
-the project is tracking a lagging correctness/performance kernel sync in
-[issue #4223](https://github.com/flashinfer-ai/flashinfer/issues/4223). This is
-runtime evidence, not a claim that the NVFP4 number format is intrinsically
-worse. It raises the implementation risk of spending the pair's remaining KV
-headroom on a roughly 8.9 GiB larger artifact today.
+1. per-layer and end-to-end logit KLD over every causal position, repeated over
+   representative code, reasoning, multilingual, tool, and visual prompts;
+2. top-1 token agreement and explicit tail/outlier inspection;
+3. deterministic text and nested `glm47` tool calls;
+4. real-image understanding with the vision token path observed in logs;
+5. long-context retrieval at multiple depths through the intended pool size;
+6. MTP-on output consistency plus proposed/accepted-token statistics.
 
-An experimental per-group exponent MSE search improved sampled reconstruction
-error by only about 1.06% over the standard MXFP4 max-absolute scale rule. The
-result would still be a valid E8M0/MXFP4 encoding, but it would replace the
-audited ecosystem producer with a custom scale optimizer. Unweighted weight MSE
-also does not establish lower activation error or better model quality, so that
-small tensor-level result is not enough to justify the custom producer risk.
-
-## Protected BF16 scope
-
-The following are copied bit-for-bit from the BF16 source:
-
-| component | reason |
-|---|---|
-| vision tower and multimodal projection | vision is required and must not be silently degraded |
-| embeddings and LM head | high reuse and direct effect on token probabilities |
-| all attention and DSA indexer tensors | active on every token; indexer affects discrete sparse selection |
-| all KDA recurrent-state parameters | error can compound with sequence depth |
-| mHC parameters | reused across layers |
-| shared experts | active on every routed token |
-| routers | small changes can alter expert identity |
-| language-model layers 0 through 2 | conservative early-layer protection |
-| MTP `eh_proj` and non-expert tensors | small relative to the expert block and draft-sensitive |
-
-There are 1,618 protected tensors in the source namespace, including exactly
-347 vision tensors. The production verifier compares every protected tensor's
-dtype, shape, and bytes.
-
-## On-disk format and runtime contract
-
-The output uses compressed-tensors `mxfp4-pack-quantized`:
-
-- weight type: 4-bit float E2M1
-- strategy: `GROUP`
-- group size: 32
-- activation quantization in the checkpoint: none
-- packed parameter: `weight_packed`, `uint8`
-- scale parameter: `weight_scale`, `uint8` E8M0
-
-A `(2048, 4096)` projection becomes a `(2048, 2048)` packed tensor plus a
-`(2048, 128)` scale tensor, exactly 4.25 bits/weight.
-
-The serialized config also carries `ignore: ["re:.*"]` as an SGLang runtime
-contract. SGLang selects MXFP4 for `FusedMoE` from the global format before it
-checks ignores, while ordinary unmatched `LinearBase` modules otherwise fail
-compressed-tensors target resolution. The catch-all therefore leaves every
-ordinary linear on its stored BF16 path without disabling the routed-expert
-MXFP4 method. Serving must set `--disable-shared-experts-fusion`; otherwise the
-protected BF16 shared expert is appended to the MXFP4 fused expert buffer.
-
-SGLang's inherited SM120 post-loader was GPT-OSS-specific: it assumed pairwise
-gate/up rows and hard-coded SwiGLU-OAI `(alpha=1.702, beta=1, limit=7)`. GLM's
-per-expert loader produces contiguous `[gate; up]` halves and GLM uses standard
-clamped SwiGLU `(alpha=1, beta=0, limit=10)`. `v0.1.0-rc.12` and later apply a
-byte-gated patch that preserves both contracts and has a build-time semantic
-test.
-
-## Fail-closed production procedure
-
-[`quantization/quantize_glm53_bf16_mxfp4.py`](quantization/quantize_glm53_bf16_mxfp4.py)
-performs model-free, streaming quantization. Loading the Transformers model is
-both unnecessary and risky because its experts are fused 3D parameters while
-the checkpoint exposes the per-expert 2D tensors that SGLang loads.
-
-Before writing, the script verifies:
-
-- source repository revision, file count, byte count, and completion marker;
-- exact BF16 config, multimodal config, processor files, and tensor namespace;
-- exact target count, shapes, and BF16 source dtypes;
-- absence of any source quantization config.
-
-It writes to an `.incomplete` sibling and refuses to overwrite either an old
-temporary output or a final output. After conversion it verifies:
-
-- the exact serialized quantization config, including the runtime ignore;
-- 37,152 packed tensors and 37,152 scale tensors with exact uint8 shapes;
-- all 1,618 protected tensors bit-for-bit;
-- all eight ancillary tokenizer, processor, template, license, README, and
-  repository-metadata files byte-for-byte;
-- one dequantization probe for each projection in every targeted layer;
-- bounded total tensor bytes;
-- SHA-256 for every artifact file and full installed-package provenance.
-
-Only after every check succeeds does it write `.quant-complete`, sync the
-filesystem, and atomically rename the directory into its final path.
-
-Pinned toolchain for this run:
-
-- PyTorch `2.13.0+cpu`
-- compressed-tensors commit `aa91ea52e9cb44da4f984dd53b4c2df65ef554b4`
-  (tree `5071ae29e82a01663585bef999923fe424bdf236`)
-- llm-compressor commit `d1e1fb6cb2ad2c99563164be36c2f83d846462b4`
-  (tree `23a003ddb2215804851b41cbc0844d428e207f28`)
-
-The exact commits were installed from verified git trees. A synthetic
-GLM-shaped checkpoint was serialized and loaded successfully before the
-production job was launched; its reconstruction check was 0.112915 relative
-L2. That result validates the toolchain and format only.
-
-## Capacity implications
-
-The artifact's exact tensor payload is 184,905,481,080 bytes, or 172.207 GiB.
-The pre-run residency estimate is about 173.4 GiB across TP=2 after accounting
-for TP placement and replicated tensors. The cards expose 95.592 GiB each
-(191.184 GiB total); `--mem-fraction-static 0.96` therefore caps weights plus KV
-at 183.536 GiB total. These estimates must be replaced by measured GPU residency
-after the exact candidate boots.
-
-At FP8 KV, the target DSA cache is estimated at 6.875 KiB/token/GPU. A 524,288-
-token pool therefore consumes 3.438 GiB/GPU. The 34 KDA layers also allocate
-recurrent state per request slot, not per active request;
-`--mamba-ssm-dtype bfloat16` keeps that to about 72.78 MiB/slot, or 0.569
-GiB/GPU at eight slots. After estimated residency, KV, and recurrent state, the
-static budget has only about 1.06 GiB/GPU remaining. This is why the launcher
-uses FP8 KV, eight slots, and a 524,288-token context ceiling, and why startup
-capacity is a hard qualification gate.
-
-Native MTP reuses the checkpoint's quantized layer 45 and is the capacity
-baseline. DFlash2 adds a separate draft cache. The launcher therefore pins its
-draft KV to `fp8_e4m3` and its logical window to 2,048 tokens, but current
-SGLang still sizes the physical draft pool against the target token pool. The
-achievable pooled context for both modes must be read from startup logs and
-tested, not inferred from the configured context length.
-
-## Qualification still required
-
-The completed artifact is not accepted on structure alone. Qualification must
-cover:
-
-- target-only, native MTP, and DFlash2 load/boot on TP=2;
-- vision input and image-dependent output;
-- token-level agreement or KL against the BF16 teacher on representative text
-  and multimodal traces;
-- long-context divergence through the KDA recurrence;
-- output throughput, latency, speculative acceptance, and actual KV pool;
-- cold prefill and first decode above 262k tokens because of open SGLang issue
-  #36550.
-
-Performance and quality results belong in `BENCHMARKS.md` with evidence from
-this exact immutable candidate.
+No threshold is retrofitted after seeing results. BF16 receipts and the public
+g16 checkpoint are controls; neither is evidence for our g32 artifact.

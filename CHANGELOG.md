@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.0-rc.17
+
+Greenfield E4M3-K32 W4A16 integration candidate. This candidate is not yet
+built or qualified.
+
+- Remove the rejected in-house MXFP4 producer, GPU test, runtime patch set, and
+  active serving profile. Historical failure receipts remain under `evidence/`.
+- Replace the vendor tarball's unverifiable Python tree with exact SGLang source
+  `42a56dc505f775d6f54e9d27a9b57c66023420a0` / tree
+  `16eb1fe669e54253b16d206a21e79e9cc7ea6132`, based on current upstream main.
+- Integrate GLM-5.3 support and current raw-layout FP8 TileLang DSA. Exclude the
+  DP-attention-only MHC communicator change because this profile is TP2/EP1 and
+  does not enable DP attention.
+- Pin FlashInfer source `008122fa75c7a27c839feea57a6ef8e8846fa265` /
+  tree `0462b5c545eb145cb96001285afe4cc89de30605`, including upstream's large
+  W4A16 expert-bank addressing fix and the explicit E4M3-K32 packer contract.
+- Pin NVIDIA ModelOpt `022767c7ab3d7d36211affd85e5c496770cde768` /
+  tree `9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9` for static per-block MSE
+  scale selection directly from the BF16 teacher.
+- Select routed-expert E2M1/E4M3-K32 W4A16 with protected BF16 vision,
+  attention/KDA/mHC, routers, shared experts, embeddings, and LM head. Native
+  MTP routed experts use the same recipe.
+- Restore the real target envelope: vision, adaptive MTP 5/1/6, FP8 KV, TP2,
+  C4/20 recurrent slots, decode graphs through batch four, and a 524,288-token
+  shared-pool target. These are qualification goals, not measured claims.
+- Bump the candidate cache schema to `v10`; compiled artifacts from previous
+  SGLang/FlashInfer trees are incompatible.
+
 ## v0.1.0-rc.14
 
 SM120 TileLang shared-memory correctness-control candidate. This candidate is

@@ -1,154 +1,53 @@
-# Running `v0.1.0-rc.14`
+# Running `v0.1.0-rc.17`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.14
-export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
-export SPECULATIVE_MODE=mtp
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.17
+export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-E4M3-K32-MSE
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v10
 ./examples/serve-glm53-flash.sh
 ```
 
-`CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
-and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.14 retains cache schema `v9`: the KV writer is unchanged from the
-reserved-slot correction in v0.1.0-rc.13. It adds an independent SM120-safe
-TileLang BF16-KV DSA launch. Required kernels compile from the exact pinned
-sources into a distinct candidate-specific persistent cache; do not share
-compiled artifacts between candidates even when their KV schema matches.
+The model directory must be the locally produced ModelOpt artifact described in
+[QUANTIZATION.md](QUANTIZATION.md). Do not point this profile at the deleted
+MXFP4 artifact: its metadata and weight contract are different.
 
-## Serving envelope
-
-The launcher pins TP=2, vision enabled, compressed-tensors MXFP4 routed experts,
-FP8 E4M3 KV, FlashInfer sparse MLA for GLM DSA, BF16 KDA recurrent state, one
-request slot, and a 524,288-token configured context ceiling. The actual
-pooled-token capacity is a startup measurement, not the value of
-`--context-length`.
-
-These settings are load-bearing:
-
-- Keep `--mamba-ssm-dtype bfloat16`. FP32 roughly doubles the 34 KDA layers'
-  per-slot recurrent state and silently removes memory from KV.
-- Do not enable Expert Parallel at TP=2. It does not materially reduce expert
-  residency and adds PCIe all-to-all plus routing imbalance.
-- Keep `--moe-runner-backend flashinfer_mxfp4`. The inherited automatic choice
-  does not safely cover this compressed-tensors GLM artifact, and the separate
-  `flashinfer_trtllm` path has an open out-of-bounds routing issue.
-- Keep `--disable-shared-experts-fusion`. The shared expert is intentionally
-  bit-exact BF16 and must not be appended to the MXFP4 routed-expert buffer.
-- Keep both DSA backends on `flashinfer_sparse_mla`. The corrected 528-byte
-  no-RoPE path pads the complete 2,051-entry KPool table with `-1` to one
-  2,176-wide kernel dispatch. It deliberately passes the full padded width so
-  base-table holes cannot mask the three live tail entries. Generic TRT-LLM
-  MLA rejects workstation Blackwell, while TileLang's CUDA DSA kernels require
-  BF16 KV.
-- Keep `--image-processor-backend pil`. Vision inference remains enabled on
-  GPU, but image preprocessing stays on CPU instead of trying to allocate CUDA
-  preprocessing tensors after the 500k-token pool and MTP graphs are resident.
-- Keep native MTP fixed at five steps for this capacity-first concurrency-one
-  profile. SGLang's default adaptive controller additionally captures 1/3/7-step
-  graph families; on these cards that leaves less than the 256 MiB required by
-  vision warmup after the 511,232-token pools are resident.
-
-Custom all-reduce is left enabled. SGLang tests whether the two PCIe GPUs have
-working P2P and falls back to NCCL if not. Capture the selected path in evidence;
-do not force either result without an A/B. Keep PyTorch's default allocator:
-`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` makes the legacy PCIe
-CustomAllreduce graph-buffer IPC query fail with `invalid argument` during
-CUDA-graph capture (upstream SGLang issue #17642).
-
-## Speculative modes
-
-Native MTP is the default and is not optional in the final qualification:
+The default profile enables vision and native adaptive MTP, uses TP=2/EP=1,
+requests a 524,288-token shared pool, admits four live requests, reserves 20
+BF16 recurrent-state slots, and captures decode graphs through batch size 4.
+Override values explicitly during staged qualification, for example:
 
 ```bash
-export SPECULATIVE_MODE=mtp
+MAX_TOTAL_TOKENS=131072 \
+MAX_RUNNING_REQUESTS=1 \
+MAX_MAMBA_CACHE_SIZE=5 \
+CUDA_GRAPH_MAX_BS=1 \
+./examples/serve-glm53-flash.sh
 ```
 
-It uses the checkpoint's quantized layer 45 through SGLang's EAGLE alias for
-NEXTN, with fixed 5-step, top-k 1, six-draft-token bounds.
+That reduced profile is only a bring-up control. The target remains C4 and
+roughly 500K shared tokens. After it passes, measure C8 with both
+`MAX_RUNNING_REQUESTS=8` and `MAX_MAMBA_CACHE_SIZE=40`; changing only one of
+them produces an invalid comparison.
 
-Run a verifier-only control with:
+Use a fresh cache directory for every image/runtime/graph combination. The
+`v10` suffix is mandatory because SGLang, FlashInfer JIT sources, raw FP8 DSA,
+and the W4A16 packer all changed from the old candidate.
 
-```bash
-export SPECULATIVE_MODE=none
-```
+## Qualification order
 
-Run DFlash2 with:
+1. Inspect model metadata, tensor counts, shapes, dtypes, byte totals, and
+   hashes before allocating GPU memory.
+2. Run packed-kernel versus dequantized-reference numerical tests on actual
+   expert tensors.
+3. Boot target-only at a small pool, no CUDA graphs, and MTP off as an A/B
+   diagnostic; this does not qualify the intended profile.
+4. Verify deterministic text, tool calls with nested schemas, and a real image.
+5. Enable native MTP and measure acceptance plus output equivalence.
+6. Raise the shared pool to the maximum that leaves safe per-rank headroom,
+   then qualify C4 and test C8 burst behavior.
+7. Record prefill/decode throughput, latency, memory pools, and exact image/model
+   digests in [BENCHMARKS.md](BENCHMARKS.md).
 
-```bash
-export SPECULATIVE_MODE=dflash
-export DFLASH_DIR=/models/incoai/GLM-5.3-Flash-DFlash2
-```
-
-The DFlash2 directory must be the pinned revision in `stack.lock.json`. Its
-draft uses block size 8, a 2,048-token logical window, FA4 attention, and FP8
-draft KV. FP8 draft KV changes proposal efficiency, not verifier weights; output
-quality and acceptance still require measurement.
-
-## First boot gates
-
-Do not treat a listening port as a successful boot. Preserve the complete log
-and verify:
-
-1. both target ranks load the `mxfp4-pack-quantized` artifact without missing,
-   unexpected, or shape-mismatched tensors;
-2. `flashinfer_mxfp4` selects the SM120 MXFP8-by-MXFP4 path;
-3. the target cache is the 512-wide MLA latent plus DSA indexer state, not a
-   decompressed MHA fallback;
-4. the allocated token pool is at least 500,000 if the goal is met;
-5. MTP loads layer 45 through compressed-tensors on both TP ranks;
-6. DFlash2 captures layers 5, 14, 24, 33, and 42 and reports its separate draft
-   pool when that mode is selected;
-7. multimodal initialization remains enabled.
-8. the no-RoPE writer regression leaves reserved physical slot 0 unchanged
-   while a valid positive-slot write succeeds.
-
-If 500,000 pooled tokens do not fit at `MEM_FRACTION=0.987`, record exact weight,
-graph, recurrent-state, and cache allocations before changing the fraction or
-request-slot count. Do not trade away vision or MTP to make the log look better.
-
-## Health and text request
-
-```bash
-curl -fsS localhost:8000/health
-curl -fsS localhost:8000/v1/models | jq .
-curl -fsS localhost:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"glm53-flash-sm120","messages":[{"role":"user","content":"Return exactly: ready"}],"temperature":0,"max_tokens":16}' | jq .
-```
-
-## Vision request
-
-Use a controlled local image or immutable test URL and preserve both the input
-hash and response. The OpenAI-compatible content shape is:
-
-```json
-{
-  "model": "glm53-flash-sm120",
-  "messages": [{
-    "role": "user",
-    "content": [
-      {"type": "image_url", "image_url": {"url": "https://example.invalid/immutable-test.png"}},
-      {"type": "text", "text": "Describe the image and read all visible text."}
-    ]
-  }],
-  "temperature": 0,
-  "max_tokens": 256
-}
-```
-
-Replace the placeholder URL; a request that never exercises image embeddings is
-not a vision qualification.
-
-## Measurements required before qualification
-
-- verifier-only, MTP, and DFlash2 output throughput and latency at useful
-  concurrencies;
-- speculative acceptance and accepted tokens per step;
-- actual model residency, target pool, draft pool, and maximum admitted context;
-- text and vision correctness, plus token-level comparison with the BF16 source;
-- long-context behavior and the first decode after cold prefills above 262k;
-- repeated tool-calling prompts because relevant upstream failures are open.
-
-Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.14` from a successful build alone.
+Do not publish server process arguments in evidence: cluster arguments may
+contain an API key. Filter logs to the memory, backend, correctness, and timing
+lines needed for the receipt.
