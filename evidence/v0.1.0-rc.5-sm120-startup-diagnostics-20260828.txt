@@ -1,0 +1,80 @@
+GLM-5.3-Flash v0.1.0-rc.5 exact-hardware startup diagnostics
+Captured: 2026-08-28 UTC
+Cluster/node: quasar/quasar
+GPUs: 2x RTX PRO 6000 Blackwell, SM120, TP=2
+Image: git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5
+Image digest: sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e
+Model: /models/zai-org/GLM-5.3-Flash-BF16-MXFP4
+Mode: native layer-45 MTP/NEXTN, compressed-tensors, adaptive 5/1/6
+
+Sensitive SGLang server_args/API-key lines were filtered before observation and
+are intentionally absent from this evidence.
+
+Attempt 1: generic TRT-LLM DSA override
+Pod: glm53-flash-sglang-v0-1-0-rc5-mtp-tp2-568bb887c8-tfwl2
+
+Both ranks loaded the target and native NextN model before warmup:
+
+  target type=Glm5NextForConditionalGeneration
+  target quant=compressed-tensors
+  target load memory=84.97 GB/GPU
+  target available after load=8.99 GB/GPU
+  draft type=Glm5NextForConditionalGenerationNextN
+  draft quant=compressed-tensors
+  draft load memory=3.15 GB/GPU
+  draft available after load=5.77 GB/GPU
+  multimodal backend=triton_attn on both ranks
+
+The 2026-08-28T05:15:41Z warmup failed inside
+flashinfer.decode.trtllm_batch_decode_with_kv_cache_mla while creating
+TllmGenFmhaRunner:
+
+  tvm.error.InternalError: Error in function 'TllmGenFmhaRunner' at
+  .../flashinfer/trtllm/fmha/fmhaRunner.cuh:37: Unsupported architecture
+
+FlashInfer 0.6.18 commit 71d31b5a23a3c0394edb36330dec1ce2a0def365
+explicitly limits TllmGenFmhaRunner to SM100, SM103, and SM107. Its same API
+routes SM120 plus sparse_mla_top_k > 0 to a separate packed sparse backend.
+
+Attempt 2: dedicated flashinfer_sparse_mla DSA backend
+GitOps revision: dedfa0c8fad15a70ce60e72cadb616e56ce89398
+Pod: glm53-flash-sglang-v0-1-0-rc5-mtp-tp2-5864b667db-mb47z
+
+Resolved runtime line:
+
+  Set DSA backends for fp8_e4m3 KV Cache:
+  prefill=flashinfer_sparse_mla, decode=flashinfer_sparse_mla.
+
+Exact load and pool observations before backend construction:
+
+  target rank 0: elapsed=396.78 s, mem usage=84.97 GB, avail=8.99 GB
+  target rank 1: elapsed=396.87 s, mem usage=84.97 GB, avail=8.99 GB
+  NextN rank 0: elapsed=8.45 s, mem usage=3.15 GB, avail=5.77 GB
+  NextN rank 1: elapsed=8.35 s, mem usage=3.15 GB, avail=5.77 GB
+  native adaptive speculative steps=5, candidate_steps=[1,3,5,7]
+  max_running_requests capped to 1 by max_mamba_cache_size=8 and 5 slots/request
+  recurrent cache/GPU: conv=.02 GB, ssm=.31 GB,
+                       intermediate_ssm=.55 GB, intermediate_conv=.04 GB
+  target FP8 KV/GPU: 157568 tokens, 1.07 GB
+  draft FP8 KV/GPU: 157568 tokens, .10 GB
+  available after both pools: 3.68 GB/GPU
+
+The 2026-08-28T05:31:26Z backend-construction guard then failed before any
+CUDA-graph capture or request:
+
+  ValueError: flashinfer_sparse_mla supports only GLM DSA with FP8 KV cache on
+  NVIDIA SM120/SM121; got model_arch='Glm5NextForConditionalGeneration',
+  sm_major=12, kv_cache_dtype=torch.float8_e4m3fn,
+  prefill_impl='flashinfer_sparse_mla',
+  decode_impl='flashinfer_sparse_mla'.
+
+The exact live source SHA-256 was
+39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5.
+Its allowlist contained only GlmMoeDsaForCausalLM and
+GlmMoeDsaForCausalLMNextN, predating the native GLM-5.3 class names. No other
+guard condition failed. v0.1.0-rc.6 extends only this allowlist, pins exact
+pre/postimage hashes, and adds positive and negative build-time contract tests.
+
+Disposition: both v0.1.0-rc.5 attempts failed before serving; the Deployment
+was scaled to zero. These are diagnostic results, not qualification or
+performance claims.

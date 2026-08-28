@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.5` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.6` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.5 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.6 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -68,20 +68,22 @@ be measured on these cards.
 
 ## Provenance, stated honestly
 
-`glm5_next` is not in `sgl-project/sglang` main as of 2026-08-27; model-support
+`glm5_next` is not in `sgl-project/sglang` main as of 2026-08-28; model-support
 PR #36507 remains open and conflicting. The vendor per-model image was built
 from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
-This repository does not claim a vendor SGLang git revision. For the two files
-we modify, v0.1.0-rc.5 asserts exact vendor preimage SHA-256 values, applies archived
+This repository does not claim a vendor SGLang git revision. For the three files
+we modify, v0.1.0-rc.6 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
 1. preserve GLM's contiguous gate/up layout and `(alpha=1, beta=0, limit=10)`
    SwiGLU contract in the SM120 MXFP4 loader;
 2. apply upstream PR #36708's GLM DFlash2 hidden-state capture change;
-3. apply upstream PR #36755's mHC `residual=None` capture correction.
+3. apply upstream PR #36755's mHC `residual=None` capture correction;
+4. extend upstream PR #26928's fail-closed SM120 FP8 sparse-MLA allowlist to
+   the native GLM-5.3 target and NextN architecture names.
 
 FlashInfer 0.6.18 is built from exact main commit
 `71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
@@ -95,12 +97,12 @@ SM120 cubins.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.5 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.6 .
 ```
 
 ```bash
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v4
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v5
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
@@ -131,5 +133,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.5 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.6 built; only
 exact-candidate evidence can make it qualified.
