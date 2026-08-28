@@ -1,0 +1,41 @@
+GLM47 nested-object streaming tool regression
+Date: 2026-08-28 (America/Chicago)
+
+Image:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5
+Digest:
+  sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e
+Vendor glm47_moe_detector.py SHA-256:
+  93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb
+Vendor function_call/utils.py SHA-256:
+  fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25
+
+Upstream reference:
+  SGLang commit 0665102ce5e2786ec569dc22c017f2f898a94313
+  PR #36626, merged on main
+  "Resolve tool argument types through top-level anyOf/oneOf/allOf"
+
+The exact upstream GLM47 nested-object streaming regression was run inside a
+temporary no-GPU source-inspection pod.  The tool schema contained a string
+"kind" property and a nested object "payload" property.  Parser input was:
+
+  <tool_call>acme<arg_key>kind</arg_key><arg_value>acme</arg_value><arg_key>payload</arg_key><arg_value>{"value": "hello"}</arg_value></tool_call>
+
+Observed streamed name:
+  acme
+Observed concatenated arguments:
+  {"kind": "acme", "payload": {"value": "hello"}
+Expected arguments:
+  {"kind": "acme", "payload": {"value": "hello"}}
+Result:
+  json.decoder.JSONDecodeError: Expecting ',' delimiter at column 47
+
+The vendor parser conditionally appends the outer brace only when the most
+recent argument text does not itself end in "}".  That condition confuses a
+nested object's closing brace for the outer arguments object's closing brace.
+The merged upstream fix tracks whether any outer parameter was emitted and
+always closes that outer object.  It also resolves properties nested under a
+top-level anyOf/oneOf/allOf schema.
+
+This is a parser-only source regression, not a served-model quality or
+performance result.  The diagnostic pod must not remain running.
