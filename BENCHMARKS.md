@@ -20,6 +20,7 @@ qualification:
 | source choice | direct BF16 source has lower sampled reconstruction error than FP8-to-MXFP4 | tensor probes only; see `QUANTIZATION.md` |
 | DFlash2 artifact | 2,342,175,855 bytes, block 8, window 2,048, capture layers 5/14/24/33/42 | immutable HF revision `7d74cdd…` |
 | SGLang patch preimages | vendor `mxfp4.py` and `glm5_next.py` match exact pinned SHA-256 values | vendor image digest only; no git-provenance claim |
+| physical GPU framebuffer | 95.592 GiB/card; 191.184 GiB/pair; 189.938 GiB free before model load | DCGM/driver 595.71.05; [`evidence/preflight-gpu-memory-20260828.txt`](evidence/preflight-gpu-memory-20260828.txt) |
 
 The production quantizer repeats and expands the structural checks, including
 bit-for-bit comparison of every protected tensor and 129 layer/projection

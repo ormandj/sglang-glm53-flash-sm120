@@ -59,8 +59,8 @@ error.
 MXFP4 stores E2M1 values with one E8M0 scale per 32 weights, for exactly 4.25
 bits/weight. NVFP4 uses finer scale granularity and costs approximately 4.5
 bits/weight. Across this model's routed experts, that quarter-bit difference is
-about 8.9 GiB of total residency. On two 96 GiB cards, those bytes are a large
-fraction of the memory left for KV after weights.
+about 8.9 GiB of total residency. On the measured 191.184 GiB framebuffer pair,
+those bytes are a large fraction of the memory left for KV after weights.
 
 The current SGLang paths also matter:
 
@@ -171,14 +171,21 @@ L2. That result validates the toolchain and format only.
 
 ## Capacity implications
 
-The pre-run residency estimate is about 173.4 GiB across TP=2, including the
-MXFP4 routed experts and BF16 protected tensors. It must be replaced by measured
-GPU residency after the exact candidate boots.
+The artifact's exact tensor payload is 184,905,481,080 bytes, or 172.207 GiB.
+The pre-run residency estimate is about 173.4 GiB across TP=2 after accounting
+for TP placement and replicated tensors. The cards expose 95.592 GiB each
+(191.184 GiB total); `--mem-fraction-static 0.96` therefore caps weights plus KV
+at 183.536 GiB total. These estimates must be replaced by measured GPU residency
+after the exact candidate boots.
 
-At FP8 KV, the target DSA cache is estimated at 6.875 KiB/token/GPU. The 34 KDA
-layers also allocate recurrent state per request slot, not per active request;
-`--mamba-ssm-dtype bfloat16` keeps that to about 72.78 MiB/slot. These are why
-the launcher defaults to eight slots and a 524,288-token context ceiling.
+At FP8 KV, the target DSA cache is estimated at 6.875 KiB/token/GPU. A 524,288-
+token pool therefore consumes 3.438 GiB/GPU. The 34 KDA layers also allocate
+recurrent state per request slot, not per active request;
+`--mamba-ssm-dtype bfloat16` keeps that to about 72.78 MiB/slot, or 0.569
+GiB/GPU at eight slots. After estimated residency, KV, and recurrent state, the
+static budget has only about 1.06 GiB/GPU remaining. This is why the launcher
+uses FP8 KV, eight slots, and a 524,288-token context ceiling, and why startup
+capacity is a hard qualification gate.
 
 Native MTP reuses the checkpoint's quantized layer 45 and is the capacity
 baseline. DFlash2 adds a separate draft cache. The launcher therefore pins its

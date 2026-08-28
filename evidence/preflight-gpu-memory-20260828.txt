@@ -1,0 +1,24 @@
+GLM-5.3-Flash pre-candidate GPU framebuffer inventory
+Measured UTC: 2026-08-28T01:57Z
+Source: nvidia-dcgm-exporter on Kubernetes node quasar
+Driver: 595.71.05
+
+GPU 1: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+  DCGM_FI_DEV_FB_FREE:     97248 MiB
+  DCGM_FI_DEV_FB_RESERVED:   637 MiB
+  DCGM_FI_DEV_FB_USED:         1 MiB
+  observed total:           97886 MiB = 95.591797 GiB
+
+GPU 2: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+  DCGM_FI_DEV_FB_FREE:     97248 MiB
+  DCGM_FI_DEV_FB_RESERVED:   637 MiB
+  DCGM_FI_DEV_FB_USED:         1 MiB
+  observed total:           97886 MiB = 95.591797 GiB
+
+Pair:
+  observed total:          195772 MiB = 191.183594 GiB
+  free before model load:  194496 MiB = 189.937500 GiB
+  static budget at 0.96:               183.536250 GiB
+
+All conversions use 1 GiB = 2^30 bytes and 1 MiB = 2^20 bytes. This is a
+hardware preflight, not an exact-candidate model-residency or capacity result.

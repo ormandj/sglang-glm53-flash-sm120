@@ -13,8 +13,9 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 ## Why this quant
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
-192 GiB of GPU memory. The deleted first attempt requantized the official FP8
-checkpoint. rc.3 instead starts from the immutable BF16 revision and quantizes
+the pair's measured 191.184 GiB of physical framebuffer. The deleted first
+attempt requantized the official FP8 checkpoint. rc.3 instead starts from the
+immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
 ```text
