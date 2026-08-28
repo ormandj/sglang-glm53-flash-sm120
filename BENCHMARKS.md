@@ -1,8 +1,9 @@
 # Benchmarks
 
-**`v0.1.0-rc.4` has no model-quality or performance results yet.** The BF16 to
-MXFP4 artifact and corrected image are still being built. A candidate is built,
-not qualified, until exact-candidate evidence is recorded here.
+**`v0.1.0-rc.4` has no served-model quality or performance results yet.** The
+direct BF16 to MXFP4 artifact is complete and hash-verified; the corrected image
+is still being built. A candidate is built, not qualified, until exact-candidate
+evidence is recorded here.
 
 ## Pre-candidate checks completed
 
@@ -18,14 +19,16 @@ qualification:
 | serialized format | `mxfp4-pack-quantized`, GROUP, group 32, uint8 packed values and E8M0 scales | synthetic GLM-shaped checkpoint |
 | synthetic round-trip | relative L2 0.112915 | toolchain serialization only; not production weights |
 | source choice | direct BF16 source has lower sampled reconstruction error than FP8-to-MXFP4 | tensor probes only; see `QUANTIZATION.md` |
+| production artifact | 131 files; 184,945,092,190 bytes; all 37,152 routed weights serialized; 1,618/1,618 protected tensors bit-exact | artifact manifest `a74810a1…`; [`evidence/quantization-artifact-20260828.txt`](evidence/quantization-artifact-20260828.txt) |
 | DFlash2 artifact | 2,342,175,855 bytes, block 8, window 2,048, capture layers 5/14/24/33/42 | immutable HF revision `7d74cdd…` |
 | SGLang patch preimages | vendor `mxfp4.py` and `glm5_next.py` match exact pinned SHA-256 values | vendor image digest only; no git-provenance claim |
 | physical GPU framebuffer | 95.592 GiB/card; 191.184 GiB/pair; 189.938 GiB free before model load | DCGM/driver 595.71.05; [`evidence/preflight-gpu-memory-20260828.txt`](evidence/preflight-gpu-memory-20260828.txt) |
 
-The production quantizer repeats and expands the structural checks, including
+The production quantizer repeated and expanded the structural checks, including
 bit-for-bit comparison of every protected tensor and 129 layer/projection
-round-trip probes. Its results will be added only after `.quant-complete` and
-artifact-hash validation succeed.
+round-trip probes. It emitted `.quant-complete` only after those checks, and a
+separate publication job re-hashed every copied file before atomic publication.
+These checks qualify the artifact structure, not model behavior.
 
 ## Required qualification matrix
 

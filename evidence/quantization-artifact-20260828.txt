@@ -1,0 +1,35 @@
+GLM-5.3-Flash direct-BF16 MXFP4 production artifact
+Captured: 2026-08-28
+
+Source repository: zai-org/GLM-5.3-Flash-BF16
+Source revision: f12e0fe1f6b2ea274c11a569582edfd99d993c5e
+Source shards: 120
+Quantized scope: 37,152 BF16 routed-expert tensors
+Protected equality: 1,618/1,618 tensors, including all 347 vision tensors
+Native layer-45 MTP quantized: true
+Serialized format: mxfp4-pack-quantized
+Packed values: uint8
+Scale values: E8M0 uint8, group size 32
+
+Quantization elapsed: 1:53:42 for 120 shards
+Artifact files: 131
+Artifact bytes: 184,945,092,190 bytes (172.244 GiB)
+Indexed tensor bytes: 184,905,481,080 bytes (172.207 GiB)
+Artifact manifest SHA-256:
+a74810a13cbb271e7844846593a779adb6f85c38b4412550ea51aaf21267e1a2
+
+The quantizer completed every configured layer/projection round-trip probe before
+artifact hashing, emitted .quant-complete, and atomically published the artifact.
+The independent model-PVC publication job then re-hashed all 131 files against
+the manifest, checked exactly 37,152 packed tensors and 37,152 scales, verified
+the pinned DFlash2 copy, and atomically published both directories.
+
+Published target:
+/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
+Published DFlash2:
+/models/incoai/GLM-5.3-Flash-DFlash2
+Publication completed: 2026-08-28T03:48:26Z
+Publication result: target and DFlash2 copies verified
+
+These are serialization and integrity results, not served-model quality or
+performance claims.
