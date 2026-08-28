@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.0-rc.9
+
+GLM-5.3 DSv4/KPool sparse-MLA correctness candidate. This candidate is not
+qualified.
+
+- Preserve the model's fixed 2,048-entry DSA selection table plus all three
+  live `index_kpool=4` tail entries. v0.1.0-rc.8 loaded both target and native
+  MTP weights, then failed closed because the inherited backend guard rejected
+  KPool tails before warmup completed.
+- Route the 584-byte DSv4 footer cache through FlashInfer's supported
+  dual-segment SM120 API: 128 primary entries plus 1,923 extra entries, with
+  both segments pointing at the same physical KV cache.
+- Use full segment lengths so `-1` padding in the base table cannot mask valid
+  KPool tail entries that follow it. Preserve the unrelated 656-byte GLM-NSA
+  adapter unchanged and open the backend guard only for the corrected 584-byte
+  path.
+- Pass one-token decode and 128-token prefill numerical regressions against the
+  dequantized reference on the exact RTX PRO 6000 Blackwell hardware, including
+  a 512-entry padding gap before the live tail.
+- Refresh FlashInfer main to exact commit `950376c4…`, tree `d44c17d4…`; the
+  intervening changes affect BF16 cuBLASLt work and do not change the tested
+  sparse-MLA sources.
+- Advance cache schema to `v6` because the effective SGLang DSA adapter and
+  FlashInfer tree changed.
+
 ## v0.1.0-rc.8
 
 SM120 source-JIT and MXFP4 post-loader correctness candidate. This candidate

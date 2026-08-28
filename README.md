@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.8` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.9` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.8 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.9 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -43,7 +43,9 @@ audit and fail-closed recipe are in [`QUANTIZATION.md`](QUANTIZATION.md).
 - Shared-expert fusion is disabled so the protected BF16 shared expert never
   enters the MXFP4 routed-expert buffer.
 - FP8 E4M3 target KV and FlashInfer's dedicated SM120 sparse-MLA DSA backend
-  conserve memory. Generic TRT-LLM MLA does not support workstation Blackwell.
+  conserve memory. GLM's 584-byte DSv4 cache uses the kernel's 128+1,923
+  dual-segment ABI so all three KPool tail entries remain live without a second
+  physical KV cache. Generic TRT-LLM MLA does not support workstation Blackwell.
 - `--mamba-ssm-dtype bfloat16` is mandatory. The 34 KDA layers allocate about
   72.78 MiB of recurrent state per configured request slot at BF16.
 - Expert Parallel is intentionally absent: at TP=2 it saves essentially no
@@ -75,8 +77,8 @@ PR #36507 remains open and conflicting. The vendor per-model image was built
 from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
-This repository does not claim a vendor SGLang git revision. For the six files
-we modify, v0.1.0-rc.8 asserts exact vendor preimage SHA-256 values, applies archived
+This repository does not claim a vendor SGLang git revision. For the seven files
+we modify, v0.1.0-rc.9 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
@@ -91,11 +93,13 @@ tests. The patches:
    candidates;
 6. backport the GLM47-specific part of merged SGLang #36626 so nested object
    tool arguments close valid streaming JSON and top-level composite schemas
-   resolve correctly.
+   resolve correctly;
+7. route the 584-byte DSv4 cache and 2,051-entry KPool-extended DSA table
+   through FlashInfer's dual-segment SM120 API using one physical cache.
 
 FlashInfer 0.6.18 is built from exact main commit
-`71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
-`a2577ad013205dfc996f6ffe5259f3102a2cd075` with
+`950376c45a473d8f9ebfa83b2224094f5102c0e6` and tree
+`d44c17d48d02efa160a7e9ddbeecd01457b244c0` with
 `FLASHINFER_CUDA_ARCH_LIST=12.0f`. The generic 48,391-artifact cubin package is
 not installed: the targeted MXFP4 and sparse-MLA SM120 paths compile from the
 pinned source, and runtime artifact downloads are disabled.
@@ -106,12 +110,12 @@ pinned source, and runtime artifact downloads are disabled.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.8 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.9 .
 ```
 
 ```bash
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v5
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v6
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
@@ -142,5 +146,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.8 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.9 built; only
 exact-candidate evidence can make it qualified.

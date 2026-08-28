@@ -1,0 +1,91 @@
+GLM-5.3 SM120 KPool adapter diagnostic -- 2026-08-28 UTC
+
+Scope
+-----
+This is pre-candidate engineering evidence for v0.1.0-rc.9. It is not a
+served-model throughput, quality, or qualification result.
+
+Control image
+-------------
+git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.8@sha256:16552ebb65fa995e6de4222816de2fe862094804aefe8a38d072e047b41bee60
+
+Controller and pod
+------------------
+Deployment: glm53-flash-sglang-v0-1-0-rc8-mtp-tp2
+ReplicaSet: glm53-flash-sglang-v0-1-0-rc8-mtp-tp2-5c7cd9bdc
+Pod: glm53-flash-sglang-v0-1-0-rc8-mtp-tp2-5c7cd9bdc-tp97m
+Node: quasar
+
+The controller retained the exact image above. Kubernetes recorded a successful
+pull of that digest at 2026-08-28T07:07:18Z.
+
+Filtered startup observations
+-----------------------------
+Target model load: 477.8 s
+Native layer-45 MTP load: 8.16 s
+Allocated token pool at mem-fraction-static 0.96: 157,568 tokens
+
+Both TP ranks loaded the direct-BF16 MXFP4 target and native MTP. Warmup then
+failed before the HTTP server became ready with the backend guard's normalized
+exception:
+
+  NotImplementedError: index_kpool > 1 appends tail tokens to topk_indices and
+  is currently only supported by the FA3/TileLang/TRTLLM DSA backend.
+
+The pod was deliberately stopped and the Deployment returned to zero replicas.
+No unfiltered server_args line was retained because it can contain the API key.
+
+Root-cause source audit
+-----------------------
+The model uses:
+
+  kv_cache_dim: 584 bytes/token/layer
+  q head dim: 512
+  index_topk: 2048
+  index_kpool: 4
+  runtime selected width: 2051 (2048 base + 3 live tail)
+
+The inherited generic adapter calls the 656-byte GLM-NSA API. FlashInfer's
+SM120 DSv4 API instead accepts a fixed 128-entry primary segment and a runtime
+secondary segment. The v0.1.0-rc.9 adapter therefore uses 128 + 1,923 entries
+and points both segments at the same physical packed KV cache.
+
+Exact-hardware numerical regression
+-----------------------------------
+Pod: rc8-kpool-sparse-mla-test
+Node/GPU: quasar / RTX PRO 6000 Blackwell (SM120)
+Script SHA-256:
+f3fc4633756318d84e8477286d21e9d99861dd79cb24877dd99adfe14d100a95
+
+The selected base table was padded with -1 from columns 1536 through 2047,
+then followed by three live KPool tail indices. Output was compared with
+FlashInfer's dequantized BF16 reference:
+
+  PASS num_tokens=1 heads=16 primary_topk=128 extra_topk=1923
+  PASS num_tokens=128 heads=16 primary_topk=128 extra_topk=1923
+
+This proves the decode and prefill kernel shapes used by the adapter and proves
+that full secondary lengths preserve live tail entries after base padding.
+The GPU pod was deleted at 2026-08-28T07:32:26Z.
+
+Exact rc8 source application and CPU contract
+---------------------------------------------
+Pod: validate-glm53-rc9-sparse-mla-patch
+
+Preimages:
+  flash_mla_sm120.py  052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93
+  dsa_backend.py      f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f
+
+The patch applied with patch --fuzz=0 -p1.
+
+Postimages:
+  flash_mla_sm120.py  4d2f85055dc2ed5e96b534640473760a27248cba6ff278c8357a69dba7c69d1a
+  dsa_backend.py      2ef7ba4a2aca5bc0304b35311e0ef3c12f1cb1fc5dae327604a48dd118e0abbb
+
+Build-time contract result:
+  GLM-5.3 SM120 sparse-MLA architecture and KPool contracts OK
+
+The contract asserts the exact 128/1,923 split, shared physical cache pointer,
+live final three indices, full segment lengths, NHD layout, sparse backend,
+unchanged 656-byte fallback behavior, and fail-closed backend guard. The CPU
+validation pod was deleted at 2026-08-28T07:40:21Z.
