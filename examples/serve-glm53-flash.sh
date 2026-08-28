@@ -127,8 +127,8 @@ exec docker run --rm \
   --cuda-graph-max-bs-decode 8 \
   --max-running-requests "$MAX_RUNNING_REQUESTS" \
   --mamba-ssm-dtype bfloat16 \
-  --dsa-prefill-backend trtllm \
-  --dsa-decode-backend trtllm \
+  --dsa-prefill-backend flashinfer_sparse_mla \
+  --dsa-decode-backend flashinfer_sparse_mla \
   --reasoning-parser glm45 \
   --tool-call-parser glm47 \
   --enable-metrics \

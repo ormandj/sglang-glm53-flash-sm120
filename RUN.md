@@ -16,11 +16,12 @@ contract differs from v0.1.0-rc.4.
 ## Serving envelope
 
 The launcher pins TP=2, vision enabled, compressed-tensors MXFP4 routed experts,
-FP8 E4M3 KV, TRT-LLM DSA, BF16 KDA recurrent state, eight request slots, and a
-524,288-token configured context ceiling. The actual pooled-token capacity is a
-startup measurement, not the value of `--context-length`.
+FP8 E4M3 KV, FlashInfer sparse MLA for GLM DSA, BF16 KDA recurrent state, eight
+request slots, and a 524,288-token configured context ceiling. The actual
+pooled-token capacity is a startup measurement, not the value of
+`--context-length`.
 
-Three settings are load-bearing:
+These settings are load-bearing:
 
 - Keep `--mamba-ssm-dtype bfloat16`. FP32 roughly doubles the 34 KDA layers'
   per-slot recurrent state and silently removes memory from KV.
@@ -31,6 +32,10 @@ Three settings are load-bearing:
   `flashinfer_trtllm` path has an open out-of-bounds routing issue.
 - Keep `--disable-shared-experts-fusion`. The shared expert is intentionally
   bit-exact BF16 and must not be appended to the MXFP4 routed-expert buffer.
+- Keep both DSA backends on `flashinfer_sparse_mla`. The vendor GLM branch
+  carries upstream #26928's dedicated FP8-KV path for SM120/SM121. Generic
+  TRT-LLM MLA rejects workstation Blackwell during warmup, while TileLang's
+  CUDA DSA kernels require BF16 KV.
 
 Custom all-reduce is left enabled. SGLang tests whether the two PCIe GPUs have
 working P2P and falls back to NCCL if not. Capture the selected path in evidence;

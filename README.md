@@ -42,7 +42,8 @@ audit and fail-closed recipe are in [`QUANTIZATION.md`](QUANTIZATION.md).
 - `flashinfer_mxfp4` provides the native SM120 MXFP8-by-MXFP4 MoE path.
 - Shared-expert fusion is disabled so the protected BF16 shared expert never
   enters the MXFP4 routed-expert buffer.
-- FP8 E4M3 target KV and TRT-LLM DSA backends conserve memory.
+- FP8 E4M3 target KV and FlashInfer's dedicated SM120 sparse-MLA DSA backend
+  conserve memory. Generic TRT-LLM MLA does not support workstation Blackwell.
 - `--mamba-ssm-dtype bfloat16` is mandatory. The 34 KDA layers allocate about
   72.78 MiB of recurrent state per configured request slot at BF16.
 - Expert Parallel is intentionally absent: at TP=2 it saves essentially no
