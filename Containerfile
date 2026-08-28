@@ -13,7 +13,7 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=14
+ARG GLM53_RELEASE_CANDIDATE=15
 ARG GLM53_CACHE_SCHEMA=v9
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
@@ -59,6 +59,12 @@ ARG GLM53_SGLANG_MLA_BUFFER_TEST_SHA256=5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efd
 ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256=526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f
 ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256=1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98
 ARG GLM53_SGLANG_TILELANG_TEST_SHA256=fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f
+ARG GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256=e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c
+ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256=e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b
+ARG GLM53_SGLANG_OFFLOADER_TEST_SHA256=761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391
+ARG GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256=39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828
+ARG GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256=01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc
+ARG GLM53_SGLANG_KDA_PADDING_TEST_SHA256=971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -102,6 +108,12 @@ ARG GLM53_SGLANG_MLA_BUFFER_TEST_SHA256
 ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256
 ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256
 ARG GLM53_SGLANG_TILELANG_TEST_SHA256
+ARG GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256
+ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_OFFLOADER_TEST_SHA256
+ARG GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256
+ARG GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_KDA_PADDING_TEST_SHA256
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -140,6 +152,10 @@ COPY patches/0010-glm53-norope-reserved-slot.patch /usr/share/sglang-glm53-flash
 COPY patches/test_glm53_norope_reserved_slot.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py
 COPY patches/0011-glm53-sm120-tilelang-shared-memory.patch /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch
 COPY patches/test_glm53_sm120_tilelang_launch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py
+COPY patches/0012-glm53-cpu-offload-tied-parameters.patch /usr/share/sglang-glm53-flash-sm120/patches/0012-glm53-cpu-offload-tied-parameters.patch
+COPY patches/test_glm53_cpu_offload_tied_parameters.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py
+COPY patches/0013-glm53-kda-preserve-padding-sentinel.patch /usr/share/sglang-glm53-flash-sm120/patches/0013-glm53-kda-preserve-padding-sentinel.patch
+COPY patches/test_glm53_kda_padding_sentinel.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py
 
 # Patch only exact vendor bytes. The first fix preserves GLM's contiguous
 # gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
@@ -159,6 +175,10 @@ COPY patches/test_glm53_sm120_tilelang_launch.py /usr/share/sglang-glm53-flash-s
 # DCP ownership contract so CUDA-graph padding cannot poison physical slot 0.
 # The tenth gives TileLang's independent BF16-KV NoPE path an SM120-specific
 # launch that fits the cards' 101,376-byte dynamic shared-memory ceiling.
+# The eleventh lets the generic CPU offloader materialize GLM's intentionally
+# tied KDA parameters without rejecting their duplicate state-dict aliases.
+# The twelfth carries upstream SGLang #36885 so padded KDA rows keep the -1
+# sentinel instead of silently overwriting the final live Mamba state slot.
 RUN set -e; \
     cd /sgl-workspace/sglang; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
@@ -171,6 +191,8 @@ RUN set -e; \
     test "$(sha256sum python/sglang/kernels/ops/attention/dsa/transform_index.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/kvcache/mla_buffer.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_PREIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/utils/offloader.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/layers/attention/linear/kernels/kda_triton.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256}"; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0003-glm53-dflash-mhc-residual-none.patch; \
@@ -182,6 +204,8 @@ RUN set -e; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0009-glm53-kpool-unfused-transform.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0010-glm53-norope-reserved-slot.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0012-glm53-cpu-offload-tied-parameters.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0013-glm53-kda-preserve-padding-sentinel.patch; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256}"; \
@@ -197,6 +221,10 @@ RUN set -e; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_TEST_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256}"; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_TEST_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/utils/offloader.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_TEST_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/layers/attention/linear/kernels/kda_triton.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_PADDING_TEST_SHA256}"; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
@@ -212,7 +240,11 @@ RUN set -e; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py
 
 # Rebuild FlashInfer from source for SM120. The stock wheel in the vendor image
 # does not carry 12.0f kernels; workstation Blackwell lacks TMEM/tcgen05/wgmma,

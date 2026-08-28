@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.14`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.15`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -32,6 +32,10 @@ qualification claim.
   the reserved padding slot and honor DCP ownership like the ordinary writer.
 - A byte-gated SM120/SM121 TileLang launch for the independent BF16-KV no-RoPE
   DSA path, with non-SM12 CUDA and HIP launches left unchanged.
+- A byte-gated CPU-offload correction for GLM's tied KDA parameter aliases,
+  with an executable negative control for PyTorch's default rejection.
+- SGLang PR #36885's padding-sentinel correction so padded KDA rows cannot
+  overwrite the last allocatable live Mamba state slot.
 - The SM120 MXFP4 post-loader reads its runner configuration from the
   quantization method that owns it, preserving the vendor GPT-OSS contract as
   well as GLM's distinct gate/up and activation semantics.
@@ -58,7 +62,7 @@ lock therefore keeps `verification.sglang_source_verifiable: false` and
 `verification.sglang_repository: null`.
 
 The base is reproducible by image digest, not by a claimed SGLang git tree. The
-the modified files are separately reproducible by exact preimage SHA-256,
+modified files are separately reproducible by exact preimage SHA-256,
 archived patch bytes applied with zero fuzz, and exact postimage SHA-256.
 
 ## Verify
@@ -75,4 +79,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.14` built, not qualified.
+`v0.1.0-rc.15` built, not qualified.

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.0-rc.15
+
+- Allow SGLang's CPU offloader to materialize GLM-5.3's tied KDA parameter
+  aliases. The exact LibertAIDAI NVFP4 control otherwise loads all 121 shards
+  and then fails its first warmup in `torch.func.functional_call`.
+- Carry SGLang PR #36885's KDA padding correction: preserve `-1` through the
+  chunked state kernel instead of remapping padding onto the last allocatable
+  Mamba slot, which can silently corrupt a live request under padded batches.
+- Preserve the v0.1.0-rc.14 SM120 TileLang launch and all earlier target,
+  native-MTP, multimodal, and parser fixes unchanged.
+
 ## v0.1.0-rc.14
 
 SM120 TileLang shared-memory correctness-control candidate. This candidate is

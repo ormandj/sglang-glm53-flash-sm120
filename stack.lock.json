@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 14,
-    "candidate_tag": "v0.1.0-rc.14",
+    "candidate": 15,
+    "candidate_tag": "v0.1.0-rc.15",
     "stable_tag": "v0.1.0",
     "cache_schema": "v9"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.14",
+    "tag": "v0.1.0-rc.15",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "14"
+      "value": "15"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -220,6 +220,30 @@
     {
       "arg": "GLM53_SGLANG_TILELANG_TEST_SHA256",
       "value": "fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f"
+    },
+    {
+      "arg": "GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256",
+      "value": "e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c"
+    },
+    {
+      "arg": "GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256",
+      "value": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b"
+    },
+    {
+      "arg": "GLM53_SGLANG_OFFLOADER_TEST_SHA256",
+      "value": "761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391"
+    },
+    {
+      "arg": "GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256",
+      "value": "39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828"
+    },
+    {
+      "arg": "GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256",
+      "value": "01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc"
+    },
+    {
+      "arg": "GLM53_SGLANG_KDA_PADDING_TEST_SHA256",
+      "value": "971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf"
     }
   ],
   "patches": [
@@ -322,6 +346,26 @@
       "path": "patches/test_glm53_sm120_tilelang_launch.py",
       "sha256": "fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f",
       "purpose": "build-time contract proving SM120/SM121 selects the 32-entry one-stage 128-thread TileLang launch while non-SM12 CUDA remains unchanged"
+    },
+    {
+      "path": "patches/0012-glm53-cpu-offload-tied-parameters.patch",
+      "sha256": "37f075bd1bb38d5416352c255c30acbb20aac899a5a4a9372db8e850af6bf99b",
+      "purpose": "allow CPU offload of GLM-5.3 decoder layers whose KDA parameters have intentional state-dict aliases by materializing each copied key independently"
+    },
+    {
+      "path": "patches/test_glm53_cpu_offload_tied_parameters.py",
+      "sha256": "761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391",
+      "purpose": "build-time negative and positive functional-call contract for tied KDA aliases under CPU offload"
+    },
+    {
+      "path": "patches/0013-glm53-kda-preserve-padding-sentinel.patch",
+      "sha256": "e6c738d371bb733cfb20a4773a2bc648402c5c2672c481ca17db3af391d7f042",
+      "purpose": "exact SGLang PR #36885 correction preserving the -1 KDA padding sentinel instead of aliasing the final live Mamba state slot"
+    },
+    {
+      "path": "patches/test_glm53_kda_padding_sentinel.py",
+      "sha256": "971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf",
+      "purpose": "build-time source and state-pool contract proving padded KDA rows cannot target the final allocatable slot"
     }
   ],
   "integration": {
@@ -339,8 +383,8 @@
         "model_support_pr_title": "GLM-5.3-Flash support",
         "model_support_pr_state": "open and conflicting as of 2026-08-28",
         "model_support_pr_head": "aa8c950a3df62b6642c4ea60a93a5e3eb1a1450e",
-        "observed_main_head": "9579bff86085f886cf6d1ec69349017d0caeced4",
-        "observed_main_tree": "3a6bfffdd33a5757691d27853749ffccc97e1c5f",
+        "observed_main_head": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+        "observed_main_tree": "a7f3edbb01bcdae5051152ceaf6c9db1772ac092",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
@@ -360,6 +404,10 @@
           36711,
           36724,
           36745,
+          36599,
+          36653,
+          36884,
+          36885,
           29738
         ]
       },
@@ -431,6 +479,21 @@
           "threads": 128
         },
         "qualification_status": "build-time contract only; exact-hardware numerical and served-output validation required"
+      },
+      "cpu_offload_tied_kda_parameters": {
+        "rationale": "The exact LibertAIDAI NVFP4 target loads all 121 shards with 20 GiB/rank CPU offload on the 2x94.97 GiB pair, then the first warmup fails because torch.func.functional_call sees separate copied values for GLM's intentionally tied KDA A_log and dt_bias aliases. Passing tie_weights=false is the PyTorch contract for that already-expanded state mapping.",
+        "source_preimage_sha256": "e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c",
+        "source_postimage_sha256": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b",
+        "exact_control": "LibertAIDAI/GLM-5.3-Flash-NVFP4 revision 357b45cc73a07a541cede88861f7736c9487ebf7, TP=2, flashinfer_cutlass, TileLang BF16 KV, 20 GiB/rank CPU offload"
+      },
+      "kda_padding_sentinel": {
+        "upstream_pr": 36885,
+        "upstream_head": "b089126e5f5dc9aadb78ae0b06ed405c597dd62f",
+        "upstream_state": "open as of 2026-08-28",
+        "rationale": "The vendor GLM branch remaps padded -1 KDA rows to ssm_states.shape[0]-1, but MambaPool reserves slot zero and allocates the final slot to live requests. The chunk kernel already gates negative state indices, so preserve -1 exactly as SGLang main does.",
+        "source_preimage_sha256": "39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828",
+        "source_postimage_sha256": "01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc",
+        "qualification_status": "latent correctness fix from code audit; exact-hardware padded-batch validation required"
       },
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
