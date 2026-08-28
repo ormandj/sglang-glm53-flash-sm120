@@ -1,16 +1,15 @@
-# Running `v0.1.0-rc.8`
+# Running `v0.1.0-rc.9`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.8
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.9
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v5
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v6
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
-Cache schema `v5` is mandatory because the patched SM120 sparse-MLA and KPool
-sources differ from v0.1.0-rc.5. The later parser and post-loader corrections
-do not change compiled kernel sources.
+Cache schema `v6` is mandatory because the DSv4/KPool adapter and refreshed
+FlashInfer tree differ from v0.1.0-rc.8. Do not reuse compiled `v5` artifacts.
 
 `SPECULATIVE_MODE` accepts:
 

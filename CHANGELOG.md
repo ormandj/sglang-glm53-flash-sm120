@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.9
+
+GLM-5.3 DSv4/KPool sparse-MLA correctness candidate. Not qualified.
+
+- Route the model's 584-byte footer cache and complete KPool-extended DSA table
+  through FlashInfer's supported 128+1,923 dual-segment SM120 ABI.
+- Point both segments at the same physical packed cache and use full segment
+  lengths so base-table padding cannot hide live KPool tail entries.
+- Preserve the unrelated 656-byte GLM-NSA adapter and fail closed for every
+  other KPool/backend combination.
+- Add build-time adapter/guard contracts and archive the exact-hardware
+  numerical regression used before this immutable build.
+- Refresh FlashInfer main to commit `950376c4…`, tree `d44c17d4…`.
+- Advance compiled-cache schema to `v6`.
+
 ## v0.1.0-rc.8
 
 Source-JIT and MXFP4 post-loader correctness candidate. Not qualified.
