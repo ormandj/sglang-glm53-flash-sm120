@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.0-rc.16
+
+- Register post-load MLA `w_kc` and `w_vc` tensors as non-persistent buffers
+  and include non-persistent buffers in SGLang's CPU-offload functional state.
+  This preserves checkpoint serialization while ensuring derived execution
+  tensors follow an offloaded GLM decoder layer back to its CUDA device.
+- Add a build-time contract proving the buffers stay outside `state_dict`, are
+  accepted by `functional_call`, and restore their original module values.
+- Preserve the v0.1.0-rc.15 tied-KDA, KDA padding, SM120 TileLang, target,
+  native-MTP, multimodal, and parser fixes unchanged.
+
 ## v0.1.0-rc.15
 
 - Allow SGLang's CPU offloader to materialize GLM-5.3's tied KDA parameter

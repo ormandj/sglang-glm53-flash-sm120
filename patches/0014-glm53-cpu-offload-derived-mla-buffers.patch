@@ -1,0 +1,35 @@
+diff --git a/python/sglang/srt/models/deepseek_v2.py b/python/sglang/srt/models/deepseek_v2.py
+--- a/python/sglang/srt/models/deepseek_v2.py
++++ b/python/sglang/srt/models/deepseek_v2.py
+@@ -1953,8 +1953,11 @@ class DeepseekV2AttentionMLA(
+         self.alt_stream = alt_stream
+         self.attn_mha.kv_b_proj = None
+ 
+-        self.w_kc = None
+-        self.w_vc = None
++        # These are derived from kv_b_proj after checkpoint load. They are
++        # execution state rather than checkpoint state, but registering them
++        # lets module transforms such as CPU offload discover and move them.
++        self.register_buffer("w_kc", None, persistent=False)
++        self.register_buffer("w_vc", None, persistent=False)
+         self.w_scale = 1.0
+ 
+         # Full-head Q/absorb weights for --dcp-replicate-q-proj, gathered once
+diff --git a/python/sglang/srt/utils/offloader.py b/python/sglang/srt/utils/offloader.py
+--- a/python/sglang/srt/utils/offloader.py
++++ b/python/sglang/srt/utils/offloader.py
+@@ -145,6 +145,14 @@ class OffloaderV1(BaseOffloader):
+                     k: v.to(device, non_blocking=True)
+                     for k, v in module.state_dict().items()
+                 }
++                # state_dict() intentionally excludes non-persistent buffers,
++                # but derived execution tensors (for example MLA's w_kc/w_vc)
++                # still have to follow their offloaded parent module to the
++                # execution device. Include only registered buffers here so
++                # arbitrary CPU metadata attributes remain untouched.
++                for k, v in module.named_buffers(remove_duplicate=False):
++                    if k not in device_state:
++                        device_state[k] = v.to(device, non_blocking=True)
+                 output = functional_call(
+                     module,
+                     device_state,

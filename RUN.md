@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.15`
+# Running `v0.1.0-rc.16`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.15
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.16
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
 export SPECULATIVE_MODE=mtp
@@ -9,11 +9,12 @@ export SPECULATIVE_MODE=mtp
 ```
 
 Cache schema `v9` is retained because the KV writer is unchanged from the
-reserved-slot correction. v0.1.0-rc.15 includes the SM120-safe TileLang launch
+reserved-slot correction. v0.1.0-rc.16 includes the SM120-safe TileLang launch
 for the independent BF16-KV DSA control, admits GLM's tied KDA parameters
-through CPU offload, and preserves the `-1` padding sentinel instead of
-aliasing the final live Mamba state slot. Keep compiled artifacts isolated per
-candidate even when the KV schema is unchanged.
+through CPU offload, moves derived MLA execution buffers with their offloaded
+decoder layer, and preserves the `-1` padding sentinel instead of aliasing the
+final live Mamba state slot. Keep compiled artifacts isolated per candidate
+even when the KV schema is unchanged.
 
 `SPECULATIVE_MODE` accepts:
 

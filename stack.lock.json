@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 15,
-    "candidate_tag": "v0.1.0-rc.15",
+    "candidate": 16,
+    "candidate_tag": "v0.1.0-rc.16",
     "stable_tag": "v0.1.0",
     "cache_schema": "v9"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.15",
+    "tag": "v0.1.0-rc.16",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "15"
+      "value": "16"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -227,11 +227,23 @@
     },
     {
       "arg": "GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256",
-      "value": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b"
+      "value": "94f027f8243a4ea2b64072abcd4670f67a9b14265be776d2dd2cd47c5fe342a5"
     },
     {
       "arg": "GLM53_SGLANG_OFFLOADER_TEST_SHA256",
       "value": "761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391"
+    },
+    {
+      "arg": "GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256",
+      "value": "c78b4ad75ab2478f1911136da18c09d3353d8ffaaf32d0e701536d1c9234898c"
+    },
+    {
+      "arg": "GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256",
+      "value": "5f5e913a46f9a3ecc4c911c3e378de1c97bf210e55a897ab5e8f3aaf8b7613d9"
+    },
+    {
+      "arg": "GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256",
+      "value": "7e4c7c818bad93aaea4e1f933eae8935b590d64ec2307186857403187bdbefe6"
     },
     {
       "arg": "GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256",
@@ -366,6 +378,16 @@
       "path": "patches/test_glm53_kda_padding_sentinel.py",
       "sha256": "971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf",
       "purpose": "build-time source and state-pool contract proving padded KDA rows cannot target the final allocatable slot"
+    },
+    {
+      "path": "patches/0014-glm53-cpu-offload-derived-mla-buffers.patch",
+      "sha256": "09c6796796bfd5558125603f54bef676d08f16cc915c6995e6ae5631d3b975f9",
+      "purpose": "register derived MLA w_kc/w_vc tensors as non-persistent execution buffers and materialize registered non-persistent buffers on the decoder layer's execution device under CPU offload"
+    },
+    {
+      "path": "patches/test_glm53_cpu_offload_derived_mla_buffers.py",
+      "sha256": "7e4c7c818bad93aaea4e1f933eae8935b590d64ec2307186857403187bdbefe6",
+      "purpose": "build-time source and functional-call contract proving derived MLA buffers move as functional state without entering checkpoint serialization"
     }
   ],
   "integration": {
@@ -485,6 +507,15 @@
         "source_preimage_sha256": "e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c",
         "source_postimage_sha256": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b",
         "exact_control": "LibertAIDAI/GLM-5.3-Flash-NVFP4 revision 357b45cc73a07a541cede88861f7736c9487ebf7, TP=2, flashinfer_cutlass, TileLang BF16 KV, 20 GiB/rank CPU offload"
+      },
+      "cpu_offload_derived_mla_buffers": {
+        "rationale": "After the tied-parameter correction, the same exact control reaches FlashInfer autotune and fails because post-load MLA w_kc remains on CPU while q_nope is on CUDA. w_kc and w_vc are derived from kv_b_proj and intentionally absent from checkpoint state, but they are kernel-facing tensors and must follow an offloaded decoder layer to its execution device.",
+        "offloader_preimage_sha256": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b",
+        "offloader_postimage_sha256": "94f027f8243a4ea2b64072abcd4670f67a9b14265be776d2dd2cd47c5fe342a5",
+        "deepseek_v2_preimage_sha256": "c78b4ad75ab2478f1911136da18c09d3353d8ffaaf32d0e701536d1c9234898c",
+        "deepseek_v2_postimage_sha256": "5f5e913a46f9a3ecc4c911c3e378de1c97bf210e55a897ab5e8f3aaf8b7613d9",
+        "serialization_contract": "w_kc and w_vc are registered with persistent=false and remain absent from state_dict; OffloaderV1 adds registered non-persistent buffers only to functional_call device state",
+        "qualification_status": "build-time functional contract only; exact-hardware served-output validation required"
       },
       "kda_padding_sentinel": {
         "upstream_pr": 36885,

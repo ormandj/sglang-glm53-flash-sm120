@@ -13,7 +13,7 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=15
+ARG GLM53_RELEASE_CANDIDATE=16
 ARG GLM53_CACHE_SCHEMA=v9
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
@@ -60,8 +60,11 @@ ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256=526988aa5fd8fa61529f2d3cf245d1061e3098
 ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256=1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98
 ARG GLM53_SGLANG_TILELANG_TEST_SHA256=fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f
 ARG GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256=e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c
-ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256=e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b
+ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256=94f027f8243a4ea2b64072abcd4670f67a9b14265be776d2dd2cd47c5fe342a5
 ARG GLM53_SGLANG_OFFLOADER_TEST_SHA256=761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391
+ARG GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256=c78b4ad75ab2478f1911136da18c09d3353d8ffaaf32d0e701536d1c9234898c
+ARG GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256=5f5e913a46f9a3ecc4c911c3e378de1c97bf210e55a897ab5e8f3aaf8b7613d9
+ARG GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256=7e4c7c818bad93aaea4e1f933eae8935b590d64ec2307186857403187bdbefe6
 ARG GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256=39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828
 ARG GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256=01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc
 ARG GLM53_SGLANG_KDA_PADDING_TEST_SHA256=971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf
@@ -111,6 +114,9 @@ ARG GLM53_SGLANG_TILELANG_TEST_SHA256
 ARG GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256
 ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256
 ARG GLM53_SGLANG_OFFLOADER_TEST_SHA256
+ARG GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256
+ARG GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256
 ARG GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256
 ARG GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256
 ARG GLM53_SGLANG_KDA_PADDING_TEST_SHA256
@@ -156,6 +162,8 @@ COPY patches/0012-glm53-cpu-offload-tied-parameters.patch /usr/share/sglang-glm5
 COPY patches/test_glm53_cpu_offload_tied_parameters.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py
 COPY patches/0013-glm53-kda-preserve-padding-sentinel.patch /usr/share/sglang-glm53-flash-sm120/patches/0013-glm53-kda-preserve-padding-sentinel.patch
 COPY patches/test_glm53_kda_padding_sentinel.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py
+COPY patches/0014-glm53-cpu-offload-derived-mla-buffers.patch /usr/share/sglang-glm53-flash-sm120/patches/0014-glm53-cpu-offload-derived-mla-buffers.patch
+COPY patches/test_glm53_cpu_offload_derived_mla_buffers.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_derived_mla_buffers.py
 
 # Patch only exact vendor bytes. The first fix preserves GLM's contiguous
 # gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
@@ -179,6 +187,8 @@ COPY patches/test_glm53_kda_padding_sentinel.py /usr/share/sglang-glm53-flash-sm
 # tied KDA parameters without rejecting their duplicate state-dict aliases.
 # The twelfth carries upstream SGLang #36885 so padded KDA rows keep the -1
 # sentinel instead of silently overwriting the final live Mamba state slot.
+# The thirteenth keeps post-load MLA execution tensors outside checkpoint state
+# while making the generic CPU offloader move them with their decoder layer.
 RUN set -e; \
     cd /sgl-workspace/sglang; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
@@ -192,6 +202,7 @@ RUN set -e; \
     test "$(sha256sum python/sglang/kernels/ops/kvcache/mla_buffer.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/utils/offloader.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/models/deepseek_v2.py | cut -d' ' -f1)" = "${GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/layers/attention/linear/kernels/kda_triton.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256}"; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch; \
@@ -206,6 +217,7 @@ RUN set -e; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0012-glm53-cpu-offload-tied-parameters.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0013-glm53-kda-preserve-padding-sentinel.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0014-glm53-cpu-offload-derived-mla-buffers.patch; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256}"; \
@@ -223,6 +235,8 @@ RUN set -e; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_TEST_SHA256}"; \
     test "$(sha256sum python/sglang/srt/utils/offloader.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256}"; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_TEST_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/models/deepseek_v2.py | cut -d' ' -f1)" = "${GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_derived_mla_buffers.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256}"; \
     test "$(sha256sum python/sglang/srt/layers/attention/linear/kernels/kda_triton.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256}"; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_PADDING_TEST_SHA256}"; \
     uv run --no-project --python /opt/sglang/bin/python python \
@@ -243,6 +257,8 @@ RUN set -e; \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_derived_mla_buffers.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py
 
