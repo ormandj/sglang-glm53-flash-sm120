@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.10`
+# Running `v0.1.0-rc.11`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.10
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.11
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v7
 export SPECULATIVE_MODE=mtp
@@ -10,7 +10,7 @@ export SPECULATIVE_MODE=mtp
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.10 advances cache schema to `v7`: it changes the effective SM120 DSA
+v0.1.0-rc.11 advances cache schema to `v7`: it changes the effective SM120 DSA
 adapter and refreshes FlashInfer main. Required kernels compile from the exact
 pinned sources into a distinct persistent cache; do not reuse `v6` artifacts.
 
@@ -137,4 +137,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.10` from a successful build alone.
+`v0.1.0-rc.11` from a successful build alone.

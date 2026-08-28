@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.10` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.11` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.10 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.11 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -79,7 +79,7 @@ from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
 This repository does not claim a vendor SGLang git revision. For the seven files
-we modify, v0.1.0-rc.10 asserts exact vendor preimage SHA-256 values, applies archived
+we modify, v0.1.0-rc.11 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
@@ -113,7 +113,7 @@ TP=2 dispatch, with existing layouts kept unchanged.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.10 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.11 .
 ```
 
 ```bash
@@ -149,5 +149,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.10 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.11 built; only
 exact-candidate evidence can make it qualified.
