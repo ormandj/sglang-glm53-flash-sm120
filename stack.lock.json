@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 2,
-    "candidate_tag": "v0.1.0-rc.2",
+    "candidate": 3,
+    "candidate_tag": "v0.1.0-rc.3",
     "stable_tag": "v0.1.0",
     "cache_schema": "v2"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.2",
+    "tag": "v0.1.0-rc.3",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -31,9 +31,11 @@
       "scale_dtype": "uint8 (E8M0)",
       "quantized_tensors": 37152,
       "quantized_scope": "routed experts only (layers 3-44 plus the layer-45 MTP block)",
+      "runtime_ignore": ["re:.*"],
+      "runtime_requires_disable_shared_experts_fusion": true,
       "production_status": "quantization running; candidate is not qualified",
       "produced_by": "primary repository quantization/quantize_glm53_bf16_mxfp4.py",
-      "producer_sha256": "1bffca51cded27bf9d06f412199595a424ecbfe6cd6d73d1bf68fd27d2628416",
+      "producer_sha256": "c1a1a6935ec02c378b0d2e56a421b194cf3abd816ea14bdd04f46f2946b7112e",
       "toolchain": {
         "torch": "2.13.0+cpu",
         "compressed-tensors": "0.18.1a20260827",
@@ -60,7 +62,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "2"
+      "value": "3"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -143,6 +145,10 @@
     {
       "path": "patches/test_glm53_dflash_patch.py",
       "sha256": "2d86328ded98f042a63fd619691957e81c83d622eca4e54dc10be240d87760d2"
+    },
+    {
+      "path": "patches/test_glm53_mixed_precision_contract.py",
+      "sha256": "a83f7561536363d32bcab99dd68f20cf668a5630a66614f1566eb2eb69576dd8"
     }
   ],
   "integration": {

@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.2`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.3`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -24,6 +24,9 @@ qualification claim.
   `FLASHINFER_CUDA_ARCH_LIST=12.0f`.
 - Runtime profiles for verifier-only, native adaptive MTP, and pinned DFlash2;
   multimodal execution remains explicitly enabled in every mode.
+- An exhaustive compressed-tensors ignore keeps ordinary linears BF16, and
+  shared-expert fusion is disabled so its protected BF16 weights never enter
+  the MXFP4 routed-expert buffer.
 
 ## Provenance boundary
 
@@ -50,4 +53,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.2` built, not qualified.
+`v0.1.0-rc.3` built, not qualified.

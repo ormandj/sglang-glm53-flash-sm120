@@ -1,8 +1,19 @@
 # Changelog
 
+## v0.1.0-rc.3
+
+Mixed-precision runtime-contract correction. Not qualified.
+
+- Pin the final BF16 quant producer with separate storage/tensor byte gates and
+  an exhaustive runtime ignore for ordinary BF16 linears.
+- Disable shared-expert fusion so the protected BF16 shared expert is not
+  appended to the MXFP4 routed-expert buffer.
+- Keep cache schema `v2`; compiled SGLang and FlashInfer code is unchanged.
+
 ## v0.1.0-rc.2
 
-BF16-derived quant and corrected SM120 runtime candidate. Not qualified.
+BF16-derived quant and corrected SM120 runtime candidate. Superseded before
+qualification by v0.1.0-rc.3.
 
 - Point the runtime contract at the immutable official BF16 source revision and
   the new routed-expert-only MXFP4 artifact path.

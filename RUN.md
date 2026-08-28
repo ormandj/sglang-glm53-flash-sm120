@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.2`
+# Running `v0.1.0-rc.3`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.2
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.3
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v2
 export SPECULATIVE_MODE=mtp
@@ -24,7 +24,8 @@ export SPECULATIVE_MODE=dflash
 export DFLASH_DIR=/models/incoai/GLM-5.3-Flash-DFlash2
 ```
 
-All modes keep vision enabled, use TP=2, and pin `flashinfer_mxfp4`. Confirm the
+All modes keep vision enabled, use TP=2, pin `flashinfer_mxfp4`, and disable
+shared-expert fusion to preserve its BF16 path. Confirm the
 exact image digest, successful target/draft weight loads, multimodal
 initialization, selected all-reduce path, and allocated token pools from startup
 logs. Qualification results belong only in the primary repository.
