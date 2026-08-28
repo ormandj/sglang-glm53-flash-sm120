@@ -1,15 +1,15 @@
-# Running `v0.1.0-rc.4`
+# Running `v0.1.0-rc.5`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.4
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v3
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v4
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
-Cache schema `v3` is mandatory for this candidate because its patched SGLang
-files and FlashInfer tree differ from v0.1.0-rc.3.
+Cache schema `v4` is mandatory because the SM120 mHC/indexer fallback contract
+differs from v0.1.0-rc.4.
 
 `SPECULATIVE_MODE` accepts:
 

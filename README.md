@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.4`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -20,6 +20,8 @@ qualification claim.
   mHC `residual=None` correction.
 - Build-time semantic tests for the runtime patches, including the real mHC
   `residual=None` capture path.
+- SM120-safe mHC/indexer settings matching SGLang's current DeepSeek-V4 guard;
+  GLM's shared DSA hook does not yet inherit that guard upstream.
 - FlashInfer 0.6.18 rebuilt from exact commit
   `71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
   `a2577ad013205dfc996f6ffe5259f3102a2cd075` with
@@ -55,4 +57,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.4` built, not qualified.
+`v0.1.0-rc.5` built, not qualified.

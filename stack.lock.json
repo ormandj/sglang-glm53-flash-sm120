@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 4,
-    "candidate_tag": "v0.1.0-rc.4",
+    "candidate": 5,
+    "candidate_tag": "v0.1.0-rc.5",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v3"
+    "cache_schema": "v4"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.4",
+    "tag": "v0.1.0-rc.5",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -33,7 +33,10 @@
       "quantized_scope": "routed experts only (layers 3-44 plus the layer-45 MTP block)",
       "runtime_ignore": ["re:.*"],
       "runtime_requires_disable_shared_experts_fusion": true,
-      "production_status": "quantization running; candidate is not qualified",
+      "production_status": "artifact hash-verified and atomically published; candidate is not qualified",
+      "artifact_files": 131,
+      "artifact_bytes": 184945092190,
+      "artifact_manifest_sha256": "a74810a13cbb271e7844846593a779adb6f85c38b4412550ea51aaf21267e1a2",
       "produced_by": "primary repository quantization/quantize_glm53_bf16_mxfp4.py",
       "producer_sha256": "c1a1a6935ec02c378b0d2e56a421b194cf3abd816ea14bdd04f46f2946b7112e",
       "toolchain": {
@@ -62,11 +65,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "4"
+      "value": "5"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v3"
+      "value": "v4"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -186,8 +189,22 @@
         "related_open": [
           36607,
           36711,
-          36724
+          36724,
+          29738
         ]
+      },
+      "sm120_runtime_environment": {
+        "rationale": "GLM enters the shared DeepSeek/DSA hook but does not inherit the SM120 fallback block currently scoped to DeepseekV4ForCausalLM; v0.1.0-rc.4 reproduced a deep_gemm NameError during exact-hardware warmup.",
+        "source_preimage_server_args_sha256": "354a88d90972d39128e3ce43f2d890f0668243f82ce38f96c1bab773540adb12",
+        "settings": {
+          "SGLANG_OPT_FP8_WO_A_GEMM": "0",
+          "SGLANG_OPT_USE_TOPK_V2": "0",
+          "SGLANG_OPT_USE_TILELANG_MHC_PRE": "0",
+          "SGLANG_OPT_FUSE_MHC_POST_PRE": "1",
+          "SGLANG_OPT_DEEPGEMM_HC_PRENORM": "0",
+          "SGLANG_FP8_PAGED_MQA_LOGITS_TORCH": "1",
+          "SGLANG_OPT_USE_TILELANG_INDEXER": "1"
+        }
       }
     },
     "flashinfer": {
