@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 3,
-    "candidate_tag": "v0.1.0-rc.3",
+    "candidate": 4,
+    "candidate_tag": "v0.1.0-rc.4",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v2"
+    "cache_schema": "v3"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.3",
+    "tag": "v0.1.0-rc.4",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -62,11 +62,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "3"
+      "value": "4"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v2"
+      "value": "v3"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -98,11 +98,11 @@
     },
     {
       "arg": "GLM53_FLASHINFER_MAIN_HEAD",
-      "value": "cbcbce48e817c83f03ad5a3e6ce59480eaf6935d"
+      "value": "71d31b5a23a3c0394edb36330dec1ce2a0def365"
     },
     {
       "arg": "GLM53_FLASHINFER_MAIN_TREE",
-      "value": "d3a639d6f268b8bfc679a8bd15581a6a6b319a16"
+      "value": "a2577ad013205dfc996f6ffe5259f3102a2cd075"
     },
     {
       "arg": "GLM53_MODEL_REPOSITORY",
@@ -126,7 +126,7 @@
     },
     {
       "arg": "GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256",
-      "value": "7f024b98543532c6b29ed95614c615abffdb87cce8d13042ca8dbe93326453a8"
+      "value": "ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274"
     }
   ],
   "patches": [
@@ -143,8 +143,12 @@
       "sha256": "61115932dd19301451d5a2443a87656ec553f7f46cc43a8744f55f7131dd0829"
     },
     {
+      "path": "patches/0003-glm53-dflash-mhc-residual-none.patch",
+      "sha256": "bbd11a9148aa285a0fd279b8f754928a53821f18431fb9c9c23a37f85a165486"
+    },
+    {
       "path": "patches/test_glm53_dflash_patch.py",
-      "sha256": "2d86328ded98f042a63fd619691957e81c83d622eca4e54dc10be240d87760d2"
+      "sha256": "9f8fc0ebe70ba7d91775c521ac3ac27d5e27009bcc25a59e447d10405991995f"
     },
     {
       "path": "patches/test_glm53_mixed_precision_contract.py",
@@ -165,8 +169,8 @@
         "model_support_pr": 36507,
         "model_support_pr_title": "GLM-5.3-Flash support",
         "model_support_pr_state": "open and conflicting as of 2026-08-27",
-        "observed_main_head": "26fd7fdaa2732abbad6d63b21cf0944aa88e977e",
-        "observed_main_tree": "ce1612c9ba9a5f1d092e459da4bc30cb90ea0f40",
+        "observed_main_head": "6480cce9bc7bb83e18537be3995a094cf2426e74",
+        "observed_main_tree": "b3bf7d76f8dc7e0e9abba80638a1bd8df8a863d5",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
@@ -174,20 +178,21 @@
           36513,
           36519,
           36608,
-          36660
+          36660,
+          36544,
+          36708,
+          36755
         ],
         "related_open": [
-          36544,
           36607,
-          36708,
           36711,
           36724
         ]
       }
     },
     "flashinfer": {
-      "head": "cbcbce48e817c83f03ad5a3e6ce59480eaf6935d",
-      "tree": "d3a639d6f268b8bfc679a8bd15581a6a6b319a16",
+      "head": "71d31b5a23a3c0394edb36330dec1ce2a0def365",
+      "tree": "a2577ad013205dfc996f6ffe5259f3102a2cd075",
       "package_version": "0.6.18",
       "base_package_version": "0.6.17",
       "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f, plus the matching cubin package built from the same tree",

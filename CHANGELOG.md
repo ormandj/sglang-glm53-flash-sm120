@@ -1,8 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.4
+
+DFlash mHC correctness and refreshed FlashInfer candidate. Not qualified.
+
+- Apply upstream PR #36755 after #36708 so DFlash hidden-state capture accepts
+  the real mHC `residual=None` contract.
+- Strengthen the build-time test to exercise `residual=None`, the ordinary
+  residual stream, and capture-layer selection.
+- Refresh FlashInfer 0.6.18 main to commit `71d31b5a…`, tree `a2577ad0…`.
+- Advance compiled-cache schema to `v3`.
+
 ## v0.1.0-rc.3
 
-Mixed-precision runtime-contract correction. Not qualified.
+Mixed-precision runtime-contract correction. Superseded before qualification by
+v0.1.0-rc.4.
 
 - Pin the final BF16 quant producer with separate storage/tensor byte gates and
   an exhaustive runtime ignore for ordinary BF16 linears.

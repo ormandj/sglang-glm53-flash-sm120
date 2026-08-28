@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.3`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.4`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -16,11 +16,13 @@ qualification claim.
 - Vendor `lmsysorg/sglang:glm-5.3-flash-amd64` base pinned by immutable OCI
   index and linux/amd64 manifest digests.
 - Exact byte-gated fixes for GLM's SM120 MXFP4 gate/up and activation contract,
-  plus upstream PR #36708's DFlash2 hidden-state capture change.
-- Build-time semantic tests for both patches.
+  plus upstream PR #36708's DFlash2 hidden-state capture change and PR #36755's
+  mHC `residual=None` correction.
+- Build-time semantic tests for the runtime patches, including the real mHC
+  `residual=None` capture path.
 - FlashInfer 0.6.18 rebuilt from exact commit
-  `cbcbce48e817c83f03ad5a3e6ce59480eaf6935d` and tree
-  `d3a639d6f268b8bfc679a8bd15581a6a6b319a16` with
+  `71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
+  `a2577ad013205dfc996f6ffe5259f3102a2cd075` with
   `FLASHINFER_CUDA_ARCH_LIST=12.0f`.
 - Runtime profiles for verifier-only, native adaptive MTP, and pinned DFlash2;
   multimodal execution remains explicitly enabled in every mode.
@@ -53,4 +55,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.3` built, not qualified.
+`v0.1.0-rc.4` built, not qualified.
