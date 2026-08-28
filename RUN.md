@@ -1,16 +1,16 @@
-# Running `v0.1.0-rc.12`
+# Running `v0.1.0-rc.13`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.12
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.13
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v8
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
-Cache schema `v8` is mandatory because the exact 2,051-entry unfused KPool
-transform and refreshed FlashInfer tree differ from v0.1.0-rc.11. Do not reuse
-compiled `v7` artifacts.
+Cache schema `v9` is mandatory because the no-RoPE KV writer now protects the
+reserved padding slot and applies DCP ownership mapping. Do not reuse compiled
+`v8` artifacts.
 
 `SPECULATIVE_MODE` accepts:
 

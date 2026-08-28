@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.12`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.13`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -28,6 +28,8 @@ qualification claim.
   to one 2,176-wide TP=2 dispatch.
 - An exact 2,051-entry unfused decode/prefill transform for isolating fused
   KPool correctness without dropping the model's three live tail entries.
+- A byte-gated correction that makes GLM's dedicated no-RoPE KV scatter skip
+  the reserved padding slot and honor DCP ownership like the ordinary writer.
 - The SM120 MXFP4 post-loader reads its runner configuration from the
   quantization method that owns it, preserving the vendor GPT-OSS contract as
   well as GLM's distinct gate/up and activation semantics.
@@ -71,4 +73,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.12` built, not qualified.
+`v0.1.0-rc.13` built, not qualified.

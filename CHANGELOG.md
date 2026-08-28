@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-rc.13
+
+No-RoPE MLA reserved-slot correctness candidate. This candidate is not
+qualified.
+
+- Make GLM's dedicated no-RoPE MLA scatter apply the same
+  `reserved_skip_index` and DCP ownership mapping as the ordinary MLA writer.
+- Add a source contract and exact-GPU regression covering both the protected
+  padding slot and an ordinary positive-slot write.
+- Advance the compiled-cache schema to `v9` because the effective KV writer
+  changed.
+- Retain the previous candidate's unfused KPool transform, pinned FlashInfer
+  source, vision configuration, and native MTP profile.
+
 ## v0.1.0-rc.12
 
 Unfused KPool contract diagnostic candidate. This candidate is not qualified.
