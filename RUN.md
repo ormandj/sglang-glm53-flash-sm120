@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.2`
+# Running `v0.1.0-rc.3`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.2
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.3
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v2
 export SPECULATIVE_MODE=mtp
@@ -9,7 +9,7 @@ export SPECULATIVE_MODE=mtp
 ```
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
-and Triton artifacts are not portable across incompatible candidates. rc.2 uses
+and Triton artifacts are not portable across incompatible candidates. rc.3 uses
 cache schema `v2` because both patched SGLang code and the FlashInfer tree differ
 from rc.1.
 
@@ -29,6 +29,8 @@ Three settings are load-bearing:
 - Keep `--moe-runner-backend flashinfer_mxfp4`. The inherited automatic choice
   does not safely cover this compressed-tensors GLM artifact, and the separate
   `flashinfer_trtllm` path has an open out-of-bounds routing issue.
+- Keep `--disable-shared-experts-fusion`. The shared expert is intentionally
+  bit-exact BF16 and must not be appended to the MXFP4 routed-expert buffer.
 
 Custom all-reduce is left enabled. SGLang tests whether the two PCIe GPUs have
 working P2P and falls back to NCCL if not. Capture the selected path in evidence;
@@ -127,4 +129,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.2` from a successful build alone.
+`v0.1.0-rc.3` from a successful build alone.

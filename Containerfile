@@ -13,7 +13,7 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=2
+ARG GLM53_RELEASE_CANDIDATE=3
 ARG GLM53_CACHE_SCHEMA=v2
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
@@ -79,6 +79,7 @@ COPY patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch /usr/shar
 COPY patches/test_glm53_sm120_mxfp4_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py
 COPY patches/0002-glm53-dflash-hidden-state-capture.patch /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch
 COPY patches/test_glm53_dflash_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py
+COPY patches/test_glm53_mixed_precision_contract.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_mixed_precision_contract.py
 
 # Patch only exact vendor bytes. The first fix preserves GLM's contiguous
 # gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
@@ -94,7 +95,9 @@ RUN set -e; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_mixed_precision_contract.py
 
 # Rebuild FlashInfer from source for SM120. The stock wheel in the vendor image
 # does not carry 12.0f cubins; workstation Blackwell lacks TMEM/tcgen05/wgmma,

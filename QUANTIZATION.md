@@ -1,6 +1,6 @@
 # GLM-5.3-Flash BF16 to MXFP4 quantization
 
-This is the quantization contract for `v0.1.0-rc.2`. The production artifact is
+This is the quantization contract for `v0.1.0-rc.3`. The production artifact is
 still being built and is not qualified. Numbers described as estimates are not
 hardware measurements.
 
@@ -113,10 +113,18 @@ The output uses compressed-tensors `mxfp4-pack-quantized`:
 A `(2048, 4096)` projection becomes a `(2048, 2048)` packed tensor plus a
 `(2048, 128)` scale tensor, exactly 4.25 bits/weight.
 
+The serialized config also carries `ignore: ["re:.*"]` as an SGLang runtime
+contract. SGLang selects MXFP4 for `FusedMoE` from the global format before it
+checks ignores, while ordinary unmatched `LinearBase` modules otherwise fail
+compressed-tensors target resolution. The catch-all therefore leaves every
+ordinary linear on its stored BF16 path without disabling the routed-expert
+MXFP4 method. Serving must set `--disable-shared-experts-fusion`; otherwise the
+protected BF16 shared expert is appended to the MXFP4 fused expert buffer.
+
 SGLang's inherited SM120 post-loader was GPT-OSS-specific: it assumed pairwise
 gate/up rows and hard-coded SwiGLU-OAI `(alpha=1.702, beta=1, limit=7)`. GLM's
 per-expert loader produces contiguous `[gate; up]` halves and GLM uses standard
-clamped SwiGLU `(alpha=1, beta=0, limit=10)`. rc.2 applies a byte-gated patch
+clamped SwiGLU `(alpha=1, beta=0, limit=10)`. rc.3 applies a byte-gated patch
 that preserves both contracts and has a build-time semantic test.
 
 ## Fail-closed production procedure
@@ -136,9 +144,11 @@ Before writing, the script verifies:
 It writes to an `.incomplete` sibling and refuses to overwrite either an old
 temporary output or a final output. After conversion it verifies:
 
-- the exact serialized quantization config;
+- the exact serialized quantization config, including the runtime ignore;
 - 37,152 packed tensors and 37,152 scale tensors with exact uint8 shapes;
 - all 1,618 protected tensors bit-for-bit;
+- all eight ancillary tokenizer, processor, template, license, README, and
+  repository-metadata files byte-for-byte;
 - one dequantization probe for each projection in every targeted layer;
 - bounded total tensor bytes;
 - SHA-256 for every artifact file and full installed-package provenance.

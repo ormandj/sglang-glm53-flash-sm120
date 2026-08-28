@@ -1,9 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.3
+
+Mixed-precision runtime-contract correction. This candidate is not qualified.
+
+- Distinguish the BF16 repository storage total from indexed tensor bytes in
+  the source completion gate.
+- Serialize an exhaustive compressed-tensors runtime ignore so ordinary BF16
+  linears stay unquantized while format-selected routed `FusedMoE` layers use
+  MXFP4.
+- Disable shared-expert fusion at serving time so the protected BF16 shared
+  expert is never appended to the MXFP4 routed-expert buffer.
+- Pin the corrected producer SHA-256 and retain cache schema `v2`; compiled
+  SGLang and FlashInfer code is unchanged from v0.1.0-rc.2.
+
 ## v0.1.0-rc.2
 
-Greenfield BF16-derived quantization and corrected SM120 runtime candidate. The
-quantization and image build are in progress; this candidate is not qualified.
+Greenfield BF16-derived quantization and corrected SM120 runtime candidate.
+Superseded before qualification by v0.1.0-rc.3.
 
 - Replace the deleted FP8-derived MXFP4 artifact with a direct quantization of
   `zai-org/GLM-5.3-Flash-BF16@f12e0fe1…`.
@@ -71,4 +85,4 @@ Initial FP8-derived candidate. Superseded and never qualified.
 - Its static speculative profile, context defaults, and NVFP4/MXFP4 quality
   claims had not been justified on the target hardware.
 - The FP8 source, scratch output, and model-volume copy were deleted before the
-  rc.2 requantization began.
+  greenfield requantization began.

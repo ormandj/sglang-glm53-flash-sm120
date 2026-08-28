@@ -9,6 +9,7 @@ import json
 import math
 import os
 import re
+import shutil
 import statistics
 import sys
 import time
@@ -42,6 +43,23 @@ TARGET_REGEX = (
     r"re:^model\.language_model\.layers\."
     r"(?:[3-9]|[1-3][0-9]|4[0-5])\.mlp\.experts\.\d+\."
     r"(?:gate_proj|up_proj|down_proj)$"
+)
+# SGLang's compressed-tensors resolver treats a nonempty target map as
+# exhaustive for ordinary LinearBase modules.  MXFP4 FusedMoE selection is
+# format-driven before ignore matching, so this runtime-only catch-all keeps
+# every non-MoE linear on its bit-exact BF16 path while routed FusedMoE layers
+# still use Mxfp4MoEMethod. Serving must also disable shared-expert fusion so
+# the protected BF16 shared expert remains an ordinary linear MLP.
+RUNTIME_IGNORE = [r"re:.*"]
+ANCILLARY_EXACT = (
+    ".gitattributes",
+    "LICENSE",
+    "README.md",
+    "chat_template.jinja",
+    "generation_config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
 )
 
 
@@ -219,6 +237,8 @@ def validate_quant_config(config: dict) -> None:
         fail(f"wrong quant_method: {quant.get('quant_method')}")
     if quant.get("format") != "mxfp4-pack-quantized":
         fail(f"wrong compression format: {quant.get('format')}")
+    if quant.get("ignore") != RUNTIME_IGNORE:
+        fail(f"wrong runtime ignore contract: {quant.get('ignore')}")
     groups = quant.get("config_groups") or {}
     if set(groups) != {"routed_experts"}:
         fail(f"unexpected quantization groups: {sorted(groups)}")
@@ -237,6 +257,26 @@ def validate_quant_config(config: dict) -> None:
     for key, value in required.items():
         if weights.get(key) != value:
             fail(f"output MXFP4 weights.{key}={weights.get(key)!r}, expected {value!r}")
+
+
+def set_runtime_mixed_precision_contract() -> None:
+    """Make the serialized config exhaustive for SGLang without changing tensors."""
+    config_path = INCOMPLETE / "config.json"
+    config = read_json(config_path)
+    quant = config.get("quantization_config")
+    if not isinstance(quant, dict):
+        fail("model_free_ptq output has no quantization_config")
+    quant["ignore"] = RUNTIME_IGNORE
+    write_json_atomic(config_path, config)
+
+
+def preserve_ancillary_files() -> None:
+    """Copy and verify every non-index/config file required by this snapshot."""
+    for name in ANCILLARY_EXACT:
+        source_path = SOURCE / name
+        if not source_path.is_file():
+            fail(f"required source ancillary file is absent: {name}")
+        shutil.copy2(source_path, INCOMPLETE / name)
 
 
 def validate_protected_exact(
@@ -374,6 +414,9 @@ def validate_output(
                 f"protected tensor metadata changed for {name}: "
                 f"{source_metadata[name]} -> {output_metadata[name]}"
             )
+    for name in ANCILLARY_EXACT:
+        if sha256_file(SOURCE / name) != sha256_file(INCOMPLETE / name):
+            fail(f"ancillary file changed: {name}")
     vision_names = [name for name in protected if name.startswith("model.visual.")]
     if len(vision_names) != VISION_TENSORS:
         fail(f"output does not preserve all {VISION_TENSORS} vision tensors")
@@ -483,6 +526,8 @@ def main() -> None:
         max_workers=MAX_WORKERS,
         device="cpu",
     )
+    preserve_ancillary_files()
+    set_runtime_mixed_precision_contract()
     for copied_marker in (".download-complete", ".source-revision"):
         path = INCOMPLETE / copied_marker
         if path.exists():
@@ -505,6 +550,8 @@ def main() -> None:
             "group_size": 32,
             "scope": "routed experts in layers 3-45; layer 45 is native MTP",
             "target_regex": TARGET_REGEX,
+            "runtime_ignore": RUNTIME_IGNORE,
+            "runtime_requirement": "disable shared-expert fusion",
         },
         "toolchain": {
             "python": sys.version.split()[0],
