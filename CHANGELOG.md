@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.0-rc.17
+
+Greenfield E4M3-K32 W4A16 integration image. This candidate is not qualified.
+
+- Remove the complete rc.16-and-earlier local runtime patch set and rejected
+  MXFP4 serving contract from the active image.
+- Shadow the unverifiable vendor SGLang tarball with exact integration commit
+  `42a56dc505f775d6f54e9d27a9b57c66023420a0` and tree
+  `16eb1fe669e54253b16d206a21e79e9cc7ea6132`.
+- Install exact FlashInfer commit
+  `008122fa75c7a27c839feea57a6ef8e8846fa265`, including the upstream large
+  W4A16 bank-addressing fix and the matching E4M3-K32 SM120 preparation path.
+- Install exact ModelOpt commit
+  `022767c7ab3d7d36211affd85e5c496770cde768` for controlled quantization.
+- Restore the desired launcher contract: TP2/EP1, vision, adaptive native MTP,
+  raw-layout FP8 TileLang DSA, FP8 KV, C4/20 recurrent slots, and a 524,288
+  total-token target. These are unmeasured qualification goals.
+- Bump compiled-cache schema to `v10`.
+
 ## v0.1.0-rc.16
 
 - Register post-load MLA `w_kc` and `w_vc` tensors as non-persistent buffers

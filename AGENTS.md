@@ -15,12 +15,13 @@ the build workflow triggers on; anything else cannot replace a published tag.
 
 ## Do not overstate provenance
 
-`glm5_next` is not upstream, and the vendor base image has no git provenance.
-The lock records `verification.sglang_source_verifiable: false` and
-`verification.sglang_repository: null`, and `verify-patches.sh` FAILS if either
-is changed to imply otherwise. If you find yourself wanting to assert an SGLang
-commit, check whether it actually exists first — do not copy the Qwen build's
-tree-hash assertions across.
+The vendor base image still has no SGLang git provenance and must be described
+only as the pinned CUDA/PyTorch dependency stack. The active SGLang Python tree
+is now the exact integration-fork commit and tree recorded in
+`stack.lock.json`; `verify-patches.sh` must reproduce that fork tree. Do not
+claim that the integration commit exists on `sgl-project/sglang` upstream.
+Upstream-main base commits and PR numbers are ancestry/context, not the active
+tree's repository provenance.
 
 ## Verification before commit
 
@@ -30,8 +31,8 @@ tree-hash assertions across.
 ./scripts/verify-patches.sh
 ```
 
-The last one needs network: it re-fetches the pinned FlashInfer objects and
-re-resolves the base image digests against the registry.
+The last one needs network: it re-fetches the pinned SGLang, FlashInfer, and
+ModelOpt objects and re-resolves the base image digests against the registry.
 
 ## Claims discipline
 

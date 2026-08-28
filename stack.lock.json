@@ -1,583 +1,115 @@
 {
-  "schema": 1,
+  "schema": 2,
   "release": {
-    "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 16,
-    "candidate_tag": "v0.1.0-rc.16",
+    "candidate": 17,
+    "candidate_tag": "v0.1.0-rc.17",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v9"
+    "cache_schema": "v10"
   },
   "image": {
-    "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.16",
+    "tag": "v0.1.0-rc.17",
     "platform": "linux/amd64",
-    "containerfile_target": "runtime"
+    "status": "source bundle; not built or qualified"
   },
   "model": {
-    "served_artifact": "/models/zai-org/GLM-5.3-Flash-BF16-MXFP4",
     "source_repository": "zai-org/GLM-5.3-Flash-BF16",
     "source_revision": "f12e0fe1f6b2ea274c11a569582edfd99d993c5e",
-    "source_storage_bytes": 642676400602,
-    "source_tensor_bytes": 642646653816,
-    "source_format": "bfloat16",
-    "architecture": "Glm5NextForConditionalGeneration",
-    "model_type": "glm5_next",
-    "quantization": {
-      "format": "mxfp4-pack-quantized",
-      "scheme": "MXFP4A16",
-      "runtime_ignore": ["re:.*"],
-      "runtime_requires_disable_shared_experts_fusion": true,
-      "bits_per_weight": 4.25,
-      "group_size": 32,
-      "scale_dtype": "uint8 (E8M0)",
-      "quantized_tensors": 37152,
-      "quantized_scope": "routed experts only (layers 3-44 plus the layer-45 MTP block)",
-      "production_status": "artifact hash-verified and atomically published; candidate is not qualified",
-      "artifact_files": 131,
-      "artifact_bytes": 184945092190,
-      "artifact_manifest_sha256": "a74810a13cbb271e7844846593a779adb6f85c38b4412550ea51aaf21267e1a2",
-      "synthetic_roundtrip_rel_l2_err": 0.1129150241613388,
-      "synthetic_roundtrip_scope": "one GLM-shaped shard with two routed experts; toolchain serialization audit only",
-      "produced_by": "quantization/quantize_glm53_bf16_mxfp4.py",
-      "producer_sha256": "c1a1a6935ec02c378b0d2e56a421b194cf3abd816ea14bdd04f46f2946b7112e",
-      "toolchain": {
-        "torch": "2.13.0+cpu",
-        "compressed-tensors": "0.18.1a20260827",
-        "compressed-tensors_commit": "aa91ea52e9cb44da4f984dd53b4c2df65ef554b4",
-        "compressed-tensors_tree": "5071ae29e82a01663585bef999923fe424bdf236",
-        "llmcompressor": "0.13.1.dev53+gd1e1fb6c",
-        "llmcompressor_commit": "d1e1fb6cb2ad2c99563164be36c2f83d846462b4",
-        "llmcompressor_tree": "23a003ddb2215804851b41cbc0844d428e207f28",
-        "safetensors": "0.8.0"
-      }
-    },
+    "served_artifact": "local ModelOpt E4M3-K32 W4A16 candidate (not yet produced)",
     "native_context_length": 1048576,
-    "served_model_name": "glm53-flash"
+    "vision": true,
+    "native_mtp": true
+  },
+  "quantization": {
+    "status": "recipe selected; artifact not yet qualified",
+    "routed_expert_weights": "E2M1 FP4",
+    "routed_expert_scales": "E4M3 per K=32 block plus one FP32 global scale",
+    "activations": "BF16 (W4A16)",
+    "protected": [
+      "vision tower and projector",
+      "embeddings and LM head",
+      "routers and shared experts",
+      "attention and KDA/mHC linears pending measured sensitivity"
+    ],
+    "mtp_policy": "quantize layer-45 routed experts with the same measured recipe; retain non-expert draft tensors in BF16",
+    "calibration": "ModelOpt static MSE scale search from the pinned BF16 teacher",
+    "quality_gate": "BF16 teacher logit KLD/top-1 plus text, tool, vision, long-context, and MTP acceptance tests"
   },
   "hardware": {
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "count": 2,
     "compute_capability": "sm_120",
-    "platform": "linux/amd64",
-    "gpus": "2x RTX PRO 6000 Blackwell Max-Q (96 GiB each), no NVLink, PCIe Gen4 x16"
+    "tensor_parallel": 2,
+    "expert_parallel": 1
   },
   "pins": [
-    {
-      "arg": "GLM53_RELEASE_VERSION",
-      "value": "0.1.0"
-    },
-    {
-      "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "16"
-    },
-    {
-      "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v9"
-    },
-    {
-      "arg": "GLM53_SGLANG_BASE",
-      "value": "lmsysorg/sglang@sha256:44cb2eed3ff808541cc2be6a4fc3b34429a55d8986e9f21660f0ae9a1233a743"
-    },
-    {
-      "arg": "GLM53_SGLANG_BASE_TAG",
-      "value": "glm-5.3-flash-amd64"
-    },
-    {
-      "arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST",
-      "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"
-    },
-    {
-      "arg": "GLM53_SGLANG_BASE_CREATED",
-      "value": "2026-08-27T04:58:48Z"
-    },
-    {
-      "arg": "GLM53_SGLANG_BASE_CUDA_VERSION",
-      "value": "13.0.3"
-    },
-    {
-      "arg": "GLM53_SGLANG_BASE_FLASHINFER_VERSION",
-      "value": "0.6.17"
-    },
-    {
-      "arg": "GLM53_FLASHINFER_VERSION",
-      "value": "0.6.18"
-    },
-    {
-      "arg": "GLM53_FLASHINFER_MAIN_HEAD",
-      "value": "93f4f2642e1b3680a52ebb51cf68e0fdad237796"
-    },
-    {
-      "arg": "GLM53_FLASHINFER_MAIN_TREE",
-      "value": "7e9829d1b743896617fbba8ad7d36f3d72127b7e"
-    },
-    {
-      "arg": "GLM53_MODEL_REPOSITORY",
-      "value": "zai-org/GLM-5.3-Flash-BF16"
-    },
-    {
-      "arg": "GLM53_MODEL_REVISION",
-      "value": "f12e0fe1f6b2ea274c11a569582edfd99d993c5e"
-    },
-    {
-      "arg": "GLM53_SGLANG_MXFP4_PREIMAGE_SHA256",
-      "value": "38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb"
-    },
-    {
-      "arg": "GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256",
-      "value": "99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395"
-    },
-    {
-      "arg": "GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256",
-      "value": "0a141565e73252ddb7f1773f30f0c48e001b7dce21a5ca7864b4ea6ae51d0ccd"
-    },
-    {
-      "arg": "GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256",
-      "value": "ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274"
-    },
-    {
-      "arg": "GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256",
-      "value": "39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5"
-    },
-    {
-      "arg": "GLM53_SGLANG_FLASH_MLA_SM120_ARCH_POSTIMAGE_SHA256",
-      "value": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93"
-    },
-    {
-      "arg": "GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256",
-      "value": "8ccc7bb2a96e65e70ed55dc40f4de59a421103e4f089cdc553c633c2a8a1688c"
-    },
-    {
-      "arg": "GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256",
-      "value": "f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f"
-    },
-    {
-      "arg": "GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256",
-      "value": "eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547"
-    },
-    {
-      "arg": "GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256",
-      "value": "1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38"
-    },
-    {
-      "arg": "GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256",
-      "value": "cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c"
-    },
-    {
-      "arg": "GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256",
-      "value": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
-    },
-    {
-      "arg": "GLM53_SGLANG_GLM47_PREIMAGE_SHA256",
-      "value": "93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb"
-    },
-    {
-      "arg": "GLM53_SGLANG_GLM47_POSTIMAGE_SHA256",
-      "value": "9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e"
-    },
-    {
-      "arg": "GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256",
-      "value": "fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25"
-    },
-    {
-      "arg": "GLM53_SGLANG_FUNCTION_CALL_UTILS_POSTIMAGE_SHA256",
-      "value": "a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481"
-    },
-    {
-      "arg": "GLM53_SGLANG_GLM47_TEST_SHA256",
-      "value": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1"
-    },
-    {
-      "arg": "GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256",
-      "value": "14033b27b11b2774ddf5a8816f6b64f533efeb66b21a7c8ef7ec914a473650a0"
-    },
-    {
-      "arg": "GLM53_SGLANG_TRANSFORM_INDEX_POSTIMAGE_SHA256",
-      "value": "cea5bcded66744b2037371fbaf10497eaa70570e3e63e515b148db5595bc5163"
-    },
-    {
-      "arg": "GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256",
-      "value": "9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437"
-    },
-    {
-      "arg": "GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256",
-      "value": "434f83d99e4d114bca258a15a1c74aa00adb65dc9f36f23894ff436af02db611"
-    },
-    {
-      "arg": "GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256",
-      "value": "ab632b7bee88ac73ddfffb7509e715e2a22f939e37fe43e71cfd0e338a63e218"
-    },
-    {
-      "arg": "GLM53_SGLANG_MLA_BUFFER_TEST_SHA256",
-      "value": "5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8"
-    },
-    {
-      "arg": "GLM53_SGLANG_TILELANG_PREIMAGE_SHA256",
-      "value": "526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f"
-    },
-    {
-      "arg": "GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256",
-      "value": "1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98"
-    },
-    {
-      "arg": "GLM53_SGLANG_TILELANG_TEST_SHA256",
-      "value": "fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f"
-    },
-    {
-      "arg": "GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256",
-      "value": "e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c"
-    },
-    {
-      "arg": "GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256",
-      "value": "94f027f8243a4ea2b64072abcd4670f67a9b14265be776d2dd2cd47c5fe342a5"
-    },
-    {
-      "arg": "GLM53_SGLANG_OFFLOADER_TEST_SHA256",
-      "value": "761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391"
-    },
-    {
-      "arg": "GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256",
-      "value": "c78b4ad75ab2478f1911136da18c09d3353d8ffaaf32d0e701536d1c9234898c"
-    },
-    {
-      "arg": "GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256",
-      "value": "5f5e913a46f9a3ecc4c911c3e378de1c97bf210e55a897ab5e8f3aaf8b7613d9"
-    },
-    {
-      "arg": "GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256",
-      "value": "7e4c7c818bad93aaea4e1f933eae8935b590d64ec2307186857403187bdbefe6"
-    },
-    {
-      "arg": "GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256",
-      "value": "39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828"
-    },
-    {
-      "arg": "GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256",
-      "value": "01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc"
-    },
-    {
-      "arg": "GLM53_SGLANG_KDA_PADDING_TEST_SHA256",
-      "value": "971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf"
-    }
-  ],
-  "patches": [
-    {
-      "path": "patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch",
-      "sha256": "f7b9a959a91926f447e26bc82170f698e2549d2e95793a1eb92815d6637203f6",
-      "purpose": "preserve GLM contiguous gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 loader, using the quantization method's owned runner configuration"
-    },
-    {
-      "path": "patches/test_glm53_sm120_mxfp4_patch.py",
-      "sha256": "c3404a8dfdc7a4bc336dfb62fb106f5bbe0a57e44766db8bdb380a38dd270fe4",
-      "purpose": "build-time semantic contract test for the SM120 MXFP4 patch"
-    },
-    {
-      "path": "patches/0002-glm53-dflash-hidden-state-capture.patch",
-      "sha256": "61115932dd19301451d5a2443a87656ec553f7f46cc43a8744f55f7131dd0829",
-      "purpose": "upstream PR #36708 GLM-5.3 DFlash2 hidden-state capture change"
-    },
-    {
-      "path": "patches/0003-glm53-dflash-mhc-residual-none.patch",
-      "sha256": "bbd11a9148aa285a0fd279b8f754928a53821f18431fb9c9c23a37f85a165486",
-      "purpose": "upstream PR #36755 mHC residual=None correction for GLM-5.3 DFlash2 capture"
-    },
-    {
-      "path": "patches/test_glm53_dflash_patch.py",
-      "sha256": "9f8fc0ebe70ba7d91775c521ac3ac27d5e27009bcc25a59e447d10405991995f",
-      "purpose": "build-time mHC residual=None contraction and DFlash2 capture-layer contract test"
-    },
-    {
-      "path": "patches/test_glm53_mixed_precision_contract.py",
-      "sha256": "a83f7561536363d32bcab99dd68f20cf668a5630a66614f1566eb2eb69576dd8",
-      "purpose": "build-time resolver contract for routed-only MXFP4 with protected BF16 shared experts, dense linears, and vision tensors"
-    },
-    {
-      "path": "patches/0004-glm53-sm120-sparse-mla-architecture.patch",
-      "sha256": "189e54aff7751b7dc0e073cebd5c00ead2ce2a85aa2b07d2bf614adaf5fc296b",
-      "purpose": "admit the native GLM-5.3 target and NextN architecture names to upstream #26928's fail-closed SM120 FP8 sparse-MLA backend"
-    },
-    {
-      "path": "patches/test_glm53_sm120_sparse_mla_patch.py",
-      "sha256": "d6b3734d2ea4d86cabe011a393f65358caa2617b73a8622ab6e6ed83f32bcd64",
-      "purpose": "build-time architecture, exact 528-byte no-RoPE KPool adapter, unchanged 656-byte fallback, padding-tail, and fail-closed geometry contract"
-    },
-    {
-      "path": "patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch",
-      "sha256": "b7623fb1002ca0bb9bee7feda5644fa05487d6ef7087d68bdcbf646c6dd0d95e",
-      "purpose": "route GLM-5.3's exact 528-byte no-RoPE cache and 2,051-entry KPool table through one 2,176-wide SM120 dispatch without truncating live tail entries"
-    },
-    {
-      "path": "patches/0008-flashinfer-glm53-nope-sm120.patch",
-      "sha256": "017f2763cf7951d4dfd5d1b28914ef4cdba9b7d0ce96b22c4d97df0567f73710",
-      "purpose": "add an isolated GLM_NEXT_NOPE 528-byte cache trait and exact TP=2 32-head/2,176-candidate decode and prefill kernels to pinned FlashInfer main"
-    },
-    {
-      "path": "patches/test_glm53_sm120_sparse_mla_kpool_gpu.py",
-      "sha256": "bcc2cacdb39aab3d0a61359d12cc8a1be9e65411900cd7375f4f4ec1cc3a7cac",
-      "purpose": "exact-SM120 numerical decode and 128-token prefill regression with -1 base padding followed by three live KPool tail entries"
-    },
-    {
-      "path": "patches/0005-dsa-kpool-topk-deterministic.patch",
-      "sha256": "0d6598731f4f7388f6a286e7d3325bb384924fa96a38edbcd401267d2e220e48",
-      "purpose": "exact draft PR #36745 patch making fused KPool top-k deterministic, canonically ordered, and safe when the coarse threshold bin exceeds 4K candidates; includes its four GPU regressions"
-    },
-    {
-      "path": "patches/0006-glm47-nested-tool-schema-streaming.patch",
-      "sha256": "e5529cb880bced536adaf02896b0951958c315843179bea81270cd0e13a49600",
-      "purpose": "GLM47-specific backport of merged SGLang #36626: close streaming JSON after nested object arguments and resolve top-level anyOf/oneOf/allOf tool schemas"
-    },
-    {
-      "path": "patches/test_glm53_glm47_nested_tool_patch.py",
-      "sha256": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1",
-      "purpose": "build-time flat nested-object and composite-schema GLM47 streaming contract"
-    },
-    {
-      "path": "patches/0009-glm53-kpool-unfused-transform.patch",
-      "sha256": "a13ac2fc2cf99ca9a1f14042aca00cfd1f2ddeb54120d724624a9312bf7ea7ac",
-      "purpose": "preserve GLM-5.3's three live KPool tail entries in exact 2,051-wide unfused decode and prefill transforms while leaving SGLang's tuned 2,048-wide path unchanged"
-    },
-    {
-      "path": "patches/test_glm53_kpool_unfused_transform.py",
-      "sha256": "9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437",
-      "purpose": "build-time source contract and exact-GPU reference comparison for 2,051-wide unfused decode and prefill transforms, including live tail entries after a padded base-table gap"
-    },
-    {
-      "path": "patches/0010-glm53-norope-reserved-slot.patch",
-      "sha256": "baf46bf3af6c67f31cdf8d0d413496e94f1b77b9b2fed57e5590e227b0b4e61f",
-      "purpose": "protect physical slot zero and apply DCP ownership mapping in GLM-5.3's dedicated no-RoPE MLA scatter path"
-    },
-    {
-      "path": "patches/test_glm53_norope_reserved_slot.py",
-      "sha256": "5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8",
-      "purpose": "build-time source contract and exact-GPU regression proving reserved slot zero remains unchanged while valid no-RoPE writes succeed"
-    },
-    {
-      "path": "patches/0011-glm53-sm120-tilelang-shared-memory.patch",
-      "sha256": "a07b561d369562cfb55a29db438bfa7b8e7b53e53dfec1220b2f14c983da828a",
-      "purpose": "fit GLM-5.3's independent TileLang BF16-KV no-RoPE DSA path under the 101,376-byte SM120/SM121 dynamic shared-memory ceiling"
-    },
-    {
-      "path": "patches/test_glm53_sm120_tilelang_launch.py",
-      "sha256": "fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f",
-      "purpose": "build-time contract proving SM120/SM121 selects the 32-entry one-stage 128-thread TileLang launch while non-SM12 CUDA remains unchanged"
-    },
-    {
-      "path": "patches/0012-glm53-cpu-offload-tied-parameters.patch",
-      "sha256": "37f075bd1bb38d5416352c255c30acbb20aac899a5a4a9372db8e850af6bf99b",
-      "purpose": "allow CPU offload of GLM-5.3 decoder layers whose KDA parameters have intentional state-dict aliases by materializing each copied key independently"
-    },
-    {
-      "path": "patches/test_glm53_cpu_offload_tied_parameters.py",
-      "sha256": "761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391",
-      "purpose": "build-time negative and positive functional-call contract for tied KDA aliases under CPU offload"
-    },
-    {
-      "path": "patches/0013-glm53-kda-preserve-padding-sentinel.patch",
-      "sha256": "e6c738d371bb733cfb20a4773a2bc648402c5c2672c481ca17db3af391d7f042",
-      "purpose": "exact SGLang PR #36885 correction preserving the -1 KDA padding sentinel instead of aliasing the final live Mamba state slot"
-    },
-    {
-      "path": "patches/test_glm53_kda_padding_sentinel.py",
-      "sha256": "971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf",
-      "purpose": "build-time source and state-pool contract proving padded KDA rows cannot target the final allocatable slot"
-    },
-    {
-      "path": "patches/0014-glm53-cpu-offload-derived-mla-buffers.patch",
-      "sha256": "09c6796796bfd5558125603f54bef676d08f16cc915c6995e6ae5631d3b975f9",
-      "purpose": "register derived MLA w_kc/w_vc tensors as non-persistent execution buffers and materialize registered non-persistent buffers on the decoder layer's execution device under CPU offload"
-    },
-    {
-      "path": "patches/test_glm53_cpu_offload_derived_mla_buffers.py",
-      "sha256": "7e4c7c818bad93aaea4e1f933eae8935b590d64ec2307186857403187bdbefe6",
-      "purpose": "build-time source and functional-call contract proving derived MLA buffers move as functional state without entering checkpoint serialization"
-    }
+    {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "17"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v10"},
+    {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
+    {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
+    {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
+    {"arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST", "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
+    {"arg": "GLM53_SGLANG_REPOSITORY", "value": "https://github.com/ormandj/sglang.git"},
+    {"arg": "GLM53_SGLANG_HEAD", "value": "42a56dc505f775d6f54e9d27a9b57c66023420a0"},
+    {"arg": "GLM53_SGLANG_TREE", "value": "16eb1fe669e54253b16d206a21e79e9cc7ea6132"},
+    {"arg": "GLM53_FLASHINFER_REPOSITORY", "value": "https://github.com/ormandj/flashinfer.git"},
+    {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
+    {"arg": "GLM53_FLASHINFER_HEAD", "value": "008122fa75c7a27c839feea57a6ef8e8846fa265"},
+    {"arg": "GLM53_FLASHINFER_TREE", "value": "0462b5c545eb145cb96001285afe4cc89de30605"},
+    {"arg": "GLM53_MODELOPT_REPOSITORY", "value": "https://github.com/NVIDIA/Model-Optimizer.git"},
+    {"arg": "GLM53_MODELOPT_VERSION", "value": "0.47.0rc0"},
+    {"arg": "GLM53_MODELOPT_HEAD", "value": "022767c7ab3d7d36211affd85e5c496770cde768"},
+    {"arg": "GLM53_MODELOPT_TREE", "value": "9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9"},
+    {"arg": "GLM53_MODEL_REPOSITORY", "value": "zai-org/GLM-5.3-Flash-BF16"},
+    {"arg": "GLM53_MODEL_REVISION", "value": "f12e0fe1f6b2ea274c11a569582edfd99d993c5e"}
   ],
   "integration": {
     "sglang": {
-      "provenance": "vendor per-model image",
-      "note": "glm5_next is not in sgl-project/sglang main as of 2026-08-28; the vendor image is built from a tarball and reports SGLANG_BUILD_COMMIT=unknown. Pinned by immutable digest only.",
-      "base_tag": "glm-5.3-flash-amd64",
-      "base_index_digest": "sha256:44cb2eed3ff808541cc2be6a4fc3b34429a55d8986e9f21660f0ae9a1233a743",
-      "base_amd64_manifest": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf",
-      "base_created": "2026-08-27T04:58:48Z",
-      "base_cuda_version": "13.0.3",
-      "base_flashinfer_version": "0.6.17",
-      "upstream_tracking": {
-        "model_support_pr": 36507,
-        "model_support_pr_title": "GLM-5.3-Flash support",
-        "model_support_pr_state": "open and conflicting as of 2026-08-28",
-        "model_support_pr_head": "aa8c950a3df62b6642c4ea60a93a5e3eb1a1450e",
-        "observed_main_head": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
-        "observed_main_tree": "a7f3edbb01bcdae5051152ceaf6c9db1772ac092",
-        "observed_main_is_not_vendor_provenance": true,
-        "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
-        "related_merged": [
-          26928,
-          36440,
-          36513,
-          36519,
-          36608,
-          36660,
-          36544,
-          36708,
-          36755,
-          36626
-        ],
-        "related_open": [
-          36607,
-          36711,
-          36724,
-          36745,
-          36599,
-          36653,
-          36884,
-          36885,
-          29738
-        ]
-      },
-      "sm120_runtime_environment": {
-        "rationale": "GLM enters the shared DeepSeek/DSA hook but does not inherit the SM120 fallback block currently scoped to DeepseekV4ForCausalLM; v0.1.0-rc.4 reproduced a deep_gemm NameError during exact-hardware warmup.",
-        "source_preimage_server_args_sha256": "354a88d90972d39128e3ce43f2d890f0668243f82ce38f96c1bab773540adb12",
-        "settings": {
-          "SGLANG_OPT_FP8_WO_A_GEMM": "0",
-          "SGLANG_OPT_USE_TOPK_V2": "0",
-          "SGLANG_OPT_USE_TILELANG_MHC_PRE": "0",
-          "SGLANG_OPT_FUSE_MHC_POST_PRE": "1",
-          "SGLANG_OPT_DEEPGEMM_HC_PRENORM": "0",
-          "SGLANG_FP8_PAGED_MQA_LOGITS_TORCH": "1",
-          "SGLANG_OPT_USE_TILELANG_INDEXER": "1"
-        }
-      },
-      "sm120_mxfp4_runner_configuration": {
-        "rationale": "the SM120 post-loader configuration belongs to Mxfp4MoEMethod; the prior patch read layer.moe_runner_config and failed the vendor GPT-OSS GPU contract even though the GLM numerical path passed",
-        "source_preimage_sha256": "38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb",
-        "source_postimage_sha256": "99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395",
-        "exact_hardware_control_image": "git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5@sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e"
-      },
-      "sm120_sparse_mla_architecture": {
-        "rationale": "upstream #26928's dedicated SM120 FP8 sparse-MLA guard predates GLM-5.3 and rejects the native Glm5Next architecture name after target and MTP load",
-        "source_preimage_sha256": "39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5",
-        "source_postimage_sha256": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93",
-        "admitted_architectures": [
-          "Glm5NextForConditionalGeneration",
-          "Glm5NextForConditionalGenerationNextN"
-        ]
-      },
-      "sm120_sparse_mla_glm_next_nope_kpool": {
-        "rationale": "v0.1.0-rc.9 proved target, native MTP, and 516,032-token pool allocation but its DSv4-specific 584-byte adapter branch was dead: exact vendor config and cache allocation show GLM-5.3 uses a 528-byte generic FP8 cache (512 E4M3 latent bytes plus four arbitrary FP32 scales) with no RoPE payload. The dedicated SM120 path must preserve all three live KPool tail entries after the 2,048-wide base table.",
-        "flash_mla_arch_postimage_sha256": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93",
-        "flash_mla_final_postimage_sha256": "8ccc7bb2a96e65e70ed55dc40f4de59a421103e4f089cdc553c633c2a8a1688c",
-        "dsa_backend_preimage_sha256": "f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f",
-        "dsa_backend_postimage_sha256": "eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547",
-        "cache_bytes_per_token": 528,
-        "query_heads_per_tp2_rank": 32,
-        "input_topk": 2051,
-        "kernel_topk": 2176,
-        "padding_value": -1,
-        "qualification_status": "exact-hardware numerical regressions passed on v0.1.0-rc.12; served-model output remained corrupt and the candidate was not qualified"
-      },
-      "kpool_unfused_transform": {
-        "rationale": "The v0.1.0-rc.11 unfused-KPool diagnostic reached the generic SGLang transform with GLM-5.3's exact 2,051-entry table and failed its hard-coded 2,048-entry assertion before inference. The correction preserves the existing tuned 2,048 decode path, admits only the exact GLM width, and retains all three live tail entries in decode and prefill.",
-        "source_preimage_sha256": "14033b27b11b2774ddf5a8816f6b64f533efeb66b21a7c8ef7ec914a473650a0",
-        "source_postimage_sha256": "cea5bcded66744b2037371fbaf10497eaa70570e3e63e515b148db5595bc5163",
-        "admitted_topk_widths": [2048, 2051],
-        "gpu_contract": "decode and prefill outputs must exactly match the torch reference with base-table padding before live columns 2048..2050"
-      },
-      "norope_reserved_slot": {
-        "rationale": "v0.1.0-rc.12 target-only output remained corrupt after the 2,051-entry unfused transform passed. The production no-RoPE scatter was then reproduced writing physical slot 0 despite reserved_skip_index=0, while its positive-slot control succeeded. Aligning this branch with the ordinary MLA writer closes the concrete CUDA-graph padding corruption path.",
-        "source_preimage_sha256": "434f83d99e4d114bca258a15a1c74aa00adb65dc9f36f23894ff436af02db611",
-        "source_postimage_sha256": "ab632b7bee88ac73ddfffb7509e715e2a22f939e37fe43e71cfd0e338a63e218",
-        "rc12_gpu_reproduction": {
-          "slot0_changed": true,
-          "positive_slot_write_succeeded": true
-        },
-        "fixed_contract": "loc != reserved_skip_index and loc % DCP_WORLD_SIZE == DCP_RANK; valid locations are divided by DCP_WORLD_SIZE before scatter"
-      },
-      "sm120_tilelang_shared_memory": {
-        "rationale": "The independent TileLang BF16-KV DSA path is the only community-demonstrated GLM-5.3 no-RoPE backend on consumer Blackwell, but the vendor launch requests 169,984 bytes of dynamic shared memory on GPUs whose per-block limit is 101,376 bytes. The candidate narrows only SM120/SM121 to a 32-entry, one-stage, 128-thread launch; all non-SM12 CUDA and HIP paths remain unchanged.",
-        "source_preimage_sha256": "526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f",
-        "source_postimage_sha256": "1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98",
-        "sm12_launch": {
-          "block_I": 32,
-          "num_stages": 1,
-          "threads": 128
-        },
-        "qualification_status": "build-time contract only; exact-hardware numerical and served-output validation required"
-      },
-      "cpu_offload_tied_kda_parameters": {
-        "rationale": "The exact LibertAIDAI NVFP4 target loads all 121 shards with 20 GiB/rank CPU offload on the 2x94.97 GiB pair, then the first warmup fails because torch.func.functional_call sees separate copied values for GLM's intentionally tied KDA A_log and dt_bias aliases. Passing tie_weights=false is the PyTorch contract for that already-expanded state mapping.",
-        "source_preimage_sha256": "e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c",
-        "source_postimage_sha256": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b",
-        "exact_control": "LibertAIDAI/GLM-5.3-Flash-NVFP4 revision 357b45cc73a07a541cede88861f7736c9487ebf7, TP=2, flashinfer_cutlass, TileLang BF16 KV, 20 GiB/rank CPU offload"
-      },
-      "cpu_offload_derived_mla_buffers": {
-        "rationale": "After the tied-parameter correction, the same exact control reaches FlashInfer autotune and fails because post-load MLA w_kc remains on CPU while q_nope is on CUDA. w_kc and w_vc are derived from kv_b_proj and intentionally absent from checkpoint state, but they are kernel-facing tensors and must follow an offloaded decoder layer to its execution device.",
-        "offloader_preimage_sha256": "e2f87c6f4ac93cde408fcf37f2790f193a83608e3c1cdf6d445e53425fa2922b",
-        "offloader_postimage_sha256": "94f027f8243a4ea2b64072abcd4670f67a9b14265be776d2dd2cd47c5fe342a5",
-        "deepseek_v2_preimage_sha256": "c78b4ad75ab2478f1911136da18c09d3353d8ffaaf32d0e701536d1c9234898c",
-        "deepseek_v2_postimage_sha256": "5f5e913a46f9a3ecc4c911c3e378de1c97bf210e55a897ab5e8f3aaf8b7613d9",
-        "serialization_contract": "w_kc and w_vc are registered with persistent=false and remain absent from state_dict; OffloaderV1 adds registered non-persistent buffers only to functional_call device state",
-        "qualification_status": "build-time functional contract only; exact-hardware served-output validation required"
-      },
-      "kda_padding_sentinel": {
-        "upstream_pr": 36885,
-        "upstream_head": "b089126e5f5dc9aadb78ae0b06ed405c597dd62f",
-        "upstream_state": "open as of 2026-08-28",
-        "rationale": "The vendor GLM branch remaps padded -1 KDA rows to ssm_states.shape[0]-1, but MambaPool reserves slot zero and allocates the final slot to live requests. The chunk kernel already gates negative state indices, so preserve -1 exactly as SGLang main does.",
-        "source_preimage_sha256": "39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828",
-        "source_postimage_sha256": "01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc",
-        "qualification_status": "latent correctness fix from code audit; exact-hardware padded-batch validation required"
-      },
-      "kpool_topk_determinism": {
-        "upstream_pr": 36745,
-        "upstream_head": "f14393b2dca5dc7f954b7c15167851fbc7c6a9f8",
-        "upstream_current_head": "6d17486dbea90ae7ef22c97bd2c6b163d27be5da",
-        "upstream_state": "draft as of 2026-08-28",
-        "rationale": "the exact vendor header is the pinned f14393b2 PR preimage and all four upstream GPU regressions fail on the exact v0.1.0-rc.5 image, including 100% mismatch in the coarse-bin-overflow case; the later PR head merges GLM support and adds HIP guards but does not change the NVIDIA kernel behavior or test blob",
-        "source_preimage_sha256": "1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38",
-        "source_postimage_sha256": "cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c",
-        "gpu_test_sha256": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
-      },
-      "glm47_nested_tool_streaming": {
-        "upstream_commit": "0665102ce5e2786ec569dc22c017f2f898a94313",
-        "upstream_pr": 36626,
-        "upstream_state": "merged on main as of 2026-08-28",
-        "rationale": "the exact vendor GLM47 parser emits malformed JSON when a nested object value ends in a brace and cannot resolve properties declared under top-level anyOf/oneOf/allOf; the upstream regression was reproduced in the pinned image",
-        "glm47_preimage_sha256": "93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb",
-        "glm47_postimage_sha256": "9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e",
-        "utils_preimage_sha256": "fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25",
-        "utils_postimage_sha256": "a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481"
-      }
+      "repository": "https://github.com/ormandj/sglang.git",
+      "head": "42a56dc505f775d6f54e9d27a9b57c66023420a0",
+      "tree": "16eb1fe669e54253b16d206a21e79e9cc7ea6132",
+      "upstream_main_base": "d12b313b93",
+      "included_upstream_work": ["sglang#36507", "sglang#36904"],
+      "excluded_work": ["DP-attention-only MHC communicator change from sglang#36884"]
     },
     "flashinfer": {
-      "head": "93f4f2642e1b3680a52ebb51cf68e0fdad237796",
-      "tree": "7e9829d1b743896617fbba8ad7d36f3d72127b7e",
+      "repository": "https://github.com/ormandj/flashinfer.git",
       "package_version": "0.6.18",
-      "base_package_version": "0.6.17",
-      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f; archived GLM_NEXT_NOPE patch applied with zero fuzz; sparse-MLA module NVCC-compiled at image build; generic flashinfer-cubin and flashinfer-jit-cache packages absent; FLASHINFER_NO_DOWNLOAD=1",
-      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; refreshed main supports 656-byte V32/GLM-NSA and 584-byte DSv4 caches but not GLM-5.3's 528-byte no-RoPE cache. Changes since the prior pin do not touch sparse-MLA sources, and the isolated patch still applies with zero fuzz. It adds only the exact TP=2 GLM geometry and preserves existing dispatches."
+      "head": "008122fa75c7a27c839feea57a6ef8e8846fa265",
+      "tree": "0462b5c545eb145cb96001285afe4cc89de30605",
+      "upstream_main_base": "adc49a85",
+      "included_upstream_work": ["flashinfer#4687"]
     },
-    "speculative_decoding": {
-      "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, fixed 5 steps / top-k 1 / 6 draft tokens",
-      "alternative": "DFlash2 A/B candidate; no performance claim until measured on this exact rc",
-      "dflash_repository": "incoai/GLM-5.3-Flash-DFlash2",
-      "dflash_revision": "7d74cdd881ed7e32c31175984a67823127b66cfe",
-      "dflash_storage_bytes": 2342175855,
-      "dflash_block_size": 8,
-      "dflash_sliding_window": 2048,
-      "dflash_capture_layers": [5, 14, 24, 33, 42]
+    "modelopt": {
+      "repository": "https://github.com/NVIDIA/Model-Optimizer.git",
+      "package_version": "0.47.0rc0",
+      "head": "022767c7ab3d7d36211affd85e5c496770cde768",
+      "tree": "9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9"
     }
   },
-  "verification": {
-    "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
-    "sglang_repository": null,
-    "sglang_source_verifiable": false,
-    "base_registry": "docker.io/lmsysorg/sglang"
+  "patches": [],
+  "runtime_profile": {
+    "tensor_parallel": 2,
+    "expert_parallel": 1,
+    "vision": true,
+    "kv_cache_dtype": "fp8_e4m3",
+    "dsa_backend": "tilelang raw-layout FP8",
+    "speculation": "native EAGLE/NextN MTP, adaptive 5/1/6",
+    "reasoning_parser": "glm45",
+    "tool_call_parser": "glm47",
+    "target_total_token_pool": 524288,
+    "target_concurrency": 4,
+    "burst_concurrency_to_measure": 8,
+    "mamba_state_slots_at_c4": 20,
+    "status": "targets only; no performance or capacity claim until exact-candidate evidence exists"
   },
-  "known_limitations": [
-    "sglang #36596: is_layer_excluded misses fused module names and model.-prefixed names for mixed-precision checkpoints.",
-    "sglang #36550: CUDA-graph abort at first decode after cold prefill > 262144 tokens.",
-    "sglang #36669: thinking output degenerates into repeated '!' under multi-tool agentic prompts (native FP8, not a quantization artifact).",
-    "sglang #36711: flashinfer_trtllm MoE can produce an out-of-bounds expert index; this candidate pins flashinfer_mxfp4 instead.",
-    "sglang #36724: multimodal embedding isolation is under active repair; vision must be qualified explicitly.",
-    "Current DFlash2 draft-pool sizing charges draft KV at the target token-pool length, so DFlash2 may reduce maximum pooled context substantially versus native MTP until measured or fixed."
-  ]
+  "verification": {
+    "sglang_source_verifiable": true,
+    "sglang_repository": "https://github.com/ormandj/sglang.git",
+    "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
+    "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
+    "base_image_is_dependency_stack_only": true,
+    "claims": "v0.1.0-rc.17 is not built or qualified"
+  }
 }

@@ -1,73 +1,29 @@
-# GLM-5.3-Flash MXFP4 on SGLang for RTX PRO 6000 Blackwell (SM120).
+# GLM-5.3-Flash on two RTX PRO 6000 Blackwell GPUs (SM120).
 #
-# PROVENANCE DIFFERS FROM THE QWEN3.8-FLASH-NEXT BUILD, DELIBERATELY.
-# That build pins sglang main by commit AND tree, applies an archived patch,
-# and asserts the resulting effective tree hash. None of that is possible here:
-#   * `glm5_next` is NOT in sgl-project/sglang main as of 2026-08-28. The
-#     architecture exists only inside the vendor per-model image below.
-#   * That image is built from an `ADD sglang.tar.gz`, not a git checkout. Its
-#     own metadata reports SGLANG_BUILD_COMMIT=unknown, so there is no upstream
-#     commit or tree to verify against.
-# The base is therefore pinned by IMMUTABLE DIGEST and nothing more. We do not
-# claim source-level reproducibility of the SGLang layer; we claim byte-level
-# reproducibility of the image we started from. Re-verify when glm5_next lands
-# upstream and switch to the main+patch+tree discipline at that point.
+# The vendor image supplies the CUDA/PyTorch dependency stack only. Its
+# SGLang tree has no git provenance, so this candidate puts an exact, verifiable
+# SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
+# exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=16
-ARG GLM53_CACHE_SCHEMA=v9
-# lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
-# This is the OCI index digest; the linux/amd64 manifest it selects is pinned
-# separately below and asserted at build time.
-ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:44cb2eed3ff808541cc2be6a4fc3b34429a55d8986e9f21660f0ae9a1233a743
-ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash-amd64
+ARG GLM53_RELEASE_CANDIDATE=17
+ARG GLM53_CACHE_SCHEMA=v10
+ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
+ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
+ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
-ARG GLM53_SGLANG_BASE_CREATED=2026-08-27T04:58:48Z
-ARG GLM53_SGLANG_BASE_CUDA_VERSION=13.0.3
-ARG GLM53_SGLANG_BASE_FLASHINFER_VERSION=0.6.17
-# FlashInfer is rebuilt from the exact main head refreshed on 2026-08-28.
+ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
+ARG GLM53_SGLANG_HEAD=42a56dc505f775d6f54e9d27a9b57c66023420a0
+ARG GLM53_SGLANG_TREE=16eb1fe669e54253b16d206a21e79e9cc7ea6132
+ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_MAIN_HEAD=93f4f2642e1b3680a52ebb51cf68e0fdad237796
-ARG GLM53_FLASHINFER_MAIN_TREE=7e9829d1b743896617fbba8ad7d36f3d72127b7e
-# Source checkpoint the served MXFP4 artifact was quantized FROM.
+ARG GLM53_FLASHINFER_HEAD=008122fa75c7a27c839feea57a6ef8e8846fa265
+ARG GLM53_FLASHINFER_TREE=0462b5c545eb145cb96001285afe4cc89de30605
+ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
+ARG GLM53_MODELOPT_VERSION=0.47.0rc0
+ARG GLM53_MODELOPT_HEAD=022767c7ab3d7d36211affd85e5c496770cde768
+ARG GLM53_MODELOPT_TREE=9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9
 ARG GLM53_MODEL_REPOSITORY=zai-org/GLM-5.3-Flash-BF16
 ARG GLM53_MODEL_REVISION=f12e0fe1f6b2ea274c11a569582edfd99d993c5e
-# The vendor image lacks git provenance. These byte-level pre/postimage pins
-# make our source modifications fail closed without implying a git commit.
-ARG GLM53_SGLANG_MXFP4_PREIMAGE_SHA256=38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb
-ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256=99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395
-ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256=0a141565e73252ddb7f1773f30f0c48e001b7dce21a5ca7864b4ea6ae51d0ccd
-ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256=ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274
-ARG GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256=39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5
-ARG GLM53_SGLANG_FLASH_MLA_SM120_ARCH_POSTIMAGE_SHA256=052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93
-ARG GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256=8ccc7bb2a96e65e70ed55dc40f4de59a421103e4f089cdc553c633c2a8a1688c
-ARG GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256=f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f
-ARG GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256=eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547
-ARG GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256=1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38
-ARG GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256=cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c
-ARG GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256=c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a
-ARG GLM53_SGLANG_GLM47_PREIMAGE_SHA256=93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb
-ARG GLM53_SGLANG_GLM47_POSTIMAGE_SHA256=9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e
-ARG GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256=fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25
-ARG GLM53_SGLANG_FUNCTION_CALL_UTILS_POSTIMAGE_SHA256=a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481
-ARG GLM53_SGLANG_GLM47_TEST_SHA256=f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1
-ARG GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256=14033b27b11b2774ddf5a8816f6b64f533efeb66b21a7c8ef7ec914a473650a0
-ARG GLM53_SGLANG_TRANSFORM_INDEX_POSTIMAGE_SHA256=cea5bcded66744b2037371fbaf10497eaa70570e3e63e515b148db5595bc5163
-ARG GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256=9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437
-ARG GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256=434f83d99e4d114bca258a15a1c74aa00adb65dc9f36f23894ff436af02db611
-ARG GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256=ab632b7bee88ac73ddfffb7509e715e2a22f939e37fe43e71cfd0e338a63e218
-ARG GLM53_SGLANG_MLA_BUFFER_TEST_SHA256=5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8
-ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256=526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f
-ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256=1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98
-ARG GLM53_SGLANG_TILELANG_TEST_SHA256=fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f
-ARG GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256=e9b97f8a78d3d5786af92abbf735de8f293f28a4314364c1c3c6634b89578d5c
-ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256=94f027f8243a4ea2b64072abcd4670f67a9b14265be776d2dd2cd47c5fe342a5
-ARG GLM53_SGLANG_OFFLOADER_TEST_SHA256=761d223f75bfbd46de28d4c00770ec8b1fc840d3aafd741fc7573048d0fa8391
-ARG GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256=c78b4ad75ab2478f1911136da18c09d3353d8ffaaf32d0e701536d1c9234898c
-ARG GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256=5f5e913a46f9a3ecc4c911c3e378de1c97bf210e55a897ab5e8f3aaf8b7613d9
-ARG GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256=7e4c7c818bad93aaea4e1f933eae8935b590d64ec2307186857403187bdbefe6
-ARG GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256=39610e07b321ec9c8ef180e1e367373ff7f21b70d10b2ca90a81883b03aaa828
-ARG GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256=01e88d8636ebc060dc50985ca4912c830a95b6a5924c0e1fe0daa26b7f14d2dc
-ARG GLM53_SGLANG_KDA_PADDING_TEST_SHA256=971ec8a7e55e798ac48ba8c1f1064883ceacdad077441a0c68c0c23881fa6adf
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -76,275 +32,103 @@ ARG GLM53_RELEASE_VERSION
 ARG GLM53_RELEASE_CANDIDATE
 ARG GLM53_CACHE_SCHEMA
 ARG GLM53_SGLANG_BASE_TAG
+ARG GLM53_SGLANG_BASE_INDEX
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST
-ARG GLM53_SGLANG_BASE_CREATED
-ARG GLM53_SGLANG_BASE_CUDA_VERSION
-ARG GLM53_SGLANG_BASE_FLASHINFER_VERSION
+ARG GLM53_SGLANG_REPOSITORY
+ARG GLM53_SGLANG_HEAD
+ARG GLM53_SGLANG_TREE
+ARG GLM53_FLASHINFER_REPOSITORY
 ARG GLM53_FLASHINFER_VERSION
-ARG GLM53_FLASHINFER_MAIN_HEAD
-ARG GLM53_FLASHINFER_MAIN_TREE
+ARG GLM53_FLASHINFER_HEAD
+ARG GLM53_FLASHINFER_TREE
+ARG GLM53_MODELOPT_REPOSITORY
+ARG GLM53_MODELOPT_VERSION
+ARG GLM53_MODELOPT_HEAD
+ARG GLM53_MODELOPT_TREE
 ARG GLM53_MODEL_REPOSITORY
 ARG GLM53_MODEL_REVISION
-ARG GLM53_SGLANG_MXFP4_PREIMAGE_SHA256
-ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256
-ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256
-ARG GLM53_SGLANG_FLASH_MLA_SM120_ARCH_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256
-ARG GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256
-ARG GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_GLM47_PREIMAGE_SHA256
-ARG GLM53_SGLANG_GLM47_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256
-ARG GLM53_SGLANG_FUNCTION_CALL_UTILS_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_GLM47_TEST_SHA256
-ARG GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256
-ARG GLM53_SGLANG_TRANSFORM_INDEX_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256
-ARG GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256
-ARG GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_MLA_BUFFER_TEST_SHA256
-ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256
-ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_TILELANG_TEST_SHA256
-ARG GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256
-ARG GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_OFFLOADER_TEST_SHA256
-ARG GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256
-ARG GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256
-ARG GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256
-ARG GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256
-ARG GLM53_SGLANG_KDA_PADDING_TEST_SHA256
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
-ENV PYTHONPATH=/sgl-workspace/sglang/python \
-    FLASHINFER_NO_DOWNLOAD=1
-
-# Assert we really are on the base we pinned, and that it carries glm5_next.
-# If the vendor ever repoints the tag, the digest FROM already protects us;
-# this catches a mismatched ARG block and proves model support is present
-# BEFORE we spend 40 minutes compiling FlashInfer.
-RUN set -e; \
-    test "${GLM53_SGLANG_BASE_CUDA_VERSION}" = "${CUDA_VERSION}"; \
-    uv run --no-project --python /opt/sglang/bin/python python -c "\
-import importlib.util as u; \
-assert u.find_spec('sglang.srt.models.glm5_next') is not None, 'base image lacks glm5_next'; \
-from sglang.srt.models.glm5_next import Glm5NextForConditionalGeneration as M; \
-print('glm5_next present:', M.__name__)"
-
-COPY patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch
-COPY patches/test_glm53_sm120_mxfp4_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py
-COPY patches/0002-glm53-dflash-hidden-state-capture.patch /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch
-COPY patches/0003-glm53-dflash-mhc-residual-none.patch /usr/share/sglang-glm53-flash-sm120/patches/0003-glm53-dflash-mhc-residual-none.patch
-COPY patches/test_glm53_dflash_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py
-COPY patches/test_glm53_mixed_precision_contract.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_mixed_precision_contract.py
-COPY patches/0004-glm53-sm120-sparse-mla-architecture.patch /usr/share/sglang-glm53-flash-sm120/patches/0004-glm53-sm120-sparse-mla-architecture.patch
-COPY patches/test_glm53_sm120_sparse_mla_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_sparse_mla_patch.py
-COPY patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch
-COPY patches/0008-flashinfer-glm53-nope-sm120.patch /usr/share/sglang-glm53-flash-sm120/patches/0008-flashinfer-glm53-nope-sm120.patch
-COPY patches/test_glm53_sm120_sparse_mla_kpool_gpu.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_sparse_mla_kpool_gpu.py
-COPY patches/0005-dsa-kpool-topk-deterministic.patch /usr/share/sglang-glm53-flash-sm120/patches/0005-dsa-kpool-topk-deterministic.patch
-COPY patches/0006-glm47-nested-tool-schema-streaming.patch /usr/share/sglang-glm53-flash-sm120/patches/0006-glm47-nested-tool-schema-streaming.patch
-COPY patches/test_glm53_glm47_nested_tool_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py
-COPY patches/0009-glm53-kpool-unfused-transform.patch /usr/share/sglang-glm53-flash-sm120/patches/0009-glm53-kpool-unfused-transform.patch
-COPY patches/test_glm53_kpool_unfused_transform.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kpool_unfused_transform.py
-COPY patches/0010-glm53-norope-reserved-slot.patch /usr/share/sglang-glm53-flash-sm120/patches/0010-glm53-norope-reserved-slot.patch
-COPY patches/test_glm53_norope_reserved_slot.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py
-COPY patches/0011-glm53-sm120-tilelang-shared-memory.patch /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch
-COPY patches/test_glm53_sm120_tilelang_launch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py
-COPY patches/0012-glm53-cpu-offload-tied-parameters.patch /usr/share/sglang-glm53-flash-sm120/patches/0012-glm53-cpu-offload-tied-parameters.patch
-COPY patches/test_glm53_cpu_offload_tied_parameters.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py
-COPY patches/0013-glm53-kda-preserve-padding-sentinel.patch /usr/share/sglang-glm53-flash-sm120/patches/0013-glm53-kda-preserve-padding-sentinel.patch
-COPY patches/test_glm53_kda_padding_sentinel.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py
-COPY patches/0014-glm53-cpu-offload-derived-mla-buffers.patch /usr/share/sglang-glm53-flash-sm120/patches/0014-glm53-cpu-offload-derived-mla-buffers.patch
-COPY patches/test_glm53_cpu_offload_derived_mla_buffers.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_derived_mla_buffers.py
-
-# Patch only exact vendor bytes. The first fix preserves GLM's contiguous
-# gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
-# The second and third are the upstream DFlash2 hidden-state capture changes
-# from #36708 and its mHC residual=None correction from #36755. The fourth
-# extends upstream #26928's fail-closed SM120 sparse-MLA architecture allowlist
-# to the native GLM-5.3 target and NextN class names. The fifth archives draft
-# PR #36745's deterministic and overflow-safe fused KPool top-k correction,
-# which all four exact-hardware regression cases fail on the vendor preimage.
-# The sixth backports the GLM47-specific part of merged SGLang #36626 so nested
-# object arguments close valid streaming JSON and composite schemas resolve.
-# The seventh routes GLM-5.3's exact 528-byte no-RoPE cache and all 2,051
-# KPool candidates through the dedicated SM120 FlashInfer path. The eighth
-# preserves those three live KPool tails in SGLang's unfused diagnostic
-# transforms while leaving the tuned 2,048-entry path unchanged. The ninth
-# brings GLM's dedicated no-RoPE KV scatter under the normal reserved-slot and
-# DCP ownership contract so CUDA-graph padding cannot poison physical slot 0.
-# The tenth gives TileLang's independent BF16-KV NoPE path an SM120-specific
-# launch that fits the cards' 101,376-byte dynamic shared-memory ceiling.
-# The eleventh lets the generic CPU offloader materialize GLM's intentionally
-# tied KDA parameters without rejecting their duplicate state-dict aliases.
-# The twelfth carries upstream SGLang #36885 so padded KDA rows keep the -1
-# sentinel instead of silently overwriting the final live Mamba state slot.
-# The thirteenth keeps post-load MLA execution tensors outside checkpoint state
-# while making the generic CPU offloader move them with their decoder layer.
-RUN set -e; \
-    cd /sgl-workspace/sglang; \
-    test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/layers/attention/dsa_backend.py | cut -d' ' -f1)" = "${GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh | cut -d' ' -f1)" = "${GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/function_call/glm47_moe_detector.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM47_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/function_call/utils.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/dsa/transform_index.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/kvcache/mla_buffer.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/utils/offloader.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/models/deepseek_v2.py | cut -d' ' -f1)" = "${GLM53_SGLANG_DEEPSEEK_V2_PREIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/layers/attention/linear/kernels/kda_triton.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_TRITON_PREIMAGE_SHA256}"; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0003-glm53-dflash-mhc-residual-none.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0004-glm53-sm120-sparse-mla-architecture.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0005-dsa-kpool-topk-deterministic.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0006-glm47-nested-tool-schema-streaming.patch; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_ARCH_POSTIMAGE_SHA256}"; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0009-glm53-kpool-unfused-transform.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0010-glm53-norope-reserved-slot.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0012-glm53-cpu-offload-tied-parameters.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0013-glm53-kda-preserve-padding-sentinel.patch; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0014-glm53-cpu-offload-derived-mla-buffers.patch; \
-    test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/layers/attention/dsa_backend.py | cut -d' ' -f1)" = "${GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh | cut -d' ' -f1)" = "${GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum test/registered/kernels/ops/attention/test_kpool_topk_transform.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/function_call/glm47_moe_detector.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM47_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/function_call/utils.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FUNCTION_CALL_UTILS_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM47_TEST_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/dsa/transform_index.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TRANSFORM_INDEX_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kpool_unfused_transform.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/kvcache/mla_buffer.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_TEST_SHA256}"; \
-    test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_TEST_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/utils/offloader.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_TEST_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/models/deepseek_v2.py | cut -d' ' -f1)" = "${GLM53_SGLANG_DEEPSEEK_V2_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_derived_mla_buffers.py | cut -d' ' -f1)" = "${GLM53_SGLANG_OFFLOADER_MLA_BUFFER_TEST_SHA256}"; \
-    test "$(sha256sum python/sglang/srt/layers/attention/linear/kernels/kda_triton.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_TRITON_POSTIMAGE_SHA256}"; \
-    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KDA_PADDING_TEST_SHA256}"; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_mixed_precision_contract.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_sparse_mla_patch.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kpool_unfused_transform.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_tied_parameters.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_cpu_offload_derived_mla_buffers.py; \
-    uv run --no-project --python /opt/sglang/bin/python python \
-      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kda_padding_sentinel.py
-
-# Rebuild FlashInfer from source for SM120. The stock wheel in the vendor image
-# does not carry 12.0f kernels; workstation Blackwell lacks TMEM/tcgen05/wgmma,
-# so sm_100 and Hopper kernels do not run on it. The generic flashinfer-cubin
-# bundle is deliberately absent: it enumerates 48,391 cross-architecture
-# artifacts, while the targeted MXFP4 and sparse-MLA SM120 paths compile from
-# this pinned source.
-RUN set -e; \
-    git init -q /tmp/flashinfer-main; \
-    cd /tmp/flashinfer-main; \
-    git remote add origin https://github.com/flashinfer-ai/flashinfer.git; \
-    git fetch --depth=1 origin "${GLM53_FLASHINFER_MAIN_HEAD}"; \
-    git checkout --detach FETCH_HEAD; \
-    test "$(git rev-parse HEAD)" = "${GLM53_FLASHINFER_MAIN_HEAD}"; \
-    test "$(git rev-parse HEAD^{tree})" = "${GLM53_FLASHINFER_MAIN_TREE}"; \
-    git submodule update --init --recursive --depth=1; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0008-flashinfer-glm53-nope-sm120.patch; \
-    uv pip uninstall --python /opt/sglang/bin/python \
-      flashinfer-cubin flashinfer-jit-cache || true; \
-    BUILD_NVEP=0 FLASHINFER_CUDA_ARCH_LIST=12.0f \
-      uv pip install --python /opt/sglang/bin/python --reinstall --no-deps .; \
-    FLASHINFER_CUDA_ARCH_LIST=12.0f \
-      uv run --no-project --python /opt/sglang/bin/python python -c \
-      "from flashinfer.jit.mla import gen_sparse_mla_sm120_module as g; g().build()"; \
-    cd /; \
-    rm -rf /tmp/flashinfer-main
-
-RUN set -e; \
-    uv run --no-project --python /opt/sglang/bin/python python -c "\
-import importlib.util; import os; import flashinfer; \
-assert flashinfer.__version__ == '${GLM53_FLASHINFER_VERSION}', flashinfer.__version__; \
-assert flashinfer.__git_commit__ == '${GLM53_FLASHINFER_MAIN_HEAD}', flashinfer.__git_commit__; \
-assert importlib.util.find_spec('flashinfer_cubin') is None; \
-assert importlib.util.find_spec('flashinfer_jit_cache') is None; \
-assert os.environ['FLASHINFER_NO_DOWNLOAD'] == '1'; \
-print('flashinfer source-jit', flashinfer.__version__, flashinfer.__git_commit__)"
-
-# compressed-tensors must be able to read the MXFP4 artifact this image serves.
-# The quantizer emitted mxfp4-pack-quantized with GROUP strategy, group_size 32
-# and uint8 E8M0 scales; assert the runtime agrees on that contract.
-RUN set -e; \
-    uv run --no-project --python /opt/sglang/bin/python python -c "\
-from compressed_tensors.config import CompressionFormat; \
-from compressed_tensors.quantization.quant_scheme import MXFP4A16; \
-from compressed_tensors.compressors.mxfp4.base import MXFP4PackedCompressor as C; \
-from compressed_tensors.quantization import QuantizationScheme; \
-w = MXFP4A16['weights']; \
-assert CompressionFormat.mxfp4_pack_quantized.value == 'mxfp4-pack-quantized'; \
-assert w.num_bits == 4 and w.group_size == 32 and w.type == 'float'; \
-assert C.compression_param_names(QuantizationScheme(targets=['Linear'], weights=w)) == ('weight_packed','weight_scale'); \
-print('mxfp4-pack-quantized contract OK, group_size', w.group_size)"
-
-# The GLM support branch enters the shared DeepSeek/DSA hook but misses the
-# SM120 fallback block currently applied only to DeepseekV4ForCausalLM. On
-# workstation Blackwell, leaving those defaults enabled reaches DeepGEMM's
-# unavailable tcgen05/TMEM mHC kernel and crashes during warmup. Mirror the
-# upstream DeepSeek-V4 SM120 settings in the hardware-specific image until the
-# architecture hook is generalized upstream.
-ENV SGLANG_OPT_FP8_WO_A_GEMM=0 \
-    SGLANG_OPT_USE_TOPK_V2=0 \
-    SGLANG_OPT_USE_TILELANG_MHC_PRE=0 \
-    SGLANG_OPT_FUSE_MHC_POST_PRE=1 \
-    SGLANG_OPT_DEEPGEMM_HC_PRENORM=0 \
-    SGLANG_FP8_PAGED_MQA_LOGITS_TORCH=1 \
-    SGLANG_OPT_USE_TILELANG_INDEXER=1
-
-RUN set -e; \
-    uv run --no-project --python /opt/sglang/bin/python python -c "\
-from sglang.srt.environ import envs; \
-assert not envs.SGLANG_OPT_FP8_WO_A_GEMM.get(); \
-assert not envs.SGLANG_OPT_USE_TOPK_V2.get(); \
-assert not envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.get(); \
-assert envs.SGLANG_OPT_FUSE_MHC_POST_PRE.get(); \
-assert not envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get(); \
-assert envs.SGLANG_FP8_PAGED_MQA_LOGITS_TORCH.get(); \
-assert envs.SGLANG_OPT_USE_TILELANG_INDEXER.get(); \
-print('GLM SM120 DeepGEMM/mHC/indexer fallback contract OK')"
-
-ENV SGLANG_BUILD_BASE_DIGEST=${GLM53_SGLANG_BASE_AMD64_MANIFEST} \
-    FLASHINFER_VERSION=${GLM53_FLASHINFER_VERSION} \
-    FLASHINFER_BUILD_COMMIT=${GLM53_FLASHINFER_MAIN_HEAD} \
+ENV SGLANG_SOURCE_ROOT=/opt/sglang-source \
+    PYTHONPATH=/opt/sglang-source/python \
+    FLASHINFER_NO_DOWNLOAD=1 \
     FLASHINFER_CUDA_ARCH_LIST=12.0f
+
+# Replace the unverifiable vendor Python tree with the exact integration tree.
+# The branch is based on current SGLang main and contains GLM-5.3 support,
+# raw-layout FP8 TileLang DSA, and the E4M3-K32 W4A16 loader/runner contract.
+RUN set -eux; \
+    git init -q "${SGLANG_SOURCE_ROOT}"; \
+    cd "${SGLANG_SOURCE_ROOT}"; \
+    git remote add origin "${GLM53_SGLANG_REPOSITORY}"; \
+    git fetch --depth=1 origin "${GLM53_SGLANG_HEAD}"; \
+    git checkout --detach FETCH_HEAD; \
+    test "$(git rev-parse HEAD)" = "${GLM53_SGLANG_HEAD}"; \
+    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_SGLANG_TREE}"; \
+    uv run --no-project --python /opt/sglang/bin/python python -m compileall -q \
+      python/sglang/srt/models/glm5_next.py \
+      python/sglang/srt/layers/attention/dsa_backend.py \
+      python/sglang/srt/layers/quantization/modelopt_quant.py \
+      python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
+
+# Build FlashInfer from the exact SM120 integration tree. It contains
+# upstream's >INT32 W4A16 expert-bank correction plus the explicit ModelOpt
+# E2M1/E4M3-K32 preparation contract. Generic cubin bundles are deliberately
+# removed so this image cannot silently select a kernel built for another GPU.
+RUN set -eux; \
+    git init -q /tmp/flashinfer-source; \
+    cd /tmp/flashinfer-source; \
+    git remote add origin "${GLM53_FLASHINFER_REPOSITORY}"; \
+    git fetch --depth=1 origin "${GLM53_FLASHINFER_HEAD}"; \
+    git checkout --detach FETCH_HEAD; \
+    test "$(git rev-parse HEAD)" = "${GLM53_FLASHINFER_HEAD}"; \
+    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_FLASHINFER_TREE}"; \
+    git submodule update --init --recursive --depth=1; \
+    uv pip uninstall --python /opt/sglang/bin/python \
+      flashinfer-python flashinfer-cubin flashinfer-jit-cache || true; \
+    BUILD_NVEP=0 FLASHINFER_CUDA_ARCH_LIST=12.0f \
+      uv pip install --python /opt/sglang/bin/python --no-deps .; \
+    cd /; \
+    rm -rf /tmp/flashinfer-source
+
+# The runtime image doubles as the controlled quantization environment. Pin
+# current ModelOpt source instead of relying on the base image's older wheel.
+RUN set -eux; \
+    git init -q /tmp/modelopt-source; \
+    cd /tmp/modelopt-source; \
+    git remote add origin "${GLM53_MODELOPT_REPOSITORY}"; \
+    git fetch --depth=1 origin "${GLM53_MODELOPT_HEAD}"; \
+    git checkout --detach FETCH_HEAD; \
+    test "$(git rev-parse HEAD)" = "${GLM53_MODELOPT_HEAD}"; \
+    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_MODELOPT_TREE}"; \
+    uv pip install --python /opt/sglang/bin/python --reinstall --no-deps .; \
+    cd /; \
+    rm -rf /tmp/modelopt-source
+
+# Fail the image build if any part of the intended contract is shadowed by the
+# vendor tree or omitted from the installed packages.
+RUN set -eux; \
+    uv run --no-project --python /opt/sglang/bin/python python -c "\
+import importlib.metadata as md; import inspect; import sglang; import flashinfer; \
+from sglang.srt.models.glm5_next import Glm5NextForConditionalGeneration; \
+from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
+from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
+from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights; \
+assert inspect.getfile(sglang).startswith('/opt/sglang-source/python/'); \
+assert flashinfer.__version__ == '${GLM53_FLASHINFER_VERSION}', flashinfer.__version__; \
+assert flashinfer.__git_commit__ == '${GLM53_FLASHINFER_HEAD}', flashinfer.__git_commit__; \
+assert md.version('nvidia-modelopt') == '${GLM53_MODELOPT_VERSION}'; \
+print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
+
+ENV SGLANG_BUILD_COMMIT=${GLM53_SGLANG_HEAD} \
+    SGLANG_BUILD_TREE=${GLM53_SGLANG_TREE} \
+    FLASHINFER_VERSION=${GLM53_FLASHINFER_VERSION} \
+    FLASHINFER_BUILD_COMMIT=${GLM53_FLASHINFER_HEAD} \
+    MODELOPT_BUILD_COMMIT=${GLM53_MODELOPT_HEAD}
+
 LABEL org.opencontainers.image.title="sglang-glm53-flash-sm120" \
-      org.opencontainers.image.description="SGLang for GLM-5.3-Flash MXFP4 on dual RTX PRO 6000 Blackwell (SM120)" \
+      org.opencontainers.image.description="GLM-5.3-Flash E4M3-K32 W4A16 integration for dual RTX PRO 6000 Blackwell" \
       org.opencontainers.image.source=${IMAGE_SOURCE} \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version=${GLM53_RELEASE_VERSION} \
@@ -354,13 +138,13 @@ LABEL org.opencontainers.image.title="sglang-glm53-flash-sm120" \
       ai.hardware.target-architecture="sm120" \
       ai.model.repository=${GLM53_MODEL_REPOSITORY} \
       ai.model.revision=${GLM53_MODEL_REVISION} \
-      ai.model.quantization="mxfp4-pack-quantized (MXFP4A16, routed experts only)" \
-      ai.sglang.base.tag=${GLM53_SGLANG_BASE_TAG} \
-      ai.sglang.base.amd64-manifest=${GLM53_SGLANG_BASE_AMD64_MANIFEST} \
-      ai.sglang.base.created=${GLM53_SGLANG_BASE_CREATED} \
-      ai.sglang.base.cuda-version=${GLM53_SGLANG_BASE_CUDA_VERSION} \
-      ai.sglang.base.flashinfer-version=${GLM53_SGLANG_BASE_FLASHINFER_VERSION} \
-      ai.sglang.source-provenance="vendor per-model image, built from tarball; no upstream commit available" \
-      ai.flashinfer.version=${GLM53_FLASHINFER_VERSION} \
-      ai.flashinfer.main.head=${GLM53_FLASHINFER_MAIN_HEAD} \
-      ai.flashinfer.main.tree=${GLM53_FLASHINFER_MAIN_TREE}
+      ai.model.quantization="planned ModelOpt E2M1 weights/E4M3 K32 scales, W4A16" \
+      ai.sglang.repository=${GLM53_SGLANG_REPOSITORY} \
+      ai.sglang.head=${GLM53_SGLANG_HEAD} \
+      ai.sglang.tree=${GLM53_SGLANG_TREE} \
+      ai.flashinfer.repository=${GLM53_FLASHINFER_REPOSITORY} \
+      ai.flashinfer.head=${GLM53_FLASHINFER_HEAD} \
+      ai.flashinfer.tree=${GLM53_FLASHINFER_TREE} \
+      ai.modelopt.repository=${GLM53_MODELOPT_REPOSITORY} \
+      ai.modelopt.head=${GLM53_MODELOPT_HEAD} \
+      ai.modelopt.tree=${GLM53_MODELOPT_TREE}
