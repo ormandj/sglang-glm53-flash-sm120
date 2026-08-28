@@ -1,8 +1,8 @@
 # GLM-5.3-Flash BF16 to MXFP4 quantization
 
 This is the quantization contract for `v0.1.0-rc.5`. The production artifact is
-still being built and is not qualified. Numbers described as estimates are not
-hardware measurements.
+complete and independently hash-verified, but the served model is not yet
+qualified. Numbers described as estimates are not hardware measurements.
 
 ## Decision
 
@@ -74,6 +74,25 @@ For this hardware and software stack, routed-expert MXFP4 plus BF16 protected
 components gives the best credible quality/capacity starting point. NVFP4
 remains a valid future A/B only if its end-to-end runtime, model quality, and KV
 capacity are measured on the same cards.
+
+That choice was rechecked against upstream on 2026-08-28, after the production
+artifact completed. The open GLM-5.3-Flash support PR reports that routed-expert
+ModelOpt NVFP4 conversions incorrectly apply packed expert shape assumptions to
+protected BF16 KDA projections and fail during load. The related TP>1 NEXTN
+report constructs the quantized draft inconsistently and fails while loading its
+MoE weights. Our compressed-tensors artifact has already loaded both the target
+and native layer-45 MTP on TP=2; its first hardware failure occurred later in an
+independent SM120 mHC dispatch path. See SGLang
+[PR #36507](https://github.com/sgl-project/sglang/pull/36507),
+[issue #36596](https://github.com/sgl-project/sglang/issues/36596), and
+[issue #36653](https://github.com/sgl-project/sglang/issues/36653).
+
+FlashInfer's current SM12x NVFP4 work also remains active rather than settled:
+the project is tracking a lagging correctness/performance kernel sync in
+[issue #4223](https://github.com/flashinfer-ai/flashinfer/issues/4223). This is
+runtime evidence, not a claim that the NVFP4 number format is intrinsically
+worse. It raises the implementation risk of spending the pair's remaining KV
+headroom on a roughly 8.9 GiB larger artifact today.
 
 An experimental per-group exponent MSE search improved sampled reconstruction
 error by only about 1.06% over the standard MXFP4 max-absolute scale rule. The

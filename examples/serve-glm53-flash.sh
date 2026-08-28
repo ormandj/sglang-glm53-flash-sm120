@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Candidate serving envelope for GLM-5.3-Flash MXFP4 on two RTX PRO 6000
 # Blackwell GPUs (SM120, TP=2). It is not a qualification claim until the
-# primary repository's RESULTS.md records a passing run.
+# primary repository's BENCHMARKS.md records a passing run.
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the GLM-5.3-Flash-BF16-MXFP4 artifact directory}"
