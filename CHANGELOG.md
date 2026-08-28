@@ -1,8 +1,24 @@
 # Changelog
 
-## v0.1.0-rc.10
+## v0.1.0-rc.11
 
 Exact GLM-5.3 no-RoPE sparse-MLA candidate. This candidate is not qualified.
+
+- Retain the isolated 528-byte no-RoPE FlashInfer trait, 2,176-column padded
+  KPool dispatch, TP=2 specialization, and build-time CUDA/numerical gates
+  introduced for v0.1.0-rc.10.
+- Correct the fail-closed final `flash_mla_sm120.py` postimage from a value not
+  produced by the exact vendor base to the observed vendor-base result,
+  `8ccc7bb2…`. All other exact preimages and postimages matched.
+- Preserve cache schema `v7`: kernel and adapter bytes are unchanged from the
+  intended v0.1.0-rc.10 implementation.
+
+## v0.1.0-rc.10
+
+Exact GLM-5.3 no-RoPE sparse-MLA attempt. No image was published: the build
+failed closed when the final adapter postimage did not match the exact vendor
+base. The failure is preserved in
+[`evidence/v0.1.0-rc.10-build-failure-20260828.txt`](evidence/v0.1.0-rc.10-build-failure-20260828.txt).
 
 - Correct the cache-layout diagnosis: GLM-5.3 uses SGLang's generic 528-byte
   cache (512 E4M3 latent bytes plus four arbitrary FP32 scales), not the

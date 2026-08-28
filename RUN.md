@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.10`
+# Running `v0.1.0-rc.11`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.10
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.11
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v7
 export SPECULATIVE_MODE=mtp

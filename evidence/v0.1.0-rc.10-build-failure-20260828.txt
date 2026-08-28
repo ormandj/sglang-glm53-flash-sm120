@@ -1,0 +1,36 @@
+GLM-5.3-Flash SM120 v0.1.0-rc.10 build failure
+Date: 2026-08-28
+
+Container source commit:
+  04547e1d08980a075ee2f96643bae053be8354f6
+
+Forgejo runner observations:
+  task 12963 (immutable commit-tagged test image) cleaned up at 08:48:19Z
+  task 12965 (immutable SemVer candidate) cleaned up at 08:50:29Z
+  no v0.1.0-rc.10 image was produced in the runner image store
+
+The exact committed context was replayed against the same Podman worker under
+the local-only diagnostic tag localhost/glm53-rc10-debug:04547e1. The build
+stopped at Containerfile step 50, after all seven SGLang patches applied. The
+fail-closed final flash_mla_sm120.py postimage assertion was the first failing
+assertion.
+
+Recorded final file hash:
+  8ccc7bb2a96e65e70ed55dc40f4de59a421103e4f089cdc553c633c2a8a1688c
+
+Incorrect locked value in v0.1.0-rc.10:
+  ddd9768c5977684259be1dd5a7b7448094290c7a7961b24aadc516945760b01f
+
+The remaining eight post-patch hashes matched their locked values exactly:
+  mxfp4.py
+  glm5_next.py
+  dsa_backend.py
+  kpool_topk_transform.cuh
+  test_kpool_topk_transform.py
+  glm47_moe_detector.py
+  function_call/utils.py
+  test_glm53_glm47_nested_tool_patch.py
+
+The disposable diagnostic containers were removed after the comparison. The
+failure occurred before the FlashInfer checkout, package build, CUDA compile,
+registry push, or deployment.

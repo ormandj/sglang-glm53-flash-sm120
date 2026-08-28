@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 10,
-    "candidate_tag": "v0.1.0-rc.10",
+    "candidate": 11,
+    "candidate_tag": "v0.1.0-rc.11",
     "stable_tag": "v0.1.0",
     "cache_schema": "v7"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.10",
+    "tag": "v0.1.0-rc.11",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "10"
+      "value": "11"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -143,7 +143,7 @@
     },
     {
       "arg": "GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256",
-      "value": "ddd9768c5977684259be1dd5a7b7448094290c7a7961b24aadc516945760b01f"
+      "value": "8ccc7bb2a96e65e70ed55dc40f4de59a421103e4f089cdc553c633c2a8a1688c"
     },
     {
       "arg": "GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256",
@@ -328,7 +328,7 @@
       "sm120_sparse_mla_glm_next_nope_kpool": {
         "rationale": "v0.1.0-rc.9 proved target, native MTP, and 516,032-token pool allocation but its DSv4-specific 584-byte adapter branch was dead: exact vendor config and cache allocation show GLM-5.3 uses a 528-byte generic FP8 cache (512 E4M3 latent bytes plus four arbitrary FP32 scales) with no RoPE payload. The dedicated SM120 path must preserve all three live KPool tail entries after the 2,048-wide base table.",
         "flash_mla_arch_postimage_sha256": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93",
-        "flash_mla_final_postimage_sha256": "ddd9768c5977684259be1dd5a7b7448094290c7a7961b24aadc516945760b01f",
+        "flash_mla_final_postimage_sha256": "8ccc7bb2a96e65e70ed55dc40f4de59a421103e4f089cdc553c633c2a8a1688c",
         "dsa_backend_preimage_sha256": "f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f",
         "dsa_backend_postimage_sha256": "eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547",
         "cache_bytes_per_token": 528,
@@ -336,7 +336,7 @@
         "input_topk": 2051,
         "kernel_topk": 2176,
         "padding_value": -1,
-        "qualification_status": "build-time contracts authored; exact-hardware numerical regressions and served-model qualification pending on v0.1.0-rc.10"
+        "qualification_status": "build-time contracts authored; exact-hardware numerical regressions and served-model qualification pending on v0.1.0-rc.11"
       },
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
