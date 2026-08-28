@@ -1,198 +1,195 @@
-# Quantizing GLM-5.3-Flash to MXFP4A16 for two 96 GiB Blackwell cards
+# GLM-5.3-Flash BF16 to MXFP4 quantization
 
-Written 2026-08-27, two days after the model shipped. The arithmetic and the
-measured library semantics below should age well. The upstream bug list will
-not — re-verify before relying on it.
+This is the quantization contract for `v0.1.0-rc.2`. The production artifact is
+still being built and is not qualified. Numbers described as estimates are not
+hardware measurements.
 
----
+## Decision
 
-## The problem
+Start from the official BF16 checkpoint, not the official FP8 checkpoint:
 
-`zai-org/GLM-5.3-Flash` is 321.3 B total / 18 B active (`glm5_next`, MIT). The
-native FP8 checkpoint is **305.81 GiB**. Two RTX PRO 6000 Blackwell cards give
-**192 GiB**. It does not fit, and no 4-bit checkpoint existed — every public
-release was NVFP4, and RedHat's GLM-5.2 MXFP4 had landed **63 days** after that
-model shipped.
+- repository: `zai-org/GLM-5.3-Flash-BF16`
+- immutable revision: `f12e0fe1f6b2ea274c11a569582edfd99d993c5e`
+- 120 safetensors shards
+- 642,646,653,816 indexed tensor bytes
 
-## The decision, and why it is counter-intuitive
+Quantize only the routed expert projections in language-model layers 3 through
+45 with compressed-tensors `MXFP4A16`. Layer 45 is the checkpoint's native MTP
+block and is deliberately retained. Everything else remains BF16, including the
+entire vision tower.
 
-Weights are ~90 % of the VRAM budget, so the KV pool is a small *residual* and
-the weights↔context curve is violently nonlinear. The exchange rate is what
-settles the design:
+The exact target is 37,152 tensors:
 
-> **0.25 bpw off the 311.7 B expert set frees 8.9 GiB.
-> Keeping ALL attention at BF16 costs 5.67 GiB.**
+```text
+43 layers x 288 experts x 3 projections = 37,152
+```
 
-So moving NVFP4 (4.5 bpw) → MXFP4 (4.25 bpw) *pays for* full-precision attention
-and leaves change:
+The projections are `gate_proj`, `up_proj`, and `down_proj`. The quantizer uses
+an anchored regex over the full checkpoint name and fails if the resulting
+namespace differs by even one tensor.
 
-| expert format | attention | weights (VRAM) | C=1 | C=2 | C=4 | C=8 |
-|---|---|---|---|---|---|---|
-| NVFP4 4.500 | ALL BF16 | 182.5 GiB | 93 k | 47 k | 23 k | 12 k |
-| NVFP4 4.500 | ALL FP8 | 176.9 GiB | 520 k | 260 k | 130 k | 65 k |
-| **MXFP4 4.250** | **ALL BF16** | **173.4 GiB** | **785 k** | **393 k** | **196 k** | **98 k** |
-| 4.125 int4 g128 | ALL BF16 | 168.8 GiB | 1.13 M | 566 k | 283 k | 141 k |
+## Why the FP8-derived artifact was rejected
 
-MXFP4-with-BF16-attention beats NVFP4-with-FP8-attention on **both** context and
-quality. No axis favours the NVFP4 line.
+The deleted artifact was structurally loadable, but it performed FP8 to MXFP4
+requantization. That is unnecessary compound quantization now that the official
+BF16 source exists.
 
-NVFP4 and MXFP4 use **identical E2M1 4-bit values**. They differ only in scale
-granularity — an FP8 scale per 16 elements versus an E8M0 scale per 32. That
-half-bit of block scale is the single most expensive design choice in the stack.
+Checks against corresponding BF16 and FP8 tensors found:
 
-We did not chase 4.125 bpw int4: it abandons the E2M1 mantissa that handles
-expert outliers, for context we cannot currently use.
+- ordinary routed experts differ by roughly 0.0017 relative L2 before MXFP4;
+- the layer-45 MTP expert sample differs by roughly 0.021, indicating that the
+  two published checkpoints are not interchangeable at the draft layer;
+- on sampled expert projections, direct BF16 to MXFP4 error was approximately
+  0.109 to 0.122 relative L2;
+- using FP8 as the source increased that MXFP4 error by 2.35% on average and up
+  to 7.17% in the sampled set.
 
-## The recipe
+These are tensor reconstruction checks, not model-quality scores. They are
+sufficient to reject the avoidable FP8 intermediate, but not to qualify the
+finished model.
 
-`nvidia/GLM-5.2-NVFP4`'s exclusion set, with RedHat's bug fixed. **MXFP4A16**
-(weight-only, group 32, E8M0 uint8 scales) on routed experts of layers 3-44 **and
-the layer-45 MTP block**. Everything else BF16.
+The old FP8 source, old output, and old serving copy were removed from the
+scratch and model volumes before the new run began.
 
-Quantize only what averages out; protect what does not:
+## Why MXFP4, not NVFP4
 
-| kept BF16 | why |
+This is a system-level choice, not a claim that MXFP4 always has lower weight
+error.
+
+MXFP4 stores E2M1 values with one E8M0 scale per 32 weights, for exactly 4.25
+bits/weight. NVFP4 uses finer scale granularity and costs approximately 4.5
+bits/weight. Across this model's routed experts, that quarter-bit difference is
+about 8.9 GiB of total residency. On two 96 GiB cards, those bytes are a large
+fraction of the memory left for KV after weights.
+
+The current SGLang paths also matter:
+
+- the SM120 `flashinfer_mxfp4` path uses MXFP8 activations with MXFP4 weights;
+- the native NVFP4 MoE path is effectively an FP4-activation path;
+- a per-layer NVFP4/MXFP4 mixture is not currently routed correctly by SGLang's
+  quantization-scheme selection, and the latest model-free fusion matcher does
+  not make that hybrid checkpoint safe.
+
+For this hardware and software stack, routed-expert MXFP4 plus BF16 protected
+components gives the best credible quality/capacity starting point. NVFP4
+remains a valid future A/B only if its end-to-end runtime, model quality, and KV
+capacity are measured on the same cards.
+
+An experimental per-group exponent MSE search improved sampled reconstruction
+error by only about 1.06% over the standard MXFP4 max-absolute scale rule. That
+small tensor-level gain did not justify a non-standard format or loader fork.
+
+## Protected BF16 scope
+
+The following are copied bit-for-bit from the BF16 source:
+
+| component | reason |
 |---|---|
-| ALL `self_attn`, incl. the DSA indexer | read on **every** token; 57 % of decode bandwidth |
-| ALL `mlp.shared_experts` | fires on every token — its error never averages across routing |
-| layers 0-2 entirely | classic early-layer sensitivity hotspot |
-| `mlp.gate` (router) | a small logit perturbation changes expert **identity** discontinuously |
-| mHC (`hc_*`) | error is reused across layers and 20 Sinkhorn iterations |
-| DSA indexer | drives a discrete top-2048 selection; RedHat's own script flags `indexer.weights_proj` "sensitive to quantization" |
-| `eh_proj` | MTP projection, on the speculative-draft path, ~0.05 GiB to protect |
-| vision tower, `lm_head`, `embed_tokens` | |
+| vision tower and multimodal projection | vision is required and must not be silently degraded |
+| embeddings and LM head | high reuse and direct effect on token probabilities |
+| all attention and DSA indexer tensors | active on every token; indexer affects discrete sparse selection |
+| all KDA recurrent-state parameters | error can compound with sequence depth |
+| mHC parameters | reused across layers |
+| shared experts | active on every routed token |
+| routers | small changes can alter expert identity |
+| language-model layers 0 through 2 | conservative early-layer protection |
+| MTP `eh_proj` and non-expert tensors | small relative to the expert block and draft-sensitive |
 
-Routed experts are top-8 of 288, so each expert's error is diluted by routing.
-They are the only place worth spending bits — and they are 97 % of the model.
+There are 1,618 protected tensors in the source namespace, including exactly
+347 vision tensors. The production verifier compares every protected tensor's
+dtype, shape, and bytes.
 
-`dt_bias`, `A_log` and `{q,k,v}_conv1d` are **not** `nn.Linear`, so the KDA
-recurrence gating is protected by construction under any Linear-targeted recipe.
+## On-disk format and runtime contract
 
-**Exactly 37,152 tensors are quantized** = 43 × 288 × 3. Assert that number; it
-is the cheapest possible guard against recipe drift, and it is what caught two
-mistakes during development.
+The output uses compressed-tensors `mxfp4-pack-quantized`:
 
-## Verified numerics
+- weight type: 4-bit float E2M1
+- strategy: `GROUP`
+- group size: 32
+- activation quantization in the checkpoint: none
+- packed parameter: `weight_packed`, `uint8`
+- scale parameter: `weight_scale`, `uint8` E8M0
 
-Established by **running compressed-tensors 0.18.0**, not by reading code.
+A `(2048, 4096)` projection becomes a `(2048, 2048)` packed tensor plus a
+`(2048, 128)` scale tensor, exactly 4.25 bits/weight.
 
-- `calculate_qparams()` returns a **float32** scale already snapped to exact
-  powers of two (via `generate_mx_scales`). It does **not** pre-round to uint8,
-  so `MXFP4PackedCompressor._compress_scale` applying `127 + floor(log2(scale))`
-  is the *only* float→E8M0 conversion. **The double-conversion hazard we
-  suspected does not exist.**
-- `compression_param_names()` == `("weight_packed", "weight_scale")`. No global
-  scale: MXFP4 uses GROUP strategy, unlike NVFP4's TENSOR_GROUP.
-- A `(2048, 4096)` expert → `weight_packed (2048, 2048) uint8` +
-  `weight_scale (2048, 128) uint8` = **4.2500 bits/weight exactly**.
-- **Source FP8 layout**, read from a real shard header:
-  `gate_proj.weight F8_E4M3 [2048, 4096]` with
-  `weight_scale_inv F32 [16, 32]` — block 128×128, all dims divide evenly.
-- **End-to-end replay on synthetic FP8:** 0.1125 rel L2 against the
-  FP8-dequantized reference. **Negative control** — quantizing the raw FP8
-  payload *without* applying `weight_scale_inv`, the silent-corruption mode —
-  measures **5366**. A verifier threshold of 0.30 separates them by orders of
-  magnitude.
-- safetensors container overhead is **0.002 %**, so it never explains a size
-  discrepancy.
+SGLang's inherited SM120 post-loader was GPT-OSS-specific: it assumed pairwise
+gate/up rows and hard-coded SwiGLU-OAI `(alpha=1.702, beta=1, limit=7)`. GLM's
+per-expert loader produces contiguous `[gate; up]` halves and GLM uses standard
+clamped SwiGLU `(alpha=1, beta=0, limit=10)`. rc.2 applies a byte-gated patch
+that preserves both contracts and has a build-time semantic test.
 
-**Production run:** 37,152 quantized / 186 dequantized-to-BF16 / 1,432
-passthrough; artifact 172.24 GiB across 62 shards; probe round-trip
-**rel_l2_err 0.1220**.
+## Fail-closed production procedure
 
-## Why we stream over checkpoint tensors instead of loading the model
+[`quantization/quantize_glm53_bf16_mxfp4.py`](quantization/quantize_glm53_bf16_mxfp4.py)
+performs model-free, streaming quantization. Loading the Transformers model is
+both unnecessary and risky because its experts are fused 3D parameters while
+the checkpoint exposes the per-expert 2D tensors that SGLang loads.
 
-`transformers` implements `glm5_next`'s experts as **fused 3D parameters**:
+Before writing, the script verifies:
 
-```python
-class Glm5NextTextExperts(nn.Module):
-    gate_up_proj = nn.Parameter(empty(num_experts, 2*intermediate, hidden))
-    down_proj    = nn.Parameter(empty(num_experts, hidden, intermediate))
-```
+- source repository revision, file count, byte count, and completion marker;
+- exact BF16 config, multimodal config, processor files, and tensor namespace;
+- exact target count, shapes, and BF16 source dtypes;
+- absence of any source quantization config.
 
-So `targets="Linear"` matches **zero** expert projections, and llm-compressor's
-MoE linearizer has **no `glm5_next` entry** (the registry has `glm4_moe`,
-`glm4_moe_lite`, `glm_moe_dsa` — not ours).
+It writes to an `.incomplete` sibling and refuses to overwrite either an old
+temporary output or a final output. After conversion it verifies:
 
-Loading the model would also route through transformers' fine-grained-FP8
-integration, where `dtype=bfloat16` does **not** guarantee the block scales are
-applied. The failure mode is quantizing raw FP8 payloads — garbage with
-perfectly plausible shapes.
+- the exact serialized quantization config;
+- 37,152 packed tensors and 37,152 scale tensors with exact uint8 shapes;
+- all 1,618 protected tensors bit-for-bit;
+- one dequantization probe for each projection in every targeted layer;
+- bounded total tensor bytes;
+- SHA-256 for every artifact file and full installed-package provenance.
 
-Operating on checkpoint tensors sidesteps both. The checkpoint stores per-expert
-2D tensors; we dequantize FP8 explicitly and assert it. The output layout matches
-`LibertAIDAI/GLM-5.3-Flash-NVFP4`, which SGLang already loads.
+Only after every check succeeds does it write `.quant-complete`, sync the
+filesystem, and atomically rename the directory into its final path.
 
-## Traps
+Pinned toolchain for this run:
 
-### RedHat's published GLM-5.2 recipes do not exclude layers 0-2
+- PyTorch `2.13.0+cpu`
+- compressed-tensors commit `aa91ea52e9cb44da4f984dd53b4c2df65ef554b4`
+  (tree `5071ae29e82a01663585bef999923fe424bdf236`)
+- llm-compressor commit `d1e1fb6cb2ad2c99563164be36c2f83d846462b4`
+  (tree `23a003ddb2215804851b41cbc0844d428e207f28`)
 
-```python
-ignore=[
-    r"re:^model\.layers\.[0-2]\..*"      # <-- no comma
-    r"re:.*mlp\.gate.*",
-```
+The exact commits were installed from verified git trees. A synthetic
+GLM-shaped checkpoint was serialized and loaded successfully before the
+production job was launched; its reconstruction check was 0.112915 relative
+L2. That result validates the toolchain and format only.
 
-Python concatenates adjacent string literals into one unmatchable regex. Their
-shipped configs confirm it: only 6 of 19,543 ignore entries touch layers 0-2, all
-`self_attn.indexer`. **Do not copy their ignore list verbatim.**
+## Capacity implications
 
-### `device_map="auto_offload"` is not a stock Accelerate mode
+The pre-run residency estimate is about 173.4 GiB across TP=2, including the
+MXFP4 routed experts and BF16 protected tensors. It must be replaced by measured
+GPU residency after the exact candidate boots.
 
-It is intercepted only inside `compressed_tensors.offload.load_offloaded_model()`
-(or `llmcompressor.utils.load_context()`), which patches a *specific* model
-class's `from_pretrained`. Calling `from_pretrained` directly with it fails.
+At FP8 KV, the target DSA cache is estimated at 6.875 KiB/token/GPU. The 34 KDA
+layers also allocate recurrent state per request slot, not per active request;
+`--mamba-ssm-dtype bfloat16` keeps that to about 72.78 MiB/slot. These are why
+the launcher defaults to eight slots and a 524,288-token context ceiling.
 
-### A verifier that cannot fail
+Native MTP reuses the checkpoint's quantized layer 45 and is the capacity
+baseline. DFlash2 adds a separate draft cache. The launcher therefore pins its
+draft KV to `fp8_e4m3` and its logical window to 2,048 tokens, but current
+SGLang still sizes the physical draft pool against the target token pool. The
+achievable pooled context for both modes must be read from startup logs and
+tested, not inferred from the configured context length.
 
-Our own first verifier computed "packed tensors that are not experts" and raised
-if non-empty. With **zero** packed tensors that list is also empty — so a dense
-BF16 no-op printed "PASSED". Assert **exact counts and config values**, never
-just absence-of-bad.
+## Qualification still required
 
-### Published evals cannot resolve these choices
+The completed artifact is not accepted on structure alone. Qualification must
+cover:
 
-GPQA-Diamond is **198 questions**: at ~90 % accuracy, 1 σ = 2.13 points.
-`nvidia/GLM-5.2-NVFP4` and `RedHatAI/GLM-5.2-NVFP4` disagree by **1.68 points on
-the same base model** — larger than any quantization effect either reports.
-Resolving a 1-point difference at 80 % power needs ~14,000 questions.
+- target-only, native MTP, and DFlash2 load/boot on TP=2;
+- vision input and image-dependent output;
+- token-level agreement or KL against the BF16 teacher on representative text
+  and multimodal traces;
+- long-context divergence through the KDA recurrence;
+- output throughput, latency, speculative acceptance, and actual KV pool;
+- cold prefill and first decode above 262k tokens because of open SGLang issue
+  #36550.
 
-Measure **token-level distributional agreement** instead — teacher-forced top-1
-agreement, KL divergence and greedy-divergence length over 200-500 k tokens of
-real agentic transcripts. That is ~2,500× the sample size. And make it
-**depth-resolved**: watch whether divergence *grows with position*, the signature
-of error compounding through the 34 KDA recurrent layers, which is the failure
-mode unique to this hybrid architecture and the one no public eval covers.
-
-## Capacity notes that bear on the serving envelope
-
-- **KV is 6.875 KiB/token per GPU.** Only the 11 DSA layers grow (MLA latent 512
-  × 11, plus indexer 128 × 11, at fp8). `qk_rope_head_dim` is 0, so no rope cache.
-- **The MLA latent is REPLICATED across TP=2** — shared across all heads, so each
-  rank needs all of it. Real cost is **14,080 B/token across the pair**;
-  1 GiB = 76,260 pooled tokens. Getting this wrong doubles your estimate.
-  Sanity-checked against a running DSv4-Flash profile to within 3 %.
-- **`--mem-fraction-static` covers weights + KV pool.** Activations and CUDA
-  graphs live in the `1 − mf` remainder.
-- **Recurrent state is 72.78 MiB/sequence, allocated per `--max-running-requests`,
-  not per live request.** SGLang defaults the SSM dtype to **FP32** —
-  `--mamba-ssm-dtype bfloat16` is mandatory, worth ~2.2 GiB at 8 slots.
-- **DP-attention is not a lever** below ~4.05 bpw: it removes KV replication but
-  forces the 12.4 GiB non-expert set to be replicated per rank instead of sharded.
-- **EP=2 saves ≈ 0 VRAM** and costs ~27 % routing imbalance at C=1.
-- **HiCache is a prefix-reuse tier, not a max-context lever** — though restores
-  are cheap (128 k prefix ≈ 18 ms over PCIe Gen4).
-- **Disk (172.21 GiB) and VRAM residency (173.4 GiB) are different numbers**; the
-  difference is vision/router/mHC replicated across both ranks.
-
-## Reproducing
-
-The quantizer runs as a Kubernetes Job in the private homelab GitOps repository
-(`tooling/glm53-flash/quantize-glm53-flash-mxfp4-job.yaml`). It is CPU-only —
-RTN weight-only quantization is elementwise, ~6 TFLOP across the whole model, so
-it is I/O-bound and never contends with the GPUs. Wall time is dominated by the
-328 GB download.
-
-Toolchain: `torch==2.13.0` (CPU), `compressed-tensors==0.18.0`,
-`safetensors==0.6.2`. Pin these — the MX scale behaviour above was verified
-against exactly that `compressed-tensors`.
+Performance and quality results belong in `BENCHMARKS.md` with evidence from
+this exact immutable candidate.

@@ -13,8 +13,8 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=1
-ARG GLM53_CACHE_SCHEMA=v1
+ARG GLM53_RELEASE_CANDIDATE=2
+ARG GLM53_CACHE_SCHEMA=v2
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
 # separately below and asserted at build time.
@@ -24,16 +24,19 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f8
 ARG GLM53_SGLANG_BASE_CREATED=2026-08-27T04:58:48Z
 ARG GLM53_SGLANG_BASE_CUDA_VERSION=13.0.3
 ARG GLM53_SGLANG_BASE_FLASHINFER_VERSION=0.6.17
-# FlashInfer is rebuilt from source for SM120. 0.6.18 at this head is the
-# revision already qualified on these exact cards by the sibling
-# sglang-qwen38-flash-next-sm120 build; reusing a known-good SM120 FlashInfer
-# avoids introducing a second unvalidated variable alongside a new model.
+# FlashInfer is rebuilt from the exact main head refreshed on 2026-08-27.
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_MAIN_HEAD=e4b7fa4b7c3ba5e17286d9c59f2bcf2ca07e0a6d
-ARG GLM53_FLASHINFER_MAIN_TREE=2c9c021eb87fb09c982076b8a0b63514bc399e56
+ARG GLM53_FLASHINFER_MAIN_HEAD=cbcbce48e817c83f03ad5a3e6ce59480eaf6935d
+ARG GLM53_FLASHINFER_MAIN_TREE=d3a639d6f268b8bfc679a8bd15581a6a6b319a16
 # Source checkpoint the served MXFP4 artifact was quantized FROM.
-ARG GLM53_MODEL_REPOSITORY=zai-org/GLM-5.3-Flash
-ARG GLM53_MODEL_REVISION=04c4e9e95c5da8862dced7e5056455116f83a7e0
+ARG GLM53_MODEL_REPOSITORY=zai-org/GLM-5.3-Flash-BF16
+ARG GLM53_MODEL_REVISION=f12e0fe1f6b2ea274c11a569582edfd99d993c5e
+# The vendor image lacks git provenance. These byte-level pre/postimage pins
+# make our two source modifications fail closed without implying a git commit.
+ARG GLM53_SGLANG_MXFP4_PREIMAGE_SHA256=38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb
+ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256=4a5fdcfca8edb681e8b2e781e9cddf9545c866301b5ce2d16aa1545061791f09
+ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256=0a141565e73252ddb7f1773f30f0c48e001b7dce21a5ca7864b4ea6ae51d0ccd
+ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256=7f024b98543532c6b29ed95614c615abffdb87cce8d13042ca8dbe93326453a8
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -51,6 +54,10 @@ ARG GLM53_FLASHINFER_MAIN_HEAD
 ARG GLM53_FLASHINFER_MAIN_TREE
 ARG GLM53_MODEL_REPOSITORY
 ARG GLM53_MODEL_REVISION
+ARG GLM53_SGLANG_MXFP4_PREIMAGE_SHA256
+ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256
+ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -67,6 +74,27 @@ import importlib.util as u; \
 assert u.find_spec('sglang.srt.models.glm5_next') is not None, 'base image lacks glm5_next'; \
 from sglang.srt.models.glm5_next import Glm5NextForConditionalGeneration as M; \
 print('glm5_next present:', M.__name__)"
+
+COPY patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch
+COPY patches/test_glm53_sm120_mxfp4_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py
+COPY patches/0002-glm53-dflash-hidden-state-capture.patch /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch
+COPY patches/test_glm53_dflash_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py
+
+# Patch only exact vendor bytes. The first fix preserves GLM's contiguous
+# gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
+# The second is the upstream DFlash2 hidden-state capture change from #36708.
+RUN set -e; \
+    cd /sgl-workspace/sglang; \
+    test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256}"; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch; \
+    test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_dflash_patch.py
 
 # Rebuild FlashInfer from source for SM120. The stock wheel in the vendor image
 # does not carry 12.0f cubins; workstation Blackwell lacks TMEM/tcgen05/wgmma,

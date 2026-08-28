@@ -25,17 +25,31 @@ require_text "$repo/AGENTS.md" 'always uses the complete release name'
 
 critical=(
   'TP_SIZE=${TP_SIZE:-2}'
-  'CONTEXT_LENGTH=${CONTEXT_LENGTH:-786432}'
+  'CONTEXT_LENGTH=${CONTEXT_LENGTH:-524288}'
   'MEM_FRACTION=${MEM_FRACTION:-0.96}'
   'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-8}'
-  'NEXTN=${NEXTN:-0}'
+  'SPECULATIVE_MODE=${SPECULATIVE_MODE:-mtp}'
+  '--enable-multimodal'
+  '--quantization compressed-tensors'
   '--kv-cache-dtype fp8_e4m3'
   '--chunked-prefill-size 8192'
   '--cuda-graph-max-bs-decode 8'
   '--mamba-ssm-dtype bfloat16'
-  '--dsa-prefill-backend tilelang'
-  '--dsa-decode-backend tilelang'
-  '--disable-custom-all-reduce'
+  '--moe-runner-backend flashinfer_mxfp4'
+  '--speculative-algorithm EAGLE'
+  '--speculative-num-steps 5'
+  '--speculative-num-draft-tokens 6'
+  '--speculative-adaptive'
+  '--speculative-draft-model-quantization compressed-tensors'
+  '--speculative-moe-runner-backend flashinfer_mxfp4'
+  '--speculative-algorithm DFLASH'
+  '--speculative-dflash-block-size 8'
+  '--speculative-draft-window-size 2048'
+  '--speculative-draft-kv-cache-dtype fp8_e4m3'
+  '--speculative-draft-attention-backend fa4'
+  '--speculative-draft-model-quantization unquant'
+  '--dsa-prefill-backend trtllm'
+  '--dsa-decode-backend trtllm'
   '--reasoning-parser glm45'
   '--tool-call-parser glm47'
 )
@@ -47,6 +61,10 @@ if grep -E -- '--enable-hierarchical-cache|--hicache-|SGLANG_HICACHE' "$launcher
 fi
 if grep -F -- '--trust-remote-code' "$launcher" >/dev/null; then
   echo "glm5_next is native to the base image; trust-remote-code must not be needed" >&2
+  exit 1
+fi
+if grep -F -- '--disable-custom-all-reduce' "$launcher" >/dev/null; then
+  echo "launcher must allow SGLang to test two-GPU PCIe custom all-reduce" >&2
   exit 1
 fi
 # Expert Parallel is a deliberate non-choice at TP=2: ~0 VRAM saved, ~27%

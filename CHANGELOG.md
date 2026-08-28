@@ -1,8 +1,41 @@
 # Changelog
 
+## v0.1.0-rc.2
+
+Greenfield BF16-derived quantization and corrected SM120 runtime candidate. The
+quantization and image build are in progress; this candidate is not qualified.
+
+- Replace the deleted FP8-derived MXFP4 artifact with a direct quantization of
+  `zai-org/GLM-5.3-Flash-BF16@f12e0fe1…`.
+- Quantize exactly 37,152 routed-expert projections across layers 3-45. Preserve
+  every other tensor as BF16, including all 347 vision tensors and the MTP
+  support projections.
+- Add a fail-closed streaming quantizer that validates the complete input and
+  output namespaces, protected bytes, quantization config, tensor shapes,
+  round-trip probes, artifact size, package provenance, and file hashes before
+  an atomic final rename.
+- Pin the exact current compressed-tensors and audited llm-compressor trees used
+  for the production run. A later llm-compressor main commit touched only its
+  pruning scheduler and was not substituted into the already-audited run.
+- Refresh FlashInfer main to commit `cbcbce48…`, tree `d3a639d6…`, and rebuild
+  it for `12.0f`.
+- Apply a byte-gated SM120 MXFP4 patch. The vendor loader assumed GPT-OSS's
+  pairwise gate/up layout and SwiGLU-OAI constants; GLM uses contiguous halves
+  and standard clamped SwiGLU `(1, 0, 10)`.
+- Apply upstream PR #36708's GLM DFlash2 hidden-state capture patch and test its
+  mHC contraction and capture-layer contract at image build time.
+- Replace the static 3/1/4 NEXTN launcher profile with native adaptive MTP
+  5/1/6, plus verifier-only and pinned DFlash2 A/B modes.
+- Keep vision explicitly enabled. DFlash2 uses FA4, a 2,048-token draft window,
+  and FP8 draft KV to reduce its physical pool cost.
+- Stop forcibly disabling SGLang custom all-reduce. It now self-tests two-GPU
+  PCIe P2P and falls back to NCCL; the selected path will be benchmarked.
+- Change the default configured context ceiling to 524,288 and cache schema to
+  `v2`. Actual pooled capacity remains a hardware measurement.
+
 ## v0.1.0-rc.1
 
-Initial candidate. Not yet built, not yet qualified on hardware.
+Initial FP8-derived candidate. Superseded and never qualified.
 
 - Pin `lmsysorg/sglang:glm-5.3-flash-amd64` by immutable digest
   (`sha256:44cb2eed…`, linux/amd64 manifest `sha256:0836f016…`, pushed
@@ -24,17 +57,18 @@ Initial candidate. Not yet built, not yet qualified on hardware.
   base CUDA version match, `glm5_next` model class importable, and the
   `mxfp4-pack-quantized` contract (GROUP strategy, `group_size` 32, uint8 E8M0
   scales, `("weight_packed", "weight_scale")` parameter names).
-- Target the locally produced MXFP4A16 artifact quantized from
+- Targeted a locally produced MXFP4A16 artifact quantized from
   `zai-org/GLM-5.3-Flash@04c4e9e9…`: 37,152 quantized tensors (routed experts
   only, layers 3-44 plus the layer-45 MTP block), 4.25 bits/weight, everything
   else BF16.
 
-### Known limitations at rc.1
+### Why rc.1 was rejected
 
-- **No native SM120 MXFP4 MoE kernel.** FlashInfer #2847 and vLLM #31085 leave
-  three runtime guards filtering SM120 (SM103/TRTLLM modules filter to
-  `supported_major_versions=[10]`; SM120 is major 12). Expect the Marlin
-  fallback — measured ~28 % slower prefill on gpt-oss-120b. Carrying that patch
-  is the intended rc.2 work.
-- sglang #36596, #36653, #36599, #36550, #36669 are open and relevant; see
-  `stack.lock.json` → `known_limitations`.
+- It introduced avoidable FP8-to-MXFP4 compound quantization despite the
+  official BF16 source being available.
+- It did not patch the vendor SM120 loader's GPT-OSS-only gate/up and activation
+  assumptions, which would change GLM expert semantics.
+- Its static speculative profile, context defaults, and NVFP4/MXFP4 quality
+  claims had not been justified on the target hardware.
+- The FP8 source, scratch output, and model-volume copy were deleted before the
+  rc.2 requantization began.

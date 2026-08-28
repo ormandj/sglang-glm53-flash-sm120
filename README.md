@@ -1,63 +1,86 @@
 # SGLang GLM-5.3-Flash SM120
 
-Reproducible SGLang container source for serving an **in-house MXFP4A16
-quantization** of [`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash)
-(321 B total / 18 B active, `glm5_next`, MIT) on two NVIDIA RTX PRO 6000
-Blackwell GPUs (SM120) at TP=2.
+Immutable SGLang container source for serving an in-house MXFP4A16
+quantization of
+[`zai-org/GLM-5.3-Flash-BF16`](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)
+on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
+checkpoint's native MTP/NEXTN block retained.
 
-**This is `v0.1.0-rc.1`: built, not qualified.** No performance or quality claim
-is made. `BENCHMARKS.md` records what has and has not been measured.
+**`v0.1.0-rc.2` is being built and is not qualified.** No model-quality,
+throughput, acceptance-rate, or maximum-context claim is made yet.
+[`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
-## Why quantize at all, and why MXFP4
+## Why this quant
 
-The native FP8 checkpoint is 305.81 GiB against 192 GiB of VRAM. It does not
-fit, and every public 4-bit release was NVFP4.
+The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
+192 GiB of GPU memory. The deleted first attempt requantized the official FP8
+checkpoint. rc.2 instead starts from the immutable BF16 revision and quantizes
+only the routed expert projections in layers 3 through 45:
 
-Weights are ~90 % of the budget, so the KV pool is a small residual and the
-weights↔context curve is nonlinear. The exchange rate decides the design:
-**0.25 bpw off the 311.7 B expert set frees 8.9 GiB, while keeping ALL attention
-at BF16 costs only 5.67 GiB.** So NVFP4 (4.5 bpw) → MXFP4 (4.25 bpw) *pays for*
-full-precision attention:
+```text
+43 layers x 288 experts x 3 projections = 37,152 MXFP4 tensors
+```
 
-| expert format | attention | weights | C=1 | C=4 |
-|---|---|---|---|---|
-| NVFP4 4.500 | ALL BF16 | 182.5 GiB | 93 k | 23 k |
-| NVFP4 4.500 | ALL FP8 | 176.9 GiB | 520 k | 130 k |
-| **MXFP4 4.250** | **ALL BF16** | **173.4 GiB** | **785 k** | **196 k** |
+Everything else stays BF16, including attention, DSA indexers, KDA recurrent
+parameters, shared experts, routers, early layers, embeddings, LM head, mHC,
+the complete 347-tensor vision path, and the MTP support projections. Layer 45's
+routed experts are quantized so the native MTP block remains present without an
+approximately 10 GiB BF16 draft penalty.
 
-MXFP4-with-BF16-attention beats NVFP4-with-FP8-attention on **both** axes. Both
-formats use identical E2M1 4-bit values; they differ only in scale granularity.
+MXFP4 costs 4.25 bits/weight versus approximately 4.5 for NVFP4. The difference
+is about 8.9 GiB across this model's expert set, material when KV is whatever
+remains after roughly 173 GiB of estimated total model residency. This does not
+mean MXFP4 always has lower tensor error: it is the best credible
+quality/capacity/runtime choice for the current SM120 SGLang paths. The full
+audit and fail-closed recipe are in [`QUANTIZATION.md`](QUANTIZATION.md).
 
-Full derivation, the per-component protect/quantize rationale, the verified MX
-scale semantics, and the traps we hit are in [`QUANTIZATION.md`](QUANTIZATION.md).
+## Runtime design
 
-## Tested configuration
+- Linux/amd64, exactly two RTX PRO 6000 Blackwell cards, TP=2.
+- Vision is explicitly enabled; no language-only mode is used.
+- `flashinfer_mxfp4` provides the native SM120 MXFP8-by-MXFP4 MoE path.
+- FP8 E4M3 target KV and TRT-LLM DSA backends conserve memory.
+- `--mamba-ssm-dtype bfloat16` is mandatory. The 34 KDA layers allocate about
+  72.78 MiB of recurrent state per configured request slot at BF16.
+- Expert Parallel is intentionally absent: at TP=2 it saves essentially no
+  model memory and adds routing imbalance plus PCIe all-to-all traffic.
+- Custom all-reduce is allowed to self-test PCIe P2P and fall back to NCCL; it
+  is not forcibly disabled before measurement.
 
-- Linux/amd64, 2× RTX PRO 6000 Blackwell (SM120), TP=2. **No Expert Parallel** —
-  at TP=2 it saves ≈0 VRAM and adds ~27 % routing imbalance at C=1.
-- `fp8_e4m3` KV, TileLang DSA backends, `--mem-fraction-static 0.96`.
-- `--mamba-ssm-dtype bfloat16` is **mandatory**: SGLang defaults the SSM state to
-  FP32, and the 34 KDA layers hold 72.78 MiB of recurrent state per slot,
-  allocated per `--max-running-requests` rather than per live request.
-- MTP is **off** at rc.1 — sgl-project/sglang#36653 and #36599 both block NEXTN
-  for TP>1 with an FP4 draft.
+The launcher supports three A/B modes through `SPECULATIVE_MODE`:
+
+| mode | behavior |
+|---|---|
+| `mtp` | default; native layer-45 NEXTN through EAGLE, adaptive 5-step / top-k 1 / 6-token profile |
+| `dflash` | pinned `incoai/GLM-5.3-Flash-DFlash2`, block 8, 2,048-token draft window, FP8 draft KV |
+| `none` | verifier-only baseline |
+
+DFlash2 is a speed candidate, not a replacement chosen in advance. Current
+SGLang charges its physical draft KV pool against the target token pool, so
+native MTP may remain preferable when maximum pooled context matters. Both must
+be measured on these cards.
 
 ## Provenance, stated honestly
 
-`glm5_next` is **not** in sgl-project/sglang main (PR #36507 open as of
-2026-08-27), and the vendor per-model base image is built from `ADD
-sglang.tar.gz` reporting `SGLANG_BUILD_COMMIT=unknown`.
+`glm5_next` is not in `sgl-project/sglang` main as of 2026-08-27; model-support
+PR #36507 remains open and conflicting. The vendor per-model image was built
+from a tarball and reports no verifiable SGLang commit.
 
-So the SGLang layer is pinned **by immutable digest only**. We claim byte-level
-reproducibility of the image we started from, not source-level reproducibility of
-SGLang. `scripts/verify-patches.sh` asserts exactly that and **fails** if the
-lock is ever edited to imply more. When #36507 merges, switch to pinning main by
-commit and tree with an archived patch.
+The base is therefore pinned by immutable OCI index and amd64 manifest digests.
+This repository does not claim a vendor SGLang git revision. For the two files
+we modify, rc.2 asserts exact vendor preimage SHA-256 values, applies archived
+patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
+tests. The patches:
 
-FlashInfer 0.6.18 *is* built from a verified source tree with
-`FLASHINFER_CUDA_ARCH_LIST=12.0f`; the vendor wheel carries no 12.0f cubins, and
-workstation Blackwell lacks TMEM/`tcgen05`/`wgmma` so sm_100 and Hopper kernels
-do not run on it.
+1. preserve GLM's contiguous gate/up layout and `(alpha=1, beta=0, limit=10)`
+   SwiGLU contract in the SM120 MXFP4 loader;
+2. apply upstream PR #36708's GLM DFlash2 hidden-state capture change.
+
+FlashInfer 0.6.18 is built from exact main commit
+`cbcbce48e817c83f03ad5a3e6ce59480eaf6935d` and tree
+`d3a639d6f268b8bfc679a8bd15581a6a6b319a16` with
+`FLASHINFER_CUDA_ARCH_LIST=12.0f`. The vendor wheel does not carry the required
+SM120 cubins.
 
 ## Build and run
 
@@ -65,19 +88,27 @@ do not run on it.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.1 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.2 .
 ```
 
 ```bash
-export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v1
+export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v2
+export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
-See [`RUN.md`](RUN.md). This repository contains no model weights and no
-published image.
+For the DFlash2 A/B, also set:
 
-## Reproducibility
+```bash
+export SPECULATIVE_MODE=dflash
+export DFLASH_DIR=/models/incoai/GLM-5.3-Flash-DFlash2
+```
+
+See [`RUN.md`](RUN.md) for diagnostics and the qualification sequence. This
+repository contains no model weights and no published image.
+
+## Verification
 
 ```bash
 ./scripts/validate-release.sh
@@ -85,12 +116,13 @@ published image.
 ./scripts/verify-patches.sh
 ```
 
-The last re-fetches the pinned FlashInfer objects, reproduces its tree, and
-re-resolves the base image digests against the registry.
+The last command needs network access. It reproduces the exact FlashInfer tree,
+re-resolves the base image digests, verifies every archived patch/test byte,
+and refuses to imply SGLang source provenance that the vendor image does not
+provide.
 
-## Scope limits
+## Scope
 
-SM120 and linux/amd64 only. No SM121, arm64, NVFP4, or HiCache claim.
-**Known gap:** MXFP4 MoE has no native SM120 CUTLASS path — FlashInfer #2847 and
-vLLM #31085 leave three runtime guards filtering SM120, so expect the Marlin
-fallback (~28 % slower prefill measured on gpt-oss-120b).
+SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
+production-readiness claim. A successful image build makes rc.2 built; only
+exact-candidate evidence can make it qualified.
