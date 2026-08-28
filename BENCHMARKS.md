@@ -1,9 +1,12 @@
 # Benchmarks
 
-**`v0.1.0-rc.12` has no served-model quality or performance results yet.** The
-direct BF16 to MXFP4 artifact is complete and hash-verified; the corrected image
-is still being built. A candidate is built, not qualified, until exact-candidate
-evidence is recorded here.
+**`v0.1.0-rc.14` is not built or qualified. `v0.1.0-rc.13` failed served-model
+correctness and has no performance results.** The direct BF16 to MXFP4 artifact
+is complete and hash-verified, and the exact v0.1.0-rc.13 image boots with the
+requested 524,288-token target pool. Its target-only outputs still echo or
+repeat prompts instead of answering them. v0.1.0-rc.14 adds an independent
+SM120-safe TileLang launch for a BF16-KV correctness control; only exact-image
+evidence can qualify it.
 
 ## Pre-candidate checks completed
 
@@ -30,6 +33,12 @@ qualification:
 | native target + MTP load | both target ranks loaded in 477.8s and native layer-45 MTP loaded in 8.16s; warmup then failed closed on the unsupported inherited KPool guard | exact v0.1.0-rc.8 image; pre-candidate startup diagnostic, not served qualification; [`evidence/v0.1.0-rc.8-kpool-adapter-diagnostic-20260828.txt`](evidence/v0.1.0-rc.8-kpool-adapter-diagnostic-20260828.txt) |
 | prior DSv4 KPool experiment | invalidated for GLM-5.3: it numerically tested a real DSv4 kernel, but the model never uses that 584-byte cache; the v0.1.0-rc.9 SGLang branch was dead and warmup still rejected KPool | source-path and runtime-geometry correction after v0.1.0-rc.9 startup; not evidence for v0.1.0-rc.12 |
 | v0.1.0-rc.11 unfused KPool diagnostic | target weights and a 524,288-token FP8 KV pool loaded; warmup then failed the generic transform's exact-2,048 assertion on GLM's 2,051-entry table | identifies a transform-contract defect before inference; not output-quality evidence; [`evidence/v0.1.0-rc.11-startup-diagnostic-20260828.txt`](evidence/v0.1.0-rc.11-startup-diagnostic-20260828.txt) |
+| v0.1.0-rc.12 target-only diagnostic | the corrected 2,051-entry transform booted, but a deterministic marker repeated `742`; production-path reproduction then proved the no-RoPE writer overwrote reserved physical slot 0 | candidate not qualified; [`evidence/v0.1.0-rc.12-startup-diagnostic-20260828.txt`](evidence/v0.1.0-rc.12-startup-diagnostic-20260828.txt) |
+| v0.1.0-rc.13 target-only diagnostic | the reserved-slot contract passed and output became coherent, but chat and raw completions echoed/repeated their prompts; both short and >2,048-token controls were wrong | candidate not qualified; native MTP deliberately not enabled; [`evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt) |
+| v0.1.0-rc.13 Marlin MoE control | with the exact checkpoint, TP2/NCCL, FP8 cache, sparse-MLA backends, vision, parsers, and 524,288-token pool unchanged, the independent Marlin MXFP4 path produced the same prompt echo/repetition | rules out the FlashInfer MXFP4 MoE runner as the served failure's root cause; no performance claim; [`evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt) |
+| v0.1.0-rc.13 eager control | with prefill and decode CUDA graphs disabled and the exact checkpoint, MoE/DSA backends, TP2/NCCL, FP8 cache, vision, parsers, and 524,288-token pool unchanged, chat still echoed and raw completion repeated zeros | rules out CUDA-graph capture and replay as the served failure's root cause; no performance claim; [`evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt) |
+| v0.1.0-rc.13 TRT-LLM DSA control | the B200/GB300-style FP8-KV TRT-LLM selection loaded the model and 524,288-token pool, then rc13's SM120 guard rejected `trtllm` before backend construction | no inference result; generic TRT-LLM MLA remains unsupported on SM120 in pinned FlashInfer 0.6.18; [`evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt) |
+| v0.1.0-rc.13 actual-weight MXFP4 GPU diagnostic | real layers 3/23/44 agree between decompressed quant and the exact SM120 kernel at cosine 0.9989..0.9990; TP2 split/reduce agrees with the full kernel at cosine 0.999993; wrong gate/up controls fall to 0.579..0.648 | rules out the principal packed-weight/runtime ABI hypothesis, but BF16-to-quant one-layer output relative L2 remains 0.198..0.217 and full-model quality is still unqualified; [`evidence/v0.1.0-rc.13-actual-mxfp4-gpu-20260828.txt`](evidence/v0.1.0-rc.13-actual-mxfp4-gpu-20260828.txt) |
 
 The production quantizer repeated and expanded the structural checks, including
 bit-for-bit comparison of every protected tensor and 129 layer/projection
@@ -71,7 +80,8 @@ These checks qualify the artifact structure, not model behavior.
 - short prompt, long prefill, and first decode after cold prefills above 262k;
 - custom PCIe all-reduce versus NCCL if both paths are stable.
 
-Every row must identify the full image name `v0.1.0-rc.12`, image digest, model
+Every v0.1.0-rc.14 qualification row must identify the full image name
+`v0.1.0-rc.14`, image digest, model
 artifact manifest hash, exact launcher arguments, GPU/driver state, raw evidence
 path, and pass/fail criterion. Do not import performance numbers from another
 model, another quant, B200/GB300, or a different candidate.

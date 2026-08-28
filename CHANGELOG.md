@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.0-rc.14
+
+SM120 TileLang shared-memory correctness-control candidate. This candidate is
+not built or qualified.
+
+- Add an independent BF16-KV DSA control for GLM-5.3's no-RoPE geometry. On
+  SM120/SM121 only, TileLang now uses `block_I=32`, one pipeline stage, and 128
+  threads instead of the generic 64/2/256 launch that requests 169,984 bytes
+  of dynamic shared memory on hardware capped at 101,376 bytes per block.
+- Preserve every non-SM12 CUDA and HIP TileLang launch unchanged. Pin the exact
+  vendor preimage and postimage and add a semantic build-time control for both
+  SM12 and non-SM12 dispatch.
+- Retain the v0.1.0-rc.13 FP8 sparse-MLA path for comparison. The official
+  B200/GB300 TRT-LLM DSA recipe cannot serve as the independent SM120 control:
+  pinned FlashInfer rejects generic TRT-LLM MLA on this architecture, and the
+  exact control failed closed before inference.
+- SGLang main, GLM support PR #36507, and FlashInfer main plus PRs #4791/#4802
+  were refreshed on 2026-08-28. The FlashInfer refactor remains open, has
+  failing CI, and has a reported GLM53 NoPE prefill correctness risk, so it is
+  not substituted for the pinned path in this candidate.
+
 ## v0.1.0-rc.13
 
 No-RoPE MLA reserved-slot correctness candidate. This candidate is not
@@ -16,6 +37,21 @@ qualified.
 - Retain the v0.1.0-rc.12 2,051-entry unfused transform, refreshed FlashInfer
   pin, full 524,288-token target pool, vision configuration, and fixed native
   MTP profile.
+- The exact published image passed the reserved-slot GPU regression, loaded at
+  84.95 GB/rank, allocated 524,288 FP8 KV tokens, and reached ready state with
+  4.06 GB/rank after target graph capture. Target-only inference nevertheless
+  echoed or repeated prompts through chat, raw-completion, short-prompt, and
+  >2,048-token controls. The candidate was scaled to zero, native MTP was not
+  enabled, and v0.1.0-rc.13 is not qualified.
+- An independent Marlin MXFP4 MoE control preserved the exact attention,
+  cache, checkpoint, TP2/NCCL, vision, parser, and capacity settings and
+  reproduced the same prompt echo/repetition. This rules out the FlashInfer
+  MXFP4 MoE runner as the root cause; it does not qualify the checkpoint or
+  remaining whole-model runtime.
+- An independent eager control disabled both prefill and decode CUDA graphs
+  while preserving the exact checkpoint and remaining runtime settings. It
+  reproduced the chat echo and raw-completion collapse with zero restarts,
+  ruling out CUDA-graph capture and replay as the root cause.
 
 ## v0.1.0-rc.12
 

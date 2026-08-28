@@ -13,7 +13,7 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=13
+ARG GLM53_RELEASE_CANDIDATE=14
 ARG GLM53_CACHE_SCHEMA=v9
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
@@ -56,6 +56,9 @@ ARG GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256=9e8faed0279b0dde7402d32d1715b1335fb
 ARG GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256=434f83d99e4d114bca258a15a1c74aa00adb65dc9f36f23894ff436af02db611
 ARG GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256=ab632b7bee88ac73ddfffb7509e715e2a22f939e37fe43e71cfd0e338a63e218
 ARG GLM53_SGLANG_MLA_BUFFER_TEST_SHA256=5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8
+ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256=526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f
+ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256=1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98
+ARG GLM53_SGLANG_TILELANG_TEST_SHA256=fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -96,6 +99,9 @@ ARG GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256
 ARG GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256
 ARG GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256
 ARG GLM53_SGLANG_MLA_BUFFER_TEST_SHA256
+ARG GLM53_SGLANG_TILELANG_PREIMAGE_SHA256
+ARG GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_TILELANG_TEST_SHA256
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -132,6 +138,8 @@ COPY patches/0009-glm53-kpool-unfused-transform.patch /usr/share/sglang-glm53-fl
 COPY patches/test_glm53_kpool_unfused_transform.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kpool_unfused_transform.py
 COPY patches/0010-glm53-norope-reserved-slot.patch /usr/share/sglang-glm53-flash-sm120/patches/0010-glm53-norope-reserved-slot.patch
 COPY patches/test_glm53_norope_reserved_slot.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py
+COPY patches/0011-glm53-sm120-tilelang-shared-memory.patch /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch
+COPY patches/test_glm53_sm120_tilelang_launch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py
 
 # Patch only exact vendor bytes. The first fix preserves GLM's contiguous
 # gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
@@ -149,6 +157,8 @@ COPY patches/test_glm53_norope_reserved_slot.py /usr/share/sglang-glm53-flash-sm
 # transforms while leaving the tuned 2,048-entry path unchanged. The ninth
 # brings GLM's dedicated no-RoPE KV scatter under the normal reserved-slot and
 # DCP ownership contract so CUDA-graph padding cannot poison physical slot 0.
+# The tenth gives TileLang's independent BF16-KV NoPE path an SM120-specific
+# launch that fits the cards' 101,376-byte dynamic shared-memory ceiling.
 RUN set -e; \
     cd /sgl-workspace/sglang; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
@@ -160,6 +170,7 @@ RUN set -e; \
     test "$(sha256sum python/sglang/srt/function_call/utils.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/dsa/transform_index.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/kvcache/mla_buffer.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_PREIMAGE_SHA256}"; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0003-glm53-dflash-mhc-residual-none.patch; \
@@ -170,6 +181,7 @@ RUN set -e; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0009-glm53-kpool-unfused-transform.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0010-glm53-norope-reserved-slot.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0011-glm53-sm120-tilelang-shared-memory.patch; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256}"; \
@@ -183,6 +195,8 @@ RUN set -e; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kpool_unfused_transform.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/kvcache/mla_buffer.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256}"; \
     test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MLA_BUFFER_TEST_SHA256}"; \
+    test "$(sha256sum python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py | cut -d' ' -f1)" = "${GLM53_SGLANG_TILELANG_TEST_SHA256}"; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
@@ -195,6 +209,8 @@ RUN set -e; \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_kpool_unfused_transform.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_norope_reserved_slot.py; \
+    uv run --no-project --python /opt/sglang/bin/python python \
+      /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_tilelang_launch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py
 

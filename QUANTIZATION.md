@@ -1,8 +1,9 @@
 # GLM-5.3-Flash BF16 to MXFP4 quantization
 
-This is the quantization contract for `v0.1.0-rc.12`. The production artifact is
-complete and independently hash-verified, but the served model is not yet
-qualified. Numbers described as estimates are not hardware measurements.
+This is the quantization contract for the artifact served by `v0.1.0-rc.14`.
+The artifact is complete and independently hash-verified, but the served model
+is not yet qualified. Numbers described as estimates are not hardware
+measurements.
 
 ## Decision
 
@@ -146,8 +147,9 @@ protected BF16 shared expert is appended to the MXFP4 fused expert buffer.
 SGLang's inherited SM120 post-loader was GPT-OSS-specific: it assumed pairwise
 gate/up rows and hard-coded SwiGLU-OAI `(alpha=1.702, beta=1, limit=7)`. GLM's
 per-expert loader produces contiguous `[gate; up]` halves and GLM uses standard
-clamped SwiGLU `(alpha=1, beta=0, limit=10)`. v0.1.0-rc.12 applies a byte-gated patch
-that preserves both contracts and has a build-time semantic test.
+clamped SwiGLU `(alpha=1, beta=0, limit=10)`. `v0.1.0-rc.12` and later apply a
+byte-gated patch that preserves both contracts and has a build-time semantic
+test.
 
 ## Fail-closed production procedure
 

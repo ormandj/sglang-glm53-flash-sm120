@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.13`
+# Running `v0.1.0-rc.14`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.13
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.14
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
 export SPECULATIVE_MODE=mtp
@@ -10,10 +10,11 @@ export SPECULATIVE_MODE=mtp
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.13 advances cache schema to `v9`: it protects the reserved physical
-KV slot in GLM's dedicated no-RoPE scatter path. Required kernels compile from
-the exact pinned sources into a distinct persistent cache; do not reuse `v8`
-artifacts.
+v0.1.0-rc.14 retains cache schema `v9`: the KV writer is unchanged from the
+reserved-slot correction in v0.1.0-rc.13. It adds an independent SM120-safe
+TileLang BF16-KV DSA launch. Required kernels compile from the exact pinned
+sources into a distinct candidate-specific persistent cache; do not share
+compiled artifacts between candidates even when their KV schema matches.
 
 ## Serving envelope
 
@@ -150,4 +151,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.13` from a successful build alone.
+`v0.1.0-rc.14` from a successful build alone.

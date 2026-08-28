@@ -1,0 +1,71 @@
+GLM-5.3-Flash v0.1.0-rc.13 actual-weight MXFP4 GPU diagnostic
+Captured: 2026-08-28
+
+Artifact and runtime
+  Image: git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.13
+  Digest: sha256:c6b2f6b50d9b56ce753ab2e94404e9222b500fe648ba436df51083c27514a93c
+  BF16 teacher: /scratch/zai-org/GLM-5.3-Flash-BF16
+  BF16 revision: f12e0fe1f6b2ea274c11a569582edfd99d993c5e
+  Quant: /models/zai-org/GLM-5.3-Flash-BF16-MXFP4
+  Quant artifact manifest: a74810a1...
+  GPU: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+  CUDA capability: 12.0
+  Test: quantization/test_glm53_actual_mxfp4_gpu.py
+  SwiGLU: alpha=1, beta=0, clamp=10
+  Routing: 8 selected experts for layer 3, scaling factor 2.5
+  TP control: split intermediate dimension at TP=2, execute both rank shards,
+    then sum their partial outputs
+
+Method
+  1. Load real BF16 gate/up/down weights from the sealed teacher.
+  2. Load the corresponding real uint8 packed MXFP4 values and E8M0 scales.
+  3. Decompress with compressed-tensors and compare weights/output to BF16.
+  4. Execute the packed values through FlashInfer's exact SM120
+     MXFP8-activation x MXFP4-weight fused-MoE kernel after the same block-scale
+     interleave used by SGLang.
+  5. Repeat with the exact TP=2 intermediate split/reduce.
+  6. Deliberately pass [gate; up] instead of FlashInfer's [up; gate] as a
+     negative control.
+
+Layer 3, experts 0..7, eight tokens
+  Weight relative L2
+    gate: mean 0.115310, range 0.111488..0.118256
+    up: mean 0.113914, range 0.111024..0.116724
+    down: mean 0.120167, range 0.118888..0.121550
+
+  Output comparison                              cosine      relative L2
+    decompressed quant vs BF16                    0.983205    0.200450
+    SM120 kernel vs decompressed quant            0.999004    0.044635
+    SM120 kernel vs BF16                          0.982287    0.204348
+    TP2 split/reduce vs decompressed quant         0.999004    0.044645
+    TP2 split/reduce vs full kernel                0.999993    0.003674
+    wrong [gate; up] vs decompressed quant         0.648150    0.842777
+
+Cross-layer samples, four experts and eight tokens
+  Layer 23
+    decompressed quant vs BF16: cosine 0.979025, relative L2 0.217479
+    SM120 kernel vs decompressed: cosine 0.998944, relative L2 0.045978
+    TP2 split/reduce vs full: cosine 0.999993, relative L2 0.003707
+    wrong-layout control: cosine 0.645422, relative L2 0.844719
+
+  Layer 44
+    decompressed quant vs BF16: cosine 0.982861, relative L2 0.198349
+    SM120 kernel vs decompressed: cosine 0.998909, relative L2 0.046715
+    TP2 split/reduce vs full: cosine 0.999993, relative L2 0.003740
+    wrong-layout control: cosine 0.578713, relative L2 0.951989
+
+Interpretation
+  The actual published weights, packed-value nibble convention, E8M0 scale
+  convention, [up; gate] post-load layout, standard clamped-SwiGLU parameters,
+  FlashInfer SM120 kernel, and TP=2 intermediate split/reduce form a coherent
+  numerical contract. The wrong-layout controls are sharply and consistently
+  worse. These results rule out the principal MXFP4 runtime ABI hypothesis for
+  the malformed full-model output.
+
+  Direct uncalibrated MXFP4 introduces material one-layer output error versus
+  BF16 (about 0.20 to 0.22 relative L2 in these random-activation samples).
+  This diagnostic does not establish whether that error compounds enough over
+  the complete 43-routed-layer model to explain the served-model failure. A
+  full-model backend A/B and target-logit comparison remain required.
+
+This is diagnostic evidence, not a served-model quality or performance claim.

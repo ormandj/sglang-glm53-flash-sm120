@@ -1,0 +1,135 @@
+GLM-5.3-Flash v0.1.0-rc.13 exact-hardware target diagnostic
+Captured: 2026-08-28
+
+Artifact and deployment provenance
+  Image: git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.13
+  Digest: sha256:c6b2f6b50d9b56ce753ab2e94404e9222b500fe648ba436df51083c27514a93c
+  Image source revision: 98a5636a1d3fe2af165e0547c73753ba7431d506
+  Public source revision: 94125ad
+  GitOps revision: dc749be
+  Hardware: 2x RTX PRO 6000 Blackwell Max-Q, TP=2
+  Profile: target-only, SGLANG_DSA_FUSE_TOPK=0, NCCL reduction
+  Vision: enabled, PIL image processor
+
+Focused reserved-slot GPU contract
+  Exact published image ID matched the digest above.
+  The no-RoPE writer preserved reserved physical slot 0.
+  Its positive-slot control write succeeded.
+  Result: GLM-5.3 no-RoPE reserved-slot GPU contract OK
+
+Startup
+  Weight load: 84.95 GB/rank, 469.48 seconds
+  Mamba state slots: 5, 0.21 GB/rank
+  KV dtype: FP8 E4M3
+  KV tokens: 524,288
+  KV size: 3.55 GB/rank
+  Available after memory pools: 5.17 GB/rank
+  Available after target decode graph: 4.06 GB/rank
+  Target decode graph capture: 2.42 seconds, 0.49 GB/rank
+  Restarts before and after requests: 0
+  Server health: ready
+
+Served target-only text controls
+  Deterministic marker, thinking disabled:
+    expected: GLM53_742
+    actual: </think>Reply with exactly GLM53_742 and nothing else.
+
+  Arithmetic chat control, thinking disabled:
+    prompt: What is 2+2? Reply with only the numeral.
+    actual: </think>What is 2+2? Reply with only the numeral.
+
+  Single-word chat control, thinking disabled:
+    expected: Estonia
+    actual: </think>Reply with exactly the single word Estonia.
+
+  Native-thinking chat control:
+    prompt: What is 2+2? Give the correct answer.
+    content: What is 2+2? Give the correct answer.
+    reasoning: null
+
+  Raw completion controls, bypassing the chat parser/template:
+    2+2 prompt: repeated "2+2?"
+    France prompt: repeated "capital France"
+    Estonia prompt: repeated "Estonia\nOutput:"
+
+  Dense/sparse threshold first-token control:
+    short prompt, 11 tokens: " "
+    long prompt, 2,312 tokens: " What"
+  Both were incorrect; crossing the 2,048-token sparse threshold did not
+  restore correct target output.
+
+Independent Marlin MoE control
+  GitOps revision: 98841dc
+  Profile: target-only, moe_runner_backend=marlin; every attention, cache,
+    checkpoint, TP=2/NCCL, vision, parser, and capacity setting unchanged
+  Weight load: 84.95 GB/rank, 397.9 seconds
+  KV tokens: 524,288 FP8 E4M3
+  Available after memory pools: 5.17 GB/rank
+  First-run Marlin/target graph compilation: 284.78 seconds
+  Restarts: 0
+  Deterministic marker actual:
+    Reply with exactly GLM53_742 and nothing else.
+  Arithmetic chat actual:
+    What is 2+2? Reply with only the number.
+  Raw Estonia completion actual:
+    repeated "the capital of"
+  Result: changing from FlashInfer MXFP4 MoE to the independent Marlin MXFP4
+    path did not change the served failure. The Marlin control was scaled to
+    zero.
+
+Independent eager/no-CUDA-graph control
+  GitOps revision: 30c0897
+  Profile: target-only with both prefill and decode CUDA graphs disabled;
+    checkpoint, FlashInfer MXFP4 MoE, FlashInfer sparse MLA, TP=2/NCCL, FP8
+    cache, vision, parsers, and capacity unchanged
+  Weight load: 84.95 GB/rank in 478.20 seconds
+  KV tokens: 524,288 FP8 E4M3
+  Available after final eager initialization: 4.20 GB/rank
+  Graph time: prefill=0.00, decode=0.00, target_verify=0.00 seconds
+  Restarts: 0
+  Deterministic marker actual:
+    </think>Reply with exactly GLM53_742 and nothing else.
+  Arithmetic chat actual:
+    </think>What is 2+2? Reply with only the numeral.
+  Raw Estonia completion actual:
+    repeated " 0"
+  Result: removing CUDA-graph capture and replay did not change the served
+    failure. The eager control was scaled to zero.
+
+Official-recipe TRT-LLM DSA control
+  GitOps revision: 655c6db
+  Profile: target-only, eager, FP8 E4M3 KV, with only the DSA prefill/decode
+    selection changed from flashinfer_sparse_mla to trtllm
+  Resolved runtime line:
+    Set DSA backends for fp8_e4m3 KV Cache: prefill=trtllm, decode=trtllm.
+  Weight load after the clean-cache compile: 84.95 GB/rank in 13.4 seconds
+  KV tokens: 524,288 FP8 E4M3
+  Available after memory pools: 5.26 GB/rank
+  Backend construction then failed closed before inference:
+    ValueError: GLM DSA with FP8 KV cache on NVIDIA SM120/SM121 supports only
+    flashinfer_sparse_mla, but got ['trtllm'].
+  Result: rc13's explicit SM120 guard rejected the B200/GB300 TRT-LLM recipe.
+    This is consistent with the earlier exact-hardware generic TRT runner
+    failure, which reported Unsupported architecture because FlashInfer
+    0.6.18 admits only SM100/SM103/SM107 there. It does not implicate model
+    weights or produce an inference result. The restart loop was stopped and
+    the deployment was scaled to zero.
+
+Interpretation and disposition
+  The v0.1.0-rc.13 reserved-slot fix is a real production-path correction and
+  changed the prior v0.1.0-rc.12 repeated-digit failure into coherent text.
+  It did not restore instruction following or correct target logits. The
+  failure also reproduces through raw completions and native-thinking chat,
+  so it is not explained by the glm45 reasoning parser, glm47 tool parser, or
+  chat template alone. The independent Marlin control reproduces the same
+  failure, ruling out the FlashInfer MXFP4 MoE runner as the root cause. The
+  independent eager control also reproduces it, ruling out CUDA-graph capture
+  and replay as the root cause. The official-recipe TRT-LLM DSA control cannot
+  run on SM120 in this stack: the fail-closed guard blocks it before backend
+  construction, matching the generic runner's earlier architecture rejection.
+
+  Native MTP was not enabled because the target failed its correctness gate.
+  Both v0.1.0-rc.13 deployments were scaled to zero. The candidate and the
+  current MXFP4 runtime path remain unqualified.
+
+This is diagnostic evidence, not a performance or quality claim.
