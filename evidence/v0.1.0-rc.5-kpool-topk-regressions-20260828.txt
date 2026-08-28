@@ -1,0 +1,43 @@
+Fused KPool top-k exact-hardware regression evidence
+Captured: 2026-08-28 UTC
+Cluster/node: quasar/quasar
+Pod: glm53-flash-sglang-v0-1-0-rc5-mtp-tp2-5864b667db-fsnmq
+Image: git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5
+Image digest: sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e
+GPU used by test: RTX PRO 6000 Blackwell, SM120
+
+Live source:
+  /sgl-workspace/sglang/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh
+  sha256 1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38
+
+The live source is byte-identical to parent f14393b2dc^ of draft SGLang PR
+#36745. The exact test file from f14393b2dc was copied to the ephemeral pod and
+run with /opt/sglang/bin/python. No server arguments or credentials were read.
+
+Command result: FAILED (errors=4), 4 tests in 8.077 seconds.
+
+test_exact_boundary_ties_choose_lower_group_ids_deterministically
+  mismatched elements: 256 / 256 (100.0%)
+  greatest absolute difference: 1856 at index (0, 0)
+
+test_selected_groups_are_emitted_in_canonical_index_order
+  mismatched elements: 252 / 256 (98.4%)
+  greatest absolute difference: 3224 at index (0, 88)
+
+test_coarse_bin_overflow_keeps_late_higher_scores
+  mismatched elements: 256 / 256 (100.0%)
+  greatest absolute difference: 7872 at index (0, 64)
+
+test_canonical_sort_is_correct_under_concurrent_stream_load
+  mismatched elements: 65378 / 65536 (99.8%)
+  greatest absolute difference: 7450 at index (20, 962)
+
+The temporary diagnostic Deployment was scaled back to zero immediately after
+the test. v0.1.0-rc.6 archives exact draft PR #36745 head
+f14393b2dca5dc7f954b7c15167851fbc7c6a9f8. Its patched header SHA-256 is
+cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c and the
+included GPU regression file SHA-256 is
+c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a.
+
+These are kernel correctness diagnostics, not served-model performance or
+quality results. The same four cases must pass on the built v0.1.0-rc.6 image.

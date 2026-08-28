@@ -14,11 +14,16 @@ qualified.
 - Assert exact vendor preimage and postimage SHA-256 values and exercise both
   admitted classes plus the architecture, device, KV-dtype, and paired-backend
   rejection cases at image build time.
+- Archive exact draft PR #36745 head `f14393b2…` after the live vendor preimage
+  failed all four upstream GPU regressions: exact ties, canonical output order,
+  coarse-bin overflow, and concurrent-stream determinism.
 - Advance cache schema to `v5` because the effective SGLang source differs from
   v0.1.0-rc.5.
 
 Exact v0.1.0-rc.5 failure and memory evidence is preserved in
 [`evidence/v0.1.0-rc.5-sm120-startup-diagnostics-20260828.txt`](evidence/v0.1.0-rc.5-sm120-startup-diagnostics-20260828.txt).
+The KPool failures are preserved separately in
+[`evidence/v0.1.0-rc.5-kpool-topk-regressions-20260828.txt`](evidence/v0.1.0-rc.5-kpool-topk-regressions-20260828.txt).
 
 ## v0.1.0-rc.5
 

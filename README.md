@@ -52,6 +52,8 @@ audit and fail-closed recipe are in [`QUANTIZATION.md`](QUANTIZATION.md).
   is not forcibly disabled before measurement.
 - SM120-safe mHC/indexer settings mirror SGLang's current DeepSeek-V4 guard;
   GLM's shared DSA hook does not yet inherit that guard upstream.
+- Draft PR #36745's fused KPool top-k fix is archived after the exact vendor
+  preimage failed all four deterministic/order/overflow GPU regressions.
 
 The launcher supports three A/B modes through `SPECULATIVE_MODE`:
 
@@ -73,7 +75,7 @@ PR #36507 remains open and conflicting. The vendor per-model image was built
 from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
-This repository does not claim a vendor SGLang git revision. For the three files
+This repository does not claim a vendor SGLang git revision. For the four files
 we modify, v0.1.0-rc.6 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
@@ -83,7 +85,10 @@ tests. The patches:
 2. apply upstream PR #36708's GLM DFlash2 hidden-state capture change;
 3. apply upstream PR #36755's mHC `residual=None` capture correction;
 4. extend upstream PR #26928's fail-closed SM120 FP8 sparse-MLA allowlist to
-   the native GLM-5.3 target and NextN architecture names.
+   the native GLM-5.3 target and NextN architecture names;
+5. apply exact draft PR #36745 head `f14393b2…` to make fused KPool top-k
+   deterministic, canonically ordered, and safe beyond 4K threshold-bin
+   candidates.
 
 FlashInfer 0.6.18 is built from exact main commit
 `71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree

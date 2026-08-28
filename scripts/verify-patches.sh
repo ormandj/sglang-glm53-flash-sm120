@@ -6,7 +6,7 @@
 # asserts the resulting effective tree hash. That is deliberately NOT done here,
 # because it cannot be:
 #
-#   * `glm5_next` is not in sgl-project/sglang main as of 2026-08-27. The
+#   * `glm5_next` is not in sgl-project/sglang main as of 2026-08-28. The
 #     architecture exists only inside the vendor per-model image.
 #   * That image is built from `ADD sglang.tar.gz`, not a git checkout, and
 #     reports SGLANG_BUILD_COMMIT=unknown. There is no commit or tree to check.

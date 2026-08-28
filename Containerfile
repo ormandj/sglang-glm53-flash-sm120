@@ -3,7 +3,7 @@
 # PROVENANCE DIFFERS FROM THE QWEN3.8-FLASH-NEXT BUILD, DELIBERATELY.
 # That build pins sglang main by commit AND tree, applies an archived patch,
 # and asserts the resulting effective tree hash. None of that is possible here:
-#   * `glm5_next` is NOT in sgl-project/sglang main as of 2026-08-27. The
+#   * `glm5_next` is NOT in sgl-project/sglang main as of 2026-08-28. The
 #     architecture exists only inside the vendor per-model image below.
 #   * That image is built from an `ADD sglang.tar.gz`, not a git checkout. Its
 #     own metadata reports SGLANG_BUILD_COMMIT=unknown, so there is no upstream
@@ -24,7 +24,7 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f8
 ARG GLM53_SGLANG_BASE_CREATED=2026-08-27T04:58:48Z
 ARG GLM53_SGLANG_BASE_CUDA_VERSION=13.0.3
 ARG GLM53_SGLANG_BASE_FLASHINFER_VERSION=0.6.17
-# FlashInfer is rebuilt from the exact main head refreshed on 2026-08-27.
+# FlashInfer is rebuilt from the exact main head refreshed on 2026-08-28.
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_MAIN_HEAD=71d31b5a23a3c0394edb36330dec1ce2a0def365
 ARG GLM53_FLASHINFER_MAIN_TREE=a2577ad013205dfc996f6ffe5259f3102a2cd075
@@ -32,13 +32,16 @@ ARG GLM53_FLASHINFER_MAIN_TREE=a2577ad013205dfc996f6ffe5259f3102a2cd075
 ARG GLM53_MODEL_REPOSITORY=zai-org/GLM-5.3-Flash-BF16
 ARG GLM53_MODEL_REVISION=f12e0fe1f6b2ea274c11a569582edfd99d993c5e
 # The vendor image lacks git provenance. These byte-level pre/postimage pins
-# make our two source modifications fail closed without implying a git commit.
+# make our four source modifications fail closed without implying a git commit.
 ARG GLM53_SGLANG_MXFP4_PREIMAGE_SHA256=38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb
 ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256=4a5fdcfca8edb681e8b2e781e9cddf9545c866301b5ce2d16aa1545061791f09
 ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256=0a141565e73252ddb7f1773f30f0c48e001b7dce21a5ca7864b4ea6ae51d0ccd
 ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256=ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274
 ARG GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256=39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5
 ARG GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256=052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93
+ARG GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256=1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38
+ARG GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256=cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c
+ARG GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256=c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -62,6 +65,9 @@ ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256
 ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256
 ARG GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256
 ARG GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256
+ARG GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256
+ARG GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
@@ -87,25 +93,32 @@ COPY patches/test_glm53_dflash_patch.py /usr/share/sglang-glm53-flash-sm120/test
 COPY patches/test_glm53_mixed_precision_contract.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_mixed_precision_contract.py
 COPY patches/0004-glm53-sm120-sparse-mla-architecture.patch /usr/share/sglang-glm53-flash-sm120/patches/0004-glm53-sm120-sparse-mla-architecture.patch
 COPY patches/test_glm53_sm120_sparse_mla_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_sparse_mla_patch.py
+COPY patches/0005-dsa-kpool-topk-deterministic.patch /usr/share/sglang-glm53-flash-sm120/patches/0005-dsa-kpool-topk-deterministic.patch
 
 # Patch only exact vendor bytes. The first fix preserves GLM's contiguous
 # gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 path.
 # The second and third are the upstream DFlash2 hidden-state capture changes
 # from #36708 and its mHC residual=None correction from #36755. The fourth
 # extends upstream #26928's fail-closed SM120 sparse-MLA architecture allowlist
-# to the native GLM-5.3 target and NextN class names.
+# to the native GLM-5.3 target and NextN class names. The fifth archives draft
+# PR #36745's deterministic and overflow-safe fused KPool top-k correction,
+# which all four exact-hardware regression cases fail on the vendor preimage.
 RUN set -e; \
     cd /sgl-workspace/sglang; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh | cut -d' ' -f1)" = "${GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256}"; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0002-glm53-dflash-hidden-state-capture.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0003-glm53-dflash-mhc-residual-none.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0004-glm53-sm120-sparse-mla-architecture.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0005-dsa-kpool-topk-deterministic.patch; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh | cut -d' ' -f1)" = "${GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256}"; \
+    test "$(sha256sum test/registered/kernels/ops/attention/test_kpool_topk_transform.py | cut -d' ' -f1)" = "${GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256}"; \
     uv run --no-project --python /opt/sglang/bin/python python \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_mxfp4_patch.py; \
     uv run --no-project --python /opt/sglang/bin/python python \
