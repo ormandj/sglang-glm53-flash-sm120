@@ -1,12 +1,11 @@
 # Benchmarks
 
-**`v0.1.0-rc.14` is not built or qualified. `v0.1.0-rc.13` failed served-model
-correctness and has no performance results.** The direct BF16 to MXFP4 artifact
-is complete and hash-verified, and the exact v0.1.0-rc.13 image boots with the
-requested 524,288-token target pool. Its target-only outputs still echo or
-repeat prompts instead of answering them. v0.1.0-rc.14 adds an independent
-SM120-safe TileLang launch for a BF16-KV correctness control; only exact-image
-evidence can qualify it.
+**`v0.1.0-rc.14` is built but not qualified; it failed served-model correctness
+and has no performance results.** Its SM120-safe TileLang launch fixes the
+vendor kernel's dynamic shared-memory failure, and the exact image boots a
+262,144-token BF16 KV control with vision enabled. Target-only chat still echoes
+the prompt and raw completion still repeats prompt fragments. Native MTP was
+therefore not enabled; target correctness remains a prerequisite.
 
 ## Pre-candidate checks completed
 
@@ -39,6 +38,7 @@ qualification:
 | v0.1.0-rc.13 eager control | with prefill and decode CUDA graphs disabled and the exact checkpoint, MoE/DSA backends, TP2/NCCL, FP8 cache, vision, parsers, and 524,288-token pool unchanged, chat still echoed and raw completion repeated zeros | rules out CUDA-graph capture and replay as the served failure's root cause; no performance claim; [`evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt) |
 | v0.1.0-rc.13 TRT-LLM DSA control | the B200/GB300-style FP8-KV TRT-LLM selection loaded the model and 524,288-token pool, then rc13's SM120 guard rejected `trtllm` before backend construction | no inference result; generic TRT-LLM MLA remains unsupported on SM120 in pinned FlashInfer 0.6.18; [`evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.13-target-diagnostic-20260828.txt) |
 | v0.1.0-rc.13 actual-weight MXFP4 GPU diagnostic | real layers 3/23/44 agree between decompressed quant and the exact SM120 kernel at cosine 0.9989..0.9990; TP2 split/reduce agrees with the full kernel at cosine 0.999993; wrong gate/up controls fall to 0.579..0.648 | rules out the principal packed-weight/runtime ABI hypothesis, but BF16-to-quant one-layer output relative L2 remains 0.198..0.217 and full-model quality is still unqualified; [`evidence/v0.1.0-rc.13-actual-mxfp4-gpu-20260828.txt`](evidence/v0.1.0-rc.13-actual-mxfp4-gpu-20260828.txt) |
+| v0.1.0-rc.14 TileLang/BF16-KV target control | both ranks completed the patched SM120 TileLang launch, clean-cache autotune and internal warmup with 262,144 BF16 KV tokens; deterministic chat still echoed its instruction and raw completion repeated prompt fragments | fixes the 169,984-byte shared-memory launch defect but rules out the tested DSA implementation and KV precision as the served failure's root cause; candidate not qualified; [`evidence/v0.1.0-rc.14-tilelang-target-diagnostic-20260828.txt`](evidence/v0.1.0-rc.14-tilelang-target-diagnostic-20260828.txt) |
 
 The production quantizer repeated and expanded the structural checks, including
 bit-for-bit comparison of every protected tensor and 129 layer/projection

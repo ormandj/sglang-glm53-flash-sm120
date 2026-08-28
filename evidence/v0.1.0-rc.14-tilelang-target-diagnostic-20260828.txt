@@ -1,0 +1,66 @@
+GLM-5.3-Flash v0.1.0-rc.14 exact-hardware TileLang target diagnostic
+Captured: 2026-08-28
+
+Artifact and deployment provenance
+  Image: git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.14
+  Digest: sha256:ed4cc2de46602d44885ba3363c57963c9f60dacf2242ea645e9a275e246dc6bd
+  Image source revision: f74a6f080df7d399e812aa50125c9bf47fc62281
+  Public source revision: b247864
+  GitOps revisions: fa4916f, 18f1d0c
+  Hardware: 2x RTX PRO 6000 Blackwell Max-Q, TP=2
+  Model: /models/zai-org/GLM-5.3-Flash-BF16-MXFP4
+  Profile: target-only, eager, TileLang DSA, BF16 KV, NCCL reduction
+  Vision: enabled, PIL image processor
+  Parsers: reasoning=glm45, tool=glm47
+
+Initial launch correction
+  Omitting --kv-cache-dtype did not select BF16 in this vendor runtime.
+  The SM12 DSA resolver selected fp8_e4m3, then failed closed because CUDA
+  TileLang accepts only BF16 KV. GitOps revision 18f1d0c pinned the dtype
+  explicitly to bfloat16. That corrected pod booted with zero restarts.
+
+Startup and memory
+  Weight load: 84.95 GB/rank in 473.91 seconds
+  Mamba state slots: 5; conv 0.01 GB/rank, SSM 0.20 GB/rank
+  KV dtype: BF16
+  KV tokens: 262,144
+  KV size: 3.11 GB/rank
+  Available after memory pools: 5.65 GB/rank
+  Available after FlashInfer autotune: 4.89 GB/rank
+  CUDA graphs: disabled for prefill and decode
+  Scheduler end-to-end startup: 1,021.65 seconds on the clean cache
+  Restarts before and after requests: 0
+
+TileLang SM120 launch result
+  The stock vendor tile previously failed while requesting 169,984 bytes of
+  dynamic shared memory. v0.1.0-rc.14 selected block_I=32, num_stages=1 and
+  threads=128 on CUDA SM major 12. Both TP ranks completed warmup, FlashInfer
+  autotune and the internal 64-token chat request. The server became healthy.
+  Result: the SM120 shared-memory launch defect is fixed for this control.
+
+Served target-only text controls
+  Deterministic marker, thinking disabled:
+    expected: GLM53_742
+    actual: </think>Reply with exactly GLM53_742 and nothing else.
+
+  Arithmetic chat, thinking disabled:
+    prompt: What is 2+2? Reply with only the numeral.
+    actual: </think>What is 2+2? Reply with only the numeral.
+
+  Raw completion:
+    prompt: The capital of Estonia is
+    actual: repeated " the capital of" through the 32-token limit
+
+Interpretation and disposition
+  Changing the full-attention implementation from FlashInfer sparse MLA with
+  FP8 KV to TileLang with BF16 KV does not restore correct target logits. The
+  failure also reproduces through raw completion, so it is not a reasoning or
+  tool parser presentation defect. Together with the prior Marlin, eager and
+  production-kernel controls, this moves the leading fault boundary toward the
+  checkpoint quantization/model-loading contract or a model-architecture path
+  shared by every backend tested.
+
+  v0.1.0-rc.14 is built but not qualified. Native MTP was deliberately not
+  selected because target-only correctness is a prerequisite. The Deployment
+  was scaled to zero after evidence capture. An independently produced pinned
+  ModelOpt NVFP4 checkpoint is the next checkpoint-versus-runtime control.
