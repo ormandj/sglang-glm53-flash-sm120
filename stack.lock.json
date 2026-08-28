@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 9,
-    "candidate_tag": "v0.1.0-rc.9",
+    "candidate": 10,
+    "candidate_tag": "v0.1.0-rc.10",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v6"
+    "cache_schema": "v7"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.9",
+    "tag": "v0.1.0-rc.10",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,11 +67,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "9"
+      "value": "10"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v6"
+      "value": "v7"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -143,7 +143,7 @@
     },
     {
       "arg": "GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256",
-      "value": "4d2f85055dc2ed5e96b534640473760a27248cba6ff278c8357a69dba7c69d1a"
+      "value": "ddd9768c5977684259be1dd5a7b7448094290c7a7961b24aadc516945760b01f"
     },
     {
       "arg": "GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256",
@@ -151,7 +151,7 @@
     },
     {
       "arg": "GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256",
-      "value": "2ef7ba4a2aca5bc0304b35311e0ef3c12f1cb1fc5dae327604a48dd118e0abbb"
+      "value": "eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547"
     },
     {
       "arg": "GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256",
@@ -224,17 +224,22 @@
     },
     {
       "path": "patches/test_glm53_sm120_sparse_mla_patch.py",
-      "sha256": "8a755d820c065b16ecd7ab920063450c9693fa7ce85022f36e53e3f310a6a7f0",
-      "purpose": "build-time architecture, 584-byte dual-segment KPool adapter, unchanged 656-byte fallback, and backend-guard contract"
+      "sha256": "d6b3734d2ea4d86cabe011a393f65358caa2617b73a8622ab6e6ed83f32bcd64",
+      "purpose": "build-time architecture, exact 528-byte no-RoPE KPool adapter, unchanged 656-byte fallback, padding-tail, and fail-closed geometry contract"
     },
     {
-      "path": "patches/0007-glm53-sm120-dsv4-kpool-sparse-mla.patch",
-      "sha256": "b66a01522c85625ca51465553d4d5aa99b2565105822e97d611c80c05f9e9eda",
-      "purpose": "route GLM-5.3's 584-byte DSv4 cache and 2,051-entry KPool-extended DSA table through FlashInfer's 128+1,923 dual-segment SM120 ABI using one physical KV cache"
+      "path": "patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch",
+      "sha256": "b7623fb1002ca0bb9bee7feda5644fa05487d6ef7087d68bdcbf646c6dd0d95e",
+      "purpose": "route GLM-5.3's exact 528-byte no-RoPE cache and 2,051-entry KPool table through one 2,176-wide SM120 dispatch without truncating live tail entries"
+    },
+    {
+      "path": "patches/0008-flashinfer-glm53-nope-sm120.patch",
+      "sha256": "017f2763cf7951d4dfd5d1b28914ef4cdba9b7d0ce96b22c4d97df0567f73710",
+      "purpose": "add an isolated GLM_NEXT_NOPE 528-byte cache trait and exact TP=2 32-head/2,176-candidate decode and prefill kernels to pinned FlashInfer main"
     },
     {
       "path": "patches/test_glm53_sm120_sparse_mla_kpool_gpu.py",
-      "sha256": "f3fc4633756318d84e8477286d21e9d99861dd79cb24877dd99adfe14d100a95",
+      "sha256": "bcc2cacdb39aab3d0a61359d12cc8a1be9e65411900cd7375f4f4ec1cc3a7cac",
       "purpose": "exact-SM120 numerical decode and 128-token prefill regression with -1 base padding followed by three live KPool tail entries"
     },
     {
@@ -320,20 +325,18 @@
           "Glm5NextForConditionalGenerationNextN"
         ]
       },
-      "sm120_sparse_mla_dsv4_kpool": {
-        "rationale": "v0.1.0-rc.8 loaded the target and native MTP but warmup rejected index_kpool=4; the inherited generic FlashInfer adapter serves a different 656-byte GLM-NSA cache, while GLM-5.3 needs the 584-byte DSv4 footer-cache ABI and all three live tail entries after its 2,048-wide base table",
+      "sm120_sparse_mla_glm_next_nope_kpool": {
+        "rationale": "v0.1.0-rc.9 proved target, native MTP, and 516,032-token pool allocation but its DSv4-specific 584-byte adapter branch was dead: exact vendor config and cache allocation show GLM-5.3 uses a 528-byte generic FP8 cache (512 E4M3 latent bytes plus four arbitrary FP32 scales) with no RoPE payload. The dedicated SM120 path must preserve all three live KPool tail entries after the 2,048-wide base table.",
         "flash_mla_arch_postimage_sha256": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93",
-        "flash_mla_final_postimage_sha256": "4d2f85055dc2ed5e96b534640473760a27248cba6ff278c8357a69dba7c69d1a",
+        "flash_mla_final_postimage_sha256": "ddd9768c5977684259be1dd5a7b7448094290c7a7961b24aadc516945760b01f",
         "dsa_backend_preimage_sha256": "f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f",
-        "dsa_backend_postimage_sha256": "2ef7ba4a2aca5bc0304b35311e0ef3c12f1cb1fc5dae327604a48dd118e0abbb",
-        "primary_topk": 128,
-        "extra_topk": 1923,
-        "physical_kv_copies": 1,
-        "exact_hardware_regressions": [
-          "one-token decode passed against dequantized reference on SM120",
-          "128-token prefill passed against dequantized reference on SM120",
-          "three live KPool tail entries remained visible after a 512-entry -1 padding gap"
-        ]
+        "dsa_backend_postimage_sha256": "eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547",
+        "cache_bytes_per_token": 528,
+        "query_heads_per_tp2_rank": 32,
+        "input_topk": 2051,
+        "kernel_topk": 2176,
+        "padding_value": -1,
+        "qualification_status": "build-time contracts authored; exact-hardware numerical regressions and served-model qualification pending on v0.1.0-rc.10"
       },
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
@@ -361,8 +364,8 @@
       "tree": "d44c17d48d02efa160a7e9ddbeecd01457b244c0",
       "package_version": "0.6.18",
       "base_package_version": "0.6.17",
-      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f; generic flashinfer-cubin and flashinfer-jit-cache packages absent; FLASHINFER_NO_DOWNLOAD=1",
-      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; the generic package enumerates 48,391 cross-architecture artifacts and made the v0.1.0-rc.6 build fail after 24m41s. Main was refreshed before v0.1.0-rc.9; the intervening changes are BF16 cuBLASLt work and leave the tested SM120 sparse-MLA sources unchanged. Exact SM120 MXFP4 and sparse-MLA tests compile directly from the pinned source."
+      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f; archived GLM_NEXT_NOPE patch applied with zero fuzz; sparse-MLA module NVCC-compiled at image build; generic flashinfer-cubin and flashinfer-jit-cache packages absent; FLASHINFER_NO_DOWNLOAD=1",
+      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; pinned main supports 656-byte V32/GLM-NSA and 584-byte DSv4 caches but not GLM-5.3's 528-byte no-RoPE cache. The isolated patch adds only the exact TP=2 GLM geometry and preserves existing dispatches."
     },
     "speculative_decoding": {
       "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, adaptive 5 steps / top-k 1 / 6 draft tokens",

@@ -41,9 +41,6 @@ assert TARGET in _GLM_DSA_MODEL_ARCHS
 assert NEXTN in _GLM_DSA_MODEL_ARCHS
 assert validate(TARGET)
 assert validate(NEXTN)
-
-# Preserve the original architectures while keeping every non-architecture
-# condition fail closed.
 assert validate("GlmMoeDsaForCausalLM")
 assert validate("GlmMoeDsaForCausalLMNextN")
 
@@ -60,22 +57,15 @@ must_reject(**(common | {"kv_cache_dtype": torch.bfloat16}))
 must_reject(**(common | {"decode_impl": "trtllm"}))
 
 
-# The 584-byte GLM-5.3/DSv4 cache must use FlashInfer's supported dual-segment
-# ABI: 128 primary candidates plus the remaining 1,923 base/tail candidates,
-# both reading the same physical cache. Full-width length tensors deliberately
-# preserve live KPool tail entries after any -1 padding in the base table.
-captured_dsv4 = {}
-captured_generic = {}
-
-
-def fake_dsv4(**kwargs):
-    captured_dsv4.update(kwargs)
-    query = kwargs["query"]
-    return query.new_full((*query.shape[:-1], 512), 3)
+# The exact GLM-5.3 cache is 528 bytes: 512 E4M3 latent bytes plus four
+# arbitrary FP32 scales and no RoPE. Pad the 2,051-entry KPool table to 2,176
+# without hiding its three live tail entries behind base-table -1 padding.
+captured = {}
 
 
 def fake_generic(**kwargs):
-    captured_generic.update(kwargs)
+    captured.clear()
+    captured.update(kwargs)
     query = kwargs["query"]
     return query.new_full((*query.shape[:-1], kwargs["kv_lora_rank"]), 5)
 
@@ -83,7 +73,6 @@ def fake_generic(**kwargs):
 flashinfer = ModuleType("flashinfer")
 flashinfer.__path__ = []
 mla = ModuleType("flashinfer.mla")
-mla.trtllm_batch_decode_sparse_mla_dsv4 = fake_dsv4
 mla.trtllm_batch_decode_with_kv_cache_mla = fake_generic
 flashinfer.mla = mla
 
@@ -91,13 +80,13 @@ indices = torch.arange(2051, dtype=torch.int32).view(1, -1).repeat(2, 1)
 indices[:, 1536:2048] = -1
 with patch.dict(sys.modules, {"flashinfer": flashinfer, "flashinfer.mla": mla}):
     output = flashinfer_sparse_mla_forward(
-        q=torch.zeros((2, 16, 512), dtype=torch.bfloat16),
-        kv_cache=torch.zeros((2, 64, 1, 584), dtype=torch.uint8),
+        q=torch.zeros((2, 32, 512), dtype=torch.bfloat16),
+        kv_cache=torch.zeros((2, 64, 1, 528), dtype=torch.uint8),
         indices=indices,
         seq_lens=torch.tensor([1536, 1536], dtype=torch.int32),
         workspace_buffer=torch.zeros(1024, dtype=torch.uint8),
         page_size=64,
-        kv_cache_dim=584,
+        kv_cache_dim=528,
         qk_nope_head_dim=256,
         kv_lora_rank=512,
         qk_rope_head_dim=0,
@@ -105,22 +94,22 @@ with patch.dict(sys.modules, {"flashinfer": flashinfer, "flashinfer.mla": mla}):
         skip_softmax_threshold_scale_factor=None,
     )
 
-assert tuple(captured_dsv4["query"].shape) == (2, 1, 16, 512)
-assert tuple(captured_dsv4["sparse_indices"].shape) == (2, 128)
-assert tuple(captured_dsv4["extra_sparse_indices"].shape) == (2, 1923)
-assert captured_dsv4["extra_sparse_indices"][:, -3:].tolist() == [
+block_tables = captured["block_tables"].squeeze(1)
+assert tuple(captured["query"].shape) == (2, 1, 32, 512)
+assert tuple(block_tables.shape) == (2, 2176)
+assert block_tables[:, 2048:2051].tolist() == [
     [2048, 2049, 2050],
     [2048, 2049, 2050],
 ]
-assert captured_dsv4["swa_topk_lens"].tolist() == [128, 128]
-assert captured_dsv4["extra_sparse_topk_lens"].tolist() == [1923, 1923]
-assert captured_dsv4["swa_kv_cache"].data_ptr() == captured_dsv4[
-    "compressed_kv_cache"
-].data_ptr()
-assert captured_dsv4["kv_layout"] == "NHD"
-assert captured_dsv4["backend"] == "sparse"
-assert tuple(output.shape) == (2, 16, 512)
-assert torch.all(output == 3)
+assert torch.all(block_tables[:, 2051:] == -1)
+assert captured["seq_lens"].tolist() == [2176, 2176]
+assert captured["sparse_mla_top_k_lens"].tolist() == [2176, 2176]
+assert captured["max_seq_len"] == 2176
+assert captured["sparse_mla_top_k"] == 2176
+assert captured["kv_scale_format"] == "arbitrary_fp32"
+assert tuple(captured["kv_cache"].shape) == (2, 1, 64, 528)
+assert tuple(output.shape) == (2, 32, 512)
+assert torch.all(output == 5)
 
 # Preserve the original 656-byte GLM-NSA adapter unchanged.
 with patch.dict(sys.modules, {"flashinfer": flashinfer, "flashinfer.mla": mla}):
@@ -139,22 +128,35 @@ with patch.dict(sys.modules, {"flashinfer": flashinfer, "flashinfer.mla": mla}):
         skip_softmax_threshold_scale_factor=0.25,
     )
 
-assert captured_generic["sparse_mla_top_k"] == 4
-assert captured_generic["kv_scale_format"] == "arbitrary_fp32"
+assert captured["sparse_mla_top_k"] == 4
+assert captured["seq_lens"].tolist() == [2, 3]
+assert captured["sparse_mla_top_k_lens"] is None
 assert tuple(generic_output.shape) == (2, 8, 512)
-assert torch.all(generic_output == 5)
 
-# The backend guard opens KPool tails only for the corrected 584-byte path.
+# The backend guard opens KPool tails only for the exact 528-byte no-RoPE
+# geometry and remains fail-closed if any geometry field differs.
 backend = DeepseekSparseAttnBackend.__new__(DeepseekSparseAttnBackend)
 backend.dsa_index_kpool = 4
-backend.kv_cache_dim = 584
+backend.kv_cache_dim = 528
+backend.qk_nope_head_dim = 256
+backend.kv_lora_rank = 512
+backend.qk_rope_head_dim = 0
 backend._check_kpool_tail_backend(indices, SPARSE, "decode")
-backend.kv_cache_dim = 656
-try:
-    backend._check_kpool_tail_backend(indices, SPARSE, "decode")
-except NotImplementedError:
-    pass
-else:
-    raise AssertionError("656-byte sparse-MLA path unexpectedly admitted KPool tails")
 
-print("GLM-5.3 SM120 sparse-MLA architecture and KPool contracts OK")
+for attr, bad_value in (
+    ("kv_cache_dim", 656),
+    ("qk_nope_head_dim", 192),
+    ("kv_lora_rank", 448),
+    ("qk_rope_head_dim", 64),
+):
+    old_value = getattr(backend, attr)
+    setattr(backend, attr, bad_value)
+    try:
+        backend._check_kpool_tail_backend(indices, SPARSE, "decode")
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError(f"KPool guard unexpectedly accepted {attr}={bad_value}")
+    setattr(backend, attr, old_value)
+
+print("GLM-5.3 SM120 sparse-MLA architecture and no-RoPE KPool contracts OK")

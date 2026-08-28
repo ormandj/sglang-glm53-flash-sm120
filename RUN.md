@@ -1,18 +1,18 @@
-# Running `v0.1.0-rc.9`
+# Running `v0.1.0-rc.10`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.9
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.10
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v6
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v7
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.9 advances cache schema to `v6`: it changes the effective SM120 DSA
+v0.1.0-rc.10 advances cache schema to `v7`: it changes the effective SM120 DSA
 adapter and refreshes FlashInfer main. Required kernels compile from the exact
-pinned sources into a distinct persistent cache; do not reuse `v5` artifacts.
+pinned sources into a distinct persistent cache; do not reuse `v6` artifacts.
 
 ## Serving envelope
 
@@ -33,11 +33,12 @@ These settings are load-bearing:
   `flashinfer_trtllm` path has an open out-of-bounds routing issue.
 - Keep `--disable-shared-experts-fusion`. The shared expert is intentionally
   bit-exact BF16 and must not be appended to the MXFP4 routed-expert buffer.
-- Keep both DSA backends on `flashinfer_sparse_mla`. The corrected 584-byte
-  DSv4 path preserves the full 2,051-entry KPool-extended table through
-  FlashInfer's 128+1,923 dual-segment API and points both segments at one cache.
-  Generic TRT-LLM MLA rejects workstation Blackwell during warmup, while
-  TileLang's CUDA DSA kernels require BF16 KV.
+- Keep both DSA backends on `flashinfer_sparse_mla`. The corrected 528-byte
+  no-RoPE path pads the complete 2,051-entry KPool table with `-1` to one
+  2,176-wide kernel dispatch. It deliberately passes the full padded width so
+  base-table holes cannot mask the three live tail entries. Generic TRT-LLM
+  MLA rejects workstation Blackwell, while TileLang's CUDA DSA kernels require
+  BF16 KV.
 
 Custom all-reduce is left enabled. SGLang tests whether the two PCIe GPUs have
 working P2P and falls back to NCCL if not. Capture the selected path in evidence;
@@ -136,4 +137,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.9` from a successful build alone.
+`v0.1.0-rc.10` from a successful build alone.
