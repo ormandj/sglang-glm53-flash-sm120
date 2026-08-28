@@ -1,0 +1,275 @@
+v0.1.0-rc.11 exact-hardware startup diagnostic
+Date: 2026-08-28
+
+Immutable inputs
+----------------
+Image:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.11@sha256:53840ec85896af33bbeded78b5bb7bc05ed78bb52448bc868d5f208a74354208
+Model:
+  /models/zai-org/GLM-5.3-Flash-BF16-MXFP4
+Artifact manifest SHA-256 prefix:
+  a74810a1
+Hardware:
+  2 x RTX PRO 6000 Blackwell, 95.592 GiB framebuffer per GPU
+Profile:
+  glm53-flash-sglang-v0-1-0-rc11-mtp-tp2
+
+Method
+------
+Only secret-filtered Kubernetes logs were inspected and retained. Lines
+containing server_args, API-key, Authorization, or Bearer material were
+discarded before display. Every other Blackwell Deployment was at zero before
+each activation.
+
+Run 1: default PyTorch allocator, native MTP, vision enabled
+-----------------------------------------------------------
+Pod:
+  glm53-flash-sglang-v0-1-0-rc11-mtp-tp2-79c9c648b8-nzcvp
+GitOps commit:
+  37e5ff4a45c333517f156dee6ca34553e1c9b42d
+
+This run removed PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True after the
+preceding run reproduced the exact SGLang #17642 failure at
+CustomAllreduce.register_graph_buffers/get_graph_buffer_ipc_meta. Custom
+all-reduce and CUDA graphs remained enabled.
+
+Observed milestones (both ranks unless stated otherwise):
+
+  10:05:49 target load end
+    type=Glm5NextForConditionalGeneration
+    elapsed=385.65/385.71 s
+    quant=compressed-tensors
+    model memory=84.94 GB/rank
+    available=9.01 GB/rank
+
+  10:06:05 native draft load end
+    type=Glm5NextForConditionalGenerationNextN
+    elapsed=9.00/9.01 s
+    quant=compressed-tensors
+    draft memory=3.21 GB/rank
+    available=5.73 GB/rank
+
+  target KV pool
+    dtype=torch.float8_e4m3fn
+    tokens=511232
+    size=3.46 GB/rank
+
+  native-MTP KV pool
+    dtype=torch.float8_e4m3fn
+    tokens=511232
+    size=0.31 GB/rank
+
+  target-verify full CUDA graph
+    num_tokens_per_req=6, bs=[1]
+    capture completed in 1.61/1.62 s
+    graph memory=0.50 GB/rank
+    available=1.21 GB/rank
+
+  draft full CUDA graphs
+    decode and extend captures completed, including adaptive shapes
+    final reported available memory after the last capture was about 0.30 GB
+
+  10:06:44 server process started
+    scheduler end-to-end startup=455.50 s
+    tokenizer end-to-end startup=465.74 s
+
+The original custom-all-reduce invalid-argument failure did not recur. This is
+positive evidence for the default-allocator fix and for >=500,000 target and
+native-MTP pooled tokens. It is not served-inference qualification.
+
+At 10:06:46 SGLang's internal VLM warmup failed inside
+glm4v.py -> base_processor.py -> processor.__call__ while the fast image
+processor attempted a CUDA allocation:
+
+  CUDA error: out of memory
+  POST /v1/chat/completions -> 500 Internal Server Error
+  Initialization failed. warmup error
+
+The Deployment was immediately scaled to zero and the terminated pod was not
+allowed to enter a restart loop. This post-graph multimodal preprocessing OOM
+is distinct from the earlier non-OOM CustomAllreduce graph-registration bug.
+
+Run 2: CPU image preprocessing, adaptive MTP graphs
+--------------------------------------------------
+GitOps commit b6e02cc configures --image-processor-backend pil on all three
+v0.1.0-rc.11 profiles. This keeps image preprocessing on CPU while leaving the
+vision encoder, native MTP, CUDA graphs, FP8 KV, and the capacity-first memory
+envelope enabled.
+
+Pod:
+  glm53-flash-sglang-v0-1-0-rc11-mtp-tp2-6d9446d5c8-qldd8
+
+The target and native NextN head again loaded successfully, with 84.94 GB and
+3.21 GB per rank respectively. Both KV pools again contained 511232 tokens.
+The target-verify graph completed with 1.21 GB available, followed by the fixed
+draft graphs and the adaptive controller's additional graph families. Engine
+startup completed in 448.16 s and the server process started.
+
+At 10:19:31 the GPU-side vision warmup then requested 256.00 MiB per rank with
+only 201.62 MiB free. Both ranks raised torch.OutOfMemoryError and the warmup
+request returned HTTP 500. Moving preprocessing to CPU therefore removed the
+first processor-side allocation, but did not leave enough space for the vision
+encoder itself. The Deployment was immediately returned to zero replicas.
+
+Run 3 remediation
+-----------------
+GitOps PR 997 removes only --speculative-adaptive from the native-MTP profile.
+The fixed five-step native MTP configuration and its target/draft CUDA graphs
+remain enabled. The default adaptive controller otherwise builds additional
+1/3/7-step runtime states and graph families; those are unnecessary at the
+profile's fixed concurrency of one and accounted for the post-graph headroom
+loss observed above. This remediation deliberately retains the 511232-token
+target and native-MTP KV pools. Served text and vision results must be appended
+only after this profile passes warmup and real requests.
+
+Run 3: fixed native MTP, successful startup, failed output quality
+-----------------------------------------------------------------
+Pod:
+  glm53-flash-sglang-v0-1-0-rc11-mtp-tp2-f6c666b9b-92qrx
+GitOps commit:
+  66076bcc81eb99ebb91e2a0b934342e912b6e8b5
+
+The target loaded in 383.21/383.22 s at 84.94 GB/rank and the native NextN
+head loaded in 7.79/7.96 s at 3.21 GB/rank. Both FP8 KV pools again contained
+511232 tokens. The fixed graph set completed as follows:
+
+  target verify: 0.50 GB/rank, final available 1.36 GB
+  draft decode:  0.12 GB/rank, final available 1.23 GB
+  draft extend:  0.10 GB/rank, final available 1.13 GB
+
+Engine startup completed in 436.70 s. SGLang's internal multimodal chat warmup
+returned HTTP 200, freeze_gc returned HTTP 200, and the health endpoint became
+ready at 10:32:58. First-use KDA/NextN kernels subsequently left approximately
+0.70 GiB free. No allocator error, graph-registration error, or CUDA OOM
+occurred. This is the first complete rc.11 startup and proves vision execution
+fits beside native MTP and the 511232-token pools.
+
+The first real greedy text request did not pass correctness:
+
+  prompt: Return exactly READY_53 and nothing else.
+  response prefix: Return_53_5_5_5_5_5_5_5_5...
+  completion: 32 tokens, length stop, elapsed 1.0877 s
+
+The deterministic 640x360 PNG had SHA-256
+6e676516fbcbf1edad33c27633d806c192fe5bae9b0688648656fcb692b6a52b and
+contained a blue rectangle, a red circle, and the text BLACKWELL 53. The real
+image request consumed 299 image tokens and completed without OOM, proving the
+image embedding path ran, but its 128-token response repeatedly echoed the
+instruction instead of identifying the image. The profile was returned to zero
+replicas. Startup and capacity pass; served quality fails.
+
+Run 4: verifier-only target control
+-----------------------------------
+Pod:
+  glm53-flash-sglang-v0-1-0-rc11-none-tp2-9cbb8857f-bwjq8
+
+This profile used the identical target artifact and runtime without MTP. Its
+old configuration allowed batch-eight graphs and left KDA state auto-sizing to
+the memory planner. The planner allocated 66 BF16 recurrent-state slots
+(0.16 GB convolution plus 2.22 GB SSM per rank), leaving a 400064-token target
+KV pool. Target load took 466.77/466.85 s. FlashInfer autotune plus compilation
+made scheduler startup 1040.56 s; batch 1/2/4/8 decode graphs used 0.63 GB/rank.
+Internal multimodal warmup still passed and the server became ready.
+
+The same greedy prompt returned `Return_53_3_3_3_3_3_3...`. A second request
+using the checkpoint defaults (temperature 1.0, top_p 0.95) emitted multilingual
+gibberish and prompt fragments. Because malformed output survives removal of
+the draft model and speculative verifier, native MTP is not the root cause.
+The target runtime path remains unqualified.
+
+GitOps PR 998 pins the verifier-only and external-DFlash controls to
+concurrency one, graph batch one, and one target KDA slot at memory fraction
+0.987. GitOps PR 999 next forces only the verifier control to NCCL, preserving
+the exact quant artifact, FP8 KV/DSA path, and CUDA graphs to isolate the TP
+custom-all-reduce path.
+
+Run 5: NCCL-only target control
+-------------------------------
+GitOps commit:
+  8d78567ca8adfa17febab678548d06a5b05814ec
+
+Disabling the legacy two-GPU custom all-reduce did not correct the malformed
+greedy output. The target-only request continued repeating the expected-answer
+stem instead of completing the instruction. This rules out that collective as
+the discriminator; it does not qualify NCCL performance.
+
+Run 6: Triton MoE runner control
+--------------------------------
+GitOps commit:
+  a8567b635c299c8100ad684422f4e350ff01c844
+
+Replacing flashinfer_mxfp4 with the Triton MoE runner did not reach inference.
+Its loader rejected the compressed expert tensor shape. This is a
+runner/checkpoint-contract failure, not evidence against the serialized weight
+bytes and not an OOM.
+
+Run 7: BF16 KV plus TileLang attention
+--------------------------------------
+GitOps commit:
+  403775f54bc1fdff2041d8a2cdcd96d6d33d6320
+
+Both ranks loaded the same target and allocated 262144 BF16 KV tokens, 3.11 GB
+per rank, with 5.62 GB reported available after pool allocation. FlashInfer
+autotune then entered TileLang sparse DSA during the dummy decode and failed:
+
+  tvm.error.InternalError:
+    Failed to set the allowed dynamic shared memory size to 169984
+
+The requested dynamic shared memory is unsupported on SM120. The model and KV
+pool fit; this failure is not an OOM.
+
+Run 8: B200-style TRT-LLM DSA plus FP8 KV
+-----------------------------------------
+GitOps commit:
+  6b3791cc3c84737848f9c7ec037dec737645b5f2
+
+The official B200-style arguments were accepted and both ranks allocated
+524288 FP8 KV tokens (3.46 GB/rank), leaving 5.26 GB reported free. The
+v0.1.0-rc.11 fail-closed architecture guard then rejected TRT-LLM DSA on SM120:
+the available TRTLLM-GEN path is specialized for datacenter Blackwell SM100,
+not workstation Blackwell SM120. This is not an OOM and the B200 cookbook is
+not directly transferable to these GPUs.
+
+Run 9: BF16 KV plus FA3 attention
+---------------------------------
+GitOps commit:
+  c4a1f256be0a5cf6c300c6da86b271867df5bad4
+
+The target again loaded and allocated 262144 BF16 KV tokens (3.11 GB/rank),
+leaving 5.62 GB reported free. Autotune then failed before inference with:
+
+  NotImplementedError:
+    flash_attn at sgl-kernel is only supported on sm90 and above
+
+The message is misleading for SM120: the implementation guard admits only
+SM80/SM90 families and the bundled kernels do not contain an SM120 path. This
+is another unsupported-kernel failure, not an OOM.
+
+Run 10: unfused KPool transform
+-------------------------------
+Pod:
+  glm53-flash-sglang-v0-1-0-rc11-none-tp2-7f8fddf67-sbx8f
+GitOps commit:
+  79aa4b862140ee07480f9cc17856fb4257796822
+
+This verifier-only control kept the exact MXFP4 target, FP8 KV, custom
+FlashInfer sparse-MLA adapter, vision path, TP2 collectives, and 524288-token
+pool while setting SGLANG_DSA_FUSE_TOPK=0. Both ranks loaded in 389.35 seconds,
+with 84.95 GB reported model memory and 9.03 GB available before pools. Each
+rank then allocated:
+
+  KDA recurrent state: five slots, 0.21 GB/rank
+  FP8 KV pool:          524288 tokens, 3.55 GB/rank
+  post-pool free:       5.17 GB/rank
+
+Autotune reached the unfused index transform and failed before inference:
+
+  transform_index_page_table_decode_fast
+  assert topk_indices.shape[1] == 2048
+  AssertionError
+
+GLM-5.3 supplies exactly 2051 indices: 2048 history candidates plus three live
+KPool tail entries. Therefore this run did not perform the intended fused vs
+unfused output-quality A/B. It instead isolates a real generic-transform
+contract defect. The Deployment was returned to zero replicas after the
+previous-container log was retained; there was no CUDA OOM.

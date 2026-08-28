@@ -1,24 +1,25 @@
-# Running `v0.1.0-rc.11`
+# Running `v0.1.0-rc.12`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.11
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.12
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v7
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v8
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.11 advances cache schema to `v7`: it changes the effective SM120 DSA
-adapter and refreshes FlashInfer main. Required kernels compile from the exact
-pinned sources into a distinct persistent cache; do not reuse `v6` artifacts.
+v0.1.0-rc.12 advances cache schema to `v8`: it adds the exact 2,051-entry
+unfused KPool transform and refreshes FlashInfer main. Required kernels compile
+from the exact pinned sources into a distinct persistent cache; do not reuse
+`v7` artifacts.
 
 ## Serving envelope
 
 The launcher pins TP=2, vision enabled, compressed-tensors MXFP4 routed experts,
-FP8 E4M3 KV, FlashInfer sparse MLA for GLM DSA, BF16 KDA recurrent state, eight
-request slots, and a 524,288-token configured context ceiling. The actual
+FP8 E4M3 KV, FlashInfer sparse MLA for GLM DSA, BF16 KDA recurrent state, one
+request slot, and a 524,288-token configured context ceiling. The actual
 pooled-token capacity is a startup measurement, not the value of
 `--context-length`.
 
@@ -39,10 +40,20 @@ These settings are load-bearing:
   base-table holes cannot mask the three live tail entries. Generic TRT-LLM
   MLA rejects workstation Blackwell, while TileLang's CUDA DSA kernels require
   BF16 KV.
+- Keep `--image-processor-backend pil`. Vision inference remains enabled on
+  GPU, but image preprocessing stays on CPU instead of trying to allocate CUDA
+  preprocessing tensors after the 500k-token pool and MTP graphs are resident.
+- Keep native MTP fixed at five steps for this capacity-first concurrency-one
+  profile. SGLang's default adaptive controller additionally captures 1/3/7-step
+  graph families; on these cards that leaves less than the 256 MiB required by
+  vision warmup after the 511,232-token pools are resident.
 
 Custom all-reduce is left enabled. SGLang tests whether the two PCIe GPUs have
 working P2P and falls back to NCCL if not. Capture the selected path in evidence;
-do not force either result without an A/B.
+do not force either result without an A/B. Keep PyTorch's default allocator:
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` makes the legacy PCIe
+CustomAllreduce graph-buffer IPC query fail with `invalid argument` during
+CUDA-graph capture (upstream SGLang issue #17642).
 
 ## Speculative modes
 
@@ -53,7 +64,7 @@ export SPECULATIVE_MODE=mtp
 ```
 
 It uses the checkpoint's quantized layer 45 through SGLang's EAGLE alias for
-NEXTN, with adaptive 5-step, top-k 1, six-draft-token bounds.
+NEXTN, with fixed 5-step, top-k 1, six-draft-token bounds.
 
 Run a verifier-only control with:
 
@@ -89,7 +100,7 @@ and verify:
    pool when that mode is selected;
 7. multimodal initialization remains enabled.
 
-If 500,000 pooled tokens do not fit at `MEM_FRACTION=0.96`, record exact weight,
+If 500,000 pooled tokens do not fit at `MEM_FRACTION=0.987`, record exact weight,
 graph, recurrent-state, and cache allocations before changing the fraction or
 request-slot count. Do not trade away vision or MTP to make the log look better.
 
@@ -137,4 +148,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.11` from a successful build alone.
+`v0.1.0-rc.12` from a successful build alone.

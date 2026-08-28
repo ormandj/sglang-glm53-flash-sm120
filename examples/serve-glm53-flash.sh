@@ -7,16 +7,17 @@ set -euo pipefail
 : "${MODEL_DIR:?set MODEL_DIR to the GLM-5.3-Flash-BF16-MXFP4 artifact directory}"
 : "${CACHE_DIR:?set CACHE_DIR to a persistent, image-specific cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.0-rc.11}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.0-rc.12}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
 CONTEXT_LENGTH=${CONTEXT_LENGTH:-524288}
-MEM_FRACTION=${MEM_FRACTION:-0.96}
-# Recurrent state is allocated per THIS value, not per live request:
+MEM_FRACTION=${MEM_FRACTION:-0.987}
+# The live-request pool is intentionally concurrency one for the 500k-capacity
+# profile. Native five-step MTP separately needs five recurrent-state slots:
 # 72.78 MiB/slot for the 34 KDA layers. 32 slots would silently reserve
-# 2.3 GiB of the KV pool at BF16, or 4.5 GiB if the SSM dtype were left FP32.
-MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-8}
+# 2.3 GiB at BF16, or 4.5 GiB if the SSM dtype were left FP32.
+MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-1}
 # mtp preserves the checkpoint's native layer-45 NEXTN block. dflash uses the
 # separately pinned DFlash2 assistant. none is the verifier-only A/B baseline.
 SPECULATIVE_MODE=${SPECULATIVE_MODE:-mtp}
@@ -36,7 +37,7 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || ((PORT < 1 || PORT > 65535)); then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.1.0-rc.11 is scoped to TP_SIZE=2" >&2
+  echo "v0.1.0-rc.12 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 if [[ "$SPECULATIVE_MODE" != none && "$SPECULATIVE_MODE" != mtp && "$SPECULATIVE_MODE" != dflash ]]; then
@@ -65,7 +66,6 @@ case "$SPECULATIVE_MODE" in
       --speculative-num-steps 5
       --speculative-eagle-topk 1
       --speculative-num-draft-tokens 6
-      --speculative-adaptive
       --speculative-draft-model-quantization compressed-tensors
       --speculative-moe-runner-backend flashinfer_mxfp4
     )
@@ -107,7 +107,6 @@ exec docker run --rm \
   --volume "${cache_dir}:/root/.cache" \
   --env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
-  --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
@@ -117,6 +116,7 @@ exec docker run --rm \
   --served-model-name glm53-flash-sm120 \
   --tp "$TP_SIZE" \
   --enable-multimodal \
+  --image-processor-backend pil \
   --quantization compressed-tensors \
   --moe-runner-backend flashinfer_mxfp4 \
   --disable-shared-experts-fusion \
@@ -124,8 +124,9 @@ exec docker run --rm \
   --kv-cache-dtype fp8_e4m3 \
   --mem-fraction-static "$MEM_FRACTION" \
   --chunked-prefill-size 8192 \
-  --cuda-graph-max-bs-decode 8 \
+  --cuda-graph-max-bs-decode 1 \
   --max-running-requests "$MAX_RUNNING_REQUESTS" \
+  --max-mamba-cache-size 5 \
   --mamba-ssm-dtype bfloat16 \
   --dsa-prefill-backend flashinfer_sparse_mla \
   --dsa-decode-backend flashinfer_sparse_mla \

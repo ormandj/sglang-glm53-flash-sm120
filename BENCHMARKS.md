@@ -1,6 +1,6 @@
 # Benchmarks
 
-**`v0.1.0-rc.11` has no served-model quality or performance results yet.** The
+**`v0.1.0-rc.12` has no served-model quality or performance results yet.** The
 direct BF16 to MXFP4 artifact is complete and hash-verified; the corrected image
 is still being built. A candidate is built, not qualified, until exact-candidate
 evidence is recorded here.
@@ -28,7 +28,8 @@ qualification:
 | artifact-free MXFP4 source JIT | repaired vendor suite 4/4 passed; prior config-ownership source 3/4 | exact v0.1.0-rc.5 image plus the two-line rc.8 diagnostic delta on SM120; [`evidence/v0.1.0-rc.5-no-cubin-sm120-hardware-20260828.txt`](evidence/v0.1.0-rc.5-no-cubin-sm120-hardware-20260828.txt) |
 | artifact-free sparse MLA source JIT | 4/4 production-shaped decode/prefill and sink/no-sink cases passed | exact v0.1.0-rc.5 image and pinned FlashInfer test on SM120; same evidence file |
 | native target + MTP load | both target ranks loaded in 477.8s and native layer-45 MTP loaded in 8.16s; warmup then failed closed on the unsupported inherited KPool guard | exact v0.1.0-rc.8 image; pre-candidate startup diagnostic, not served qualification; [`evidence/v0.1.0-rc.8-kpool-adapter-diagnostic-20260828.txt`](evidence/v0.1.0-rc.8-kpool-adapter-diagnostic-20260828.txt) |
-| prior DSv4 KPool experiment | invalidated for GLM-5.3: it numerically tested a real DSv4 kernel, but the model never uses that 584-byte cache; the rc.9 SGLang branch was dead and warmup still rejected KPool | source-path and runtime-geometry correction after rc.9 startup; not evidence for rc.11 |
+| prior DSv4 KPool experiment | invalidated for GLM-5.3: it numerically tested a real DSv4 kernel, but the model never uses that 584-byte cache; the v0.1.0-rc.9 SGLang branch was dead and warmup still rejected KPool | source-path and runtime-geometry correction after v0.1.0-rc.9 startup; not evidence for v0.1.0-rc.12 |
+| v0.1.0-rc.11 unfused KPool diagnostic | target weights and a 524,288-token FP8 KV pool loaded; warmup then failed the generic transform's exact-2,048 assertion on GLM's 2,051-entry table | identifies a transform-contract defect before inference; not output-quality evidence; [`evidence/v0.1.0-rc.11-startup-diagnostic-20260828.txt`](evidence/v0.1.0-rc.11-startup-diagnostic-20260828.txt) |
 
 The production quantizer repeated and expanded the structural checks, including
 bit-for-bit comparison of every protected tensor and 129 layer/projection
@@ -70,7 +71,7 @@ These checks qualify the artifact structure, not model behavior.
 - short prompt, long prefill, and first decode after cold prefills above 262k;
 - custom PCIe all-reduce versus NCCL if both paths are stable.
 
-Every row must identify the full image name `v0.1.0-rc.11`, image digest, model
+Every row must identify the full image name `v0.1.0-rc.12`, image digest, model
 artifact manifest hash, exact launcher arguments, GPU/driver state, raw evidence
 path, and pass/fail criterion. Do not import performance numbers from another
 model, another quant, B200/GB300, or a different candidate.

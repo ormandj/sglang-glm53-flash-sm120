@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.12
+
+Unfused KPool contract diagnostic candidate. This candidate is not qualified.
+
+- Fix the generic DSA index transform to preserve GLM-5.3's exact 2,051-entry
+  table (2,048 history entries plus three live KPool tails) in both decode and
+  prefill. The tuned 2,048-entry decode kernel remains unchanged, and every
+  other width is still rejected.
+- Add a source contract plus an exact-GPU comparison against the torch
+  reference, including a padded gap before the three live tail entries.
+- Refresh FlashInfer main to exact commit `93f4f264…`, tree `7e9829d1…`. The
+  intervening changes do not touch sparse-MLA sources, and the isolated
+  GLM_NEXT_NOPE patch still applies with zero fuzz.
+- Advance cache schema to `v8` because the effective SGLang transform and
+  FlashInfer tree changed.
+- Retain v0.1.0-rc.11's CPU image preprocessing, fixed five-step native MTP,
+  concurrency-one memory envelope, and default PyTorch allocator.
+
 ## v0.1.0-rc.11
 
 Exact GLM-5.3 no-RoPE sparse-MLA candidate. This candidate is not qualified.
@@ -12,6 +30,14 @@ Exact GLM-5.3 no-RoPE sparse-MLA candidate. This candidate is not qualified.
   `8ccc7bb2…`. All other exact preimages and postimages matched.
 - Preserve cache schema `v7`: kernel and adapter bytes are unchanged from the
   intended v0.1.0-rc.10 implementation.
+- Keep the direct-run launcher on PyTorch's default allocator. Expandable
+  segments reproduce upstream SGLang issue #17642 in the two-GPU PCIe
+  CustomAllreduce CUDA-graph capture path.
+- Keep image preprocessing on CPU so the vision warmup does not contend with
+  the capacity-first KV pool and native-MTP CUDA graphs for residual VRAM.
+- Use fixed five-step native MTP at concurrency one. The default adaptive
+  controller's extra 1/3/7-step graph families leave only about 202 MiB free,
+  below the vision encoder warmup's observed 256-MiB allocation.
 
 ## v0.1.0-rc.10
 

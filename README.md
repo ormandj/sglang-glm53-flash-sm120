@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.11` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.12` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.11 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.12 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -62,7 +62,7 @@ The launcher supports three A/B modes through `SPECULATIVE_MODE`:
 
 | mode | behavior |
 |---|---|
-| `mtp` | default; native layer-45 NEXTN through EAGLE, adaptive 5-step / top-k 1 / 6-token profile |
+| `mtp` | default; native layer-45 NEXTN through EAGLE, fixed 5-step / top-k 1 / 6-token profile |
 | `dflash` | pinned `incoai/GLM-5.3-Flash-DFlash2`, block 8, 2,048-token draft window, FP8 draft KV |
 | `none` | verifier-only baseline |
 
@@ -78,8 +78,8 @@ PR #36507 remains open and conflicting. The vendor per-model image was built
 from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
-This repository does not claim a vendor SGLang git revision. For the seven files
-we modify, v0.1.0-rc.11 asserts exact vendor preimage SHA-256 values, applies archived
+This repository does not claim a vendor SGLang git revision. For every file
+we modify, v0.1.0-rc.12 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
@@ -96,11 +96,13 @@ tests. The patches:
    tool arguments close valid streaming JSON and top-level composite schemas
    resolve correctly;
 7. route the exact 528-byte no-RoPE cache and 2,051-entry KPool-extended DSA
-   table through a dedicated 32-head SM120 specialization without truncation.
+   table through a dedicated 32-head SM120 specialization without truncation;
+8. preserve the same 2,051 entries in the unfused decode and prefill transforms
+   used to isolate fused-KPool correctness, while retaining the tuned 2,048 path.
 
 FlashInfer 0.6.18 is built from exact main commit
-`950376c45a473d8f9ebfa83b2224094f5102c0e6` and tree
-`d44c17d48d02efa160a7e9ddbeecd01457b244c0` with
+`93f4f2642e1b3680a52ebb51cf68e0fdad237796` and tree
+`7e9829d1b743896617fbba8ad7d36f3d72127b7e` with
 `FLASHINFER_CUDA_ARCH_LIST=12.0f`. The generic 48,391-artifact cubin package is
 not installed: the targeted MXFP4 and sparse-MLA SM120 paths compile from the
 pinned source, and runtime artifact downloads are disabled. The archived
@@ -113,12 +115,12 @@ TP=2 dispatch, with existing layouts kept unchanged.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.11 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.12 .
 ```
 
 ```bash
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v7
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v8
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
@@ -149,5 +151,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.11 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.12 built; only
 exact-candidate evidence can make it qualified.

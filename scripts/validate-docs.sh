@@ -26,20 +26,21 @@ require_text "$repo/AGENTS.md" 'always uses the complete release name'
 critical=(
   'TP_SIZE=${TP_SIZE:-2}'
   'CONTEXT_LENGTH=${CONTEXT_LENGTH:-524288}'
-  'MEM_FRACTION=${MEM_FRACTION:-0.96}'
-  'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-8}'
+  'MEM_FRACTION=${MEM_FRACTION:-0.987}'
+  'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-1}'
   'SPECULATIVE_MODE=${SPECULATIVE_MODE:-mtp}'
   '--enable-multimodal'
+  '--image-processor-backend pil'
   '--quantization compressed-tensors'
   '--kv-cache-dtype fp8_e4m3'
   '--chunked-prefill-size 8192'
-  '--cuda-graph-max-bs-decode 8'
+  '--cuda-graph-max-bs-decode 1'
+  '--max-mamba-cache-size 5'
   '--mamba-ssm-dtype bfloat16'
   '--moe-runner-backend flashinfer_mxfp4'
   '--speculative-algorithm EAGLE'
   '--speculative-num-steps 5'
   '--speculative-num-draft-tokens 6'
-  '--speculative-adaptive'
   '--speculative-draft-model-quantization compressed-tensors'
   '--speculative-moe-runner-backend flashinfer_mxfp4'
   '--speculative-algorithm DFLASH'
@@ -74,7 +75,7 @@ if grep -E -- '(^|[[:space:]])--ep([[:space:]]|$)|EP_SIZE' "$launcher" >/dev/nul
   exit 1
 fi
 # --mamba-ssm-dtype is mandatory: SGLang defaults the SSM state to FP32, which
-# costs 2.2 GiB of KV pool at max-running-requests=8.
+# costs about 73 MiB per recurrent-state slot on this model.
 grep -F -- '--mamba-ssm-dtype bfloat16' "$launcher" >/dev/null || {
   echo "launcher must pin --mamba-ssm-dtype bfloat16" >&2; exit 1; }
 
