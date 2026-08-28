@@ -55,6 +55,7 @@ check_pin GLM53_FLASHINFER_VERSION "$(jq -er '.integration.flashinfer.package_ve
 check_pin GLM53_MODELOPT_HEAD "$(jq -er '.integration.modelopt.head' "$lock")"
 check_pin GLM53_MODELOPT_TREE "$(jq -er '.integration.modelopt.tree' "$lock")"
 check_pin GLM53_MODELOPT_VERSION "$(jq -er '.integration.modelopt.package_version' "$lock")"
+check_pin GLM53_MODELOPT_RELEASE_TAG "$(jq -er '.integration.modelopt.release_tag' "$lock")"
 
 while IFS=$'\t' read -r arg value; do
   grep -Fxq "ARG ${arg}=${value}" "$repo/Containerfile" || {

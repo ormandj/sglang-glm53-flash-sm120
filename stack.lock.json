@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 17,
-    "candidate_tag": "v0.1.0-rc.17",
+    "candidate": 18,
+    "candidate_tag": "v0.1.0-rc.18",
     "stable_tag": "v0.1.0",
     "cache_schema": "v10"
   },
   "image": {
-    "tag": "v0.1.0-rc.17",
+    "tag": "v0.1.0-rc.18",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,7 +44,7 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "17"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "18"},
     {"arg": "GLM53_CACHE_SCHEMA", "value": "v10"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
@@ -59,6 +59,7 @@
     {"arg": "GLM53_FLASHINFER_TREE", "value": "0462b5c545eb145cb96001285afe4cc89de30605"},
     {"arg": "GLM53_MODELOPT_REPOSITORY", "value": "https://github.com/NVIDIA/Model-Optimizer.git"},
     {"arg": "GLM53_MODELOPT_VERSION", "value": "0.47.0rc0"},
+    {"arg": "GLM53_MODELOPT_RELEASE_TAG", "value": "0.47.0rc0"},
     {"arg": "GLM53_MODELOPT_HEAD", "value": "022767c7ab3d7d36211affd85e5c496770cde768"},
     {"arg": "GLM53_MODELOPT_TREE", "value": "9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9"},
     {"arg": "GLM53_MODEL_REPOSITORY", "value": "zai-org/GLM-5.3-Flash-BF16"},
@@ -84,6 +85,7 @@
     "modelopt": {
       "repository": "https://github.com/NVIDIA/Model-Optimizer.git",
       "package_version": "0.47.0rc0",
+      "release_tag": "0.47.0rc0",
       "head": "022767c7ab3d7d36211affd85e5c496770cde768",
       "tree": "9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9"
     }
@@ -110,6 +112,6 @@
     "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.17 is not built or qualified"
+    "claims": "v0.1.0-rc.18 is not built or qualified"
   }
 }

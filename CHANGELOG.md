@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.18
+
+Immutable-build packaging correction. This candidate is not yet built or
+qualified.
+
+- Fetch and verify ModelOpt's exact `0.47.0rc0` release tag at the already
+  pinned commit before installing it. The rc.17 depth-one commit fetch omitted
+  the tag, causing `setuptools-scm` to report `0.0.1.dev1+...` and correctly
+  fail the locked-version assertion after SGLang and FlashInfer had built.
+- Retain the exact rc.17 SGLang, FlashInfer, and ModelOpt source trees and the
+  `v10` cache schema; this correction does not change runtime code or carry a
+  new serving workaround.
+
 ## v0.1.0-rc.17
 
 Greenfield E4M3-K32 W4A16 integration image. This candidate is not qualified.
