@@ -1,16 +1,17 @@
-# Running `v0.1.0-rc.13`
+# Running `v0.1.0-rc.14`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.13
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.14
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
-Cache schema `v9` is mandatory because the no-RoPE KV writer now protects the
-reserved padding slot and applies DCP ownership mapping. Do not reuse compiled
-`v8` artifacts.
+Cache schema `v9` is retained because the KV writer is unchanged from the
+reserved-slot correction. v0.1.0-rc.14 also adds an SM120-safe TileLang launch
+for the independent BF16-KV DSA control. Keep compiled artifacts isolated per
+candidate even when the KV schema is unchanged.
 
 `SPECULATIVE_MODE` accepts:
 

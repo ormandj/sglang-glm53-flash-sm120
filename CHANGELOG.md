@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.14
+
+SM120 TileLang shared-memory correctness-control candidate. This candidate is
+not qualified.
+
+- Add a byte-gated launch for the independent TileLang BF16-KV no-RoPE DSA
+  path. SM120/SM121 uses `block_I=32`, one pipeline stage, and 128 threads;
+  non-SM12 CUDA and HIP paths remain unchanged.
+- Pin the exact vendor preimage and postimage and run a semantic build-time
+  contract for both SM12 and non-SM12 dispatch.
+- Retain cache schema `v9`, the existing FP8 sparse-MLA path, vision support,
+  and native MTP profile. The KV writer and persisted cache ABI are unchanged.
+
 ## v0.1.0-rc.13
 
 No-RoPE MLA reserved-slot correctness candidate. This candidate is not

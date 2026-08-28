@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 13,
-    "candidate_tag": "v0.1.0-rc.13",
+    "candidate": 14,
+    "candidate_tag": "v0.1.0-rc.14",
     "stable_tag": "v0.1.0",
     "cache_schema": "v9"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.13",
+    "tag": "v0.1.0-rc.14",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "13"
+      "value": "14"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -208,6 +208,18 @@
     {
       "arg": "GLM53_SGLANG_MLA_BUFFER_TEST_SHA256",
       "value": "5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8"
+    },
+    {
+      "arg": "GLM53_SGLANG_TILELANG_PREIMAGE_SHA256",
+      "value": "526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f"
+    },
+    {
+      "arg": "GLM53_SGLANG_TILELANG_POSTIMAGE_SHA256",
+      "value": "1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98"
+    },
+    {
+      "arg": "GLM53_SGLANG_TILELANG_TEST_SHA256",
+      "value": "fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f"
     }
   ],
   "patches": [
@@ -300,6 +312,16 @@
       "path": "patches/test_glm53_norope_reserved_slot.py",
       "sha256": "5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8",
       "purpose": "build-time source contract and exact-GPU regression proving reserved slot zero remains unchanged while valid no-RoPE writes succeed"
+    },
+    {
+      "path": "patches/0011-glm53-sm120-tilelang-shared-memory.patch",
+      "sha256": "a07b561d369562cfb55a29db438bfa7b8e7b53e53dfec1220b2f14c983da828a",
+      "purpose": "fit GLM-5.3's independent TileLang BF16-KV no-RoPE DSA path under the 101,376-byte SM120/SM121 dynamic shared-memory ceiling"
+    },
+    {
+      "path": "patches/test_glm53_sm120_tilelang_launch.py",
+      "sha256": "fc3f43620d152843315192eecce7a63ad5e029178f93a08d48c74bc82b981d5f",
+      "purpose": "build-time contract proving SM120/SM121 selects the 32-entry one-stage 128-thread TileLang launch while non-SM12 CUDA remains unchanged"
     }
   ],
   "integration": {
@@ -317,8 +339,8 @@
         "model_support_pr_title": "GLM-5.3-Flash support",
         "model_support_pr_state": "open and conflicting as of 2026-08-28",
         "model_support_pr_head": "aa8c950a3df62b6642c4ea60a93a5e3eb1a1450e",
-        "observed_main_head": "ecbadf0b4bd57c67b4c7eecfcf4b9ae6b6dde56b",
-        "observed_main_tree": "0dbb57152273eab22121cbad1655ecb56406d44a",
+        "observed_main_head": "9579bff86085f886cf6d1ec69349017d0caeced4",
+        "observed_main_tree": "3a6bfffdd33a5757691d27853749ffccc97e1c5f",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
@@ -398,6 +420,17 @@
           "positive_slot_write_succeeded": true
         },
         "fixed_contract": "loc != reserved_skip_index and loc % DCP_WORLD_SIZE == DCP_RANK; valid locations are divided by DCP_WORLD_SIZE before scatter"
+      },
+      "sm120_tilelang_shared_memory": {
+        "rationale": "The independent TileLang BF16-KV DSA path is the only community-demonstrated GLM-5.3 no-RoPE backend on consumer Blackwell, but the vendor launch requests 169,984 bytes of dynamic shared memory on GPUs whose per-block limit is 101,376 bytes. The candidate narrows only SM120/SM121 to a 32-entry, one-stage, 128-thread launch; all non-SM12 CUDA and HIP paths remain unchanged.",
+        "source_preimage_sha256": "526988aa5fd8fa61529f2d3cf245d1061e30982d2bd0d6e64ea2e51e31f30f7f",
+        "source_postimage_sha256": "1ef89455033378c392c1e9a8f0a1f46da7be3a6ce5ba87e4e75fe407ba7a4b98",
+        "sm12_launch": {
+          "block_I": 32,
+          "num_stages": 1,
+          "threads": 128
+        },
+        "qualification_status": "build-time contract only; exact-hardware numerical and served-output validation required"
       },
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
