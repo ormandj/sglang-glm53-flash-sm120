@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.0-rc.12
+
+Unfused KPool contract diagnostic candidate. This candidate is not qualified.
+
+- Fix the generic DSA index transform to preserve GLM-5.3's exact 2,051-entry
+  table (2,048 history entries plus three live KPool tails) in both decode and
+  prefill. The tuned 2,048-entry decode kernel remains unchanged, and every
+  other width is still rejected.
+- Add a source contract plus an exact-GPU comparison against the torch
+  reference, including a padded gap before the three live tail entries.
+- Refresh FlashInfer main to exact commit `93f4f264…`, tree `7e9829d1…`. The
+  intervening changes do not touch sparse-MLA sources, and the isolated
+  GLM_NEXT_NOPE patch still applies with zero fuzz.
+- Advance cache schema to `v8` because the effective SGLang transform and
+  FlashInfer tree changed.
+- Use the exact-hardware capacity envelope established after v0.1.0-rc.11 was
+  built: CPU image preprocessing, fixed five-step native MTP, concurrency one,
+  batch-one CUDA graphs, five recurrent-state slots, and PyTorch's default
+  allocator. This retains vision and native MTP in the capacity-first profile.
+
 ## v0.1.0-rc.11
 
 Exact GLM-5.3 no-RoPE sparse-MLA candidate. This candidate is not qualified.

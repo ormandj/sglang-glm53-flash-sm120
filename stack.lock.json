@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 11,
-    "candidate_tag": "v0.1.0-rc.11",
+    "candidate": 12,
+    "candidate_tag": "v0.1.0-rc.12",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v7"
+    "cache_schema": "v8"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.11",
+    "tag": "v0.1.0-rc.12",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,11 +67,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "11"
+      "value": "12"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v7"
+      "value": "v8"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -103,11 +103,11 @@
     },
     {
       "arg": "GLM53_FLASHINFER_MAIN_HEAD",
-      "value": "950376c45a473d8f9ebfa83b2224094f5102c0e6"
+      "value": "93f4f2642e1b3680a52ebb51cf68e0fdad237796"
     },
     {
       "arg": "GLM53_FLASHINFER_MAIN_TREE",
-      "value": "d44c17d48d02efa160a7e9ddbeecd01457b244c0"
+      "value": "7e9829d1b743896617fbba8ad7d36f3d72127b7e"
     },
     {
       "arg": "GLM53_MODEL_REPOSITORY",
@@ -184,6 +184,18 @@
     {
       "arg": "GLM53_SGLANG_GLM47_TEST_SHA256",
       "value": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1"
+    },
+    {
+      "arg": "GLM53_SGLANG_TRANSFORM_INDEX_PREIMAGE_SHA256",
+      "value": "14033b27b11b2774ddf5a8816f6b64f533efeb66b21a7c8ef7ec914a473650a0"
+    },
+    {
+      "arg": "GLM53_SGLANG_TRANSFORM_INDEX_POSTIMAGE_SHA256",
+      "value": "cea5bcded66744b2037371fbaf10497eaa70570e3e63e515b148db5595bc5163"
+    },
+    {
+      "arg": "GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256",
+      "value": "9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437"
     }
   ],
   "patches": [
@@ -256,6 +268,16 @@
       "path": "patches/test_glm53_glm47_nested_tool_patch.py",
       "sha256": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1",
       "purpose": "build-time flat nested-object and composite-schema GLM47 streaming contract"
+    },
+    {
+      "path": "patches/0009-glm53-kpool-unfused-transform.patch",
+      "sha256": "a13ac2fc2cf99ca9a1f14042aca00cfd1f2ddeb54120d724624a9312bf7ea7ac",
+      "purpose": "preserve GLM-5.3's three live KPool tail entries in exact 2,051-wide unfused decode and prefill transforms while leaving SGLang's tuned 2,048-wide path unchanged"
+    },
+    {
+      "path": "patches/test_glm53_kpool_unfused_transform.py",
+      "sha256": "9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437",
+      "purpose": "build-time source contract and exact-GPU reference comparison for 2,051-wide unfused decode and prefill transforms, including live tail entries after a padded base-table gap"
     }
   ],
   "integration": {
@@ -273,8 +295,8 @@
         "model_support_pr_title": "GLM-5.3-Flash support",
         "model_support_pr_state": "open and conflicting as of 2026-08-28",
         "model_support_pr_head": "aa8c950a3df62b6642c4ea60a93a5e3eb1a1450e",
-        "observed_main_head": "2960d696228efc8ef930565f9f5dac9dffb6e571",
-        "observed_main_tree": "aa41073377926e3aa424a308eedccf970aedba2a",
+        "observed_main_head": "ecbadf0b4bd57c67b4c7eecfcf4b9ae6b6dde56b",
+        "observed_main_tree": "0dbb57152273eab22121cbad1655ecb56406d44a",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
@@ -336,7 +358,14 @@
         "input_topk": 2051,
         "kernel_topk": 2176,
         "padding_value": -1,
-        "qualification_status": "build-time contracts authored; exact-hardware numerical regressions and served-model qualification pending on v0.1.0-rc.11"
+        "qualification_status": "build-time contracts authored; exact-hardware numerical regressions and served-model qualification pending on v0.1.0-rc.12"
+      },
+      "kpool_unfused_transform": {
+        "rationale": "The v0.1.0-rc.11 unfused-KPool diagnostic reached the generic SGLang transform with GLM-5.3's exact 2,051-entry table and failed its hard-coded 2,048-entry assertion before inference. The correction preserves the existing tuned 2,048 decode path, admits only the exact GLM width, and retains all three live tail entries in decode and prefill.",
+        "source_preimage_sha256": "14033b27b11b2774ddf5a8816f6b64f533efeb66b21a7c8ef7ec914a473650a0",
+        "source_postimage_sha256": "cea5bcded66744b2037371fbaf10497eaa70570e3e63e515b148db5595bc5163",
+        "admitted_topk_widths": [2048, 2051],
+        "gpu_contract": "decode and prefill outputs must exactly match the torch reference with base-table padding before live columns 2048..2050"
       },
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
@@ -360,15 +389,15 @@
       }
     },
     "flashinfer": {
-      "head": "950376c45a473d8f9ebfa83b2224094f5102c0e6",
-      "tree": "d44c17d48d02efa160a7e9ddbeecd01457b244c0",
+      "head": "93f4f2642e1b3680a52ebb51cf68e0fdad237796",
+      "tree": "7e9829d1b743896617fbba8ad7d36f3d72127b7e",
       "package_version": "0.6.18",
       "base_package_version": "0.6.17",
       "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f; archived GLM_NEXT_NOPE patch applied with zero fuzz; sparse-MLA module NVCC-compiled at image build; generic flashinfer-cubin and flashinfer-jit-cache packages absent; FLASHINFER_NO_DOWNLOAD=1",
-      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; pinned main supports 656-byte V32/GLM-NSA and 584-byte DSv4 caches but not GLM-5.3's 528-byte no-RoPE cache. The isolated patch adds only the exact TP=2 GLM geometry and preserves existing dispatches."
+      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; refreshed main supports 656-byte V32/GLM-NSA and 584-byte DSv4 caches but not GLM-5.3's 528-byte no-RoPE cache. Changes since the prior pin do not touch sparse-MLA sources, and the isolated patch still applies with zero fuzz. It adds only the exact TP=2 GLM geometry and preserves existing dispatches."
     },
     "speculative_decoding": {
-      "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, adaptive 5 steps / top-k 1 / 6 draft tokens",
+      "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, fixed 5 steps / top-k 1 / 6 draft tokens",
       "alternative": "DFlash2 A/B candidate; no performance claim until measured on this exact rc",
       "dflash_repository": "incoai/GLM-5.3-Flash-DFlash2",
       "dflash_revision": "7d74cdd881ed7e32c31175984a67823127b66cfe",

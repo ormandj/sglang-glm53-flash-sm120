@@ -1,20 +1,20 @@
-# Running `v0.1.0-rc.11`
+# Running `v0.1.0-rc.12`
 
 ```bash
-export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.11
+export IMAGE=git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.12
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v7
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v8
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
-Cache schema `v7` is mandatory because the exact 528-byte no-RoPE KPool
-adapter and FlashInfer kernels differ from v0.1.0-rc.9. Do not reuse compiled
-`v6` artifacts.
+Cache schema `v8` is mandatory because the exact 2,051-entry unfused KPool
+transform and refreshed FlashInfer tree differ from v0.1.0-rc.11. Do not reuse
+compiled `v7` artifacts.
 
 `SPECULATIVE_MODE` accepts:
 
-- `mtp`: native layer-45 NEXTN via adaptive EAGLE;
+- `mtp`: native layer-45 NEXTN via fixed five-step EAGLE;
 - `dflash`: pinned DFlash2 assistant;
 - `none`: verifier-only control.
 
@@ -25,8 +25,10 @@ export SPECULATIVE_MODE=dflash
 export DFLASH_DIR=/models/incoai/GLM-5.3-Flash-DFlash2
 ```
 
-All modes keep vision enabled, use TP=2, pin `flashinfer_mxfp4`, and disable
-shared-expert fusion to preserve its BF16 path. Confirm the
+All modes keep vision enabled with CPU image preprocessing, use TP=2, pin
+`flashinfer_mxfp4`, and disable shared-expert fusion to preserve its BF16 path.
+The capacity-first launcher uses one live request slot, five recurrent-state
+slots, batch-one CUDA graphs, and PyTorch's default allocator. Confirm the
 exact image digest, successful target/draft weight loads, multimodal
 initialization, selected all-reduce path, and allocated token pools from startup
 logs. Qualification results belong only in the primary repository.

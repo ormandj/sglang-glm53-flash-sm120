@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.11`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.12`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -26,6 +26,8 @@ qualification claim.
 - An exact 528-byte GLM-5.3 no-RoPE adapter and FlashInfer SM120 kernel
   specialization that preserve all 2,051 KPool entries by padding with `-1`
   to one 2,176-wide TP=2 dispatch.
+- An exact 2,051-entry unfused decode/prefill transform for isolating fused
+  KPool correctness without dropping the model's three live tail entries.
 - The SM120 MXFP4 post-loader reads its runner configuration from the
   quantization method that owns it, preserving the vendor GPT-OSS contract as
   well as GLM's distinct gate/up and activation semantics.
@@ -34,12 +36,12 @@ qualification claim.
 - SM120-safe mHC/indexer settings matching SGLang's current DeepSeek-V4 guard;
   GLM's shared DSA hook does not yet inherit that guard upstream.
 - FlashInfer 0.6.18 rebuilt from exact commit
-  `950376c45a473d8f9ebfa83b2224094f5102c0e6` and tree
-  `d44c17d48d02efa160a7e9ddbeecd01457b244c0` with
+  `93f4f2642e1b3680a52ebb51cf68e0fdad237796` and tree
+  `7e9829d1b743896617fbba8ad7d36f3d72127b7e` with
   `FLASHINFER_CUDA_ARCH_LIST=12.0f`; generic cross-architecture cubin and JIT
   cache packages are absent, and runtime artifact downloads are disabled.
-- Runtime profiles for verifier-only, native adaptive MTP, and pinned DFlash2;
-  multimodal execution remains explicitly enabled in every mode.
+- Runtime profiles for verifier-only, native fixed five-step MTP, and pinned
+  DFlash2; multimodal execution remains explicitly enabled in every mode.
 - An exhaustive compressed-tensors ignore keeps ordinary linears BF16, and
   shared-expert fusion is disabled so its protected BF16 weights never enter
   the MXFP4 routed-expert buffer.
@@ -52,7 +54,7 @@ lock therefore keeps `verification.sglang_source_verifiable: false` and
 `verification.sglang_repository: null`.
 
 The base is reproducible by image digest, not by a claimed SGLang git tree. The
-seven modified files are separately reproducible by exact preimage SHA-256,
+the modified files are separately reproducible by exact preimage SHA-256,
 archived patch bytes applied with zero fuzz, and exact postimage SHA-256.
 
 ## Verify
@@ -69,4 +71,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.11` built, not qualified.
+`v0.1.0-rc.12` built, not qualified.
