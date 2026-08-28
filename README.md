@@ -1,37 +1,40 @@
-# SGLang GLM-5.3-Flash SM120 (container build)
+# SGLang GLM-5.3-Flash SM120 container
 
-Internal container build for serving an **MXFP4A16 quantization of
-[`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash)** on two
-NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2.
+Internal immutable build for serving the BF16-derived MXFP4A16 GLM-5.3-Flash
+artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
+and native MTP retained.
 
-Published candidate: `git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.1`
+Candidate under construction:
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.2`
 
-The public source-release counterpart, including the full quantization rationale
-and capacity analysis, is `sglang-glm53-flash-sm120`.
+The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
+and all future performance/quality evidence. This build repository makes no
+qualification claim.
 
-## What this image is
+## Image contents
 
-- Base: `lmsysorg/sglang:glm-5.3-flash-amd64`, pinned by immutable digest.
-- FlashInfer 0.6.18 rebuilt from source with `FLASHINFER_CUDA_ARCH_LIST=12.0f`.
-  The vendor wheel ships no 12.0f cubins, and workstation Blackwell lacks
-  TMEM/`tcgen05`/`wgmma`, so sm_100 and Hopper kernels do not run on it.
-- Build-time gates that fail *before* the ~40-minute FlashInfer compile: base
-  CUDA version, `glm5_next` importability, and the `mxfp4-pack-quantized`
-  contract.
+- Vendor `lmsysorg/sglang:glm-5.3-flash-amd64` base pinned by immutable OCI
+  index and linux/amd64 manifest digests.
+- Exact byte-gated fixes for GLM's SM120 MXFP4 gate/up and activation contract,
+  plus upstream PR #36708's DFlash2 hidden-state capture change.
+- Build-time semantic tests for both patches.
+- FlashInfer 0.6.18 rebuilt from exact commit
+  `cbcbce48e817c83f03ad5a3e6ce59480eaf6935d` and tree
+  `d3a639d6f268b8bfc679a8bd15581a6a6b319a16` with
+  `FLASHINFER_CUDA_ARCH_LIST=12.0f`.
+- Runtime profiles for verifier-only, native adaptive MTP, and pinned DFlash2;
+  multimodal execution remains explicitly enabled in every mode.
 
-## Provenance is weaker here than in the Qwen3.8-Flash-Next build
+## Provenance boundary
 
-That build pins sglang main by commit and tree, applies an archived patch, and
-asserts the effective tree hash. **None of that is possible for GLM-5.3-Flash**:
 `glm5_next` is not in sgl-project/sglang main as of 2026-08-27, and the vendor
-per-model image is built from `ADD sglang.tar.gz` with
-`SGLANG_BUILD_COMMIT=unknown`.
+per-model image was built from a tarball with no verifiable SGLang commit. The
+lock therefore keeps `verification.sglang_source_verifiable: false` and
+`verification.sglang_repository: null`.
 
-So the SGLang layer is pinned **by digest only**. We claim byte-level
-reproducibility of the image we started from, not source-level reproducibility
-of SGLang. `scripts/verify-patches.sh` asserts exactly that and fails if the
-lock ever claims otherwise. When `glm5_next` lands upstream, switch to the
-main+patch+tree discipline.
+The base is reproducible by image digest, not by a claimed SGLang git tree. The
+two modified files are separately reproducible by exact preimage SHA-256,
+archived patch bytes applied with zero fuzz, and exact postimage SHA-256.
 
 ## Verify
 
@@ -41,8 +44,10 @@ main+patch+tree discipline.
 ./scripts/verify-patches.sh
 ```
 
-## Scope limits
+The final command needs network access to reproduce the pinned FlashInfer tree
+and re-resolve the vendor image digests.
 
-SM120 and linux/amd64 only. **Not yet built and not yet qualified on hardware.**
-No performance or quality claim is made at rc.1. See `CHANGELOG.md` for the
-open upstream issues that gate MTP and the native MXFP4 MoE kernel path.
+## Scope
+
+SM120 and linux/amd64 only. A successful workflow makes
+`v0.1.0-rc.2` built, not qualified.

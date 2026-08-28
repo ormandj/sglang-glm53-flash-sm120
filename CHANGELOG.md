@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.2
+
+BF16-derived quant and corrected SM120 runtime candidate. Not qualified.
+
+- Point the runtime contract at the immutable official BF16 source revision and
+  the new routed-expert-only MXFP4 artifact path.
+- Refresh FlashInfer main and its exact tree pin.
+- Add byte-gated GLM SM120 MXFP4 layout/activation semantics and DFlash2
+  hidden-state capture patches, with build-time semantic tests.
+- Add verifier-only, adaptive native MTP, and DFlash2 modes while keeping vision
+  explicitly enabled.
+- Move compiled-cache schema to `v2`.
+
 ## v0.1.0-rc.1
 
 Initial candidate. Not yet built, not yet qualified on hardware.

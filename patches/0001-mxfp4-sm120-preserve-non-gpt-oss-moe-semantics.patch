@@ -1,0 +1,143 @@
+From: CoreNode homelab <noreply@corenode.com>
+Subject: [PATCH] mxfp4: preserve non-GPT-OSS SM120 MoE semantics
+
+The SM120 MXFP4 post-loader was written for GPT-OSS's fused checkpoint:
+gate/up rows are pairwise, and its SwiGLU-OAI parameters are alpha=1.702,
+beta=1, limit=7.  Compressed-tensors checkpoints with separate gate_proj and
+up_proj tensors go through FusedMoE's per-expert loader instead; that loader
+stores contiguous [gate; up] halves.  GLM-5.3-Flash also uses clamped standard
+SwiGLU with alpha=1, beta=0, limit=10.
+
+Use the runner configuration that already distinguishes these forms.  A
+non-null gemm1_alpha identifies the GPT-OSS/SwiGLU-OAI contract.  Otherwise,
+preserve the per-expert loader's halves and derive standard clamped-SwiGLU
+parameters from swiglu_limit.
+
+---
+ python/sglang/srt/layers/quantization/mxfp4.py | 61 ++++++++++++++++++--------
+ 1 file changed, 43 insertions(+), 18 deletions(-)
+
+diff --git a/python/sglang/srt/layers/quantization/mxfp4.py b/python/sglang/srt/layers/quantization/mxfp4.py
+index 111111111..222222222 100644
+--- a/python/sglang/srt/layers/quantization/mxfp4.py
++++ b/python/sglang/srt/layers/quantization/mxfp4.py
+@@ -59,6 +59,41 @@ has_triton_kernels = is_triton_kernels_available()
+ _UE8M0_ONE = 127
+ 
+ 
++def _split_sm120_mxfp4_gate_up(
++    weight: torch.Tensor, *, pairwise: bool
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """Return gate/up views from the two checkpoint layouts used on SM120."""
++    if pairwise:
++        return weight[:, 0::2, :], weight[:, 1::2, :]
++    return weight.chunk(2, dim=1)
++
++
++def _resolve_sm120_mxfp4_swiglu(
++    moe_runner_config: MoeRunnerConfig,
++) -> tuple[float, float, float]:
++    """Resolve the exact activation contract for the SM120 CUTLASS ABI.
++
++    GPT-OSS supplies ``gemm1_alpha`` and uses SwiGLU-OAI.  DeepSeek-style
++    models such as GLM load separate gate/up experts and use standard SwiGLU,
++    optionally with the symmetric clamp carried by ``swiglu_limit``.
++    """
++    if moe_runner_config.gemm1_alpha is not None:
++        alpha = float(moe_runner_config.gemm1_alpha)
++        beta = (
++            float(moe_runner_config.gemm1_beta)
++            if moe_runner_config.gemm1_beta is not None
++            else 1.0
++        )
++        limit = (
++            float(moe_runner_config.gemm1_clamp_limit)
++            if moe_runner_config.gemm1_clamp_limit is not None
++            else 7.0
++        )
++        return alpha, beta, limit
++    limit = moe_runner_config.swiglu_limit
++    return 1.0, 0.0, float(limit) if limit is not None else float("inf")
++
++
+ @lru_cache(maxsize=1)
+ def _is_sm107_supported() -> bool:
+     return get_device_capability() == (10, 7)
+@@ -1197,18 +1232,18 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
+         torch.cuda.empty_cache()
+ 
+     def _process_weights_for_sm120_cutlass(self, layer):
+-        """Prepare GPT-OSS MXFP4 experts for FlashInfer CUTLASS on SM120.
++        """Prepare packed MXFP4 experts for FlashInfer CUTLASS on SM120.
+ 
+-        GPT-OSS stores gate/up rows pair-wise as
+-        ``[gate_0, up_0, gate_1, up_1, ...]``. FlashInfer's fused MoE consumes
+-        two contiguous halves in ``[up; gate]`` order. Build that layout after
+-        checkpoint loading so padding cannot move the split, pad both GEMMs to
+-        CUTLASS's 128-element alignment, and swizzle the native E8M0 scales for
+-        the SM120 MXFP8-by-MXFP4 kernels. Packed FP4 weight bytes themselves do
+-        not need an SM120 permutation.
++        GPT-OSS stores pair-wise gate/up rows. Per-expert compressed-tensors
++        checkpoints such as GLM-5.3 are loaded as contiguous ``[gate; up]``
++        halves. FlashInfer consumes contiguous ``[up; gate]`` halves. Preserve
++        the source layout distinction while padding both GEMMs to CUTLASS's
++        128-element alignment and swizzling the native E8M0 scales. Packed FP4
++        weight bytes themselves do not need an SM120 permutation.
+         """
+         from flashinfer import block_scale_interleave
+ 
++        pairwise_gate_up = layer.moe_runner_config.gemm1_alpha is not None
+         sf_block_size = 32
+         N_un = layer.w13_weight.shape[1] // 2
+         K_un = layer.w13_weight.shape[2] * 2
+@@ -1218,8 +1253,9 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
+         device = layer.w13_weight.device
+ 
+         def _stack_up_gate_w13(unpadded, last_pad, last_un):
+-            gate_rows = unpadded[:, 0::2, :]
+-            up_rows = unpadded[:, 1::2, :]
++            gate_rows, up_rows = _split_sm120_mxfp4_gate_up(
++                unpadded, pairwise=pairwise_gate_up
++            )
+             out = torch.zeros(
+                 E, 2 * N_pad, last_pad, dtype=unpadded.dtype, device=device
+             )
+@@ -1235,8 +1271,11 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
+ 
+         bias_dtype = layer.w13_weight_bias.dtype
+         w13_bias_padded = torch.zeros(E, 2 * N_pad, dtype=bias_dtype, device=device)
+-        w13_bias_padded[:, :N_un] = layer.w13_weight_bias.data[:, 1::2]
+-        w13_bias_padded[:, N_pad : N_pad + N_un] = layer.w13_weight_bias.data[:, 0::2]
++        gate_bias, up_bias = _split_sm120_mxfp4_gate_up(
++            layer.w13_weight_bias.data.unsqueeze(-1), pairwise=pairwise_gate_up
++        )
++        w13_bias_padded[:, :N_un] = up_bias.squeeze(-1)
++        w13_bias_padded[:, N_pad : N_pad + N_un] = gate_bias.squeeze(-1)
+ 
+         def _pad_w2_3d(unpadded, last_pad, last_un):
+             out = torch.zeros(E, K_pad, last_pad, dtype=unpadded.dtype, device=device)
+@@ -1268,16 +1307,19 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
+         layer.w13_weight_bias = Parameter(w13_bias_padded, requires_grad=False)
+         layer.w2_weight_bias = Parameter(w2_bias_padded, requires_grad=False)
+ 
++        swiglu_alpha, swiglu_beta, swiglu_limit = _resolve_sm120_mxfp4_swiglu(
++            layer.moe_runner_config
++        )
+         layer.swiglu_alpha = Parameter(
+-            torch.full((E,), 1.702, dtype=torch.float32, device=device),
++            torch.full((E,), swiglu_alpha, dtype=torch.float32, device=device),
+             requires_grad=False,
+         )
+         layer.swiglu_beta = Parameter(
+-            torch.ones(E, dtype=torch.float32, device=device),
++            torch.full((E,), swiglu_beta, dtype=torch.float32, device=device),
+             requires_grad=False,
+         )
+         layer.swiglu_limit = Parameter(
+-            torch.full((E,), 7.0, dtype=torch.float32, device=device),
++            torch.full((E,), swiglu_limit, dtype=torch.float32, device=device),
+             requires_grad=False,
+         )
+         # The MXFP4 ABI uses a neutral global weight scale for each GEMM.
+-- 
+2.51.0
