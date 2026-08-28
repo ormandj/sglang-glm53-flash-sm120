@@ -1,19 +1,19 @@
-# Running `v0.1.0-rc.12`
+# Running `v0.1.0-rc.13`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.12
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.13
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v8
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.12 advances cache schema to `v8`: it adds the exact 2,051-entry
-unfused KPool transform and refreshes FlashInfer main. Required kernels compile
-from the exact pinned sources into a distinct persistent cache; do not reuse
-`v7` artifacts.
+v0.1.0-rc.13 advances cache schema to `v9`: it protects the reserved physical
+KV slot in GLM's dedicated no-RoPE scatter path. Required kernels compile from
+the exact pinned sources into a distinct persistent cache; do not reuse `v8`
+artifacts.
 
 ## Serving envelope
 
@@ -99,6 +99,8 @@ and verify:
 6. DFlash2 captures layers 5, 14, 24, 33, and 42 and reports its separate draft
    pool when that mode is selected;
 7. multimodal initialization remains enabled.
+8. the no-RoPE writer regression leaves reserved physical slot 0 unchanged
+   while a valid positive-slot write succeeds.
 
 If 500,000 pooled tokens do not fit at `MEM_FRACTION=0.987`, record exact weight,
 graph, recurrent-state, and cache allocations before changing the fraction or
@@ -148,4 +150,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.12` from a successful build alone.
+`v0.1.0-rc.13` from a successful build alone.

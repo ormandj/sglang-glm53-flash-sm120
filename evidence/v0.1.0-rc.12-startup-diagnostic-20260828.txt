@@ -1,0 +1,43 @@
+GLM-5.3-Flash v0.1.0-rc.12 exact-hardware diagnostic
+Captured: 2026-08-28
+
+Artifact
+  Image: sglang-glm53-flash-sm120-container:v0.1.0-rc.12
+  Digest: sha256:1f2bacff6e7e06b9c6a01f463020b8f6534c59e1ea00614c413c40b811c47d78
+  Hardware: 2x RTX PRO 6000 Blackwell Max-Q, TP=2
+  Profile: verifier-only, SGLANG_DSA_FUSE_TOPK=0, NCCL reduction
+  Vision: enabled, PIL image processor
+
+Build and focused GPU contract
+  Immutable image build: success
+  2,051-entry unfused decode transform: exact match to torch reference
+  2,051-entry unfused prefill transform: exact match to torch reference
+  Live KPool tail positions 2,048..2,050: preserved
+
+Startup
+  Weight load: 84.95 GB/rank, 467.48 seconds
+  Mamba state slots: 5, 0.21 GB/rank
+  KV dtype: FP8 E4M3
+  KV tokens: 524,288
+  KV size: 3.55 GB/rank
+  Available after memory pools: 5.17 GB/rank
+  Available after target decode graph: 4.06 GB/rank
+  Restarts before request: 0
+  The v0.1.0-rc.11 2,048-vs-2,051 assertion did not recur.
+
+Deterministic target-only request
+  Prompt: request the exact marker GLM53_CORRECTNESS_742
+  Temperature: 0
+  Maximum completion: 64 tokens
+  Result: failed correctness; output repeated "742" until the token limit
+  Disposition: Deployment scaled to zero; candidate not qualified
+
+Follow-up production-path reproduction on the same image
+  Writer: set_mla_kv_buffer_triton, no-RoPE branch
+  reserved_skip_index: 0
+  Physical locations: [0, 2]
+  slot0_changed=True
+  slot2_valid_write=True
+  Result: the dedicated no-RoPE writer overwrote reserved physical slot 0.
+
+This is diagnostic evidence, not a performance or quality claim.

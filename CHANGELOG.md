@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.0-rc.13
+
+No-RoPE MLA reserved-slot correctness candidate. This candidate is not
+qualified.
+
+- Fix GLM's dedicated no-RoPE MLA scatter to apply the same
+  `reserved_skip_index` and DCP ownership mapping as the ordinary MLA writer.
+  The previous branch wrote directly to physical slot 0, allowing CUDA-graph
+  padding to poison a cache row reserved for padding reads.
+- Add a source contract and exact-GPU regression. The regression reproduces
+  `slot0_changed=True` on v0.1.0-rc.12 while its positive-slot control write
+  succeeds.
+- Advance cache schema to `v9` because the effective KV writer changed.
+- Retain the v0.1.0-rc.12 2,051-entry unfused transform, refreshed FlashInfer
+  pin, full 524,288-token target pool, vision configuration, and fixed native
+  MTP profile.
+
 ## v0.1.0-rc.12
 
 Unfused KPool contract diagnostic candidate. This candidate is not qualified.
@@ -17,6 +34,11 @@ Unfused KPool contract diagnostic candidate. This candidate is not qualified.
   FlashInfer tree changed.
 - Retain v0.1.0-rc.11's CPU image preprocessing, fixed five-step native MTP,
   concurrency-one memory envelope, and default PyTorch allocator.
+- Exact-hardware startup succeeded with a 524,288-token FP8 target pool and
+  4.06 GB/rank available after target decode graph capture. Target-only
+  inference remained corrupt, returning a repeated `742` pattern for a
+  deterministic marker request. The candidate was scaled back to zero and was
+  not qualified.
 
 ## v0.1.0-rc.11
 

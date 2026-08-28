@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.12` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.13` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.12 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.13 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -79,7 +79,7 @@ from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
 This repository does not claim a vendor SGLang git revision. For every file
-we modify, v0.1.0-rc.12 asserts exact vendor preimage SHA-256 values, applies archived
+we modify, v0.1.0-rc.13 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
@@ -98,7 +98,9 @@ tests. The patches:
 7. route the exact 528-byte no-RoPE cache and 2,051-entry KPool-extended DSA
    table through a dedicated 32-head SM120 specialization without truncation;
 8. preserve the same 2,051 entries in the unfused decode and prefill transforms
-   used to isolate fused-KPool correctness, while retaining the tuned 2,048 path.
+   used to isolate fused-KPool correctness, while retaining the tuned 2,048 path;
+9. make GLM's dedicated no-RoPE KV scatter skip reserved physical slot 0 and
+   honor DCP ownership exactly like the ordinary MLA writer.
 
 FlashInfer 0.6.18 is built from exact main commit
 `93f4f2642e1b3680a52ebb51cf68e0fdad237796` and tree
@@ -115,12 +117,12 @@ TP=2 dispatch, with existing layouts kept unchanged.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.12 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.13 .
 ```
 
 ```bash
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v8
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v9
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
@@ -151,5 +153,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.12 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.13 built; only
 exact-candidate evidence can make it qualified.

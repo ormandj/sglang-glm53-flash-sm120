@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 12,
-    "candidate_tag": "v0.1.0-rc.12",
+    "candidate": 13,
+    "candidate_tag": "v0.1.0-rc.13",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v8"
+    "cache_schema": "v9"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.12",
+    "tag": "v0.1.0-rc.13",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,11 +67,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "12"
+      "value": "13"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v8"
+      "value": "v9"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -196,6 +196,18 @@
     {
       "arg": "GLM53_SGLANG_TRANSFORM_INDEX_TEST_SHA256",
       "value": "9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437"
+    },
+    {
+      "arg": "GLM53_SGLANG_MLA_BUFFER_PREIMAGE_SHA256",
+      "value": "434f83d99e4d114bca258a15a1c74aa00adb65dc9f36f23894ff436af02db611"
+    },
+    {
+      "arg": "GLM53_SGLANG_MLA_BUFFER_POSTIMAGE_SHA256",
+      "value": "ab632b7bee88ac73ddfffb7509e715e2a22f939e37fe43e71cfd0e338a63e218"
+    },
+    {
+      "arg": "GLM53_SGLANG_MLA_BUFFER_TEST_SHA256",
+      "value": "5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8"
     }
   ],
   "patches": [
@@ -278,6 +290,16 @@
       "path": "patches/test_glm53_kpool_unfused_transform.py",
       "sha256": "9e8faed0279b0dde7402d32d1715b1335fb207826127ecc14011c043c6abc437",
       "purpose": "build-time source contract and exact-GPU reference comparison for 2,051-wide unfused decode and prefill transforms, including live tail entries after a padded base-table gap"
+    },
+    {
+      "path": "patches/0010-glm53-norope-reserved-slot.patch",
+      "sha256": "baf46bf3af6c67f31cdf8d0d413496e94f1b77b9b2fed57e5590e227b0b4e61f",
+      "purpose": "protect physical slot zero and apply DCP ownership mapping in GLM-5.3's dedicated no-RoPE MLA scatter path"
+    },
+    {
+      "path": "patches/test_glm53_norope_reserved_slot.py",
+      "sha256": "5c5e3bc57c4515b8d8b8d3f0c4b98aae6f527efdaed8895b95d77e03868a29c8",
+      "purpose": "build-time source contract and exact-GPU regression proving reserved slot zero remains unchanged while valid no-RoPE writes succeed"
     }
   ],
   "integration": {
@@ -358,7 +380,7 @@
         "input_topk": 2051,
         "kernel_topk": 2176,
         "padding_value": -1,
-        "qualification_status": "build-time contracts authored; exact-hardware numerical regressions and served-model qualification pending on v0.1.0-rc.12"
+        "qualification_status": "exact-hardware numerical regressions passed on v0.1.0-rc.12; served-model output remained corrupt and the candidate was not qualified"
       },
       "kpool_unfused_transform": {
         "rationale": "The v0.1.0-rc.11 unfused-KPool diagnostic reached the generic SGLang transform with GLM-5.3's exact 2,051-entry table and failed its hard-coded 2,048-entry assertion before inference. The correction preserves the existing tuned 2,048 decode path, admits only the exact GLM width, and retains all three live tail entries in decode and prefill.",
@@ -366,6 +388,16 @@
         "source_postimage_sha256": "cea5bcded66744b2037371fbaf10497eaa70570e3e63e515b148db5595bc5163",
         "admitted_topk_widths": [2048, 2051],
         "gpu_contract": "decode and prefill outputs must exactly match the torch reference with base-table padding before live columns 2048..2050"
+      },
+      "norope_reserved_slot": {
+        "rationale": "v0.1.0-rc.12 target-only output remained corrupt after the 2,051-entry unfused transform passed. The production no-RoPE scatter was then reproduced writing physical slot 0 despite reserved_skip_index=0, while its positive-slot control succeeded. Aligning this branch with the ordinary MLA writer closes the concrete CUDA-graph padding corruption path.",
+        "source_preimage_sha256": "434f83d99e4d114bca258a15a1c74aa00adb65dc9f36f23894ff436af02db611",
+        "source_postimage_sha256": "ab632b7bee88ac73ddfffb7509e715e2a22f939e37fe43e71cfd0e338a63e218",
+        "rc12_gpu_reproduction": {
+          "slot0_changed": true,
+          "positive_slot_write_succeeded": true
+        },
+        "fixed_contract": "loc != reserved_skip_index and loc % DCP_WORLD_SIZE == DCP_RANK; valid locations are divided by DCP_WORLD_SIZE before scatter"
       },
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
