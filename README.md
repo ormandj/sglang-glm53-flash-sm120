@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.9`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.10`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -23,8 +23,9 @@ qualification claim.
   failed all four deterministic/order/overflow GPU regressions on SM120.
 - GLM47-specific backport of merged SGLang #36626 for nested streaming JSON
   closure and top-level composite tool schemas.
-- A 584-byte DSv4 adapter that preserves the complete KPool-extended DSA table
-  through FlashInfer's 128+1,923 SM120 ABI while sharing one physical KV cache.
+- An exact 528-byte GLM-5.3 no-RoPE adapter and FlashInfer SM120 kernel
+  specialization that preserve all 2,051 KPool entries by padding with `-1`
+  to one 2,176-wide TP=2 dispatch.
 - The SM120 MXFP4 post-loader reads its runner configuration from the
   quantization method that owns it, preserving the vendor GPT-OSS contract as
   well as GLM's distinct gate/up and activation semantics.
@@ -68,4 +69,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.9` built, not qualified.
+`v0.1.0-rc.10` built, not qualified.

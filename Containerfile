@@ -13,8 +13,8 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=9
-ARG GLM53_CACHE_SCHEMA=v6
+ARG GLM53_RELEASE_CANDIDATE=10
+ARG GLM53_CACHE_SCHEMA=v7
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
 # separately below and asserted at build time.
@@ -39,9 +39,9 @@ ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256=0a141565e73252ddb7f1773f30f0c48e001b7
 ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256=ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274
 ARG GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256=39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5
 ARG GLM53_SGLANG_FLASH_MLA_SM120_ARCH_POSTIMAGE_SHA256=052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93
-ARG GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256=4d2f85055dc2ed5e96b534640473760a27248cba6ff278c8357a69dba7c69d1a
+ARG GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256=ddd9768c5977684259be1dd5a7b7448094290c7a7961b24aadc516945760b01f
 ARG GLM53_SGLANG_DSA_BACKEND_PREIMAGE_SHA256=f0ef3dc5353b8e196277f6b994d90b6cca106263e4e5bb5004863712697f184f
-ARG GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256=2ef7ba4a2aca5bc0304b35311e0ef3c12f1cb1fc5dae327604a48dd118e0abbb
+ARG GLM53_SGLANG_DSA_BACKEND_POSTIMAGE_SHA256=eb20b5d6b9721816dbe968da5820a6c7d6af4a31b1c8fb9ec9377c6b32903547
 ARG GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256=1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38
 ARG GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256=cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c
 ARG GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256=c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a
@@ -110,7 +110,8 @@ COPY patches/test_glm53_dflash_patch.py /usr/share/sglang-glm53-flash-sm120/test
 COPY patches/test_glm53_mixed_precision_contract.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_mixed_precision_contract.py
 COPY patches/0004-glm53-sm120-sparse-mla-architecture.patch /usr/share/sglang-glm53-flash-sm120/patches/0004-glm53-sm120-sparse-mla-architecture.patch
 COPY patches/test_glm53_sm120_sparse_mla_patch.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_sparse_mla_patch.py
-COPY patches/0007-glm53-sm120-dsv4-kpool-sparse-mla.patch /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-dsv4-kpool-sparse-mla.patch
+COPY patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch
+COPY patches/0008-flashinfer-glm53-nope-sm120.patch /usr/share/sglang-glm53-flash-sm120/patches/0008-flashinfer-glm53-nope-sm120.patch
 COPY patches/test_glm53_sm120_sparse_mla_kpool_gpu.py /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_sm120_sparse_mla_kpool_gpu.py
 COPY patches/0005-dsa-kpool-topk-deterministic.patch /usr/share/sglang-glm53-flash-sm120/patches/0005-dsa-kpool-topk-deterministic.patch
 COPY patches/0006-glm47-nested-tool-schema-streaming.patch /usr/share/sglang-glm53-flash-sm120/patches/0006-glm47-nested-tool-schema-streaming.patch
@@ -126,8 +127,8 @@ COPY patches/test_glm53_glm47_nested_tool_patch.py /usr/share/sglang-glm53-flash
 # which all four exact-hardware regression cases fail on the vendor preimage.
 # The sixth backports the GLM47-specific part of merged SGLang #36626 so nested
 # object arguments close valid streaming JSON and composite schemas resolve.
-# The seventh routes GLM-5.3's 584-byte DSv4 cache and KPool tail through
-# FlashInfer's dual-segment SM120 ABI without allocating a second KV cache.
+# The seventh routes GLM-5.3's exact 528-byte no-RoPE cache and all 2,051
+# KPool candidates through the dedicated SM120 FlashInfer path.
 RUN set -e; \
     cd /sgl-workspace/sglang; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_PREIMAGE_SHA256}"; \
@@ -144,7 +145,7 @@ RUN set -e; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0005-dsa-kpool-topk-deterministic.patch; \
     patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0006-glm47-nested-tool-schema-streaming.patch; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_ARCH_POSTIMAGE_SHA256}"; \
-    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-dsv4-kpool-sparse-mla.patch; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0007-glm53-sm120-nope-kpool-sparse-mla.patch; \
     test "$(sha256sum python/sglang/srt/layers/quantization/mxfp4.py | cut -d' ' -f1)" = "${GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/srt/models/glm5_next.py | cut -d' ' -f1)" = "${GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256}"; \
     test "$(sha256sum python/sglang/kernels/ops/attention/flash_mla_sm120.py | cut -d' ' -f1)" = "${GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256}"; \
@@ -180,10 +181,14 @@ RUN set -e; \
     test "$(git rev-parse HEAD)" = "${GLM53_FLASHINFER_MAIN_HEAD}"; \
     test "$(git rev-parse HEAD^{tree})" = "${GLM53_FLASHINFER_MAIN_TREE}"; \
     git submodule update --init --recursive --depth=1; \
+    patch --fuzz=0 -p1 -i /usr/share/sglang-glm53-flash-sm120/patches/0008-flashinfer-glm53-nope-sm120.patch; \
     uv pip uninstall --python /opt/sglang/bin/python \
       flashinfer-cubin flashinfer-jit-cache || true; \
     BUILD_NVEP=0 FLASHINFER_CUDA_ARCH_LIST=12.0f \
       uv pip install --python /opt/sglang/bin/python --reinstall --no-deps .; \
+    FLASHINFER_CUDA_ARCH_LIST=12.0f \
+      uv run --no-project --python /opt/sglang/bin/python python -c \
+      "from flashinfer.jit.mla import gen_sparse_mla_sm120_module as g; g().build()"; \
     cd /; \
     rm -rf /tmp/flashinfer-main
 

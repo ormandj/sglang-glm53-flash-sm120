@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.10
+
+Exact GLM-5.3 no-RoPE sparse-MLA candidate. This candidate is not qualified.
+
+- Correct the cache-layout diagnosis: GLM-5.3 uses SGLang's generic 528-byte
+  cache (512 E4M3 latent bytes plus four arbitrary FP32 scales), not the
+  584-byte DSv4 footer cache assumed by v0.1.0-rc.9.
+- Add an isolated FlashInfer SM120 model trait for the 512-dimensional no-RoPE
+  query/cache geometry while leaving existing cache layouts unchanged.
+- Preserve 2,051 KPool entries by padding with `-1` to one 2,176-wide TP=2
+  dispatch for both decode and prefill.
+- Compile the entire sparse-MLA module during the image build and retain
+  exact-SM120 numerical decode/prefill tests for qualification.
+- Advance cache schema to `v7`.
+
 ## v0.1.0-rc.9
 
 GLM-5.3 DSv4/KPool sparse-MLA correctness candidate. Not qualified.

@@ -1,0 +1,78 @@
+From: CoreNode homelab <noreply@corenode.com>
+Subject: [PATCH] glm53: route exact no-RoPE cache through SM120 sparse MLA
+
+GLM-5.3 uses SGLang's generic 528-byte FP8 MLA cache, not the 584-byte DSv4
+footer layout and not the 656-byte GLM-NSA layout. Admit KPool only for the
+exact 512-latent/no-RoPE geometry. Preserve the 2,048-entry base table and
+three live KPool tail entries by padding 2,051 columns with -1 to the kernel's
+34 complete 64-entry tiles and passing a full-width length.
+
+---
+diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
+index 6f39fa05b2528ce8a8b94bf60f7251bb8d1cd965..24345129fb809586e1e8ddc8241584f6403ccfc4 100644
+--- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
++++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
+@@ -622,6 +622,36 @@ def flashinfer_sparse_mla_forward(
+     """Run FlashInfer's SM120 sparse MLA kernel on SGLang's packed DSA cache."""
+     from flashinfer.mla import trtllm_batch_decode_with_kv_cache_mla
+ 
++    is_glm_next_nope = (
++        kv_cache_dim == 528
++        and q.shape[-1] == 512
++        and qk_nope_head_dim == 256
++        and kv_lora_rank == 512
++        and qk_rope_head_dim == 0
++    )
++    if is_glm_next_nope:
++        if indices.shape[1] != 2051:
++            raise ValueError(
++                "GLM-5.3 KPool expects 2,051 sparse indices before SM120 "
++                f"padding, got {indices.shape[1]}."
++            )
++        if skip_softmax_threshold_scale_factor is not None:
++            raise ValueError(
++                "Skip-softmax is not supported by the GLM-5.3 SM120 "
++                "sparse-MLA kernel."
++            )
++
++        # The SM120 kernel consumes complete 64-entry tiles. Keep the entire
++        # 2,048-column base table and all three KPool tail entries, then pad
++        # with -1 to 34 tiles (2,176 entries). A full-width length is required:
++        # early base-table -1 padding must not hide live tail entries at
++        # columns 2,048..2,050.
++        padded_topk = 2176
++        indices = torch.nn.functional.pad(
++            indices, (0, padded_topk - indices.shape[1]), value=-1
++        ).contiguous()
++        seq_lens = torch.full_like(indices[:, 0], padded_topk)
++
+     topk = indices.shape[1]
+     result = trtllm_batch_decode_with_kv_cache_mla(
+         query=q.unsqueeze(1),
+@@ -636,6 +666,7 @@ def flashinfer_sparse_mla_forward(
+         seq_lens=seq_lens,
+         max_seq_len=topk,
+         sparse_mla_top_k=topk,
++        sparse_mla_top_k_lens=(seq_lens if is_glm_next_nope else None),
+         bmm1_scale=float(sm_scale),
+         bmm2_scale=1.0,
+         kv_scale_format="arbitrary_fp32",
+diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
+index b6055c2d4dd4b9509607cebc8caa9148529e9965..f081fa5f17c4fd6a6c42e00dbf2b6c223ca845e5 100644
+--- a/python/sglang/srt/layers/attention/dsa_backend.py
++++ b/python/sglang/srt/layers/attention/dsa_backend.py
+@@ -876,6 +876,13 @@ class DeepseekSparseAttnBackend(
+             topk_indices is None
+             or self.dsa_index_kpool <= 1
+             or dsa_impl in ("fa3", "tilelang", "trtllm")
++            or (
++                dsa_impl == "flashinfer_sparse_mla"
++                and self.kv_cache_dim == 528
++                and self.qk_nope_head_dim == 256
++                and self.kv_lora_rank == 512
++                and self.qk_rope_head_dim == 0
++            )
+         ):
+             return
+         raise NotImplementedError(
+
