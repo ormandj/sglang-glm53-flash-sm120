@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.3` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.4` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. rc.3 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.4 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -71,17 +71,18 @@ from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
 This repository does not claim a vendor SGLang git revision. For the two files
-we modify, rc.3 asserts exact vendor preimage SHA-256 values, applies archived
+we modify, v0.1.0-rc.4 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
 1. preserve GLM's contiguous gate/up layout and `(alpha=1, beta=0, limit=10)`
    SwiGLU contract in the SM120 MXFP4 loader;
-2. apply upstream PR #36708's GLM DFlash2 hidden-state capture change.
+2. apply upstream PR #36708's GLM DFlash2 hidden-state capture change;
+3. apply upstream PR #36755's mHC `residual=None` capture correction.
 
 FlashInfer 0.6.18 is built from exact main commit
-`cbcbce48e817c83f03ad5a3e6ce59480eaf6935d` and tree
-`d3a639d6f268b8bfc679a8bd15581a6a6b319a16` with
+`71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
+`a2577ad013205dfc996f6ffe5259f3102a2cd075` with
 `FLASHINFER_CUDA_ARCH_LIST=12.0f`. The vendor wheel does not carry the required
 SM120 cubins.
 
@@ -91,12 +92,12 @@ SM120 cubins.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.3 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.4 .
 ```
 
 ```bash
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v2
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v3
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
@@ -127,5 +128,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes rc.3 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.4 built; only
 exact-candidate evidence can make it qualified.

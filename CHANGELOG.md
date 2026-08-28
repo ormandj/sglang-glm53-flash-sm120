@@ -1,8 +1,25 @@
 # Changelog
 
+## v0.1.0-rc.4
+
+DFlash mHC correctness and refreshed FlashInfer candidate. This candidate is
+not qualified.
+
+- Apply upstream PR #36755 after #36708 so DFlash hidden-state capture accepts
+  the real mHC `residual=None` contract instead of attempting to add `None` to
+  the widened hidden state.
+- Strengthen the image-build semantic test to exercise the `residual=None`
+  contraction path, the ordinary residual-stream path, and capture-layer
+  selection.
+- Refresh FlashInfer 0.6.18 main to commit `71d31b5a…`, tree `a2577ad0…` after
+  reviewing the intervening variable-window PrimsTS attention change.
+- Advance cache schema to `v3` because the patched runtime and FlashInfer tree
+  differ from the prior candidate.
+
 ## v0.1.0-rc.3
 
-Mixed-precision runtime-contract correction. This candidate is not qualified.
+Mixed-precision runtime-contract correction. Superseded before qualification by
+v0.1.0-rc.4.
 
 - Distinguish the BF16 repository storage total from indexed tensor bytes in
   the source completion gate.

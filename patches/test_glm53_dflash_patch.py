@@ -15,12 +15,18 @@ model.config = SimpleNamespace(mhc=True, hc_mult=4)
 model.dflash_capture = True
 hidden_states = torch.arange(24, dtype=torch.float32).reshape(2, 12)
 residual = torch.full_like(hidden_states, 2)
-actual = model._prepare_aux_hidden_state(hidden_states, residual)
-expected = (hidden_states + residual).unflatten(-1, (4, -1)).mean(dim=-2)
+actual = model._prepare_aux_hidden_state(hidden_states, None)
+expected = hidden_states.unflatten(-1, (4, -1)).mean(dim=-2)
 torch.testing.assert_close(actual, expected)
 assert actual.shape == (2, 3)
 
 model.dflash_capture = False
+torch.testing.assert_close(
+    model._prepare_aux_hidden_state(hidden_states, residual), hidden_states + residual
+)
+
+model.config.mhc = False
+model.dflash_capture = True
 torch.testing.assert_close(
     model._prepare_aux_hidden_state(hidden_states, residual), hidden_states + residual
 )
@@ -37,4 +43,4 @@ assert wrapper.capture_aux_hidden_states
 assert wrapper.model.dflash_capture
 assert wrapper.model.layers_to_capture == [6, 15, 25, 34, 43]
 
-print("GLM-5.3 DFlash2 mHC hidden-state capture contract valid")
+print("GLM-5.3 DFlash2 mHC residual=None capture contract valid")
