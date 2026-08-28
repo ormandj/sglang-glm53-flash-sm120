@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 6,
-    "candidate_tag": "v0.1.0-rc.6",
+    "candidate": 8,
+    "candidate_tag": "v0.1.0-rc.8",
     "stable_tag": "v0.1.0",
     "cache_schema": "v5"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.6",
+    "tag": "v0.1.0-rc.8",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "6"
+      "value": "8"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -123,7 +123,7 @@
     },
     {
       "arg": "GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256",
-      "value": "4a5fdcfca8edb681e8b2e781e9cddf9545c866301b5ce2d16aa1545061791f09"
+      "value": "99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395"
     },
     {
       "arg": "GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256",
@@ -152,17 +152,37 @@
     {
       "arg": "GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256",
       "value": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
+    },
+    {
+      "arg": "GLM53_SGLANG_GLM47_PREIMAGE_SHA256",
+      "value": "93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb"
+    },
+    {
+      "arg": "GLM53_SGLANG_GLM47_POSTIMAGE_SHA256",
+      "value": "9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e"
+    },
+    {
+      "arg": "GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256",
+      "value": "fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25"
+    },
+    {
+      "arg": "GLM53_SGLANG_FUNCTION_CALL_UTILS_POSTIMAGE_SHA256",
+      "value": "a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481"
+    },
+    {
+      "arg": "GLM53_SGLANG_GLM47_TEST_SHA256",
+      "value": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1"
     }
   ],
   "patches": [
     {
       "path": "patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch",
-      "sha256": "62c32772846d2badc6a547b7496b2cb7c68a924ca917d084b85b160176406d3f",
-      "purpose": "preserve GLM contiguous gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 loader"
+      "sha256": "f7b9a959a91926f447e26bc82170f698e2549d2e95793a1eb92815d6637203f6",
+      "purpose": "preserve GLM contiguous gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 loader, using the quantization method's owned runner configuration"
     },
     {
       "path": "patches/test_glm53_sm120_mxfp4_patch.py",
-      "sha256": "634d40e9e720a3bf7e0fb8b4771aef9c825682328fad7a707a8f7117aa8fd51f",
+      "sha256": "c3404a8dfdc7a4bc336dfb62fb106f5bbe0a57e44766db8bdb380a38dd270fe4",
       "purpose": "build-time semantic contract test for the SM120 MXFP4 patch"
     },
     {
@@ -199,6 +219,16 @@
       "path": "patches/0005-dsa-kpool-topk-deterministic.patch",
       "sha256": "0d6598731f4f7388f6a286e7d3325bb384924fa96a38edbcd401267d2e220e48",
       "purpose": "exact draft PR #36745 patch making fused KPool top-k deterministic, canonically ordered, and safe when the coarse threshold bin exceeds 4K candidates; includes its four GPU regressions"
+    },
+    {
+      "path": "patches/0006-glm47-nested-tool-schema-streaming.patch",
+      "sha256": "e5529cb880bced536adaf02896b0951958c315843179bea81270cd0e13a49600",
+      "purpose": "GLM47-specific backport of merged SGLang #36626: close streaming JSON after nested object arguments and resolve top-level anyOf/oneOf/allOf tool schemas"
+    },
+    {
+      "path": "patches/test_glm53_glm47_nested_tool_patch.py",
+      "sha256": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1",
+      "purpose": "build-time flat nested-object and composite-schema GLM47 streaming contract"
     }
   ],
   "integration": {
@@ -215,8 +245,8 @@
         "model_support_pr": 36507,
         "model_support_pr_title": "GLM-5.3-Flash support",
         "model_support_pr_state": "open and conflicting as of 2026-08-28",
-        "observed_main_head": "7088f21922edc633dbb38e7543ef2b33252dfcbf",
-        "observed_main_tree": "5ba7a1fdd842e7474aa74f7a1a74d9b4cbe0b35e",
+        "observed_main_head": "9fc60a8afd64b135342a7313bf611285aeab7208",
+        "observed_main_tree": "2a42e9164e9c524754cc0ac4fed5cdfaeac716e0",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
@@ -228,7 +258,8 @@
           36660,
           36544,
           36708,
-          36755
+          36755,
+          36626
         ],
         "related_open": [
           36607,
@@ -251,6 +282,12 @@
           "SGLANG_OPT_USE_TILELANG_INDEXER": "1"
         }
       },
+      "sm120_mxfp4_runner_configuration": {
+        "rationale": "the SM120 post-loader configuration belongs to Mxfp4MoEMethod; the prior patch read layer.moe_runner_config and failed the vendor GPT-OSS GPU contract even though the GLM numerical path passed",
+        "source_preimage_sha256": "38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb",
+        "source_postimage_sha256": "99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395",
+        "exact_hardware_control_image": "git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5@sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e"
+      },
       "sm120_sparse_mla_architecture": {
         "rationale": "upstream #26928's dedicated SM120 FP8 sparse-MLA guard predates GLM-5.3 and rejects the native Glm5Next architecture name after target and MTP load",
         "source_preimage_sha256": "39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5",
@@ -263,11 +300,22 @@
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
         "upstream_head": "f14393b2dca5dc7f954b7c15167851fbc7c6a9f8",
+        "upstream_current_head": "6d17486dbea90ae7ef22c97bd2c6b163d27be5da",
         "upstream_state": "draft as of 2026-08-28",
-        "rationale": "the exact vendor header is the PR preimage and all four upstream GPU regressions fail on the exact v0.1.0-rc.5 image, including 100% mismatch in the coarse-bin-overflow case",
+        "rationale": "the exact vendor header is the pinned f14393b2 PR preimage and all four upstream GPU regressions fail on the exact v0.1.0-rc.5 image, including 100% mismatch in the coarse-bin-overflow case; the later PR head merges GLM support and adds HIP guards but does not change the NVIDIA kernel behavior or test blob",
         "source_preimage_sha256": "1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38",
         "source_postimage_sha256": "cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c",
         "gpu_test_sha256": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
+      },
+      "glm47_nested_tool_streaming": {
+        "upstream_commit": "0665102ce5e2786ec569dc22c017f2f898a94313",
+        "upstream_pr": 36626,
+        "upstream_state": "merged on main as of 2026-08-28",
+        "rationale": "the exact vendor GLM47 parser emits malformed JSON when a nested object value ends in a brace and cannot resolve properties declared under top-level anyOf/oneOf/allOf; the upstream regression was reproduced in the pinned image",
+        "glm47_preimage_sha256": "93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb",
+        "glm47_postimage_sha256": "9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e",
+        "utils_preimage_sha256": "fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25",
+        "utils_postimage_sha256": "a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481"
       }
     },
     "flashinfer": {
@@ -275,8 +323,8 @@
       "tree": "a2577ad013205dfc996f6ffe5259f3102a2cd075",
       "package_version": "0.6.18",
       "base_package_version": "0.6.17",
-      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f, plus the matching cubin package built from the same tree",
-      "rationale": "the vendor wheel carries no 12.0f cubins; workstation Blackwell lacks TMEM/tcgen05/wgmma so sm_100 and Hopper kernels do not run"
+      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f; generic flashinfer-cubin and flashinfer-jit-cache packages absent; FLASHINFER_NO_DOWNLOAD=1",
+      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; the generic package enumerates 48,391 cross-architecture artifacts and made the v0.1.0-rc.6 build fail after exhausted retries, while exact SM120 MXFP4 and sparse-MLA hardware tests pass by compiling directly from the pinned source"
     },
     "speculative_decoding": {
       "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, adaptive 5 steps / top-k 1 / 6 draft tokens",

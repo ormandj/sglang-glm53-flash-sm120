@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.6`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.8`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -21,6 +21,11 @@ qualification claim.
   to upstream PR #26928's fail-closed SM120 sparse-MLA guard.
 - Exact draft PR #36745 fused KPool top-k correction after the vendor preimage
   failed all four deterministic/order/overflow GPU regressions on SM120.
+- GLM47-specific backport of merged SGLang #36626 for nested streaming JSON
+  closure and top-level composite tool schemas.
+- The SM120 MXFP4 post-loader reads its runner configuration from the
+  quantization method that owns it, preserving the vendor GPT-OSS contract as
+  well as GLM's distinct gate/up and activation semantics.
 - Build-time semantic tests for the runtime patches, including the real mHC
   `residual=None` capture path.
 - SM120-safe mHC/indexer settings matching SGLang's current DeepSeek-V4 guard;
@@ -28,7 +33,8 @@ qualification claim.
 - FlashInfer 0.6.18 rebuilt from exact commit
   `71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
   `a2577ad013205dfc996f6ffe5259f3102a2cd075` with
-  `FLASHINFER_CUDA_ARCH_LIST=12.0f`.
+  `FLASHINFER_CUDA_ARCH_LIST=12.0f`; generic cross-architecture cubin and JIT
+  cache packages are absent, and runtime artifact downloads are disabled.
 - Runtime profiles for verifier-only, native adaptive MTP, and pinned DFlash2;
   multimodal execution remains explicitly enabled in every mode.
 - An exhaustive compressed-tensors ignore keeps ordinary linears BF16, and
@@ -43,7 +49,7 @@ lock therefore keeps `verification.sglang_source_verifiable: false` and
 `verification.sglang_repository: null`.
 
 The base is reproducible by image digest, not by a claimed SGLang git tree. The
-four modified files are separately reproducible by exact preimage SHA-256,
+The six modified files are separately reproducible by exact preimage SHA-256,
 archived patch bytes applied with zero fuzz, and exact postimage SHA-256.
 
 ## Verify
@@ -60,4 +66,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.6` built, not qualified.
+`v0.1.0-rc.8` built, not qualified.

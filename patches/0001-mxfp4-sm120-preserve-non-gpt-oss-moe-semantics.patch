@@ -86,7 +86,7 @@ index 111111111..222222222 100644
          """
          from flashinfer import block_scale_interleave
  
-+        pairwise_gate_up = layer.moe_runner_config.gemm1_alpha is not None
++        pairwise_gate_up = self.moe_runner_config.gemm1_alpha is not None
          sf_block_size = 32
          N_un = layer.w13_weight.shape[1] // 2
          K_un = layer.w13_weight.shape[2] * 2
@@ -121,7 +121,7 @@ index 111111111..222222222 100644
          layer.w2_weight_bias = Parameter(w2_bias_padded, requires_grad=False)
  
 +        swiglu_alpha, swiglu_beta, swiglu_limit = _resolve_sm120_mxfp4_swiglu(
-+            layer.moe_runner_config
++            self.moe_runner_config
 +        )
          layer.swiglu_alpha = Parameter(
 -            torch.full((E,), 1.702, dtype=torch.float32, device=device),

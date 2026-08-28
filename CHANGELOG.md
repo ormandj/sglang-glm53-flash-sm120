@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.0-rc.8
+
+Source-JIT and MXFP4 post-loader correctness candidate. Not qualified.
+
+- Correct the SM120 MXFP4 post-loader to read `moe_runner_config` from the
+  `Mxfp4MoEMethod` that owns it, and make that ownership part of the build-time
+  contract.
+- Remove the generic cross-architecture `flashinfer-cubin` package whose
+  all-or-nothing network build prevented v0.1.0-rc.6 from publishing.
+- Retain the exact FlashInfer source pin, force offline source JIT at runtime,
+  and assert that neither optional artifact package is installed.
+- Include v0.1.0-rc.7's GLM47 parser backport.
+- Retain compiled-cache schema `v5`; no kernel source changes after
+  v0.1.0-rc.6.
+
+## v0.1.0-rc.7
+
+GLM47 streaming tool-parser correctness candidate. Superseded before build by
+v0.1.0-rc.8.
+
+- Backport the GLM47-specific part of merged SGLang #36626.
+- Close the outer streaming JSON object after a nested object argument and
+  resolve tool properties beneath legal top-level composite schemas.
+- Fail closed on both vendor Python-file preimages and run flat,
+  nested-object, and composite-schema contracts during the image build.
+
 ## v0.1.0-rc.6
 
 Native GLM-5.3 SM120 sparse-MLA compatibility candidate. Not qualified.

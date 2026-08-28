@@ -1,8 +1,10 @@
+import inspect
 from types import SimpleNamespace
 
 import torch
 
 from sglang.srt.layers.quantization.mxfp4 import (
+    Mxfp4MoEMethod,
     _resolve_sm120_mxfp4_swiglu,
     _split_sm120_mxfp4_gate_up,
 )
@@ -41,5 +43,12 @@ assert _resolve_sm120_mxfp4_swiglu(
 assert _resolve_sm120_mxfp4_swiglu(
     config(gemm1_alpha=1.5, gemm1_beta=0.25, gemm1_clamp_limit=6.0)
 ) == (1.5, 0.25, 6.0)
+
+# The runner configuration belongs to the quantization method.  Reading it
+# from the layer breaks the valid direct post-loader contract exercised by the
+# vendor's GPT-OSS SM120 GPU regression and is not guaranteed by FusedMoE.
+post_loader_source = inspect.getsource(Mxfp4MoEMethod._process_weights_for_sm120_cutlass)
+assert "layer.moe_runner_config" not in post_loader_source
+assert post_loader_source.count("self.moe_runner_config") == 2
 
 print("GLM-5.3 SM120 MXFP4 layout and activation contract valid")
