@@ -1,17 +1,17 @@
-# Running `v0.1.0-rc.4`
+# Running `v0.1.0-rc.5`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.4
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.5
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v3
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v4
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.4 uses cache schema `v3` because both patched SGLang code and the
-FlashInfer tree differ from v0.1.0-rc.3.
+v0.1.0-rc.5 uses cache schema `v4` because its SM120 mHC/indexer fallback
+contract differs from v0.1.0-rc.4.
 
 ## Serving envelope
 
@@ -129,4 +129,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.4` from a successful build alone.
+`v0.1.0-rc.5` from a successful build alone.

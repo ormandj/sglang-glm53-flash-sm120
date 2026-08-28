@@ -1,9 +1,26 @@
 # Changelog
 
+## v0.1.0-rc.5
+
+SM120 mHC/indexer fallback candidate. This candidate is not qualified.
+
+- Bake the same seven SM120 fallback settings that SGLang currently applies to
+  `DeepseekV4ForCausalLM` into this GLM-specific image. The shared GLM
+  DeepSeek/DSA hook does not inherit that architecture-specific block.
+- Disable the unavailable DeepGEMM TF32 mHC prenorm path on workstation
+  Blackwell. An exact-hardware v0.1.0-rc.3 diagnostic loaded both target and
+  native MTP weights, then reproduced upstream issue #29738's `deep_gemm`
+  `NameError` during the first warmup forward.
+- Select the SM120-safe top-k, mHC, FP8 paged-MQA, and TileLang indexer settings
+  as a coherent contract rather than fixing only the first observed exception.
+- Record the completed, hash-verified 184,945,092,190-byte production artifact
+  and advance cache schema to `v4`.
+
 ## v0.1.0-rc.4
 
-DFlash mHC correctness and refreshed FlashInfer candidate. This candidate is
-not qualified.
+DFlash mHC correctness and refreshed FlashInfer candidate. Superseded before
+qualification after the exact-hardware diagnostic exposed the missing GLM
+SM120 runtime guard.
 
 - Apply upstream PR #36755 after #36708 so DFlash hidden-state capture accepts
   the real mHC `residual=None` contract instead of attempting to add `None` to

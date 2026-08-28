@@ -13,8 +13,8 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=4
-ARG GLM53_CACHE_SCHEMA=v3
+ARG GLM53_RELEASE_CANDIDATE=5
+ARG GLM53_CACHE_SCHEMA=v4
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
 # separately below and asserted at build time.
@@ -148,6 +148,32 @@ assert CompressionFormat.mxfp4_pack_quantized.value == 'mxfp4-pack-quantized'; \
 assert w.num_bits == 4 and w.group_size == 32 and w.type == 'float'; \
 assert C.compression_param_names(QuantizationScheme(targets=['Linear'], weights=w)) == ('weight_packed','weight_scale'); \
 print('mxfp4-pack-quantized contract OK, group_size', w.group_size)"
+
+# The GLM support branch enters the shared DeepSeek/DSA hook but misses the
+# SM120 fallback block currently applied only to DeepseekV4ForCausalLM. On
+# workstation Blackwell, leaving those defaults enabled reaches DeepGEMM's
+# unavailable tcgen05/TMEM mHC kernel and crashes during warmup. Mirror the
+# upstream DeepSeek-V4 SM120 settings in the hardware-specific image until the
+# architecture hook is generalized upstream.
+ENV SGLANG_OPT_FP8_WO_A_GEMM=0 \
+    SGLANG_OPT_USE_TOPK_V2=0 \
+    SGLANG_OPT_USE_TILELANG_MHC_PRE=0 \
+    SGLANG_OPT_FUSE_MHC_POST_PRE=1 \
+    SGLANG_OPT_DEEPGEMM_HC_PRENORM=0 \
+    SGLANG_FP8_PAGED_MQA_LOGITS_TORCH=1 \
+    SGLANG_OPT_USE_TILELANG_INDEXER=1
+
+RUN set -e; \
+    uv run --no-project --python /opt/sglang/bin/python python -c "\
+from sglang.srt.environ import envs; \
+assert not envs.SGLANG_OPT_FP8_WO_A_GEMM.get(); \
+assert not envs.SGLANG_OPT_USE_TOPK_V2.get(); \
+assert not envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.get(); \
+assert envs.SGLANG_OPT_FUSE_MHC_POST_PRE.get(); \
+assert not envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get(); \
+assert envs.SGLANG_FP8_PAGED_MQA_LOGITS_TORCH.get(); \
+assert envs.SGLANG_OPT_USE_TILELANG_INDEXER.get(); \
+print('GLM SM120 DeepGEMM/mHC/indexer fallback contract OK')"
 
 ENV SGLANG_BUILD_BASE_DIGEST=${GLM53_SGLANG_BASE_AMD64_MANIFEST} \
     FLASHINFER_VERSION=${GLM53_FLASHINFER_VERSION} \

@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.4` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.5` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.4 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.5 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -49,6 +49,8 @@ audit and fail-closed recipe are in [`QUANTIZATION.md`](QUANTIZATION.md).
   model memory and adds routing imbalance plus PCIe all-to-all traffic.
 - Custom all-reduce is allowed to self-test PCIe P2P and fall back to NCCL; it
   is not forcibly disabled before measurement.
+- SM120-safe mHC/indexer settings mirror SGLang's current DeepSeek-V4 guard;
+  GLM's shared DSA hook does not yet inherit that guard upstream.
 
 The launcher supports three A/B modes through `SPECULATIVE_MODE`:
 
@@ -71,7 +73,7 @@ from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
 This repository does not claim a vendor SGLang git revision. For the two files
-we modify, v0.1.0-rc.4 asserts exact vendor preimage SHA-256 values, applies archived
+we modify, v0.1.0-rc.5 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
@@ -92,12 +94,12 @@ SM120 cubins.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.4 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.5 .
 ```
 
 ```bash
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v3
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v4
 export SPECULATIVE_MODE=mtp
 ./examples/serve-glm53-flash.sh
 ```
@@ -128,5 +130,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.4 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.5 built; only
 exact-candidate evidence can make it qualified.
