@@ -19,6 +19,8 @@ qualification claim.
   plus upstream PR #36708's DFlash2 hidden-state capture change and PR #36755's
   mHC `residual=None` correction, and a native GLM-5.3 architecture extension
   to upstream PR #26928's fail-closed SM120 sparse-MLA guard.
+- Exact draft PR #36745 fused KPool top-k correction after the vendor preimage
+  failed all four deterministic/order/overflow GPU regressions on SM120.
 - Build-time semantic tests for the runtime patches, including the real mHC
   `residual=None` capture path.
 - SM120-safe mHC/indexer settings matching SGLang's current DeepSeek-V4 guard;
@@ -41,7 +43,7 @@ lock therefore keeps `verification.sglang_source_verifiable: false` and
 `verification.sglang_repository: null`.
 
 The base is reproducible by image digest, not by a claimed SGLang git tree. The
-three modified files are separately reproducible by exact preimage SHA-256,
+four modified files are separately reproducible by exact preimage SHA-256,
 archived patch bytes applied with zero fuzz, and exact postimage SHA-256.
 
 ## Verify

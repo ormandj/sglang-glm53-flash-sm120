@@ -12,6 +12,9 @@ Native GLM-5.3 SM120 sparse-MLA compatibility candidate. Not qualified.
   otherwise rejects GLM-5.3 after both target and MTP weights load.
 - Assert exact vendor preimage/postimage hashes and run positive and negative
   architecture, device, KV-dtype, and paired-backend contract checks.
+- Archive exact draft PR #36745 head `f14393b2…` after the vendor preimage
+  failed all four upstream exact-tie, order, overflow, and concurrent-stream
+  GPU regressions on the target SM120 card.
 - Advance compiled-cache schema to `v5`.
 
 ## v0.1.0-rc.5

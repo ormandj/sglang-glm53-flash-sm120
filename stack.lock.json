@@ -140,6 +140,18 @@
     {
       "arg": "GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256",
       "value": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93"
+    },
+    {
+      "arg": "GLM53_SGLANG_KPOOL_TOPK_PREIMAGE_SHA256",
+      "value": "1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38"
+    },
+    {
+      "arg": "GLM53_SGLANG_KPOOL_TOPK_POSTIMAGE_SHA256",
+      "value": "cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c"
+    },
+    {
+      "arg": "GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256",
+      "value": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
     }
   ],
   "patches": [
@@ -182,6 +194,11 @@
       "path": "patches/test_glm53_sm120_sparse_mla_patch.py",
       "sha256": "3ca3dc07f374f983c50de307c9eb31773e0069b02b61d542063890887128fad0",
       "purpose": "build-time positive and negative contract test for the GLM-5.3 SM120 sparse-MLA architecture allowlist"
+    },
+    {
+      "path": "patches/0005-dsa-kpool-topk-deterministic.patch",
+      "sha256": "0d6598731f4f7388f6a286e7d3325bb384924fa96a38edbcd401267d2e220e48",
+      "purpose": "exact draft PR #36745 patch making fused KPool top-k deterministic, canonically ordered, and safe when the coarse threshold bin exceeds 4K candidates; includes its four GPU regressions"
     }
   ],
   "integration": {
@@ -242,6 +259,15 @@
           "Glm5NextForConditionalGeneration",
           "Glm5NextForConditionalGenerationNextN"
         ]
+      },
+      "kpool_topk_determinism": {
+        "upstream_pr": 36745,
+        "upstream_head": "f14393b2dca5dc7f954b7c15167851fbc7c6a9f8",
+        "upstream_state": "draft as of 2026-08-28",
+        "rationale": "the exact vendor header is the PR preimage and all four upstream GPU regressions fail on the exact v0.1.0-rc.5 image, including 100% mismatch in the coarse-bin-overflow case",
+        "source_preimage_sha256": "1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38",
+        "source_postimage_sha256": "cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c",
+        "gpu_test_sha256": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
       }
     },
     "flashinfer": {
