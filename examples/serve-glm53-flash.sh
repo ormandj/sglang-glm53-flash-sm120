@@ -7,7 +7,7 @@ set -euo pipefail
 : "${MODEL_DIR:?set MODEL_DIR to the GLM-5.3-Flash-BF16-MXFP4 artifact directory}"
 : "${CACHE_DIR:?set CACHE_DIR to a persistent, image-specific cache directory}"
 
-IMAGE=${IMAGE:-git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5}
+IMAGE=${IMAGE:-git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.6}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -36,7 +36,7 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || ((PORT < 1 || PORT > 65535)); then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.1.0-rc.5 is scoped to TP_SIZE=2" >&2
+  echo "v0.1.0-rc.6 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 if [[ "$SPECULATIVE_MODE" != none && "$SPECULATIVE_MODE" != mtp && "$SPECULATIVE_MODE" != dflash ]]; then
@@ -127,8 +127,8 @@ exec docker run --rm \
   --cuda-graph-max-bs-decode 8 \
   --max-running-requests "$MAX_RUNNING_REQUESTS" \
   --mamba-ssm-dtype bfloat16 \
-  --dsa-prefill-backend trtllm \
-  --dsa-decode-backend trtllm \
+  --dsa-prefill-backend flashinfer_sparse_mla \
+  --dsa-decode-backend flashinfer_sparse_mla \
   --reasoning-parser glm45 \
   --tool-call-parser glm47 \
   --enable-metrics \

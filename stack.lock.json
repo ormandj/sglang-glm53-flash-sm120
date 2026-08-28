@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 5,
-    "candidate_tag": "v0.1.0-rc.5",
+    "candidate": 6,
+    "candidate_tag": "v0.1.0-rc.6",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v4"
+    "cache_schema": "v5"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.5",
+    "tag": "v0.1.0-rc.6",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -26,18 +26,20 @@
     "quantization": {
       "format": "mxfp4-pack-quantized",
       "scheme": "MXFP4A16",
+      "runtime_ignore": ["re:.*"],
+      "runtime_requires_disable_shared_experts_fusion": true,
       "bits_per_weight": 4.25,
       "group_size": 32,
       "scale_dtype": "uint8 (E8M0)",
       "quantized_tensors": 37152,
       "quantized_scope": "routed experts only (layers 3-44 plus the layer-45 MTP block)",
-      "runtime_ignore": ["re:.*"],
-      "runtime_requires_disable_shared_experts_fusion": true,
       "production_status": "artifact hash-verified and atomically published; candidate is not qualified",
       "artifact_files": 131,
       "artifact_bytes": 184945092190,
       "artifact_manifest_sha256": "a74810a13cbb271e7844846593a779adb6f85c38b4412550ea51aaf21267e1a2",
-      "produced_by": "primary repository quantization/quantize_glm53_bf16_mxfp4.py",
+      "synthetic_roundtrip_rel_l2_err": 0.1129150241613388,
+      "synthetic_roundtrip_scope": "one GLM-shaped shard with two routed experts; toolchain serialization audit only",
+      "produced_by": "quantization/quantize_glm53_bf16_mxfp4.py",
       "producer_sha256": "c1a1a6935ec02c378b0d2e56a421b194cf3abd816ea14bdd04f46f2946b7112e",
       "toolchain": {
         "torch": "2.13.0+cpu",
@@ -65,11 +67,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "5"
+      "value": "6"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v4"
+      "value": "v5"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -130,38 +132,62 @@
     {
       "arg": "GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256",
       "value": "ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274"
+    },
+    {
+      "arg": "GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256",
+      "value": "39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5"
+    },
+    {
+      "arg": "GLM53_SGLANG_FLASH_MLA_SM120_POSTIMAGE_SHA256",
+      "value": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93"
     }
   ],
   "patches": [
     {
       "path": "patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch",
-      "sha256": "62c32772846d2badc6a547b7496b2cb7c68a924ca917d084b85b160176406d3f"
+      "sha256": "62c32772846d2badc6a547b7496b2cb7c68a924ca917d084b85b160176406d3f",
+      "purpose": "preserve GLM contiguous gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 loader"
     },
     {
       "path": "patches/test_glm53_sm120_mxfp4_patch.py",
-      "sha256": "634d40e9e720a3bf7e0fb8b4771aef9c825682328fad7a707a8f7117aa8fd51f"
+      "sha256": "634d40e9e720a3bf7e0fb8b4771aef9c825682328fad7a707a8f7117aa8fd51f",
+      "purpose": "build-time semantic contract test for the SM120 MXFP4 patch"
     },
     {
       "path": "patches/0002-glm53-dflash-hidden-state-capture.patch",
-      "sha256": "61115932dd19301451d5a2443a87656ec553f7f46cc43a8744f55f7131dd0829"
+      "sha256": "61115932dd19301451d5a2443a87656ec553f7f46cc43a8744f55f7131dd0829",
+      "purpose": "upstream PR #36708 GLM-5.3 DFlash2 hidden-state capture change"
     },
     {
       "path": "patches/0003-glm53-dflash-mhc-residual-none.patch",
-      "sha256": "bbd11a9148aa285a0fd279b8f754928a53821f18431fb9c9c23a37f85a165486"
+      "sha256": "bbd11a9148aa285a0fd279b8f754928a53821f18431fb9c9c23a37f85a165486",
+      "purpose": "upstream PR #36755 mHC residual=None correction for GLM-5.3 DFlash2 capture"
     },
     {
       "path": "patches/test_glm53_dflash_patch.py",
-      "sha256": "9f8fc0ebe70ba7d91775c521ac3ac27d5e27009bcc25a59e447d10405991995f"
+      "sha256": "9f8fc0ebe70ba7d91775c521ac3ac27d5e27009bcc25a59e447d10405991995f",
+      "purpose": "build-time mHC residual=None contraction and DFlash2 capture-layer contract test"
     },
     {
       "path": "patches/test_glm53_mixed_precision_contract.py",
-      "sha256": "a83f7561536363d32bcab99dd68f20cf668a5630a66614f1566eb2eb69576dd8"
+      "sha256": "a83f7561536363d32bcab99dd68f20cf668a5630a66614f1566eb2eb69576dd8",
+      "purpose": "build-time resolver contract for routed-only MXFP4 with protected BF16 shared experts, dense linears, and vision tensors"
+    },
+    {
+      "path": "patches/0004-glm53-sm120-sparse-mla-architecture.patch",
+      "sha256": "189e54aff7751b7dc0e073cebd5c00ead2ce2a85aa2b07d2bf614adaf5fc296b",
+      "purpose": "admit the native GLM-5.3 target and NextN architecture names to upstream #26928's fail-closed SM120 FP8 sparse-MLA backend"
+    },
+    {
+      "path": "patches/test_glm53_sm120_sparse_mla_patch.py",
+      "sha256": "3ca3dc07f374f983c50de307c9eb31773e0069b02b61d542063890887128fad0",
+      "purpose": "build-time positive and negative contract test for the GLM-5.3 SM120 sparse-MLA architecture allowlist"
     }
   ],
   "integration": {
     "sglang": {
       "provenance": "vendor per-model image",
-      "note": "glm5_next is not in sgl-project/sglang main as of 2026-08-27; the vendor image is built from a tarball and reports SGLANG_BUILD_COMMIT=unknown. Pinned by immutable digest only.",
+      "note": "glm5_next is not in sgl-project/sglang main as of 2026-08-28; the vendor image is built from a tarball and reports SGLANG_BUILD_COMMIT=unknown. Pinned by immutable digest only.",
       "base_tag": "glm-5.3-flash-amd64",
       "base_index_digest": "sha256:44cb2eed3ff808541cc2be6a4fc3b34429a55d8986e9f21660f0ae9a1233a743",
       "base_amd64_manifest": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf",
@@ -171,12 +197,13 @@
       "upstream_tracking": {
         "model_support_pr": 36507,
         "model_support_pr_title": "GLM-5.3-Flash support",
-        "model_support_pr_state": "open and conflicting as of 2026-08-27",
-        "observed_main_head": "6480cce9bc7bb83e18537be3995a094cf2426e74",
-        "observed_main_tree": "b3bf7d76f8dc7e0e9abba80638a1bd8df8a863d5",
+        "model_support_pr_state": "open and conflicting as of 2026-08-28",
+        "observed_main_head": "7088f21922edc633dbb38e7543ef2b33252dfcbf",
+        "observed_main_tree": "5ba7a1fdd842e7474aa74f7a1a74d9b4cbe0b35e",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
+          26928,
           36440,
           36513,
           36519,
@@ -190,6 +217,7 @@
           36607,
           36711,
           36724,
+          36745,
           29738
         ]
       },
@@ -205,6 +233,15 @@
           "SGLANG_FP8_PAGED_MQA_LOGITS_TORCH": "1",
           "SGLANG_OPT_USE_TILELANG_INDEXER": "1"
         }
+      },
+      "sm120_sparse_mla_architecture": {
+        "rationale": "upstream #26928's dedicated SM120 FP8 sparse-MLA guard predates GLM-5.3 and rejects the native Glm5Next architecture name after target and MTP load",
+        "source_preimage_sha256": "39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5",
+        "source_postimage_sha256": "052bd1ca3f63b2fd569aad3b55bf0f3d07d157773b5d2ddeae981ac742755e93",
+        "admitted_architectures": [
+          "Glm5NextForConditionalGeneration",
+          "Glm5NextForConditionalGenerationNextN"
+        ]
       }
     },
     "flashinfer": {
@@ -217,7 +254,7 @@
     },
     "speculative_decoding": {
       "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, adaptive 5 steps / top-k 1 / 6 draft tokens",
-      "alternative": "DFlash2 A/B candidate; unqualified",
+      "alternative": "DFlash2 A/B candidate; no performance claim until measured on this exact rc",
       "dflash_repository": "incoai/GLM-5.3-Flash-DFlash2",
       "dflash_revision": "7d74cdd881ed7e32c31175984a67823127b66cfe",
       "dflash_storage_bytes": 2342175855,
@@ -239,6 +276,6 @@
     "sglang #36669: thinking output degenerates into repeated '!' under multi-tool agentic prompts (native FP8, not a quantization artifact).",
     "sglang #36711: flashinfer_trtllm MoE can produce an out-of-bounds expert index; this candidate pins flashinfer_mxfp4 instead.",
     "sglang #36724: multimodal embedding isolation is under active repair; vision must be qualified explicitly.",
-    "Current DFlash2 draft-pool sizing charges draft KV at the target token-pool length."
+    "Current DFlash2 draft-pool sizing charges draft KV at the target token-pool length, so DFlash2 may reduce maximum pooled context substantially versus native MTP until measured or fixed."
   ]
 }

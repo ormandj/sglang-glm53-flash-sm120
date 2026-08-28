@@ -5,7 +5,7 @@ artifact on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision
 and native MTP retained.
 
 Candidate under construction:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5`
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.6`
 
 The primary `sglang-glm53-flash-sm120` repository owns the quantization audit
 and all future performance/quality evidence. This build repository makes no
@@ -17,7 +17,8 @@ qualification claim.
   index and linux/amd64 manifest digests.
 - Exact byte-gated fixes for GLM's SM120 MXFP4 gate/up and activation contract,
   plus upstream PR #36708's DFlash2 hidden-state capture change and PR #36755's
-  mHC `residual=None` correction.
+  mHC `residual=None` correction, and a native GLM-5.3 architecture extension
+  to upstream PR #26928's fail-closed SM120 sparse-MLA guard.
 - Build-time semantic tests for the runtime patches, including the real mHC
   `residual=None` capture path.
 - SM120-safe mHC/indexer settings matching SGLang's current DeepSeek-V4 guard;
@@ -34,13 +35,13 @@ qualification claim.
 
 ## Provenance boundary
 
-`glm5_next` is not in sgl-project/sglang main as of 2026-08-27, and the vendor
+`glm5_next` is not in sgl-project/sglang main as of 2026-08-28, and the vendor
 per-model image was built from a tarball with no verifiable SGLang commit. The
 lock therefore keeps `verification.sglang_source_verifiable: false` and
 `verification.sglang_repository: null`.
 
 The base is reproducible by image digest, not by a claimed SGLang git tree. The
-two modified files are separately reproducible by exact preimage SHA-256,
+three modified files are separately reproducible by exact preimage SHA-256,
 archived patch bytes applied with zero fuzz, and exact postimage SHA-256.
 
 ## Verify
@@ -57,4 +58,4 @@ and re-resolve the vendor image digests.
 ## Scope
 
 SM120 and linux/amd64 only. A successful workflow makes
-`v0.1.0-rc.5` built, not qualified.
+`v0.1.0-rc.6` built, not qualified.

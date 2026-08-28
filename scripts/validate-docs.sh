@@ -48,8 +48,8 @@ critical=(
   '--speculative-draft-kv-cache-dtype fp8_e4m3'
   '--speculative-draft-attention-backend fa4'
   '--speculative-draft-model-quantization unquant'
-  '--dsa-prefill-backend trtllm'
-  '--dsa-decode-backend trtllm'
+  '--dsa-prefill-backend flashinfer_sparse_mla'
+  '--dsa-decode-backend flashinfer_sparse_mla'
   '--reasoning-parser glm45'
   '--tool-call-parser glm47'
 )

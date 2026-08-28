@@ -1,8 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.6
+
+Native GLM-5.3 SM120 sparse-MLA compatibility candidate. Not qualified.
+
+- Keep FP8 E4M3 KV while routing both DSA phases through upstream #26928's
+  dedicated FlashInfer sparse-MLA kernel for SM120/SM121. Generic TRT-LLM MLA
+  aborts on workstation Blackwell with `Unsupported architecture`.
+- Extend only the fail-closed GLM architecture allowlist to
+  `Glm5NextForConditionalGeneration` and its NextN class. The vendor guard
+  otherwise rejects GLM-5.3 after both target and MTP weights load.
+- Assert exact vendor preimage/postimage hashes and run positive and negative
+  architecture, device, KV-dtype, and paired-backend contract checks.
+- Advance compiled-cache schema to `v5`.
+
 ## v0.1.0-rc.5
 
-SM120 mHC/indexer fallback candidate. Not qualified.
+SM120 mHC/indexer fallback candidate. Superseded before qualification after the
+exact-hardware diagnostic exposed the stale sparse-MLA architecture allowlist.
 
 - Bake the same seven SM120 fallback settings SGLang currently applies to
   `DeepseekV4ForCausalLM`; GLM's shared DeepSeek/DSA hook does not inherit that
