@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.0-rc.7
+
+GLM47 streaming tool-parser correctness candidate. This candidate is not
+qualified.
+
+- Backport only the GLM47-specific part of merged SGLang commit `0665102c…`
+  (PR #36626).
+- Close the outer streaming JSON object after a nested object argument; the
+  exact vendor parser otherwise emits one fewer closing brace and malformed
+  tool-call arguments.
+- Resolve tool properties declared under legal top-level
+  `anyOf`/`oneOf`/`allOf` schemas.
+- Fail closed on exact vendor preimages for both modified Python files, assert
+  their postimages, and run flat nested-object plus composite-schema streaming
+  contracts at image build time.
+- Retain cache schema `v5` because compiled SGLang and FlashInfer source is
+  unchanged from v0.1.0-rc.6.
+
+The exact vendor failure is preserved in
+[`evidence/v0.1.0-rc.5-glm47-nested-tool-regression-20260828.txt`](evidence/v0.1.0-rc.5-glm47-nested-tool-regression-20260828.txt).
+
 ## v0.1.0-rc.6
 
 Native GLM-5.3 SM120 sparse-MLA compatibility candidate. This candidate is not

@@ -1,6 +1,6 @@
 # Benchmarks
 
-**`v0.1.0-rc.6` has no served-model quality or performance results yet.** The
+**`v0.1.0-rc.7` has no served-model quality or performance results yet.** The
 direct BF16 to MXFP4 artifact is complete and hash-verified; the corrected image
 is still being built. A candidate is built, not qualified, until exact-candidate
 evidence is recorded here.
@@ -66,7 +66,7 @@ These checks qualify the artifact structure, not model behavior.
 - short prompt, long prefill, and first decode after cold prefills above 262k;
 - custom PCIe all-reduce versus NCCL if both paths are stable.
 
-Every row must identify the full image name `v0.1.0-rc.6`, image digest, model
+Every row must identify the full image name `v0.1.0-rc.7`, image digest, model
 artifact manifest hash, exact launcher arguments, GPU/driver state, raw evidence
 path, and pass/fail criterion. Do not import performance numbers from another
 model, another quant, B200/GB300, or a different candidate.

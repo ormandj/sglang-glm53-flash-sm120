@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 6,
-    "candidate_tag": "v0.1.0-rc.6",
+    "candidate": 7,
+    "candidate_tag": "v0.1.0-rc.7",
     "stable_tag": "v0.1.0",
     "cache_schema": "v5"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.6",
+    "tag": "v0.1.0-rc.7",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "6"
+      "value": "7"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -152,6 +152,26 @@
     {
       "arg": "GLM53_SGLANG_KPOOL_TOPK_TEST_POSTIMAGE_SHA256",
       "value": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
+    },
+    {
+      "arg": "GLM53_SGLANG_GLM47_PREIMAGE_SHA256",
+      "value": "93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb"
+    },
+    {
+      "arg": "GLM53_SGLANG_GLM47_POSTIMAGE_SHA256",
+      "value": "9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e"
+    },
+    {
+      "arg": "GLM53_SGLANG_FUNCTION_CALL_UTILS_PREIMAGE_SHA256",
+      "value": "fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25"
+    },
+    {
+      "arg": "GLM53_SGLANG_FUNCTION_CALL_UTILS_POSTIMAGE_SHA256",
+      "value": "a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481"
+    },
+    {
+      "arg": "GLM53_SGLANG_GLM47_TEST_SHA256",
+      "value": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1"
     }
   ],
   "patches": [
@@ -199,6 +219,16 @@
       "path": "patches/0005-dsa-kpool-topk-deterministic.patch",
       "sha256": "0d6598731f4f7388f6a286e7d3325bb384924fa96a38edbcd401267d2e220e48",
       "purpose": "exact draft PR #36745 patch making fused KPool top-k deterministic, canonically ordered, and safe when the coarse threshold bin exceeds 4K candidates; includes its four GPU regressions"
+    },
+    {
+      "path": "patches/0006-glm47-nested-tool-schema-streaming.patch",
+      "sha256": "e5529cb880bced536adaf02896b0951958c315843179bea81270cd0e13a49600",
+      "purpose": "GLM47-specific backport of merged SGLang #36626: close streaming JSON after nested object arguments and resolve top-level anyOf/oneOf/allOf tool schemas"
+    },
+    {
+      "path": "patches/test_glm53_glm47_nested_tool_patch.py",
+      "sha256": "f7d7b1e60c6c81d0042b83d4593159c116b1c1ae4df6c83ce3267ee0759172e1",
+      "purpose": "build-time flat nested-object and composite-schema GLM47 streaming contract"
     }
   ],
   "integration": {
@@ -215,8 +245,8 @@
         "model_support_pr": 36507,
         "model_support_pr_title": "GLM-5.3-Flash support",
         "model_support_pr_state": "open and conflicting as of 2026-08-28",
-        "observed_main_head": "7088f21922edc633dbb38e7543ef2b33252dfcbf",
-        "observed_main_tree": "5ba7a1fdd842e7474aa74f7a1a74d9b4cbe0b35e",
+        "observed_main_head": "9fc60a8afd64b135342a7313bf611285aeab7208",
+        "observed_main_tree": "2a42e9164e9c524754cc0ac4fed5cdfaeac716e0",
         "observed_main_is_not_vendor_provenance": true,
         "note": "When #36507 merges, switch this build from vendor-image+digest to the sibling Qwen discipline: pin sglang main by commit AND tree, apply an archived patch, assert the effective tree hash. That restores real source provenance.",
         "related_merged": [
@@ -228,7 +258,8 @@
           36660,
           36544,
           36708,
-          36755
+          36755,
+          36626
         ],
         "related_open": [
           36607,
@@ -263,11 +294,22 @@
       "kpool_topk_determinism": {
         "upstream_pr": 36745,
         "upstream_head": "f14393b2dca5dc7f954b7c15167851fbc7c6a9f8",
+        "upstream_current_head": "6d17486dbea90ae7ef22c97bd2c6b163d27be5da",
         "upstream_state": "draft as of 2026-08-28",
-        "rationale": "the exact vendor header is the PR preimage and all four upstream GPU regressions fail on the exact v0.1.0-rc.5 image, including 100% mismatch in the coarse-bin-overflow case",
+        "rationale": "the exact vendor header is the pinned f14393b2 PR preimage and all four upstream GPU regressions fail on the exact v0.1.0-rc.5 image, including 100% mismatch in the coarse-bin-overflow case; the later PR head merges GLM support and adds HIP guards but does not change the NVIDIA kernel behavior or test blob",
         "source_preimage_sha256": "1131b379d5d0eea65eb68d3a54c567d791b3ba496070cdc83cdd1932c98dee38",
         "source_postimage_sha256": "cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c",
         "gpu_test_sha256": "c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a"
+      },
+      "glm47_nested_tool_streaming": {
+        "upstream_commit": "0665102ce5e2786ec569dc22c017f2f898a94313",
+        "upstream_pr": 36626,
+        "upstream_state": "merged on main as of 2026-08-28",
+        "rationale": "the exact vendor GLM47 parser emits malformed JSON when a nested object value ends in a brace and cannot resolve properties declared under top-level anyOf/oneOf/allOf; the upstream regression was reproduced in the pinned image",
+        "glm47_preimage_sha256": "93c882d0d3d5613c792a4a20da22a9e54d4f36ebb828846dce05a1acb81d83cb",
+        "glm47_postimage_sha256": "9657749f2e84097656dc6d17379ca3a2087c9b455ac4eb77a8be0dab7838ce5e",
+        "utils_preimage_sha256": "fc55c1b3d63a3631841aa1b6b5979cb0647e6ba27a4f5a1f1a1573f46eca8c25",
+        "utils_postimage_sha256": "a18c6565128af6275bdf4958007670bce7cacdc87a0016803b98e0d2305f3481"
       }
     },
     "flashinfer": {
