@@ -39,5 +39,14 @@ cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c and the
 included GPU regression file SHA-256 is
 c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a.
 
+Pre-build patched-source control:
+  pod: glm53-flash-sglang-v0-1-0-rc5-mtp-tp2-5864b667db-kgqjh
+  source was changed only inside this ephemeral diagnostic container
+  header sha256: cb1e05cce254f917e30efcc82f8c2b9e7e114708b3d00f660ee72f496d1d045c
+  test sha256: c6ebb550e8d9a7bb518967190a66ef6ac737c16be434e8f7d4bfd3d0504dd59a
+  isolated JIT cache: /tmp/kpool-jit-patched
+  result: Ran 4 tests in 16.444s -- OK
+  disposition: diagnostic Deployment scaled back to zero
+
 These are kernel correctness diagnostics, not served-model performance or
 quality results. The same four cases must pass on the built v0.1.0-rc.6 image.
