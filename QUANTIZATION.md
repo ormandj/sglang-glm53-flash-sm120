@@ -76,8 +76,11 @@ remains a valid future A/B only if its end-to-end runtime, model quality, and KV
 capacity are measured on the same cards.
 
 An experimental per-group exponent MSE search improved sampled reconstruction
-error by only about 1.06% over the standard MXFP4 max-absolute scale rule. That
-small tensor-level gain did not justify a non-standard format or loader fork.
+error by only about 1.06% over the standard MXFP4 max-absolute scale rule. The
+result would still be a valid E8M0/MXFP4 encoding, but it would replace the
+audited ecosystem producer with a custom scale optimizer. Unweighted weight MSE
+also does not establish lower activation error or better model quality, so that
+small tensor-level result is not enough to justify the custom producer risk.
 
 ## Protected BF16 scope
 
