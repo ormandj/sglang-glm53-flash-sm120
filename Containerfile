@@ -13,7 +13,7 @@
 # reproducibility of the image we started from. Re-verify when glm5_next lands
 # upstream and switch to the main+patch+tree discipline at that point.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=7
+ARG GLM53_RELEASE_CANDIDATE=8
 ARG GLM53_CACHE_SCHEMA=v5
 # lmsysorg/sglang:glm-5.3-flash-amd64, pushed 2026-08-27T05:22:01Z.
 # This is the OCI index digest; the linux/amd64 manifest it selects is pinned
@@ -34,7 +34,7 @@ ARG GLM53_MODEL_REVISION=f12e0fe1f6b2ea274c11a569582edfd99d993c5e
 # The vendor image lacks git provenance. These byte-level pre/postimage pins
 # make our six source modifications fail closed without implying a git commit.
 ARG GLM53_SGLANG_MXFP4_PREIMAGE_SHA256=38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb
-ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256=4a5fdcfca8edb681e8b2e781e9cddf9545c866301b5ce2d16aa1545061791f09
+ARG GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256=99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395
 ARG GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256=0a141565e73252ddb7f1773f30f0c48e001b7dce21a5ca7864b4ea6ae51d0ccd
 ARG GLM53_SGLANG_GLM5_NEXT_POSTIMAGE_SHA256=ed1021e7fd3d9d31f5b97979e8dc12f158cd5ea9bda1d9d42b017c2305953274
 ARG GLM53_SGLANG_FLASH_MLA_SM120_PREIMAGE_SHA256=39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5
@@ -81,7 +81,8 @@ ARG GLM53_SGLANG_GLM47_TEST_SHA256
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
 
-ENV PYTHONPATH=/sgl-workspace/sglang/python
+ENV PYTHONPATH=/sgl-workspace/sglang/python \
+    FLASHINFER_NO_DOWNLOAD=1
 
 # Assert we really are on the base we pinned, and that it carries glm5_next.
 # If the vendor ever repoints the tag, the digest FROM already protects us;
@@ -151,8 +152,11 @@ RUN set -e; \
       /usr/share/sglang-glm53-flash-sm120/tests/test_glm53_glm47_nested_tool_patch.py
 
 # Rebuild FlashInfer from source for SM120. The stock wheel in the vendor image
-# does not carry 12.0f cubins; workstation Blackwell lacks TMEM/tcgen05/wgmma,
-# so sm_100 and Hopper kernels do not run on it.
+# does not carry 12.0f kernels; workstation Blackwell lacks TMEM/tcgen05/wgmma,
+# so sm_100 and Hopper kernels do not run on it. The generic flashinfer-cubin
+# bundle is deliberately absent: it enumerates 48,391 cross-architecture
+# artifacts, while the targeted MXFP4 and sparse-MLA SM120 paths compile from
+# this pinned source.
 RUN set -e; \
     git init -q /tmp/flashinfer-main; \
     cd /tmp/flashinfer-main; \
@@ -166,21 +170,18 @@ RUN set -e; \
       flashinfer-cubin flashinfer-jit-cache || true; \
     BUILD_NVEP=0 FLASHINFER_CUDA_ARCH_LIST=12.0f \
       uv pip install --python /opt/sglang/bin/python --reinstall --no-deps .; \
-    FLASHINFER_CUBIN_DIR=/tmp/flashinfer-main/flashinfer-cubin/flashinfer_cubin/cubins \
-      uv pip install --python /opt/sglang/bin/python --reinstall --no-deps \
-      --no-build-isolation ./flashinfer-cubin; \
     cd /; \
     rm -rf /tmp/flashinfer-main
 
 RUN set -e; \
     uv run --no-project --python /opt/sglang/bin/python python -c "\
-import importlib.util; import flashinfer; import flashinfer_cubin; \
+import importlib.util; import os; import flashinfer; \
 assert flashinfer.__version__ == '${GLM53_FLASHINFER_VERSION}', flashinfer.__version__; \
 assert flashinfer.__git_commit__ == '${GLM53_FLASHINFER_MAIN_HEAD}', flashinfer.__git_commit__; \
-assert flashinfer_cubin.__version__ == '${GLM53_FLASHINFER_VERSION}', flashinfer_cubin.__version__; \
-assert flashinfer_cubin.__git_version__ == '${GLM53_FLASHINFER_MAIN_HEAD}', flashinfer_cubin.__git_version__; \
+assert importlib.util.find_spec('flashinfer_cubin') is None; \
 assert importlib.util.find_spec('flashinfer_jit_cache') is None; \
-print('flashinfer', flashinfer.__version__, flashinfer.__git_commit__, 'cubin', flashinfer_cubin.__version__)"
+assert os.environ['FLASHINFER_NO_DOWNLOAD'] == '1'; \
+print('flashinfer source-jit', flashinfer.__version__, flashinfer.__git_commit__)"
 
 # compressed-tensors must be able to read the MXFP4 artifact this image serves.
 # The quantizer emitted mxfp4-pack-quantized with GROUP strategy, group_size 32

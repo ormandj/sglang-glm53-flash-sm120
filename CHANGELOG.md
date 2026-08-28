@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.0-rc.8
+
+SM120 source-JIT and MXFP4 post-loader correctness candidate. This candidate
+is not qualified.
+
+- Repair the SM120 MXFP4 patch to read `moe_runner_config` from the
+  `Mxfp4MoEMethod` that owns it. The prior patch incorrectly read the layer;
+  the exact vendor GPU suite passed its GLM numerical case but failed the
+  GPT-OSS compatibility case with `AttributeError`.
+- Extend the build-time semantic contract so that invalid configuration
+  ownership cannot silently return.
+- Remove the generic `flashinfer-cubin` package. The v0.1.0-rc.6 build spent
+  24m41s enumerating 48,391 cross-architecture artifacts and then failed
+  all-or-nothing after an exhausted download retry; no image was published.
+- Retain the exact FlashInfer source pin, disable runtime artifact downloads,
+  and use source JIT. On exact SM120 hardware, the GLM MXFP4 numerical path and
+  four production-shaped sparse-MLA decode/prefill cases pass without either
+  `flashinfer-cubin` or `flashinfer-jit-cache`.
+- Retain cache schema `v5`; the compiled kernel sources are unchanged. The
+  repaired configuration lookup runs during Python weight post-processing.
+
+The build failure is preserved in
+[`evidence/v0.1.0-rc.6-build-failure-20260828.txt`](evidence/v0.1.0-rc.6-build-failure-20260828.txt).
+Exact hardware controls are preserved in
+[`evidence/v0.1.0-rc.5-no-cubin-sm120-hardware-20260828.txt`](evidence/v0.1.0-rc.5-no-cubin-sm120-hardware-20260828.txt).
+
 ## v0.1.0-rc.7
 
 GLM47 streaming tool-parser correctness candidate. This candidate is not

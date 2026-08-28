@@ -1,6 +1,6 @@
 # Benchmarks
 
-**`v0.1.0-rc.7` has no served-model quality or performance results yet.** The
+**`v0.1.0-rc.8` has no served-model quality or performance results yet.** The
 direct BF16 to MXFP4 artifact is complete and hash-verified; the corrected image
 is still being built. A candidate is built, not qualified, until exact-candidate
 evidence is recorded here.
@@ -25,6 +25,8 @@ qualification:
 | physical GPU framebuffer | 95.592 GiB/card; 191.184 GiB/pair; 189.938 GiB free before model load | DCGM/driver 595.71.05; [`evidence/preflight-gpu-memory-20260828.txt`](evidence/preflight-gpu-memory-20260828.txt) |
 | target KV format | 584 bytes/token/layer: 448 E4M3 NOPE bytes with seven per-token E8M0 scales, 64 BF16 RoPE values, one scale pad byte | exact pinned vendor source; [`evidence/v0.1.0-rc.5-fp8-kv-source-audit-20260828.txt`](evidence/v0.1.0-rc.5-fp8-kv-source-audit-20260828.txt) |
 | fused KPool vendor preimage | all 4 draft-PR regressions fail, including 100% mismatch for exact ties and coarse-bin overflow | exact v0.1.0-rc.5 image on SM120; [`evidence/v0.1.0-rc.5-kpool-topk-regressions-20260828.txt`](evidence/v0.1.0-rc.5-kpool-topk-regressions-20260828.txt) |
+| artifact-free MXFP4 source JIT | repaired vendor suite 4/4 passed; prior config-ownership source 3/4 | exact v0.1.0-rc.5 image plus the two-line rc.8 diagnostic delta on SM120; [`evidence/v0.1.0-rc.5-no-cubin-sm120-hardware-20260828.txt`](evidence/v0.1.0-rc.5-no-cubin-sm120-hardware-20260828.txt) |
+| artifact-free sparse MLA source JIT | 4/4 production-shaped decode/prefill and sink/no-sink cases passed | exact v0.1.0-rc.5 image and pinned FlashInfer test on SM120; same evidence file |
 
 The production quantizer repeated and expanded the structural checks, including
 bit-for-bit comparison of every protected tensor and 129 layer/projection
@@ -66,7 +68,7 @@ These checks qualify the artifact structure, not model behavior.
 - short prompt, long prefill, and first decode after cold prefills above 262k;
 - custom PCIe all-reduce versus NCCL if both paths are stable.
 
-Every row must identify the full image name `v0.1.0-rc.7`, image digest, model
+Every row must identify the full image name `v0.1.0-rc.8`, image digest, model
 artifact manifest hash, exact launcher arguments, GPU/driver state, raw evidence
 path, and pass/fail criterion. Do not import performance numbers from another
 model, another quant, B200/GB300, or a different candidate.

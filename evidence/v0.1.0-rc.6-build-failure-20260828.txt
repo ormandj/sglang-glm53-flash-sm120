@@ -1,0 +1,31 @@
+GLM-5.3-Flash v0.1.0-rc.6 container build failure
+Date: 2026-08-28 (America/Chicago)
+
+Forgejo container repository commit:
+  2ffee03
+Forgejo Actions task:
+  workflow task #17; task id 12935; run id 6094
+Overall result:
+  failed after 28m05s
+Registry result:
+  v0.1.0-rc.6 not found; no immutable image was published
+
+All pinned-source fetches, preimage/postimage assertions, archived patch
+applications, and semantic image-build tests completed before the failing
+step. The failure was the subsequent local build of flashinfer-cubin from the
+same pinned FlashInfer tree.
+
+The package backend enumerated 48,391 artifacts spanning architecture and
+kernel families. Its progress reached 48,391/48,391 after 24m41s, but at least
+one artifact had exhausted its retries. The backend then raised:
+
+  RuntimeError: Failed to download cubins
+
+The container builder exited that RUN instruction with status 1. The package
+build was all-or-nothing, did not retain a resumable cache across workflow
+runs, and included artifact families unrelated to this SM120 GLM serving
+profile.
+
+This is build evidence, not served-model quality or performance evidence. The
+raw workflow log remains outside the repository because it is not a reviewed
+public evidence artifact.

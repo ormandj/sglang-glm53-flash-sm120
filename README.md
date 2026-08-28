@@ -6,7 +6,7 @@ quantization of
 on two NVIDIA RTX PRO 6000 Blackwell GPUs (SM120) at TP=2, with vision and the
 checkpoint's native MTP/NEXTN block retained.
 
-**`v0.1.0-rc.7` is being built and is not qualified.** No model-quality,
+**`v0.1.0-rc.8` is being built and is not qualified.** No model-quality,
 throughput, acceptance-rate, or maximum-context claim is made yet.
 [`BENCHMARKS.md`](BENCHMARKS.md) is the evidence boundary.
 
@@ -14,7 +14,7 @@ throughput, acceptance-rate, or maximum-context claim is made yet.
 
 The official BF16 checkpoint has 642.65 billion tensor bytes and cannot fit in
 the pair's measured 191.184 GiB of physical framebuffer. The deleted first
-attempt requantized the official FP8 checkpoint. v0.1.0-rc.7 instead starts from the
+attempt requantized the official FP8 checkpoint. v0.1.0-rc.8 instead starts from the
 immutable BF16 revision and quantizes
 only the routed expert projections in layers 3 through 45:
 
@@ -76,7 +76,7 @@ from a tarball and reports no verifiable SGLang commit.
 
 The base is therefore pinned by immutable OCI index and amd64 manifest digests.
 This repository does not claim a vendor SGLang git revision. For the six files
-we modify, v0.1.0-rc.7 asserts exact vendor preimage SHA-256 values, applies archived
+we modify, v0.1.0-rc.8 asserts exact vendor preimage SHA-256 values, applies archived
 patch bytes with zero fuzz, asserts exact postimage values, and runs semantic
 tests. The patches:
 
@@ -96,8 +96,9 @@ tests. The patches:
 FlashInfer 0.6.18 is built from exact main commit
 `71d31b5a23a3c0394edb36330dec1ce2a0def365` and tree
 `a2577ad013205dfc996f6ffe5259f3102a2cd075` with
-`FLASHINFER_CUDA_ARCH_LIST=12.0f`. The vendor wheel does not carry the required
-SM120 cubins.
+`FLASHINFER_CUDA_ARCH_LIST=12.0f`. The generic 48,391-artifact cubin package is
+not installed: the targeted MXFP4 and sparse-MLA SM120 paths compile from the
+pinned source, and runtime artifact downloads are disabled.
 
 ## Build and run
 
@@ -105,7 +106,7 @@ SM120 cubins.
 docker build --platform linux/amd64 \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.7 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.8 .
 ```
 
 ```bash
@@ -141,5 +142,5 @@ provide.
 ## Scope
 
 SM120 and linux/amd64 only. No stable-release, SM121, arm64, HiCache, or
-production-readiness claim. A successful image build makes v0.1.0-rc.7 built; only
+production-readiness claim. A successful image build makes v0.1.0-rc.8 built; only
 exact-candidate evidence can make it qualified.

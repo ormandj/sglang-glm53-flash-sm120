@@ -1,0 +1,73 @@
+GLM-5.3-Flash SM120 source-JIT hardware controls
+Date: 2026-08-28 (America/Chicago)
+
+Control image:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5
+Digest:
+  sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e
+Hardware:
+  RTX PRO 6000 Blackwell, compute capability 12.0
+Download controls for every executed GPU test:
+  FLASHINFER_CUBIN_DIR=/tmp/no-cubin
+  FLASHINFER_NO_DOWNLOAD=1
+Installed optional artifact packages:
+  neither flashinfer-cubin nor flashinfer-jit-cache was used
+
+SM120 MXFP4 vendor suite
+------------------------
+Exact vendor regression file SHA-256:
+  461869e0ba1d6014cb8ee1e3ff43393f6193993834c7cc736490f7105b8e0d08
+
+The unmodified v0.1.0-rc.5 candidate source had the repository's earlier MXFP4
+patch applied and therefore had this mxfp4.py SHA-256:
+  4a5fdcfca8edb681e8b2e781e9cddf9545c866301b5ce2d16aa1545061791f09
+
+Result:
+  3 passed, 1 failed in 539.70s
+
+The GLM load contract and GLM numerical comparison passed. The GPT-OSS padding,
+layout, and kernel compatibility case failed before its kernel invocation:
+
+  AttributeError: 'types.SimpleNamespace' object has no attribute
+                  'moe_runner_config'
+
+The carried patch read layer.moe_runner_config inside
+Mxfp4MoEMethod._process_weights_for_sm120_cutlass even though create_moe_runner
+stores that configuration on the method. The valid vendor regression constructs
+the post-loader with method.moe_runner_config and does not promise the same
+attribute on its layer stand-in.
+
+A two-line, zero-fuzz diagnostic delta changed both configuration reads to
+self.moe_runner_config. Its resulting mxfp4.py SHA-256 is the v0.1.0-rc.8 pinned
+postimage:
+  99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395
+
+The complete same vendor suite was then rerun from an empty artifact directory.
+Result:
+  4 passed in 539.08s
+
+This proves both the compressed-tensors GLM MXFP8-by-MXFP4 numerical path and
+the retained GPT-OSS compatibility contract compile and execute from the pinned
+FlashInfer source on the actual SM120 card.
+
+FlashInfer SM120 sparse MLA
+---------------------------
+Pinned FlashInfer commit:
+  71d31b5a23a3c0394edb36330dec1ce2a0def365
+Pinned tree:
+  a2577ad013205dfc996f6ffe5259f3102a2cd075
+Exact upstream regression file SHA-256:
+  aab2e71a5c06a0d92b789386c278b6a073912b370281c99dd0d715118f65a291
+
+Four production-shaped DSv4 cases were selected:
+  decode,  no sink, 1 query token, 16 local heads, top-k 256
+  decode,  sink,    1 query token, 16 local heads, top-k 256
+  prefill, no sink, 128 query tokens, 16 local heads, top-k 256
+  prefill, sink,    128 query tokens, 16 local heads, top-k 256
+
+Result:
+  4 passed in 35.29s
+
+These are exact kernel correctness controls, not served-model quality,
+throughput, or maximum-context measurements. Both temporary one-GPU pods must
+be deleted after the evidence hashes and results are recorded.

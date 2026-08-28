@@ -3,14 +3,14 @@
   "release": {
     "manifest": "release.json",
     "version": "0.1.0",
-    "candidate": 7,
-    "candidate_tag": "v0.1.0-rc.7",
+    "candidate": 8,
+    "candidate_tag": "v0.1.0-rc.8",
     "stable_tag": "v0.1.0",
     "cache_schema": "v5"
   },
   "image": {
     "repository": "sglang-glm53-flash-sm120-container",
-    "tag": "v0.1.0-rc.7",
+    "tag": "v0.1.0-rc.8",
     "platform": "linux/amd64",
     "containerfile_target": "runtime"
   },
@@ -67,7 +67,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "7"
+      "value": "8"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -123,7 +123,7 @@
     },
     {
       "arg": "GLM53_SGLANG_MXFP4_POSTIMAGE_SHA256",
-      "value": "4a5fdcfca8edb681e8b2e781e9cddf9545c866301b5ce2d16aa1545061791f09"
+      "value": "99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395"
     },
     {
       "arg": "GLM53_SGLANG_GLM5_NEXT_PREIMAGE_SHA256",
@@ -177,12 +177,12 @@
   "patches": [
     {
       "path": "patches/0001-mxfp4-sm120-preserve-non-gpt-oss-moe-semantics.patch",
-      "sha256": "62c32772846d2badc6a547b7496b2cb7c68a924ca917d084b85b160176406d3f",
-      "purpose": "preserve GLM contiguous gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 loader"
+      "sha256": "f7b9a959a91926f447e26bc82170f698e2549d2e95793a1eb92815d6637203f6",
+      "purpose": "preserve GLM contiguous gate/up layout and standard clamped-SwiGLU semantics in the SM120 MXFP4 loader, using the quantization method's owned runner configuration"
     },
     {
       "path": "patches/test_glm53_sm120_mxfp4_patch.py",
-      "sha256": "634d40e9e720a3bf7e0fb8b4771aef9c825682328fad7a707a8f7117aa8fd51f",
+      "sha256": "c3404a8dfdc7a4bc336dfb62fb106f5bbe0a57e44766db8bdb380a38dd270fe4",
       "purpose": "build-time semantic contract test for the SM120 MXFP4 patch"
     },
     {
@@ -282,6 +282,12 @@
           "SGLANG_OPT_USE_TILELANG_INDEXER": "1"
         }
       },
+      "sm120_mxfp4_runner_configuration": {
+        "rationale": "the SM120 post-loader configuration belongs to Mxfp4MoEMethod; the prior patch read layer.moe_runner_config and failed the vendor GPT-OSS GPU contract even though the GLM numerical path passed",
+        "source_preimage_sha256": "38fe76f6a3c3dd142feea2a0e9ad685962cf6a4b8bf709f2d49b765840884dcb",
+        "source_postimage_sha256": "99022881b904ac05ef6aeed5a3e6cc51c285c1025e0cdfb947528f07eecbe395",
+        "exact_hardware_control_image": "git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.5@sha256:955a03fde7bb66b93a679041fc69f395ee4f7cd92a48e1aeb59a69c042b3244e"
+      },
       "sm120_sparse_mla_architecture": {
         "rationale": "upstream #26928's dedicated SM120 FP8 sparse-MLA guard predates GLM-5.3 and rejects the native Glm5Next architecture name after target and MTP load",
         "source_preimage_sha256": "39f0f98151a7cfd750b987d82cf05fafe80e8e972ef53a2b78352ce9b472e9b5",
@@ -317,8 +323,8 @@
       "tree": "a2577ad013205dfc996f6ffe5259f3102a2cd075",
       "package_version": "0.6.18",
       "base_package_version": "0.6.17",
-      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f, plus the matching cubin package built from the same tree",
-      "rationale": "the vendor wheel carries no 12.0f cubins; workstation Blackwell lacks TMEM/tcgen05/wgmma so sm_100 and Hopper kernels do not run"
+      "install": "exact non-editable source install with BUILD_NVEP=0 and FLASHINFER_CUDA_ARCH_LIST=12.0f; generic flashinfer-cubin and flashinfer-jit-cache packages absent; FLASHINFER_NO_DOWNLOAD=1",
+      "rationale": "the vendor wheel carries no 12.0f kernels and workstation Blackwell cannot run sm_100/Hopper kernels; the generic package enumerates 48,391 cross-architecture artifacts and made the rc.6 build fail after 24m41s, while exact SM120 MXFP4 and sparse-MLA hardware tests pass by compiling directly from the pinned source"
     },
     "speculative_decoding": {
       "baseline": "native layer-45 MTP through SGLang EAGLE/NEXTN, adaptive 5 steps / top-k 1 / 6 draft tokens",

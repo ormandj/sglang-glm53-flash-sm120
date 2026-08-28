@@ -1,7 +1,7 @@
-# Running `v0.1.0-rc.7`
+# Running `v0.1.0-rc.8`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.7
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.8
 export MODEL_DIR=/models/zai-org/GLM-5.3-Flash-BF16-MXFP4
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v5
 export SPECULATIVE_MODE=mtp
@@ -10,9 +10,11 @@ export SPECULATIVE_MODE=mtp
 
 `CACHE_DIR` must be image-specific. Compiled FlashInfer, TorchInductor, TileLang,
 and Triton artifacts are not portable across incompatible candidates.
-v0.1.0-rc.7 retains cache schema `v5`: its compiled SM120 sparse-MLA and KPool
-sources are byte-identical to v0.1.0-rc.6, while its additional change is a
-pure-Python GLM47 tool-parser correction.
+v0.1.0-rc.8 retains cache schema `v5`: its SM120 kernel sources remain
+byte-identical to v0.1.0-rc.6. Its changes are Python post-loader/parser
+corrections and removal of the unused generic cubin bundle; required kernels
+continue to compile from the exact pinned sources into the same persistent
+cache schema.
 
 ## Serving envelope
 
@@ -135,4 +137,4 @@ not a vision qualification.
 - repeated tool-calling prompts because relevant upstream failures are open.
 
 Put results and evidence paths in `BENCHMARKS.md`. Do not promote
-`v0.1.0-rc.7` from a successful build alone.
+`v0.1.0-rc.8` from a successful build alone.

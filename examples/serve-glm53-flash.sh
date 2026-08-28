@@ -7,7 +7,7 @@ set -euo pipefail
 : "${MODEL_DIR:?set MODEL_DIR to the GLM-5.3-Flash-BF16-MXFP4 artifact directory}"
 : "${CACHE_DIR:?set CACHE_DIR to a persistent, image-specific cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.0-rc.7}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.0-rc.8}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -36,7 +36,7 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || ((PORT < 1 || PORT > 65535)); then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.1.0-rc.7 is scoped to TP_SIZE=2" >&2
+  echo "v0.1.0-rc.8 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 if [[ "$SPECULATIVE_MODE" != none && "$SPECULATIVE_MODE" != mtp && "$SPECULATIVE_MODE" != dflash ]]; then
