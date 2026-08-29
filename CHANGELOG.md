@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.32
+
+- Rebase the exact SGLang integration tree onto upstream main
+  `0a585d5bb108cab8f0922b483d7f55812f05e245`, producing integration commit
+  `33121e7a9235de4a14a10e3ed05c91f0a34f25a7` / tree
+  `8b70a30f7310758d797284071256bce9fb80ecb0`. This includes the upstream
+  request/KV ownership cleanup from sglang#36958 while retaining the GLM,
+  native-FlashInfer, ReplaySSM, and precompile integration work.
+- Retain rc.31's private-stream `:4096:2:16:8` cuBLAS workspace profile and
+  advance the compiled-cache schema to `v19`. v0.1.0-rc.32 remains unbuilt and
+  unqualified; strict lifecycle diagnostics are a runtime qualification
+  profile, not baked into ordinary serving behavior.
+
 ## v0.1.0-rc.31
 
 - Pin SGLang integration commit

@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.31`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.31`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.32`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.32`.
 
-**v0.1.0-rc.31 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.32 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -60,7 +60,7 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v18` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v19` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
@@ -89,7 +89,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.31 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.32 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate
