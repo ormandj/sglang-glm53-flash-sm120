@@ -4,17 +4,19 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.40`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.40`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.41`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.41`.
 
-**v0.1.0-rc.40 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.41 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
 The vendor base is pinned by its linux/amd64 OCI manifest and supplies the known
 CUDA/PyTorch environment only. Its unverifiable SGLang tarball is shadowed by
-the exact SGLang integration tree recorded in `stack.lock.json`. FlashInfer and
-ModelOpt are also installed from exact commits and tree hashes.
+the exact SGLang integration tree recorded in `stack.lock.json`. The build
+fetches exact official SGLang and FlashInfer commits, applies checksummed
+project patches stored in this internal repository, and verifies the resulting
+complete trees. ModelOpt is installed from its exact official commit and tag.
 
 This candidate makes native FlashInfer the qualification path. It fixes the
 GLM adapter's geometry check so the model's configured 256-wide pre-absorption
@@ -60,7 +62,7 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v27` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v28` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
@@ -82,8 +84,10 @@ predicate during custom-op replay.
 This build intentionally contains none of the v0.1.0-rc.16-and-earlier MXFP4,
 vendor-byte, sentinel, or CPU-offload patch stack. Native NoPE support derives
 from FlashInfer pull request 4802 and its SGLang adapter is isolated in exact,
-verifiable integration commits. The E4M3-K32 W4A16 serving contract remains
-isolated in those same pinned source trees.
+verifiable integration deltas. Editable branch history remains in the internal
+`homelab/sglang` and `homelab/flashinfer` repositories pending exact-hardware
+validation and focused upstream submissions. The E4M3-K32 W4A16 serving
+contract remains isolated in those same pinned source trees.
 
 Verify before pushing:
 
@@ -100,7 +104,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.40 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.41 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

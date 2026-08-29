@@ -2,22 +2,27 @@
 #
 # The vendor image supplies the CUDA/PyTorch dependency stack only. Its
 # SGLang tree has no git provenance, so this candidate puts an exact, verifiable
-# SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
-# exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
+# SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from exact
+# official bases plus checksummed project patches. No rc.14 vendor-byte patches
+# are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=40
-ARG GLM53_CACHE_SCHEMA=v27
+ARG GLM53_RELEASE_CANDIDATE=41
+ARG GLM53_CACHE_SCHEMA=v28
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
-ARG GLM53_SGLANG_REPOSITORY=https://git.home.corenode.com/homelab/sglang.git
-ARG GLM53_SGLANG_HEAD=0d691b6ddf0d3e27ebb7343e78a64b203eb6949c
+ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
+ARG GLM53_SGLANG_HEAD=cdbfe90b4a6c728e03e6520862d792501b3a97bb
+ARG GLM53_SGLANG_UPSTREAM_TREE=68a9d2477cf06c8e0a737997439272ebdc2da1c8
 ARG GLM53_SGLANG_TREE=179d7d1440c7f0ea800457718966097d4af33140
-ARG GLM53_FLASHINFER_REPOSITORY=https://git.home.corenode.com/homelab/flashinfer.git
+ARG GLM53_SGLANG_PATCH_SHA256=730ea7e2580d15dc7244bca1c7baf113bc245470218930657639d9f618726753
+ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
+ARG GLM53_FLASHINFER_HEAD=e425c7b029ca90d5d01ff207913b070863d35a5b
+ARG GLM53_FLASHINFER_UPSTREAM_TREE=cd9bf5311aa0521ce3972c2d93481a13836d5268
 ARG GLM53_FLASHINFER_TREE=6a957df7b48adac53ac27d2156b46bc2455ce157
+ARG GLM53_FLASHINFER_PATCH_SHA256=d57993d3fb2a90672c2a28a8f058194146ebbdafd5979df72995a7cc2ec506be
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -37,11 +42,15 @@ ARG GLM53_SGLANG_BASE_INDEX
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST
 ARG GLM53_SGLANG_REPOSITORY
 ARG GLM53_SGLANG_HEAD
+ARG GLM53_SGLANG_UPSTREAM_TREE
 ARG GLM53_SGLANG_TREE
+ARG GLM53_SGLANG_PATCH_SHA256
 ARG GLM53_FLASHINFER_REPOSITORY
 ARG GLM53_FLASHINFER_VERSION
 ARG GLM53_FLASHINFER_HEAD
+ARG GLM53_FLASHINFER_UPSTREAM_TREE
 ARG GLM53_FLASHINFER_TREE
+ARG GLM53_FLASHINFER_PATCH_SHA256
 ARG GLM53_MODELOPT_REPOSITORY
 ARG GLM53_MODELOPT_VERSION
 ARG GLM53_MODELOPT_RELEASE_TAG
@@ -58,10 +67,15 @@ ENV SGLANG_SOURCE_ROOT=/opt/sglang-source \
     FLASHINFER_CUDA_ARCH_LIST=12.0f \
     CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8
 
-# Replace the unverifiable vendor Python tree with the exact integration tree.
-# The branch is based on current SGLang main and contains GLM-5.3 support,
-# native FlashInfer SM120 NoPE sparse MLA, and the E4M3-K32 W4A16
-# loader/runner contract.
+# Project-owned integration deltas remain in this internal build repository.
+# Each patch is applied to an exact official-upstream tree and the resulting
+# complete source tree is verified before it can shadow the vendor tree.
+COPY patches/sglang-glm53-integration.patch /tmp/sglang-glm53-integration.patch
+COPY patches/flashinfer-glm53-integration.patch /tmp/flashinfer-glm53-integration.patch
+
+# Replace the unverifiable vendor Python tree with the exact patched SGLang
+# integration tree. The delta contains GLM-5.3 support, native FlashInfer SM120
+# NoPE sparse MLA, and the E4M3-K32 W4A16 loader/runner contract.
 RUN set -eux; \
     git init -q "${SGLANG_SOURCE_ROOT}"; \
     cd "${SGLANG_SOURCE_ROOT}"; \
@@ -69,7 +83,12 @@ RUN set -eux; \
     git fetch --depth=1 origin "${GLM53_SGLANG_HEAD}"; \
     git checkout --detach FETCH_HEAD; \
     test "$(git rev-parse HEAD)" = "${GLM53_SGLANG_HEAD}"; \
-    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_SGLANG_TREE}"; \
+    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_SGLANG_UPSTREAM_TREE}"; \
+    printf '%s  %s\n' "${GLM53_SGLANG_PATCH_SHA256}" /tmp/sglang-glm53-integration.patch | sha256sum -c -; \
+    git apply --check /tmp/sglang-glm53-integration.patch; \
+    git apply --index /tmp/sglang-glm53-integration.patch; \
+    test "$(git write-tree)" = "${GLM53_SGLANG_TREE}"; \
+    rm /tmp/sglang-glm53-integration.patch; \
     uv run --no-project --python /opt/sglang/bin/python python -m compileall -q \
       python/sglang/srt/models/glm5_next.py \
       python/sglang/srt/models/glm5_next_nextn.py \
@@ -105,14 +124,18 @@ RUN set -eux; \
     git fetch --depth=1 origin "${GLM53_FLASHINFER_HEAD}"; \
     git checkout --detach FETCH_HEAD; \
     test "$(git rev-parse HEAD)" = "${GLM53_FLASHINFER_HEAD}"; \
-    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_FLASHINFER_TREE}"; \
+    test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_FLASHINFER_UPSTREAM_TREE}"; \
+    printf '%s  %s\n' "${GLM53_FLASHINFER_PATCH_SHA256}" /tmp/flashinfer-glm53-integration.patch | sha256sum -c -; \
+    git apply --check /tmp/flashinfer-glm53-integration.patch; \
+    git apply --index /tmp/flashinfer-glm53-integration.patch; \
+    test "$(git write-tree)" = "${GLM53_FLASHINFER_TREE}"; \
     git submodule update --init --recursive --depth=1; \
     uv pip uninstall --python /opt/sglang/bin/python \
       flashinfer-python flashinfer-cubin flashinfer-jit-cache || true; \
     BUILD_NVEP=0 FLASHINFER_CUDA_ARCH_LIST=12.0f \
       uv pip install --python /opt/sglang/bin/python --no-deps .; \
     cd /; \
-    rm -rf /tmp/flashinfer-source
+    rm -rf /tmp/flashinfer-source /tmp/flashinfer-glm53-integration.patch
 
 # The runtime image doubles as the controlled quantization environment. Pin
 # current ModelOpt source instead of relying on the base image's older wheel.
@@ -239,9 +262,11 @@ LABEL org.opencontainers.image.title="sglang-glm53-flash-sm120" \
       ai.sglang.repository=${GLM53_SGLANG_REPOSITORY} \
       ai.sglang.head=${GLM53_SGLANG_HEAD} \
       ai.sglang.tree=${GLM53_SGLANG_TREE} \
+      ai.sglang.patch-sha256=${GLM53_SGLANG_PATCH_SHA256} \
       ai.flashinfer.repository=${GLM53_FLASHINFER_REPOSITORY} \
       ai.flashinfer.head=${GLM53_FLASHINFER_HEAD} \
       ai.flashinfer.tree=${GLM53_FLASHINFER_TREE} \
+      ai.flashinfer.patch-sha256=${GLM53_FLASHINFER_PATCH_SHA256} \
       ai.modelopt.repository=${GLM53_MODELOPT_REPOSITORY} \
       ai.modelopt.release-tag=${GLM53_MODELOPT_RELEASE_TAG} \
       ai.modelopt.head=${GLM53_MODELOPT_HEAD} \

@@ -1,12 +1,32 @@
 # Changelog
 
-## v0.1.0-rc.40 (diagnostic, not yet built or qualified)
+## v0.1.0-rc.41 (diagnostic, not yet built or qualified)
+
+- Fetches exact official SGLang and FlashInfer base commits, then applies the
+  two project-owned integration patches stored in this internal repository.
+  The build verifies both patch checksums, both upstream trees, and both final
+  integration trees before compiling or installing any source.
+- Retains editable pre-validation history in the internal `homelab/sglang` and
+  `homelab/flashinfer` working repositories. This avoids both personal-GitHub
+  publication and cross-repository runner credentials while preserving a clean
+  path to focused upstream pull requests after exact-hardware validation.
+- Carries the same DSA CUDA-graph buffer lifetime probe and final integration
+  trees intended by v0.1.0-rc.40. Cache schema `v28` prevents reuse of artifacts
+  from the failed source-fetch candidate.
+- This candidate is fault localization, not a correctness fix or qualification
+  claim.
+
+## v0.1.0-rc.40 (build failed; no image published)
 
 - Moves the pre-validation SGLang and FlashInfer integration provenance from
   personal GitHub forks to the internal `homelab/sglang` and
   `homelab/flashinfer` Forgejo repositories. Official upstream repositories
   remain the source and eventual pull-request targets after validation; all
   candidate builds and project-owned integration branches remain internal.
+- Both Forgejo jobs failed before image construction because clean runners
+  cannot anonymously clone the private working repositories. No repository
+  visibility or credential policy was changed; v0.1.0-rc.41 instead carries
+  the integration deltas inside the container repository.
 - Advances the integration fork to head
   `0d691b6ddf0d3e27ebb7343e78a64b203eb6949c` and tree
   `179d7d1440c7f0ea800457718966097d4af33140`.
