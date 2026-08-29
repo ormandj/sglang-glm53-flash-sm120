@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0-rc.28
+
+- Retain v0.1.0-rc.27's exact SGLang, FlashInfer, ModelOpt, model, and runtime
+  profile. Correct the build-time ReplaySSM contract check to inspect the
+  kernel's Python module because Triton exposes the decorated kernel as a
+  `JITFunction`, not a plain Python function. v0.1.0-rc.27 failed before image
+  publication; v0.1.0-rc.28 remains unbuilt and unqualified.
+
 ## v0.1.0-rc.27
 
 - Pin SGLang integration commit

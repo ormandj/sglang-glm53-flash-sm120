@@ -5,7 +5,7 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=27
+ARG GLM53_RELEASE_CANDIDATE=28
 ARG GLM53_CACHE_SCHEMA=v16
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
@@ -170,7 +170,7 @@ assert callable(kda.precompile_kda_prefill_kernels); \
 assert callable(kpool_fp8_index.precompile_index_prefix_gather); \
 assert callable(flashinfer_cutlass.precompile_w4a16_prefill_routes); \
 assert '(256, 320, 512, 1024, 2048, 4096, 8192)' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
-assert 'CACHE_RING' in inspect.getsource(fused_kda_conv_recurrent_verify.fused_kda_conv_gating_verify_kernel); \
+assert 'CACHE_RING' in inspect.getsource(fused_kda_conv_recurrent_verify); \
 assert '_replayssm_ring_ok' in inspect.getsource(KDAAttnBackend._can_run_fused_chain_verify); \
 assert '_supports_linear_replayssm_spec' in inspect.getsource(kv_cache_configurator.KVCacheConfigurator); \
 assert 'mamba2_cache_params.is_kda' in inspect.getsource(kv_cache_configurator.KVCacheConfigurator._supports_linear_replayssm_spec); \
