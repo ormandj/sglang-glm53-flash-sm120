@@ -5,7 +5,7 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=22
+ARG GLM53_RELEASE_CANDIDATE=23
 ARG GLM53_CACHE_SCHEMA=v13
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
@@ -155,7 +155,7 @@ assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCH
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656; \
 assert 'return 656' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
-assert SparseMLASm120Wrapper.__name__ == 'SparseMLASm120Wrapper'; \
+assert callable(getattr(SparseMLASm120Wrapper, 'run', None)); \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
 
 ENV SGLANG_BUILD_COMMIT=${GLM53_SGLANG_HEAD} \

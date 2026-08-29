@@ -1,6 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.23
+
+- Correct the build-time contract for FlashInfer's public
+  `SparseMLASm120Wrapper` alias: verify its callable `run` API instead of
+  requiring the aliased implementation class to rewrite Python's internal
+  `__name__` attribute.
+- Retain the exact v0.1.0-rc.22 SGLang, FlashInfer, ModelOpt, native NoPE,
+  W4A16, vision, MTP, and cache-layout bytes. This is a packaging assertion
+  correction, not a runtime, model-quality, capacity, or performance change.
+
 ## v0.1.0-rc.22
+
+Image build failed at the final packaging assertion; no image was published.
 
 - Advance SGLang to `6a0b9caba5b324bc7d52f976c02f6ae57b116dea` /
   tree `6a49f92e7f2ade242845a1054845a5ea4ec8f1b0` and FlashInfer to

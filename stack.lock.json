@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 22,
-    "candidate_tag": "v0.1.0-rc.22",
+    "candidate": 23,
+    "candidate_tag": "v0.1.0-rc.23",
     "stable_tag": "v0.1.0",
     "cache_schema": "v13"
   },
   "image": {
-    "tag": "v0.1.0-rc.22",
+    "tag": "v0.1.0-rc.23",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,7 +44,7 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "22"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "23"},
     {"arg": "GLM53_CACHE_SCHEMA", "value": "v13"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
@@ -112,6 +112,6 @@
     "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.22 is not built or qualified"
+    "claims": "v0.1.0-rc.23 is not built or qualified"
   }
 }
