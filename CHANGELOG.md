@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-rc.33
+
+- Rebase the exact GLM integration onto upstream main
+  `46ccd7ce3e70455a971e6a7f7765cd78bc246322`, then carry the focused open
+  upstream fixes sglang#36661 and sglang#36696. The former ties overlap-batch
+  device-tensor lifetime to result completion instead of a fixed two-launch
+  ring; the latter registers Mamba radix split nodes under their own key and
+  enables a debug-gated child-key invariant for the page-size-64 DSA profile.
+- Pin integration commit `1db7b4c2f24c1768ee796759441ab391005e1e3b` /
+  tree `c298bcc12e657cf6a65239a86eb32b615dc0eb1b`. Retain the private-stream
+  cuBLAS8 workspace profile and advance the cache schema to `v20`. This is an
+  unbuilt, unqualified repeated-wave A/B; the two fixes remain separately
+  attributable integration commits.
+
 ## v0.1.0-rc.32
 
 - Rebase the exact SGLang integration tree onto upstream main
