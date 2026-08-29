@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 36,
-    "candidate_tag": "v0.1.0-rc.36",
+    "candidate": 37,
+    "candidate_tag": "v0.1.0-rc.37",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v23"
+    "cache_schema": "v24"
   },
   "image": {
-    "tag": "v0.1.0-rc.36",
+    "tag": "v0.1.0-rc.37",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,15 +44,15 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "36"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v23"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "37"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v24"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
     {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
     {"arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST", "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_REPOSITORY", "value": "https://github.com/ormandj/sglang.git"},
-    {"arg": "GLM53_SGLANG_HEAD", "value": "4b30b052e089ca18f6abd0c6052d57d953d6fa89"},
-    {"arg": "GLM53_SGLANG_TREE", "value": "6f91718151274b53825c0da1e51a1e496d3de791"},
+    {"arg": "GLM53_SGLANG_HEAD", "value": "258f815b78935fc46d678e48b1e76af6296c4e1b"},
+    {"arg": "GLM53_SGLANG_TREE", "value": "28244e492856486856a8f001190661b3592a68ff"},
     {"arg": "GLM53_FLASHINFER_REPOSITORY", "value": "https://github.com/ormandj/flashinfer.git"},
     {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
     {"arg": "GLM53_FLASHINFER_HEAD", "value": "7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf"},
@@ -68,10 +68,10 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/ormandj/sglang.git",
-      "head": "4b30b052e089ca18f6abd0c6052d57d953d6fa89",
-      "tree": "6f91718151274b53825c0da1e51a1e496d3de791",
+      "head": "258f815b78935fc46d678e48b1e76af6296c4e1b",
+      "tree": "28244e492856486856a8f001190661b3592a68ff",
       "upstream_main_base": "cdbfe90b4a6c728e03e6520862d792501b3a97bb",
-      "included_upstream_work": ["sglang#36507", "sglang#36904", "sglang#36958 request/KV ownership cleanup", "sglang#36661 result-owned overlap snapshot lifetime", "sglang#36696 Mamba radix child-key consistency", "sglang#36821 ReplaySSM fused KDA verify ring writes", "sglang#36798 aligned HiCache host registration", "flashinfer#4802 native GLM NoPE integration", "native FlashInfer validation scoped to configurations that select it", "native NoPE detection from absorbed query geometry", "2,051-to-2,176 temporary index padding", "528-byte packed native NoPE KV rows", "GLM-only serialized ModelOpt FP4 NextN preservation", "ReplaySSM capability detection from the KDA cache contract", "SM120 GLM DeepGEMM HC-prenorm capability guard", "SM120 TileLang FP8 DSA zero-tail guard", "SM120 TileLang BF16 DSA low-SMEM schedule", "SM120 W4A16 in-place prepared-weight ownership", "shape-keyed SM120 KDA static tactics and pre-pool long-prefill compilation", "pre-pool DSA index gather and multi-regime W4A16 route-pack compilation", "debug-gated paged-allocator negative-location attribution", "debug-gated asynchronous unified-radix insertion, split, and eviction attribution", "debug-gated synchronous full-radix value attribution at insert, new-node, unevict, split, match, and eviction boundaries"],
+      "included_upstream_work": ["sglang#36507", "sglang#36904", "sglang#36958 request/KV ownership cleanup", "sglang#36661 result-owned overlap snapshot lifetime", "sglang#36696 Mamba radix child-key consistency", "sglang#36821 ReplaySSM fused KDA verify ring writes", "sglang#36798 aligned HiCache host registration", "flashinfer#4802 native GLM NoPE integration", "native FlashInfer validation scoped to configurations that select it", "native NoPE detection from absorbed query geometry", "2,051-to-2,176 temporary index padding", "528-byte packed native NoPE KV rows", "GLM-only serialized ModelOpt FP4 NextN preservation", "ReplaySSM capability detection from the KDA cache contract", "SM120 GLM DeepGEMM HC-prenorm capability guard", "SM120 TileLang FP8 DSA zero-tail guard", "SM120 TileLang BF16 DSA low-SMEM schedule", "SM120 W4A16 in-place prepared-weight ownership", "shape-keyed SM120 KDA static tactics and pre-pool long-prefill compilation", "pre-pool DSA index gather and multi-regime W4A16 route-pack compilation", "debug-gated paged-allocator negative-location attribution", "debug-gated asynchronous unified-radix insertion, split, and eviction attribution", "debug-gated synchronous full-radix value attribution at insert, new-node, unevict, split, match, and eviction boundaries", "debug-gated per-node Full-value storage snapshots and reachable-free alias rejection across insert action barriers"],
       "excluded_work": ["DP-attention-only MHC communicator change from sglang#36884", "C4-unsafe process/device-shared DSA indexer compression-gate stream"]
     },
     "flashinfer": {
@@ -113,6 +113,6 @@
     "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.36 is not built or qualified"
+    "claims": "v0.1.0-rc.37 is not built or qualified"
   }
 }

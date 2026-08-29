@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.0-rc.37
+
+- Pin SGLang integration commit
+  `258f815b78935fc46d678e48b1e76af6296c4e1b` / tree
+  `28244e492856486856a8f001190661b3592a68ff` on the unchanged
+  `cdbfe90b4a6c728e03e6520862d792501b3a97bb` upstream-main base.
+- The exact v0.1.0-rc.36 diagnostic caught the first bad whole-tree state when
+  finished-request insertion completed, after the fresh input and the
+  new-node, unevict, and split boundaries remained clean. Add debug-gated,
+  per-node Full-value storage snapshots around every insert action, reject
+  frees that alias reachable Full storage, and report the exact node, parent,
+  key length, pointer, offset, checksum, and changed values at the first
+  boundary. Advance the compiled-cache schema to `v24`. This is an unbuilt,
+  unqualified localization candidate, not a claimed crash fix or performance
+  result.
+
 ## v0.1.0-rc.36
 
 - Rebase the exact SGLang integration onto upstream main

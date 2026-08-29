@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.36`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.36`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.37`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.37`.
 
-**v0.1.0-rc.36 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.37 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -60,21 +60,20 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v23` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v24` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
-The candidate also carries debug-gated allocator and unified-radix probes after
-an exact repeated-wave run found an out-of-range upper-bound physical slot
-already resident in a full-KV radix node at eviction. The earlier asynchronous
-probes proved that the value was at least 65,600, rather than a negative
-sentinel or reserved slot zero, but could not identify the earlier lifecycle
-boundary because a device assertion surfaces at the next synchronization.
-This candidate adds synchronous, value-reporting checks at finished and
-unfinished insert, new-node, unevict, split, whole-tree insert and match, and
-eviction boundaries while the diagnostic gate is active. The checks are
-inactive in ordinary serving. This is fault localization, not a claimed
-runtime fix.
+The candidate also carries debug-gated allocator and unified-radix probes. The
+exact v0.1.0-rc.36 diagnostic first observed the bad whole-tree state
+synchronously when a finished-request insert completed: eight consecutive
+int64 slots contained the paired-int32 pattern `(96, 96)`, while the fresh
+insert values and the new-node, unevict, and split boundaries were clean. This
+candidate synchronizes around every insert action, maps every reachable Full
+value to its node, parent, key length, storage pointer and offset, preserves an
+exact snapshot across each action, and rejects any allocator free whose byte
+range overlaps a reachable Full value. The checks are inactive in ordinary
+serving. This is fault localization, not a claimed runtime fix.
 
 The exact v0.1.0-rc.19 FlashInfer TC-decode replay fix remains pinned. Its
 auto-selected constrained `K=32/N=512` FC2 tile is accepted by the same exact
@@ -101,7 +100,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.36 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.37 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate
