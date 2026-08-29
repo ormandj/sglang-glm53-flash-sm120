@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.26
+
+- Pin SGLang integration commit
+  `6ab3d299fda185969c601c58430804dff09c253c` / tree
+  `9e96af7cfdf4b18911a6647d23b8b25919852247`. Correct native-NoPE detection
+  to use the actual 512-wide absorbed query instead of GLM-5.3's configured
+  256-wide pre-absorption dimension, restoring the required temporary
+  2,051-to-2,176 `-1` index padding.
+- Pin FlashInfer integration commit
+  `7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf` / tree
+  `6a957df7b48adac53ac27d2156b46bc2455ce157`. Pack native GLM NoPE KV rows
+  to their exact 528-byte payload while retaining wider padded-row decode
+  compatibility; this changes no KV values or scale precision.
+- Select native FlashInfer for prefill and decode and advance the compiled-cache
+  schema to `v15`. Retain the exact quantized model, vision path, BF16 MTP
+  non-expert tensors, adaptive 5/1/6 speculation, parsers, and C4 graph profile.
+  This candidate is not qualified until exact-hardware evidence exists.
+
 ## v0.1.0-rc.25
 
 - Rebase SGLang onto upstream main `24c9251ac52ada1660f372922c72c1d3af722247`

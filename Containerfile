@@ -5,19 +5,19 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=25
-ARG GLM53_CACHE_SCHEMA=v14
+ARG GLM53_RELEASE_CANDIDATE=26
+ARG GLM53_CACHE_SCHEMA=v15
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=835e4579bce3c7c01015f3e288840005561c2d64
-ARG GLM53_SGLANG_TREE=d63a350fa932d4667dfc674596f6f8c8f4163645
+ARG GLM53_SGLANG_HEAD=6ab3d299fda185969c601c58430804dff09c253c
+ARG GLM53_SGLANG_TREE=9e96af7cfdf4b18911a6647d23b8b25919852247
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_HEAD=37550dc84dba16accc2f611b793598c73b39b9ab
-ARG GLM53_FLASHINFER_TREE=abf62cd1561943670473e0b2b151607076138e1b
+ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
+ARG GLM53_FLASHINFER_TREE=6a957df7b48adac53ac27d2156b46bc2455ce157
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -140,6 +140,7 @@ from sglang.kernels.ops.attention import flash_mla_sm120; \
 from sglang.srt.layers.attention.dsa import kpool_fp8_index; \
 from sglang.srt.mem_cache import kv_cache_configurator; \
 from flashinfer.mla import SparseMLASm120Wrapper; \
+from flashinfer.mla._sparse_mla_sm120 import _bytes_per_token_for_model_type, _MODEL_TYPE_GLM53_NOPE; \
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
 from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights; \
 assert inspect.getfile(sglang).startswith('/opt/sglang-source/python/'); \
@@ -163,9 +164,12 @@ assert 'GLM' not in inspect.getsource(chunk_intra._get_kda_intra_static_config);
 assert 'precompile_kda_prefill_kernels' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
 assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176; \
-assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656; \
+assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 528; \
+assert 'q.shape[-1] == 512' in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward); \
+assert 'qk_nope_head_dim == 512' not in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward); \
 assert 'if uses_flashinfer_sparse_mla and is_glm_sm12_fp8:' in inspect.getsource(flash_mla_sm120._validate_flashinfer_sparse_mla_backend); \
-assert 'return 656' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
+assert 'return 528' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
+assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 528; \
 assert callable(getattr(SparseMLASm120Wrapper, 'run', None)); \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
 
