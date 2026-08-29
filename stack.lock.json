@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 24,
-    "candidate_tag": "v0.1.0-rc.24",
+    "candidate": 25,
+    "candidate_tag": "v0.1.0-rc.25",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v13"
+    "cache_schema": "v14"
   },
   "image": {
-    "tag": "v0.1.0-rc.24",
+    "tag": "v0.1.0-rc.25",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,19 +44,19 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "24"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v13"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "25"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v14"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
     {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
     {"arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST", "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_REPOSITORY", "value": "https://github.com/ormandj/sglang.git"},
-    {"arg": "GLM53_SGLANG_HEAD", "value": "0c2c37bfe90b9c1fb8048d782a1d1880237baebb"},
-    {"arg": "GLM53_SGLANG_TREE", "value": "ab797d003951b3ff8232ce6e93e9e9c45b5180b2"},
+    {"arg": "GLM53_SGLANG_HEAD", "value": "835e4579bce3c7c01015f3e288840005561c2d64"},
+    {"arg": "GLM53_SGLANG_TREE", "value": "d63a350fa932d4667dfc674596f6f8c8f4163645"},
     {"arg": "GLM53_FLASHINFER_REPOSITORY", "value": "https://github.com/ormandj/flashinfer.git"},
     {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
-    {"arg": "GLM53_FLASHINFER_HEAD", "value": "be0d04071cec17666bed9940109228caeab23911"},
-    {"arg": "GLM53_FLASHINFER_TREE", "value": "ccabb6e13093ad7d0101a640a99ff296cfe6d133"},
+    {"arg": "GLM53_FLASHINFER_HEAD", "value": "37550dc84dba16accc2f611b793598c73b39b9ab"},
+    {"arg": "GLM53_FLASHINFER_TREE", "value": "abf62cd1561943670473e0b2b151607076138e1b"},
     {"arg": "GLM53_MODELOPT_REPOSITORY", "value": "https://github.com/NVIDIA/Model-Optimizer.git"},
     {"arg": "GLM53_MODELOPT_VERSION", "value": "0.47.0rc0"},
     {"arg": "GLM53_MODELOPT_RELEASE_TAG", "value": "0.47.0rc0"},
@@ -68,18 +68,18 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/ormandj/sglang.git",
-      "head": "0c2c37bfe90b9c1fb8048d782a1d1880237baebb",
-      "tree": "ab797d003951b3ff8232ce6e93e9e9c45b5180b2",
-      "upstream_main_base": "d12b313b93e1547d9b02c3a84426aa88519fc494",
-      "included_upstream_work": ["sglang#36507", "sglang#36904", "flashinfer#4802 native GLM NoPE integration", "native FlashInfer validation scoped to configurations that select it", "GLM-only serialized ModelOpt FP4 NextN preservation", "SM120 GLM DeepGEMM HC-prenorm capability guard", "SM120 TileLang FP8 DSA zero-tail guard", "SM120 TileLang BF16 DSA low-SMEM schedule", "SM120 W4A16 in-place prepared-weight ownership"],
+      "head": "835e4579bce3c7c01015f3e288840005561c2d64",
+      "tree": "d63a350fa932d4667dfc674596f6f8c8f4163645",
+      "upstream_main_base": "24c9251ac52ada1660f372922c72c1d3af722247",
+      "included_upstream_work": ["sglang#36507", "sglang#36904", "flashinfer#4802 native GLM NoPE integration", "native FlashInfer validation scoped to configurations that select it", "GLM-only serialized ModelOpt FP4 NextN preservation", "SM120 GLM DeepGEMM HC-prenorm capability guard", "SM120 TileLang FP8 DSA zero-tail guard", "SM120 TileLang BF16 DSA low-SMEM schedule", "SM120 W4A16 in-place prepared-weight ownership", "shape-keyed SM120 KDA static tactics and pre-pool long-prefill compilation", "pre-pool DSA index gather and W4A16 route-pack compilation"],
       "excluded_work": ["DP-attention-only MHC communicator change from sglang#36884"]
     },
     "flashinfer": {
       "repository": "https://github.com/ormandj/flashinfer.git",
       "package_version": "0.6.18",
-      "head": "be0d04071cec17666bed9940109228caeab23911",
-      "tree": "ccabb6e13093ad7d0101a640a99ff296cfe6d133",
-      "upstream_main_base": "286eee4e2999a825716eab68e597cb1ee0881e1b",
+      "head": "37550dc84dba16accc2f611b793598c73b39b9ab",
+      "tree": "abf62cd1561943670473e0b2b151607076138e1b",
+      "upstream_main_base": "e425c7b029ca90d5d01ff207913b070863d35a5b",
       "included_upstream_work": ["flashinfer#4802", "flashinfer#4687", "SM120 W4A16 TC-decode ultra-tile replay validation", "ModelOpt E2M1/E4M3-K32 W4A16 preparation"]
     },
     "modelopt": {
@@ -112,6 +112,6 @@
     "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.24 is not built or qualified"
+    "claims": "v0.1.0-rc.25 is not built or qualified"
   }
 }

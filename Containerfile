@@ -5,19 +5,19 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=24
-ARG GLM53_CACHE_SCHEMA=v13
+ARG GLM53_RELEASE_CANDIDATE=25
+ARG GLM53_CACHE_SCHEMA=v14
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=0c2c37bfe90b9c1fb8048d782a1d1880237baebb
-ARG GLM53_SGLANG_TREE=ab797d003951b3ff8232ce6e93e9e9c45b5180b2
+ARG GLM53_SGLANG_HEAD=835e4579bce3c7c01015f3e288840005561c2d64
+ARG GLM53_SGLANG_TREE=d63a350fa932d4667dfc674596f6f8c8f4163645
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_HEAD=be0d04071cec17666bed9940109228caeab23911
-ARG GLM53_FLASHINFER_TREE=ccabb6e13093ad7d0101a640a99ff296cfe6d133
+ARG GLM53_FLASHINFER_HEAD=37550dc84dba16accc2f611b793598c73b39b9ab
+ARG GLM53_FLASHINFER_TREE=abf62cd1561943670473e0b2b151607076138e1b
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -74,9 +74,12 @@ RUN set -eux; \
       python/sglang/srt/models/glm5_next_nextn.py \
       python/sglang/srt/models/deepseek_nextn.py \
       python/sglang/srt/arg_groups/model_hook.py \
+      python/sglang/kernels/ops/attention/fla/chunk_intra.py \
+      python/sglang/kernels/ops/attention/fla/kda.py \
       python/sglang/kernels/ops/attention/flash_mla_sm120.py \
       python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
+      python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py \
       python/sglang/srt/mem_cache/kv_cache_configurator.py \
       python/sglang/srt/layers/quantization/modelopt_quant.py \
       python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
@@ -130,9 +133,11 @@ from sglang.srt.environ import envs; \
 from sglang.srt.models.glm5_next import Glm5NextForConditionalGeneration; \
 from sglang.srt.models.glm5_next_nextn import Glm5NextForConditionalGenerationNextN; \
 from sglang.srt.models.deepseek_nextn import DeepseekModelNextN; \
+from sglang.kernels.ops.attention.fla import chunk_intra, kda; \
 from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
 from sglang.srt.layers.quantization import modelopt_quant; \
 from sglang.kernels.ops.attention import flash_mla_sm120; \
+from sglang.srt.layers.attention.dsa import kpool_fp8_index; \
 from sglang.srt.mem_cache import kv_cache_configurator; \
 from flashinfer.mla import SparseMLASm120Wrapper; \
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
@@ -151,6 +156,11 @@ model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_def
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
 assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flashinfer_cutlass._run_flashinfer_b12x_w4a16); \
+assert callable(kda.precompile_kda_prefill_kernels); \
+assert callable(kpool_fp8_index.precompile_index_prefix_gather); \
+assert callable(flashinfer_cutlass.precompile_w4a16_prefill_routes); \
+assert 'GLM' not in inspect.getsource(chunk_intra._get_kda_intra_static_config); \
+assert 'precompile_kda_prefill_kernels' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
 assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656; \

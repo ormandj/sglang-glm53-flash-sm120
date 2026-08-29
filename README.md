@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.24`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.24`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.25`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.25`.
 
-**v0.1.0-rc.24 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.25 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -20,6 +20,14 @@ This candidate scopes native FlashInfer validation to configurations that
 actually select that backend, so the independent raw-FP8 TileLang path remains
 selectable. The launcher defaults to TileLang while native FlashInfer is
 isolated and qualified separately.
+
+The candidate compiles the supported SM120 BF16 KDA short- and long-prefill
+specializations, FP8 DSA index-prefix gather, and W4A16 route pack before
+runtime memory pools are sized. Static KDA tactics are keyed by capability,
+dtype, tensor geometry, and semantic flags rather than a GLM model name;
+unrecognized shapes retain ordinary autotuning. This prevents the first large
+request from loading compiler candidates after KV, recurrent-state, and CUDA
+graph allocations have consumed the memory envelope.
 
 The image also integrates FlashInfer's native SM120 sparse-MLA kernel for
 GLM-5.3's no-RoPE attention geometry. SGLang pads the model's 2,051 candidates
@@ -37,8 +45,9 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v13` prevents reuse of
-graphs and JIT objects built against the preceding DSA layout and backend.
+whole-layer ignore still selects BF16. Cache schema `v14` prevents reuse of
+graphs and JIT objects built against the preceding SGLang, FlashInfer, and
+late-compilation behavior.
 
 The exact v0.1.0-rc.19 FlashInfer TC-decode replay fix remains pinned. Its
 auto-selected constrained `K=32/N=512` FC2 tile is accepted by the same exact
@@ -65,7 +74,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.24 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.25 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

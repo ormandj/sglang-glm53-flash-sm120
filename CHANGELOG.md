@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.25
+
+- Rebase SGLang onto upstream main `24c9251ac52ada1660f372922c72c1d3af722247`
+  and pin integration commit `835e4579bce3c7c01015f3e288840005561c2d64` /
+  tree `d63a350fa932d4667dfc674596f6f8c8f4163645`.
+- Rebase FlashInfer onto upstream main
+  `e425c7b029ca90d5d01ff207913b070863d35a5b` and pin integration commit
+  `37550dc84dba16accc2f611b793598c73b39b9ab` / tree
+  `abf62cd1561943670473e0b2b151607076138e1b`.
+- Compile the supported SM120 BF16 KDA short- and long-prefill paths, FP8 DSA
+  index-prefix gather, and W4A16 route pack before runtime memory-pool sizing.
+  Static KDA winners are keyed by capability, dtype, geometry, and semantic
+  flags; unsupported shapes retain ordinary autotuning.
+- Advance the compiled-cache schema to `v14`. Retain the exact model artifact,
+  quantization, vision, native adaptive MTP, parsers, and TileLang control from
+  v0.1.0-rc.24. This candidate is not qualified until exact-hardware stability,
+  memory, capacity, vision, and performance evidence is recorded.
+
 ## v0.1.0-rc.24
 
 - Scope the native FlashInfer SM120 sparse-MLA validator to configurations
