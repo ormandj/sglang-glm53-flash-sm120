@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.0-rc.38 (diagnostic, not yet built or qualified)
+
+- Advances the SGLang integration to signed head
+  `f00e62495e3bc3a7506d53e16087d91153e98de0` and tree
+  `cbd0e6f99180ea31e46d12b14cfdbbe5200b53b3`.
+- Snapshots the paged allocator state after every mutation boundary and compares
+  it before the next operation, distinguishing an invalid release from a later
+  write into state that was valid when the prior operation completed.
+- Makes the existing diagnostic checks at both paged release entry points
+  synchronous so the first invalid input is attributed at its source.
+- Adds a focused CPU regression for unchanged state and for attribution of a
+  change between allocator operations. The local checkout has no PyTorch, so
+  execution is delegated to the immutable image build; syntax, formatting,
+  import order, lint, test registration, and whitespace checks passed locally.
+- Keeps the rc.37 runtime envelope unchanged. This remains fault localization,
+  not a correctness fix or qualification claim.
+
 ## v0.1.0-rc.37
 
 - Pin SGLang integration commit
