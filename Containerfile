@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=23
+ARG GLM53_RELEASE_CANDIDATE=24
 ARG GLM53_CACHE_SCHEMA=v13
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=6a0b9caba5b324bc7d52f976c02f6ae57b116dea
-ARG GLM53_SGLANG_TREE=6a49f92e7f2ade242845a1054845a5ea4ec8f1b0
+ARG GLM53_SGLANG_HEAD=0c2c37bfe90b9c1fb8048d782a1d1880237baebb
+ARG GLM53_SGLANG_TREE=ab797d003951b3ff8232ce6e93e9e9c45b5180b2
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=be0d04071cec17666bed9940109228caeab23911
@@ -154,6 +154,7 @@ assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flas
 assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656; \
+assert 'if uses_flashinfer_sparse_mla and is_glm_sm12_fp8:' in inspect.getsource(flash_mla_sm120._validate_flashinfer_sparse_mla_backend); \
 assert 'return 656' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
 assert callable(getattr(SparseMLASm120Wrapper, 'run', None)); \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"

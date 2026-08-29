@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.23`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.23`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.24`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.24`.
 
-**v0.1.0-rc.23 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.24 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -16,7 +16,12 @@ CUDA/PyTorch environment only. Its unverifiable SGLang tarball is shadowed by
 the exact SGLang integration tree recorded in `stack.lock.json`. FlashInfer and
 ModelOpt are also installed from exact commits and tree hashes.
 
-This candidate integrates FlashInfer's native SM120 sparse-MLA kernel for
+This candidate scopes native FlashInfer validation to configurations that
+actually select that backend, so the independent raw-FP8 TileLang path remains
+selectable. The launcher defaults to TileLang while native FlashInfer is
+isolated and qualified separately.
+
+The image also integrates FlashInfer's native SM120 sparse-MLA kernel for
 GLM-5.3's no-RoPE attention geometry. SGLang pads the model's 2,051 candidates
 to the kernel's 2,176-entry physical contract and stores its 528 meaningful
 scaled-FP8 bytes in a zero-initialized 656-byte row. Decode uses a persistent
@@ -60,7 +65,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.23 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.24 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Target TP=2 profile for the local E4M3-K32 W4A16 artifact. The defaults are
-# goals to qualify, not claims that v0.1.0-rc.23 has already achieved them.
+# goals to qualify, not claims that v0.1.0-rc.24 has already achieved them.
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a candidate-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.0-rc.23}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.0-rc.24}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -17,7 +17,7 @@ MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}
 # C4 therefore needs 20 slots; this is model state, not ordinary KV cache.
 MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-20}
 CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-4}
-MEM_FRACTION=${MEM_FRACTION:-0.97}
+MEM_FRACTION=${MEM_FRACTION:-0.99}
 CONTAINER_NAME=${CONTAINER_NAME:-glm53-flash-sm120}
 
 if [[ ! -f "$MODEL_DIR/config.json" ]]; then
@@ -29,7 +29,7 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.1.0-rc.23 is scoped to TP_SIZE=2" >&2
+  echo "v0.1.0-rc.24 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do
@@ -87,8 +87,8 @@ exec docker run --rm \
   --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
   --mamba-ssm-dtype bfloat16 \
   --cuda-graph-max-bs-decode "$CUDA_GRAPH_MAX_BS" \
-  --dsa-prefill-backend flashinfer_sparse_mla \
-  --dsa-decode-backend flashinfer_sparse_mla \
+  --dsa-prefill-backend tilelang \
+  --dsa-decode-backend tilelang \
   --speculative-algorithm EAGLE \
   --speculative-num-steps 5 \
   --speculative-eagle-topk 1 \

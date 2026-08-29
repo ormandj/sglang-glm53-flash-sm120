@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.0-rc.24
+
+- Scope the native FlashInfer SM120 sparse-MLA validator to configurations
+  that actually select that backend. The preceding guard incorrectly rejected
+  the independent raw-FP8 TileLang pair during attention-backend construction.
+- Add a CPU regression covering TileLang pass-through and mixed native/backend
+  rejection. Default the launcher to the upstream-reviewed raw-FP8 TileLang
+  path while retaining native FlashInfer for isolated qualification.
+- Retain v0.1.0-rc.23's exact model, quantization, FlashInfer, ModelOpt, vision,
+  MTP, and cache-schema bytes. This candidate is not qualified until exact
+  hardware evidence is recorded.
+
 ## v0.1.0-rc.23
 
 - Correct the build-time contract for FlashInfer's public
