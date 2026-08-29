@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.21
+
+- Advance SGLang to `6e5844d435838c68ab5c2c78b5b49c4136a541de` / tree
+  `7c5a1f0aaab0c4bca3497e592c95dccef7c2baf6` after v0.1.0-rc.20 proved
+  that FlashInfer's functional W4A16 path retained a second packed expert bank
+  for every layer and exhausted HBM during target-only warmup.
+- Prepare FP4 expert weights in their byte-identical source allocations, reuse
+  the original K32 scale buffers, retain prepared views on each layer, and
+  dispatch through FlashInfer's prepared-weight path.
+- Fail closed if prepared weights are missing and add CPU storage-contract
+  tests. Retain the exact FlashInfer, ModelOpt, and cache-schema pins; no model
+  tensors or quantization numerics change.
+
 ## v0.1.0-rc.20
 
 - Advance SGLang to `5b6297ce555a03c79a3dfec691bb2e1cdf70708c` / tree
