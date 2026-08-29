@@ -5,8 +5,8 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=18
-ARG GLM53_CACHE_SCHEMA=v10
+ARG GLM53_RELEASE_CANDIDATE=19
+ARG GLM53_CACHE_SCHEMA=v11
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
@@ -16,8 +16,8 @@ ARG GLM53_SGLANG_HEAD=42a56dc505f775d6f54e9d27a9b57c66023420a0
 ARG GLM53_SGLANG_TREE=16eb1fe669e54253b16d206a21e79e9cc7ea6132
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_HEAD=008122fa75c7a27c839feea57a6ef8e8846fa265
-ARG GLM53_FLASHINFER_TREE=0462b5c545eb145cb96001285afe4cc89de30605
+ARG GLM53_FLASHINFER_HEAD=81113d3c659f9ce692aef6cfa3ca48452d0f1e9d
+ARG GLM53_FLASHINFER_TREE=bb8a2d438976b0b78abb8fce0f0e4a968ed8b3c6
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -75,9 +75,10 @@ RUN set -eux; \
       python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 
 # Build FlashInfer from the exact SM120 integration tree. It contains
-# upstream's >INT32 W4A16 expert-bank correction plus the explicit ModelOpt
-# E2M1/E4M3-K32 preparation contract. Generic cubin bundles are deliberately
-# removed so this image cannot silently select a kernel built for another GPU.
+# upstream's >INT32 W4A16 expert-bank correction, exact TC-decode tile replay,
+# and the explicit ModelOpt E2M1/E4M3-K32 preparation contract. Generic cubin
+# bundles are deliberately removed so this image cannot silently select a
+# kernel built for another GPU.
 RUN set -eux; \
     git init -q /tmp/flashinfer-source; \
     cd /tmp/flashinfer-source; \
