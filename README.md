@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.28`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.28`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.29`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.29`.
 
-**v0.1.0-rc.28 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.29 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -21,17 +21,22 @@ GLM adapter's geometry check so the model's configured 256-wide pre-absorption
 NoPE dimension cannot suppress the required 2,051-to-2,176 temporary index
 padding for the actual 512-wide absorbed query.
 
-The draft embedding and output head are rebound to the target immediately after
-draft loading, before runtime pools are sized. This releases placeholders that
-the serving path already replaces later and does not alter any model value. The
-candidate also recognizes GLM's KDA cache contract as ReplaySSM-capable and
+The preceding draft embedding and output-head serving alias remains in its
+upstream lifecycle position. An earlier attempt to move it before pool sizing
+did not change the measured steady-state footprint and is intentionally absent.
+The candidate recognizes GLM's KDA cache contract as ReplaySSM-capable and
 includes the upstream fused KDA verify ring-write path. ReplaySSM remains an
 explicit qualification A/B rather than a launcher default.
 
 The candidate compiles the supported SM120 BF16 KDA short- and long-prefill
 specializations, FP8 DSA index-prefix gather, and W4A16 route-pack regimes from
 256 through 8,192 prefill tokens before
-runtime memory pools are sized. Static KDA tactics are keyed by capability,
+runtime memory pools are sized. It also reuses one process/device compression
+gate stream across the serialized DSA indexer layers instead of retaining one
+CUDA stream and cuBLAS workspace per layer. Each layer still overlaps its
+compression-gate projection with its alternate-stream work, then synchronizes
+before the next layer, so the intended within-layer concurrency is preserved.
+Static KDA tactics are keyed by capability,
 dtype, tensor geometry, and semantic flags rather than a GLM model name;
 unrecognized shapes retain ordinary autotuning. This prevents the first large
 request from loading compiler candidates after KV, recurrent-state, and CUDA
@@ -54,7 +59,7 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v16` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v17` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
@@ -83,7 +88,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.28 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.29 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

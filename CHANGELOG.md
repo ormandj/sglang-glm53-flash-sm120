@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-rc.29
+
+- Pin SGLang integration commit
+  `d34c0b44e3f90f80ccbbe06202cc3387e3728d10` / tree
+  `0dad5d76ff0a95b4a2378086005eef7c23dc1ddf`. Reuse one named CUDA stream per
+  process/device for the DSA indexers' serialized compression-gate work instead
+  of retaining one stream and cuBLAS workspace per layer. Preserve the existing
+  within-layer overlap and synchronization contract.
+- Remove the unproductive early draft embedding/output-head alias attempt after
+  exact-hardware measurement showed no steady-state memory saving. Retain the
+  ordinary serving alias without changing any tensor value. Advance the
+  compiled-cache schema to `v17`; this candidate remains unbuilt and
+  unqualified.
+
 ## v0.1.0-rc.28
 
 - Retain v0.1.0-rc.27's exact SGLang, FlashInfer, ModelOpt, model, and runtime

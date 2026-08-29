@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=28
-ARG GLM53_CACHE_SCHEMA=v16
+ARG GLM53_RELEASE_CANDIDATE=29
+ARG GLM53_CACHE_SCHEMA=v17
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=0a107d8f74da4621a09f5b498b10fd366b839ad4
-ARG GLM53_SGLANG_TREE=02830060c888a9a84330ba15966d4c444ddc867e
+ARG GLM53_SGLANG_HEAD=d34c0b44e3f90f80ccbbe06202cc3387e3728d10
+ARG GLM53_SGLANG_TREE=0dad5d76ff0a95b4a2378086005eef7c23dc1ddf
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
@@ -81,6 +81,7 @@ RUN set -eux; \
       python/sglang/kernels/ops/attention/flash_mla_sm120.py \
       python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
+      python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py \
       python/sglang/srt/layers/attention/linear/kda_backend.py \
       python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py \
       python/sglang/srt/mem_cache/kv_cache_configurator.py \
@@ -143,7 +144,7 @@ from sglang.srt.layers.attention.linear.kda_backend import KDAAttnBackend; \
 from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
 from sglang.srt.layers.quantization import modelopt_quant; \
 from sglang.kernels.ops.attention import flash_mla_sm120; \
-from sglang.srt.layers.attention.dsa import kpool_fp8_index; \
+from sglang.srt.layers.attention.dsa import dsa_indexer_kpool, kpool_fp8_index; \
 from sglang.srt.mem_cache import kv_cache_configurator; \
 from flashinfer.mla import SparseMLASm120Wrapper; \
 from flashinfer.mla._sparse_mla_sm120 import _bytes_per_token_for_model_type, _MODEL_TYPE_GLM53_NOPE; \
@@ -160,13 +161,15 @@ g=Glm5NextForConditionalGenerationNextN.__new__(Glm5NextForConditionalGeneration
 assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['*.self_attn.*']}),q) is q; \
 assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['model.layers.45.*']}),q) is None; \
 eagle_init=inspect.getsource(EagleDraftWorker.__init__); \
-assert eagle_init.index('self.init_lm_head()') < eagle_init.index('self._init_dsa_index_share_state()'); \
-assert '_embed_and_head_shared' in inspect.getsource(EagleDraftWorker.init_lm_head); \
+assert eagle_init.index('self._init_dsa_index_share_state()') < eagle_init.index('self.init_lm_head()'); \
+assert '_embed_and_head_shared' not in inspect.getsource(EagleDraftWorker.init_lm_head); \
 model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration'); \
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
 assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flashinfer_cutlass._run_flashinfer_b12x_w4a16); \
 assert callable(kda.precompile_kda_prefill_kernels); \
+assert 'dsa_index_compress_gate' in inspect.getsource(dsa_indexer_kpool._get_compress_gate_stream); \
+assert '_get_compress_gate_stream' in inspect.getsource(dsa_indexer_kpool.IndexerKPool.__init__); \
 assert callable(kpool_fp8_index.precompile_index_prefix_gather); \
 assert callable(flashinfer_cutlass.precompile_w4a16_prefill_routes); \
 assert '(256, 320, 512, 1024, 2048, 4096, 8192)' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
