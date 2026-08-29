@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.0-rc.19
+
+SM120 W4A16 TC-decode tile replay correction. This candidate is not yet built
+or qualified.
+
+- Advance FlashInfer to `81113d3c659f9ce692aef6cfa3ca48452d0f1e9d` / tree
+  `bb8a2d438976b0b78abb8fce0f0e4a968ed8b3c6` after the Qwen E4M3-K32 control
+  exposed an upstream contradiction: the auto path selected its constrained
+  `K=32/N=512` FC2 tile, then custom-op replay rejected the same tile through
+  the generic `K>=64` validator.
+- Route both auto-selection and replay through one exact predicate, retaining
+  the general tile floor and permitting `K=32` only for the TC-decode
+  `N=512` FC2 specialization. Add a regression using the failing
+  `N/K=2048/256`, E4M3-K32 ModelOpt shape.
+- Retain the exact v0.1.0-rc.18 SGLang and ModelOpt trees and bump the cache
+  schema to `v11`; no model weights or quantization calculations changed.
+
 ## v0.1.0-rc.18
 
 Immutable-build packaging correction. This candidate is not yet built or

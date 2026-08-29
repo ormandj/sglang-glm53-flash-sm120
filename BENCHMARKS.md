@@ -1,9 +1,9 @@
 # Qualification status
 
-**`v0.1.0-rc.18` is built but not qualified.** It has no GLM served-model
-correctness, quality, capacity, or performance claim yet.
+**`v0.1.0-rc.19` is not yet built or qualified.** It has no GLM served-model
+correctness, quality, capacity, or performance claim.
 
-## Required v0.1.0-rc.18 evidence
+## Required v0.1.0-rc.19 evidence
 
 Every row must record the complete image name and digest, model artifact path
 and manifest hash, SGLang/FlashInfer/ModelOpt commits, exact hardware, command
@@ -11,9 +11,9 @@ profile with secrets removed, and raw evidence file.
 
 | Gate | Intended test | Status |
 |---|---|---|
-| source bundle | reproduce exact SGLang, FlashInfer, ModelOpt trees, ModelOpt tag, and base manifest | passed ([image build receipt](evidence/v0.1.0-rc.18-image-build-20260828.txt)) |
-| image build | imports resolve to pinned SGLang and expose E4M3-K32 W4A16 APIs | passed ([image build receipt](evidence/v0.1.0-rc.18-image-build-20260828.txt)) |
-| Qwen canary quant | known-good 35B BF16 MoE: production, roundtrip, and reconstruction; packed serving still required | artifact passed; serving pending ([quant receipt](evidence/v0.1.0-rc.18-qwen-canary-quant-20260828.txt)) |
+| source bundle | reproduce exact SGLang, FlashInfer, ModelOpt trees, ModelOpt tag, and base manifest | pending |
+| image build | imports resolve to pinned SGLang and expose E4M3-K32 W4A16 APIs | pending |
+| Qwen canary quant | known-good 35B BF16 MoE: production, roundtrip, and reconstruction | artifact passed under v0.1.0-rc.18; reusable weights, new serving image pending ([quant receipt](evidence/v0.1.0-rc.18-qwen-canary-quant-20260828.txt)) |
 | Qwen canary serve | deterministic text, tool call, real image, C4 | pending |
 | GLM artifact audit | tensor selection/counts, formats, byte totals, hashes, atomic publish | pending |
 | GLM target-only | small-pool deterministic text/tool/vision with MTP off | pending |
@@ -31,7 +31,7 @@ to weaken the quant or silently shrink the pool.
 ## Controls already established
 
 These controls used earlier candidates or different checkpoints. They guide the
-new work but cannot qualify v0.1.0-rc.18.
+new work but cannot qualify v0.1.0-rc.19.
 
 | Control | Result | Evidence |
 |---|---|---|
@@ -48,6 +48,6 @@ hybrid-model allocation, while the invalid `-1`-to-live-slot workaround is not.
 
 ## Claims discipline
 
-The successful container build makes `v0.1.0-rc.18` built. A health endpoint
+The successful container build will make `v0.1.0-rc.19` built. A health endpoint
 makes it booted. Coherent text makes one correctness control pass. None of those
 alone qualifies quality, vision, MTP, 500K capacity, C4/C8, or performance.

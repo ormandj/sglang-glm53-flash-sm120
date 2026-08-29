@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 18,
-    "candidate_tag": "v0.1.0-rc.18",
+    "candidate": 19,
+    "candidate_tag": "v0.1.0-rc.19",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v10"
+    "cache_schema": "v11"
   },
   "image": {
-    "tag": "v0.1.0-rc.18",
+    "tag": "v0.1.0-rc.19",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,8 +44,8 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "18"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v10"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "19"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v11"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
     {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
@@ -55,8 +55,8 @@
     {"arg": "GLM53_SGLANG_TREE", "value": "16eb1fe669e54253b16d206a21e79e9cc7ea6132"},
     {"arg": "GLM53_FLASHINFER_REPOSITORY", "value": "https://github.com/ormandj/flashinfer.git"},
     {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
-    {"arg": "GLM53_FLASHINFER_HEAD", "value": "008122fa75c7a27c839feea57a6ef8e8846fa265"},
-    {"arg": "GLM53_FLASHINFER_TREE", "value": "0462b5c545eb145cb96001285afe4cc89de30605"},
+    {"arg": "GLM53_FLASHINFER_HEAD", "value": "81113d3c659f9ce692aef6cfa3ca48452d0f1e9d"},
+    {"arg": "GLM53_FLASHINFER_TREE", "value": "bb8a2d438976b0b78abb8fce0f0e4a968ed8b3c6"},
     {"arg": "GLM53_MODELOPT_REPOSITORY", "value": "https://github.com/NVIDIA/Model-Optimizer.git"},
     {"arg": "GLM53_MODELOPT_VERSION", "value": "0.47.0rc0"},
     {"arg": "GLM53_MODELOPT_RELEASE_TAG", "value": "0.47.0rc0"},
@@ -77,10 +77,10 @@
     "flashinfer": {
       "repository": "https://github.com/ormandj/flashinfer.git",
       "package_version": "0.6.18",
-      "head": "008122fa75c7a27c839feea57a6ef8e8846fa265",
-      "tree": "0462b5c545eb145cb96001285afe4cc89de30605",
+      "head": "81113d3c659f9ce692aef6cfa3ca48452d0f1e9d",
+      "tree": "bb8a2d438976b0b78abb8fce0f0e4a968ed8b3c6",
       "upstream_main_base": "adc49a85",
-      "included_upstream_work": ["flashinfer#4687"]
+      "included_upstream_work": ["flashinfer#4687", "SM120 W4A16 TC-decode ultra-tile replay validation"]
     },
     "modelopt": {
       "repository": "https://github.com/NVIDIA/Model-Optimizer.git",
@@ -112,6 +112,6 @@
     "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.18 is not built or qualified"
+    "claims": "v0.1.0-rc.19 is not built or qualified"
   }
 }

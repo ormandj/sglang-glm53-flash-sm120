@@ -5,19 +5,21 @@ GLM-5.3-Flash inference on two RTX PRO 6000 Blackwell Server Edition GPUs.
 The intended serving profile is TP=2, EP=1, vision enabled, native adaptive
 MTP, FP8 KV, a roughly 500K shared token pool, and practical C4 agentic fanout.
 
-Current image: `sglang-glm53-flash-sm120:v0.1.0-rc.18`.
+Current image: `sglang-glm53-flash-sm120:v0.1.0-rc.19`.
 
-**v0.1.0-rc.18 is built, but it is not a qualified release.** Its immutable
-image digest and import identities passed. Model load, coherent output, quality,
-context capacity, MTP acceptance, vision, and performance remain separate gates
-recorded in [BENCHMARKS.md](BENCHMARKS.md).
+**v0.1.0-rc.19 is not yet built or qualified.** Model load, coherent output,
+quality, context capacity, MTP acceptance, vision, and performance remain
+separate gates recorded in [BENCHMARKS.md](BENCHMARKS.md).
 
-## What changed in v0.1.0-rc.18
+## What changed in v0.1.0-rc.19
 
-The rc.18 source and runtime trees are identical to rc.17. It additionally
-fetches and verifies ModelOpt's exact `0.47.0rc0` tag at the pinned commit so
-`setuptools-scm` produces the locked package version during the immutable
-container build. The cache schema remains `v10` because no runtime code changed.
+The candidate retains the v0.1.0-rc.18 SGLang and ModelOpt trees and advances
+FlashInfer to correct an upstream SM120 W4A16 TC-decode contract bug found by
+the Qwen E4M3-K32 control. FlashInfer's auto path selected its valid special
+`K=32/N=512` FC2 tile, but custom-op replay rejected it with the generic
+`K>=64` validator. The fix validates both selection and replay through the same
+constrained predicate and adds a regression for Qwen's exact per-rank expert
+shape. Cache schema `v11` prevents reuse of compiled v0.1.0-rc.18 kernels.
 
 The failed in-house MXFP4 artifact and all of its runtime diagnostic patches
 were removed from the active build. Its persistent evidence remains so the
@@ -26,11 +28,11 @@ failure cannot be accidentally reinterpreted as a serving bug.
 The candidate now uses exact source trees:
 
 - SGLang integration `42a56dc505f775d6f54e9d27a9b57c66023420a0`,
-  based on current upstream main, with GLM-5.3 support, raw-layout FP8 TileLang
-  DSA, and an explicit E4M3-K32 W4A16 loader/runner contract.
-- FlashInfer `008122fa75c7a27c839feea57a6ef8e8846fa265`, containing
-  upstream's large W4A16 expert-bank fix and the matching SM120 weight
-  preparation contract.
+  based on upstream main `d12b313b93`, with GLM-5.3 support, raw-layout FP8
+  TileLang DSA, and an explicit E4M3-K32 W4A16 loader/runner contract.
+- FlashInfer `81113d3c659f9ce692aef6cfa3ca48452d0f1e9d`, containing
+  upstream's large W4A16 expert-bank fix, exact TC-decode tile replay, and the
+  matching SM120 weight preparation contract.
 - NVIDIA ModelOpt `022767c7ab3d7d36211affd85e5c496770cde768`, used for
   the controlled MSE-calibrated quantization recipe.
 
@@ -85,7 +87,7 @@ host-resident blocks into active GPU token capacity.
 docker build \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.18 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.19 .
 ```
 
 The last verifier uses the network to reproduce all three pinned source trees

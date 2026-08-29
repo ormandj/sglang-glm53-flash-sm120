@@ -1,9 +1,9 @@
-# Running `v0.1.0-rc.18`
+# Running `v0.1.0-rc.19`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.18
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.19
 export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-E4M3-K32-MSE
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v10
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v11
 ./examples/serve-glm53-flash.sh
 ```
 
@@ -31,7 +31,7 @@ roughly 500K shared tokens. After it passes, measure C8 with both
 them produces an invalid comparison.
 
 Use a fresh cache directory for every image/runtime/graph combination. The
-`v10` suffix is mandatory because SGLang, FlashInfer JIT sources, raw FP8 DSA,
+`v11` suffix is mandatory because SGLang, FlashInfer JIT sources, raw FP8 DSA,
 and the W4A16 packer all changed from the old candidate.
 
 ## Qualification order
