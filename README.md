@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.30`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.30`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.31`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.31`.
 
-**v0.1.0-rc.30 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.31 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -30,12 +30,13 @@ explicit qualification A/B rather than a launcher default.
 
 The candidate compiles the supported SM120 BF16 KDA short- and long-prefill
 specializations, FP8 DSA index-prefix gather, and W4A16 route-pack regimes from
-256 through 8,192 prefill tokens before
-runtime memory pools are sized. It also reuses one process/device compression
-gate stream across the serialized DSA indexer layers instead of retaining one
-CUDA stream and cuBLAS workspace per layer. Each layer still overlaps its
-compression-gate projection with its alternate-stream work, then synchronizes
-before the next layer, so the intended within-layer concurrency is preserved.
+256 through 8,192 prefill tokens before runtime memory pools are sized. The
+candidate preserves one compression-gate CUDA stream per DSA indexer layer. A
+shared-stream experiment saved allocator memory but failed the exact C4 test
+with an illegal memory access and is explicitly reverted. Instead, this
+candidate tests PyTorch's pre-Blackwell `:4096:2:16:8` cuBLAS workspace profile
+while retaining private stream identity. That profile is not a free-memory
+claim until exact C1-through-C4 performance and correctness evidence exists.
 Static KDA tactics are keyed by capability,
 dtype, tensor geometry, and semantic flags rather than a GLM model name;
 unrecognized shapes retain ordinary autotuning. This prevents the first large
@@ -59,7 +60,7 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v17` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v18` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
@@ -88,7 +89,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.30 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.31 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

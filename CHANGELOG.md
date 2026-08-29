@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.31
+
+- Pin SGLang integration commit
+  `fbe8f3827bdae568d46fc2acce83802c81c22576` / tree
+  `1009f52478adb81edd4a95e06322a73c7e2e3f31`. Revert the rc.30 shared DSA
+  compression-gate stream after the exact C4 workload caused a CUDA illegal
+  memory access and pod restart. Preserve one CUDA stream per indexer layer.
+- Set PyTorch's cuBLAS workspace profile to `:4096:2:16:8`, its general
+  pre-Blackwell default, while retaining private stream identity. This is an
+  exact-hardware C1-through-C4 memory/performance experiment, not a capacity or
+  zero-tradeoff claim. Advance the compiled-cache schema to `v18`;
+  v0.1.0-rc.31 remains unbuilt and unqualified.
+
 ## v0.1.0-rc.30
 
 - Retain v0.1.0-rc.29's exact SGLang, FlashInfer, ModelOpt, model, cache ABI,

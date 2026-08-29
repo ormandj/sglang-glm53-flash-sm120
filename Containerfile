@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=30
-ARG GLM53_CACHE_SCHEMA=v17
+ARG GLM53_RELEASE_CANDIDATE=31
+ARG GLM53_CACHE_SCHEMA=v18
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=d34c0b44e3f90f80ccbbe06202cc3387e3728d10
-ARG GLM53_SGLANG_TREE=0dad5d76ff0a95b4a2378086005eef7c23dc1ddf
+ARG GLM53_SGLANG_HEAD=fbe8f3827bdae568d46fc2acce83802c81c22576
+ARG GLM53_SGLANG_TREE=1009f52478adb81edd4a95e06322a73c7e2e3f31
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
@@ -55,7 +55,8 @@ ARG IMAGE_SOURCE_REVISION
 ENV SGLANG_SOURCE_ROOT=/opt/sglang-source \
     PYTHONPATH=/opt/sglang-source/python \
     FLASHINFER_NO_DOWNLOAD=1 \
-    FLASHINFER_CUDA_ARCH_LIST=12.0f
+    FLASHINFER_CUDA_ARCH_LIST=12.0f \
+    CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8
 
 # Replace the unverifiable vendor Python tree with the exact integration tree.
 # The branch is based on current SGLang main and contains GLM-5.3 support,
@@ -130,7 +131,7 @@ RUN set -eux; \
 # vendor tree or omitted from the installed packages.
 RUN set -eux; \
     uv run --no-project --python /opt/sglang/bin/python python -c "\
-import importlib.metadata as md; import inspect; import sglang; import flashinfer; \
+import importlib.metadata as md; import inspect; import os; import sglang; import flashinfer; \
 from types import SimpleNamespace; \
 from sglang.srt.arg_groups import model_hook; \
 from sglang.srt.environ import envs; \
@@ -151,6 +152,7 @@ from flashinfer.mla._sparse_mla_sm120 import _bytes_per_token_for_model_type, _M
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
 from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights; \
 assert inspect.getfile(sglang).startswith('/opt/sglang-source/python/'); \
+assert os.environ['CUBLAS_WORKSPACE_CONFIG'] == ':4096:2:16:8'; \
 assert flashinfer.__version__ == '${GLM53_FLASHINFER_VERSION}', flashinfer.__version__; \
 assert flashinfer.__git_commit__ == '${GLM53_FLASHINFER_HEAD}', flashinfer.__git_commit__; \
 assert md.version('nvidia-modelopt') == '${GLM53_MODELOPT_VERSION}'; \
@@ -171,8 +173,8 @@ assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
 assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flashinfer_cutlass._run_flashinfer_b12x_w4a16); \
 assert callable(kda.precompile_kda_prefill_kernels); \
-assert 'dsa_index_compress_gate' in inspect.getsource(dsa_indexer_kpool._get_compress_gate_stream); \
-assert '_get_compress_gate_stream' in inspect.getsource(dsa_indexer_kpool.IndexerKPool.__init__); \
+assert not hasattr(dsa_indexer_kpool, '_get_compress_gate_stream'); \
+assert 'torch.cuda.Stream()' in inspect.getsource(dsa_indexer_kpool.IndexerKPool.__init__); \
 assert callable(kpool_fp8_index.precompile_index_prefix_gather); \
 assert callable(flashinfer_cutlass.precompile_w4a16_prefill_routes); \
 assert '(256, 320, 512, 1024, 2048, 4096, 8192)' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
