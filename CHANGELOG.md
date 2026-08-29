@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.34
+
+- Rebase the exact GLM integration onto upstream main
+  `4d53767b09429c67a4137352c762372923853eb6` and pin integration commit
+  `ba6dae453ec4bc829f1830ae5429e6f5386f7480` / tree
+  `8e11a5e0c3dccf79b5d0a615f8405bf1d826797c`.
+- Add debug-gated paged-allocator boundary probes after the rc.33 repeated-wave
+  diagnostic located a negative target MLA write location. Attribute the prefix
+  tail, free-page list, extend output, and free inputs independently without
+  changing the ordinary serving path. Advance the compiled-cache schema to
+  `v21`. This is an unbuilt, unqualified localization candidate, not a claimed
+  crash fix or performance result.
+
 ## v0.1.0-rc.33
 
 - Rebase the exact GLM integration onto upstream main

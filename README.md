@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.33`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.33`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.34`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.34`.
 
-**v0.1.0-rc.33 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.34 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -60,9 +60,16 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v20` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v21` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
+
+The candidate also carries debug-gated allocator-boundary probes after an exact
+repeated-wave run located a negative target MLA write location. The probes
+separately attribute stale prefix tails, poisoned paged free lists, incomplete
+extend-allocation output, and invalid free inputs. They are inactive unless the
+legacy async-assert diagnostic is enabled and therefore add no ordinary serving
+work. This is fault localization, not a claimed runtime fix.
 
 The exact v0.1.0-rc.19 FlashInfer TC-decode replay fix remains pinned. Its
 auto-selected constrained `K=32/N=512` FC2 tile is accepted by the same exact
@@ -89,7 +96,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.33 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.34 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate
