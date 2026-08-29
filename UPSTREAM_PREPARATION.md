@@ -69,9 +69,10 @@ semantics. The exact tactics must be preserved in an evidence file, not encoded
 as a GLM name check.
 
 Evidence needed: CPU selector tests; exact-GPU numerical equality; cold-start
-compile trace proving compilation precedes pool allocation; no compiler warning
-or HBM growth on the first 8,192-token request; warm-restart cache reuse; and
-performance within noise of the autotuned winner.
+compile trace proving compilation precedes pool allocation; no compiler-caused
+HBM growth on the first 8,192-token request; warm-restart cache reuse; and
+performance within noise of the autotuned winner. Backend request workspace
+must be measured separately rather than attributed to compilation.
 
 ### 4. SM120 TileLang DSA low-shared-memory schedule
 
@@ -135,6 +136,13 @@ live slot, one persistent runner, and scratch carved from an existing workspace
 where safe. Backend validation must apply only when the native backend is
 selected so TileLang remains an independent control.
 
+The admission/padding regression must use the real two-stage geometry:
+GLM-5.3 declares `qk_nope_head_dim=256`, while absorption produces the
+512-wide query consumed by sparse MLA. A guard on the configured dimension
+silently skips padding and crashes the scheduler on the first 2,051-wide large
+prefill. Detect from the tensor/cache contract or pass an explicit admitted
+model-family enum; do not duplicate the wrong 512 value in the test fixture.
+
 This work depends on the corresponding FlashInfer API and should be proposed
 only after corrected cache-layout and ownership measurements.
 
@@ -147,15 +155,46 @@ Upstream-shaped fix: preserve the sentinel through kernels that explicitly
 support padding or allocate a dedicated non-live sink. Do not advertise this as
 a capacity optimization. Add a concurrent-request corruption regression.
 
+### 11. Share NextN embedding/head before pool sizing
+
+Problem: the draft correctly aliases the target embedding and output head, but
+only after the target pool has already been sized and allocated. On GLM-5.3 at
+TP2 the temporary placeholders are 1.181640625 GiB per rank. They are not
+resident duplicates, but they inflate startup peak and hide memory from
+automatic pool sizing.
+
+Upstream-shaped fix: perform the existing delete/rebind operation immediately
+after the draft model loads, before target pool configuration. Make the helper
+idempotent because legacy allocation flows may still invoke it. Evidence must
+separate lower peak/corrected sizing from steady-state memory, which is already
+shared today.
+
+### 12. Workspace-aware TileLang FP8 DSA long prefill
+
+Problem: the partial-plus-combine path owns request-sized FP8 query, partial
+output/LSE, and BF16 combine-output buffers in addition to live model
+activations. At an 8,192-token chunk on TP2, the combine output alone is
+256 MiB; the exact v0.1.0-rc.25 failure occurred at this allocation after the
+process reached 94.81 GiB used per rank.
+
+Upstream-shaped fix: expose an exact workspace estimator and select a direct,
+more heavily fused, or smaller-chunk path from available HBM. A configuration
+that cannot reserve its request workspace should fail during startup instead of
+crashing a healthy scheduler. Compare alternative inner-iteration grouping for
+large query batches, where sequence parallelism may already saturate the GPU.
+
 ## Proposed FlashInfer pull-request splits
 
 ### 1. SM120 no-RoPE sparse-MLA trait and cache contract
 
 Define the 512-dimensional no-RoPE query/cache geometry, FP8 scales, physical
 top-k width, and public wrapper API without a GLM name dependency where the
-shape contract is sufficient. Document whether the 656-byte row includes the
-index data or coexists with SGLang's separate 132-byte index row; ambiguity here
-directly changes shared-token capacity.
+shape contract is sufficient. The native packed row is 528 bytes: 512 FP8
+latent bytes plus four inline FP32 scales. A wider runtime row stride may be
+accepted for shared cache groups, but it must not force persistent 128-byte
+padding when no RoPE payload exists. SGLang's separate 132-byte index row is
+additional storage; document this explicitly because ambiguity directly
+changes shared-token capacity.
 
 ### 2. Persistent scratch/workspace ownership
 
@@ -222,4 +261,3 @@ For every eventual pull request:
 8. verify licenses and avoid copying unverifiable vendor provenance;
 9. prepare commit messages and pull-request text locally;
 10. stop before submission unless the user explicitly authorizes it.
-

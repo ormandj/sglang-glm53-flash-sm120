@@ -129,7 +129,7 @@ padding sentinel with a live slot can silently corrupt another request and is
 not a valid memory optimization. The slot count is a design constraint unless
 upstream changes the state representation or speculation algorithm.
 
-### Late Triton compilation caused the long-request crash
+### Late specialization and large-prefill workspace are separate failure modes
 
 The v0.1.0-rc.24 service reached ready state and passed meaningful C1 and C4
 requests, but a later Pi request with an 8,192-token prefill caused previously
@@ -149,6 +149,62 @@ Model-specific kernel pins are not the intended upstream form. Static winners
 are keyed by device capability, dtype, tensor geometry, and semantic flags.
 The GLM model hook supplies its shape; generic kernel code decides whether a
 curated specialization exists and otherwise retains upstream autotuning.
+
+v0.1.0-rc.25 then separated compilation from the backend's legitimate request
+workspace. It compiled the bounded KDA, DSA-index, and W4A16 route paths before
+pool allocation and reached ready state with no restart. A cold large request
+still failed, but the exact traceback was now unambiguous: TileLang's raw-FP8
+DSA partial-plus-combine prefill path exhausted HBM and failed while allocating
+the combine output in `tilelang_sparse_fwd`, not in a compiler. With an
+8,192-token chunk, 32 local heads, and a 512-wide value, the final BF16 output
+alone is 256 MiB. Query conversion, the partial output/LSE, indices, hidden
+states, residuals, and other live layer activations consumed the roughly
+2.38 GiB runtime headroom before that output could be allocated.
+
+This means pre-pool compilation is still a valid stability correction, but it
+does not remove the backend's real large-prefill workspace. TileLang must be
+tested with a smaller chunk, a workspace-aware split strategy, or a fused/direct
+long-prefill path. Reducing the persistent KV pool cannot solve this at the
+500K target: the 65,536-token diagnostic pool itself is only about 0.47 GiB per
+rank across target and draft.
+
+The native FlashInfer A/B on the same v0.1.0-rc.25 image also reached ready
+state without a restart. Per rank it logged 84.72 GB for the target, 3.19 GB
+for the draft, 0.53 GB for the 65,536-token target KV pool, 0.05 GB for the
+draft KV pool, and 2.27 GB available after all adaptive graph states. The
+roughly 0.11 GB loss relative to TileLang at this small pool matched the
+predicted 128-byte per-layer compatibility suffix.
+
+The identical 8,192-token cold-prefill request then failed before any workspace
+allocation. FlashInfer rejected `T=8192, H=32, topk=2051, d_qk=512` because its
+native GLM prefill envelope is instantiated at a physical width of 2,176. The
+SGLang adapter already intended to pad narrower rows with `-1`, but its guard
+checked `qk_nope_head_dim == 512`. The real checkpoint config is 256; only the
+absorbed query tensor presented to sparse MLA is 512 wide. The CPU regression
+had repeated the incorrect 512 config value, so it could not catch the bug.
+
+The prepared correction detects the contract from the actual absorbed query
+and cache geometry, changes the regression to the real 256-dimensional config,
+and retains 2,176 as the fixed physical index width. This is a temporary index
+padding correction, not a model, quantization, or persistent-KV change. The
+scheduler-fatal `ValueError` was a runtime contract defect, not an OOM.
+
+### NextN embedding/head sharing happens too late for pool sizing
+
+SGLang already rebinds the draft embedding and output head to the target and
+deletes the draft placeholders. For this model, each global BF16 tensor is
+154,880 by 4,096. At TP2 the two draft placeholders total exactly
+1.181640625 GiB per rank. They are not a second resident copy after startup.
+
+The ordering is nevertheless wrong for capacity calculation: target pools are
+sized first, then `EAGLEWorkerV2.alloc_memory_pool()` allocates the draft pool,
+and only afterward calls `init_lm_head()` to delete and rebind the placeholders.
+The v0.1.0-rc.25 cold boot logged 3.32 GiB free at the end of draft-pool
+allocation, followed by 3.87 GiB before target graph capture after sharing and
+autotune. Moving sharing immediately after draft load will lower peak memory and
+make automatic pool sizing see the reclaim. It will not create an additional
+1.18 GiB of final steady-state capacity when `--max-total-tokens` is already
+fixed, because the current code does free those placeholders before serving.
 
 ## v0.1.0-rc.24 control measurements
 
@@ -193,8 +249,8 @@ candidate.
 
 TileLang is the current stable control because its raw FP8 path boots and
 produces strong measured decode throughput. FlashInfer is still the likely
-long-term SM120 path, but its native 656-byte wrapper and scratch ownership must
-be corrected and measured rather than assumed superior.
+long-term SM120 path, but its native layout and scratch ownership must be
+measured rather than assumed superior.
 
 The A/B must use identical model bytes, parsers, vision, MTP, chunk size, graph
 set, concurrency, and prompts. Record:
@@ -211,6 +267,19 @@ set, concurrency, and prompts. Record:
 FlashInfer wins only if corrected layout/ownership yields a measured capacity,
 performance, or stability advantage. Backend selection alone must not alter
 quantization or vision support.
+
+The current accounting before the A/B is explicit. TileLang stores a raw
+512-byte FP8 latent plus the separate 132-byte index row on each of 12 DSA
+layers: 7,728 bytes per shared token per rank. The initial native FlashInfer
+integration stored a 656-byte scaled-FP8 row whose meaningful prefix was 528
+bytes, while retaining the same separate 132-byte index row: 9,456 bytes per
+shared token per rank. The prepared packed layout removes the nonexistent RoPE
+suffix and stores exactly 512 FP8 latent bytes plus four FP32 scales:
+`(528 + 132) * 12 = 7,920` bytes per shared token per rank. That is only 192
+bytes per token, or 2.48%, above raw TileLang; at 500K shared tokens the
+remaining difference is about 91.6 MiB per rank. Packing changes no KV values
+or scale precision. The A/B must now determine whether FlashInfer's direct
+long-prefill path and SM120 trajectory justify that small remaining cost.
 
 ## Configuration lessons
 
@@ -235,17 +304,18 @@ quantization or vision support.
 
 ## Open work
 
-1. Finish generic pre-pool compilation of all expected KDA, DSA gather, and
-   W4A16 route specializations.
-2. Rebase the integration tree onto current SGLang main and retain only fixes
-   that still correspond to reproduced failures.
-3. Build an immutable next candidate with an ABI-specific persistent compile
-   cache.
-4. Repeat the large Pi workload and verify no compile occurs after pool
-   commitment and no later memory growth appears.
-5. Run the corrected native FlashInfer 656-byte DSA A/B against TileLang.
+1. Build and qualify the corrected native FlashInfer path on the same
+   65,536-token cold large request, preserving model, vision, MTP, parsers,
+   chunk size, and graphs.
+2. Verify the packed 528-byte KV row on exact hardware and measure the direct
+   long-prefill workspace after the 2,051-to-2,176 index padding correction.
+3. Move NextN embedding/head sharing before target pool sizing and measure the
+   lower startup peak plus corrected automatic-capacity result.
+4. Make TileLang large-prefill workspace explicit and either select a
+   workspace-safe inner split/chunk or replace its partial-plus-combine path.
+5. Repeat the large Pi workload on cold and warm caches and verify no post-pool
+   compiler growth remains in the selected backend.
 6. Expand the shared pool from the 65,536-token diagnostic setting to the
    largest value that leaves repeatable headroom at C4.
 7. Qualify real vision, nested tools, long-context retrieval, MTP acceptance,
    BF16-teacher KLD/top-1, and C1/C4 performance on one exact candidate.
-
