@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=19
-ARG GLM53_CACHE_SCHEMA=v11
+ARG GLM53_RELEASE_CANDIDATE=20
+ARG GLM53_CACHE_SCHEMA=v12
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=42a56dc505f775d6f54e9d27a9b57c66023420a0
-ARG GLM53_SGLANG_TREE=16eb1fe669e54253b16d206a21e79e9cc7ea6132
+ARG GLM53_SGLANG_HEAD=ccbda6bf675dc99a0cf2044532db0335367ded2a
+ARG GLM53_SGLANG_TREE=9e123e05f9a7dba91499899a25709b97a78030e5
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=81113d3c659f9ce692aef6cfa3ca48452d0f1e9d
@@ -70,6 +70,10 @@ RUN set -eux; \
     test "$(git rev-parse 'HEAD^{tree}')" = "${GLM53_SGLANG_TREE}"; \
     uv run --no-project --python /opt/sglang/bin/python python -m compileall -q \
       python/sglang/srt/models/glm5_next.py \
+      python/sglang/srt/models/glm5_next_nextn.py \
+      python/sglang/srt/models/deepseek_nextn.py \
+      python/sglang/srt/arg_groups/model_hook.py \
+      python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
       python/sglang/srt/layers/quantization/modelopt_quant.py \
       python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
@@ -117,7 +121,12 @@ RUN set -eux; \
 RUN set -eux; \
     uv run --no-project --python /opt/sglang/bin/python python -c "\
 import importlib.metadata as md; import inspect; import sglang; import flashinfer; \
+from types import SimpleNamespace; \
+from sglang.srt.arg_groups import model_hook; \
+from sglang.srt.environ import envs; \
 from sglang.srt.models.glm5_next import Glm5NextForConditionalGeneration; \
+from sglang.srt.models.glm5_next_nextn import Glm5NextForConditionalGenerationNextN; \
+from sglang.srt.models.deepseek_nextn import DeepseekModelNextN; \
 from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
 from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights; \
@@ -125,6 +134,14 @@ assert inspect.getfile(sglang).startswith('/opt/sglang-source/python/'); \
 assert flashinfer.__version__ == '${GLM53_FLASHINFER_VERSION}', flashinfer.__version__; \
 assert flashinfer.__git_commit__ == '${GLM53_FLASHINFER_HEAD}', flashinfer.__git_commit__; \
 assert md.version('nvidia-modelopt') == '${GLM53_MODELOPT_VERSION}'; \
+Q=type('Q',(),{'get_name':lambda self:'modelopt_fp4'}); q=Q(); \
+assert DeepseekModelNextN._resolve_modelopt_fp4_quant_config(q,False) is None; \
+assert DeepseekModelNextN._resolve_modelopt_fp4_quant_config(q,True) is q; \
+g=Glm5NextForConditionalGenerationNextN.__new__(Glm5NextForConditionalGenerationNextN); \
+assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['*.self_attn.*']}),q) is q; \
+assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['model.layers.45.*']}),q) is None; \
+model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration'); \
+assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
 
 ENV SGLANG_BUILD_COMMIT=${GLM53_SGLANG_HEAD} \

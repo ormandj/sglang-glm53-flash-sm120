@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.19`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.19`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.20`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.20`.
 
-**v0.1.0-rc.19 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.20 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -16,12 +16,16 @@ CUDA/PyTorch environment only. Its unverifiable SGLang tarball is shadowed by
 the exact SGLang integration tree recorded in `stack.lock.json`. FlashInfer and
 ModelOpt are also installed from exact commits and tree hashes.
 
-This candidate retains the exact v0.1.0-rc.18 SGLang and ModelOpt trees and
-advances FlashInfer to correct an upstream SM120 W4A16 TC-decode replay bug.
-Auto-selection admitted its constrained `K=32/N=512` FC2 tile, but custom-op
-replay rejected it through the generic `K>=64` validator. The exact replay
-predicate and a regression for the failing Qwen shape are pinned here. Cache
-schema `v11` prevents reuse of v0.1.0-rc.18 compiled kernels.
+This candidate advances SGLang with a narrow GLM NextN correction. The
+inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
+native draft is BF16, while GLM may serialize the layer-45 routed experts as
+FP4. The config is now preserved only for that GLM case; a checkpoint-declared
+whole-layer ignore still selects BF16. Cache schema `v12` prevents reuse of
+draft graphs built against the previous loader contract.
+
+The exact v0.1.0-rc.19 FlashInfer TC-decode replay fix remains pinned. Its
+auto-selected constrained `K=32/N=512` FC2 tile is accepted by the same exact
+predicate during custom-op replay.
 
 This build intentionally contains none of the rc.16-and-earlier MXFP4,
 no-RoPE, TileLang shared-memory, sentinel, or CPU-offload patch stack. Current
@@ -43,7 +47,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.19 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.20 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

@@ -2,26 +2,26 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 19,
-    "candidate_tag": "v0.1.0-rc.19",
+    "candidate": 20,
+    "candidate_tag": "v0.1.0-rc.20",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v11"
+    "cache_schema": "v12"
   },
   "image": {
-    "tag": "v0.1.0-rc.19",
+    "tag": "v0.1.0-rc.20",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
   "model": {
     "source_repository": "zai-org/GLM-5.3-Flash-BF16",
     "source_revision": "f12e0fe1f6b2ea274c11a569582edfd99d993c5e",
-    "served_artifact": "local ModelOpt E4M3-K32 W4A16 candidate (not yet produced)",
+    "served_artifact": "/scratch/out/GLM-5.3-Flash-W4A16-E4M3-K32-MSE (produced under v0.1.0-rc.19; qualification pending)",
     "native_context_length": 1048576,
     "vision": true,
     "native_mtp": true
   },
   "quantization": {
-    "status": "recipe selected; artifact not yet qualified",
+    "status": "artifact produced and round-trip validated; serving and quality not yet qualified",
     "routed_expert_weights": "E2M1 FP4",
     "routed_expert_scales": "E4M3 per K=32 block plus one FP32 global scale",
     "activations": "BF16 (W4A16)",
@@ -44,15 +44,15 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "19"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v11"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "20"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v12"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
     {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
     {"arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST", "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_REPOSITORY", "value": "https://github.com/ormandj/sglang.git"},
-    {"arg": "GLM53_SGLANG_HEAD", "value": "42a56dc505f775d6f54e9d27a9b57c66023420a0"},
-    {"arg": "GLM53_SGLANG_TREE", "value": "16eb1fe669e54253b16d206a21e79e9cc7ea6132"},
+    {"arg": "GLM53_SGLANG_HEAD", "value": "ccbda6bf675dc99a0cf2044532db0335367ded2a"},
+    {"arg": "GLM53_SGLANG_TREE", "value": "9e123e05f9a7dba91499899a25709b97a78030e5"},
     {"arg": "GLM53_FLASHINFER_REPOSITORY", "value": "https://github.com/ormandj/flashinfer.git"},
     {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
     {"arg": "GLM53_FLASHINFER_HEAD", "value": "81113d3c659f9ce692aef6cfa3ca48452d0f1e9d"},
@@ -68,10 +68,10 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/ormandj/sglang.git",
-      "head": "42a56dc505f775d6f54e9d27a9b57c66023420a0",
-      "tree": "16eb1fe669e54253b16d206a21e79e9cc7ea6132",
+      "head": "ccbda6bf675dc99a0cf2044532db0335367ded2a",
+      "tree": "9e123e05f9a7dba91499899a25709b97a78030e5",
       "upstream_main_base": "d12b313b93",
-      "included_upstream_work": ["sglang#36507", "sglang#36904"],
+      "included_upstream_work": ["sglang#36507", "sglang#36904", "GLM-only serialized ModelOpt FP4 NextN preservation", "SM120 GLM DeepGEMM HC-prenorm capability guard", "SM120 TileLang FP8 DSA zero-tail guard"],
       "excluded_work": ["DP-attention-only MHC communicator change from sglang#36884"]
     },
     "flashinfer": {
@@ -112,6 +112,6 @@
     "flashinfer_repository": "https://github.com/ormandj/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.19 is not built or qualified"
+    "claims": "v0.1.0-rc.20 is not built or qualified"
   }
 }

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.20
+
+- Advance SGLang to `ccbda6bf675dc99a0cf2044532db0335367ded2a` / tree
+  `9e123e05f9a7dba91499899a25709b97a78030e5` so GLM's native draft retains
+  `modelopt_fp4` when its layer-45 routed experts are serialized FP4.
+- Keep the inherited DeepSeek ModelOpt draft default unquantized and keep GLM
+  draft layers in BF16 when the checkpoint explicitly ignores the complete
+  layer. Build-time controls cover all three decisions.
+- Add the missing SM120 capability guard for GLM's mHC pre-norm path so
+  consumer Blackwell uses the supported TileLang fallback instead of calling
+  unavailable DeepGEMM code on its first forward pass.
+- Do not lower the absent RoPE-tail contribution as a zero-K FP8 TileLang GEMM
+  for GLM's 512-wide NoPE DSA layout; SM120 rejects that otherwise empty MMA
+  during layout inference.
+- Retain v0.1.0-rc.19's exact FlashInfer and ModelOpt trees and bump the cache
+  schema to `v12`. This is a runtime-loader correction, not a quality or
+  performance claim.
+
 ## v0.1.0-rc.19
 
 SM120 W4A16 TC-decode tile replay correction. This candidate is not yet built
