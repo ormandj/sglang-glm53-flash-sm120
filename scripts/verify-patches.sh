@@ -13,7 +13,7 @@ done
 "$repo/scripts/validate-release.sh"
 
 if [[ "$(jq -er '.patches | length' "$lock")" != 0 ]]; then
-  echo "v0.1.0-rc.26 must not carry archived runtime patches" >&2
+  echo "v0.1.0-rc.27 must not carry archived runtime patches" >&2
   exit 1
 fi
 if [[ -d patches && -n "$(find patches -type f -print -quit)" ]]; then

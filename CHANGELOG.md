@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.0-rc.27
+
+- Pin SGLang integration commit
+  `0a107d8f74da4621a09f5b498b10fd366b839ad4` / tree
+  `02830060c888a9a84330ba15966d4c444ddc867e`. Rebind the draft embedding and
+  output head to the target immediately after loading, before memory-pool
+  sizing, without changing tensor values or quantization.
+- Detect ReplaySSM capability from GLM's KDA cache contract and include the
+  fused KDA verify ring-write work from upstream pull request 36821. This keeps
+  ReplaySSM opt-in pending exact-candidate qualification.
+- Precompile W4A16 route-pack specializations for 256, 320, 512, 1,024, 2,048,
+  4,096, and 8,192 token prefills before pool allocation. Advance the compiled
+  cache schema to `v16`; retain the exact model, quantization, vision, parsers,
+  native FlashInfer DSA, and adaptive MTP profile from v0.1.0-rc.26. This
+  candidate is not built or qualified.
+
 ## v0.1.0-rc.26
 
 - Pin SGLang integration commit

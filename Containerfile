@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=26
-ARG GLM53_CACHE_SCHEMA=v15
+ARG GLM53_RELEASE_CANDIDATE=27
+ARG GLM53_CACHE_SCHEMA=v16
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=6ab3d299fda185969c601c58430804dff09c253c
-ARG GLM53_SGLANG_TREE=9e96af7cfdf4b18911a6647d23b8b25919852247
+ARG GLM53_SGLANG_HEAD=0a107d8f74da4621a09f5b498b10fd366b839ad4
+ARG GLM53_SGLANG_TREE=02830060c888a9a84330ba15966d4c444ddc867e
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
@@ -73,12 +73,15 @@ RUN set -eux; \
       python/sglang/srt/models/glm5_next.py \
       python/sglang/srt/models/glm5_next_nextn.py \
       python/sglang/srt/models/deepseek_nextn.py \
+      python/sglang/srt/speculative/eagle_worker_v2.py \
       python/sglang/srt/arg_groups/model_hook.py \
       python/sglang/kernels/ops/attention/fla/chunk_intra.py \
       python/sglang/kernels/ops/attention/fla/kda.py \
+      python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py \
       python/sglang/kernels/ops/attention/flash_mla_sm120.py \
       python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
+      python/sglang/srt/layers/attention/linear/kda_backend.py \
       python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py \
       python/sglang/srt/mem_cache/kv_cache_configurator.py \
       python/sglang/srt/layers/quantization/modelopt_quant.py \
@@ -133,7 +136,10 @@ from sglang.srt.environ import envs; \
 from sglang.srt.models.glm5_next import Glm5NextForConditionalGeneration; \
 from sglang.srt.models.glm5_next_nextn import Glm5NextForConditionalGenerationNextN; \
 from sglang.srt.models.deepseek_nextn import DeepseekModelNextN; \
+from sglang.srt.speculative.eagle_worker_v2 import EagleDraftWorker; \
 from sglang.kernels.ops.attention.fla import chunk_intra, kda; \
+from sglang.kernels.ops.attention.fla import fused_kda_conv_recurrent_verify; \
+from sglang.srt.layers.attention.linear.kda_backend import KDAAttnBackend; \
 from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
 from sglang.srt.layers.quantization import modelopt_quant; \
 from sglang.kernels.ops.attention import flash_mla_sm120; \
@@ -153,6 +159,9 @@ assert DeepseekModelNextN._resolve_modelopt_fp4_quant_config(q,True) is q; \
 g=Glm5NextForConditionalGenerationNextN.__new__(Glm5NextForConditionalGenerationNextN); \
 assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['*.self_attn.*']}),q) is q; \
 assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['model.layers.45.*']}),q) is None; \
+eagle_init=inspect.getsource(EagleDraftWorker.__init__); \
+assert eagle_init.index('self.init_lm_head()') < eagle_init.index('self._init_dsa_index_share_state()'); \
+assert '_embed_and_head_shared' in inspect.getsource(EagleDraftWorker.init_lm_head); \
 model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration'); \
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
@@ -160,6 +169,11 @@ assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flas
 assert callable(kda.precompile_kda_prefill_kernels); \
 assert callable(kpool_fp8_index.precompile_index_prefix_gather); \
 assert callable(flashinfer_cutlass.precompile_w4a16_prefill_routes); \
+assert '(256, 320, 512, 1024, 2048, 4096, 8192)' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
+assert 'CACHE_RING' in inspect.getsource(fused_kda_conv_recurrent_verify.fused_kda_conv_gating_verify_kernel); \
+assert '_replayssm_ring_ok' in inspect.getsource(KDAAttnBackend._can_run_fused_chain_verify); \
+assert '_supports_linear_replayssm_spec' in inspect.getsource(kv_cache_configurator.KVCacheConfigurator); \
+assert 'mamba2_cache_params.is_kda' in inspect.getsource(kv_cache_configurator.KVCacheConfigurator._supports_linear_replayssm_spec); \
 assert 'GLM' not in inspect.getsource(chunk_intra._get_kda_intra_static_config); \
 assert 'precompile_kda_prefill_kernels' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
 assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS; \
