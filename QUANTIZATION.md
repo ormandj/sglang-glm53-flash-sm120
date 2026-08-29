@@ -69,6 +69,12 @@ The producer calls pinned ModelOpt's `nvfp4_fp8_scale_sweep` and
 `NVFP4QTensor.quantize(..., block_size=32, try_tensorrt=False)` rather than a
 locally approximated rounding implementation.
 
+The audited producer is
+`quantization/quantize_glm53_bf16_w4a16_e4m3_k32.py`. Its exact-GPU preflight
+checks all 38,770 tensors across 120 source shards, including 38 gate/up pairs
+that cross a source-shard boundary and must still be calibrated jointly. See
+the [exact-GPU preflight receipt](evidence/v0.1.0-rc.18-glm-quant-preflight-20260828.txt).
+
 ## Protected tensors and staged sensitivity
 
 The first valid artifact keeps these in BF16:
@@ -83,6 +89,9 @@ Layer-45 MTP routed experts use the same W4A16 recipe. Retaining the complete
 draft expert bank in BF16 would consume roughly ten extra GiB and defeat the KV
 target. Any later FP8 attention experiment is a separate artifact and may be
 accepted only if it passes teacher KLD and all modality/long-context gates.
+Because the shared experts remain BF16, serving must use
+`--disable-shared-experts-fusion`; otherwise their BF16 tensors would be mapped
+into a serialized FP4 fused-expert allocation.
 
 ## Output and size gates
 
@@ -91,11 +100,19 @@ only after all checks pass. It records source revision, ModelOpt/SGLang/
 FlashInfer commits, selection counts, tensor dtypes/shapes, per-component byte
 totals, per-shard hashes, and the complete quantization config.
 
-Expected tensor payload is approximately 166--170 GiB if the later measured
-attention-FP8 option is accepted, or several GiB larger with every protected
-linear in BF16. These are planning estimates, not artifact measurements. The
-actual model must fit without CPU offload while leaving enough per-rank memory
-for FP8 KV, C4 recurrent state, MTP workspaces, and CUDA graphs.
+The exact preflight projection from the pinned BF16 index is 184,905,778,296
+bytes (172.2069 GiB): 37,152 routed source weights become packed E2M1 plus
+E4M3-K32 and scalar scales, while 19,339,524,984 bytes of non-routed tensors
+remain source-exact. This is still a projection until the output artifact is
+written and hashed. Against 189.9404 GiB of measured physical memory across the
+pair it leaves 17.7335 GiB total before runtime pools. The artifact must still
+prove that real loader packing, FP8 KV, C4 recurrent state, MTP workspaces, and
+CUDA graphs fit without CPU offload.
+
+K32 stores half as many scales as the public K16 control and saves about 9.07
+GiB overall, but K16 normally has a quality advantage when calibration is held
+constant. The K32 choice is therefore a capacity tradeoff, not a quality claim;
+the pinned MSE recipe and BF16 protected tensors must pass the teacher gates.
 
 ## Quality gates
 

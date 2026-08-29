@@ -7,9 +7,10 @@ MTP, FP8 KV, a roughly 500K shared token pool, and practical C4 agentic fanout.
 
 Current image: `sglang-glm53-flash-sm120:v0.1.0-rc.18`.
 
-**v0.1.0-rc.18 is a source candidate, not a qualified release.** Build success,
-model load, coherent output, quality, context capacity, MTP acceptance, vision,
-and performance are separate gates recorded in [BENCHMARKS.md](BENCHMARKS.md).
+**v0.1.0-rc.18 is built, but it is not a qualified release.** Its immutable
+image digest and import identities passed. Model load, coherent output, quality,
+context capacity, MTP acceptance, vision, and performance remain separate gates
+recorded in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## What changed in v0.1.0-rc.18
 
@@ -49,9 +50,11 @@ bank. See [QUANTIZATION.md](QUANTIZATION.md) for the contract and quality gates.
 
 This is not the public g16 NVFP4 layout and not the rejected E8M0 MXFP4 layout.
 The g32 scale overhead is 0.25 bits per weight, while fractional E4M3 scales
-avoid MXFP4's power-of-two-only block scaling. Whether it meets the quality
-target will be decided against the pinned BF16 teacher, not assumed from format
-names.
+avoid MXFP4's power-of-two-only block scaling. G32 is coarser than the public
+g16 control and therefore is not inherently higher quality; it is the measured
+size tradeoff needed for this pair. Whether the pinned MSE recipe meets the
+quality target will be decided against the BF16 teacher, not assumed from
+format names.
 
 ## Runtime target
 
@@ -61,6 +64,8 @@ The default launcher requests:
 - vision and the `glm45` reasoning / `glm47` tool parsers;
 - native adaptive EAGLE/NextN MTP at 5 steps, top-k 1, 6 draft tokens;
 - raw-layout FP8 TileLang DSA and FP8 E4M3 KV;
+- separately executed BF16 shared experts, because fusing them into the
+  serialized FP4 routed bank would violate the checkpoint contract;
 - 524,288 total cache tokens, C4, 20 BF16 recurrent-state slots, and decode
   CUDA graphs through batch size 4.
 

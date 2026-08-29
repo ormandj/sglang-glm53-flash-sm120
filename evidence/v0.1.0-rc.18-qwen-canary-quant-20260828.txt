@@ -1,0 +1,41 @@
+v0.1.0-rc.18 Qwen E4M3-K32 W4A16 canary quantization receipt
+Date: 2026-08-28 America/Chicago
+
+Image:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.18@sha256:9e6165cfd6e949f8cd7d84eb9304c9892271b1e54624085e7ad6c0a31e5d855f
+Producer SHA256:
+  113a63fa6fa8578351b3310d3f5c2998145eb09d358f216de3d7316cd4bff9ae
+Source:
+  Qwen/Qwen3.5-35B-A3B @ 59d61f3ce65a6d9863b86d2e96597125219dc754
+Source index SHA256:
+  d8d0b7ca4e61ae107e3e87a3ff21136b3ac7c789e64bb24267227ca804e04205
+Output:
+  /scratch/Qwen/Qwen3.5-35B-A3B-W4A16-E4M3-K32-MSE
+
+Job result:
+  Succeeded first run, zero restarts
+  elapsed_seconds: 139.19427156448364
+  device: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, SM120
+  output tensor bytes: 24,592,151,648
+  output tensor count: 124,611
+  protected source-precision tensors: 1,731
+  protected MTP tensors: 785
+  routed packed projections: 30,720
+  E4M3-K32 scale tensors: 30,720
+  FP32 global scale tensors: 30,720
+  neutral FP32 input scale tensors: 30,720
+
+Reconstruction against the BF16 expert matrices:
+  aggregate relative-L2: 0.09106157777275645
+  mean matrix relative-L2: 0.09095848151749869
+  maximum matrix relative-L2: 0.09791251811852254
+  minimum matrix cosine: 0.9951951503753662
+
+Every output shard was reopened. Tensor names, index mapping, shapes and dtypes
+matched; protected tensor hashes matched; all scales were finite, global scales
+were positive, and W4A16 input scales were exactly one. The completion marker
+and quantization manifest were present in the atomically published directory.
+
+This receipt proves artifact production and dequantized reconstruction. It does
+not yet prove the packed FlashInfer serving kernel, coherent generation, tool
+calling, vision, native MTP, or GLM quality.

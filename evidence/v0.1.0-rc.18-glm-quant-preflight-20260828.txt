@@ -1,0 +1,37 @@
+v0.1.0-rc.18 GLM E4M3-K32 W4A16 producer preflight
+Date: 2026-08-28 America/Chicago
+
+Image:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.18@sha256:9e6165cfd6e949f8cd7d84eb9304c9892271b1e54624085e7ad6c0a31e5d855f
+Source:
+  /scratch/zai-org/GLM-5.3-Flash-BF16
+Source revision:
+  f12e0fe1f6b2ea274c11a569582edfd99d993c5e
+Device:
+  NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, SM120
+
+Exact source contract:
+  tensors: 38,770
+  shards: 120
+  source tensor bytes: 642,646,653,816
+  routed expert source weights: 37,152
+  protected shared-expert tensors: 129
+  protected vision tensors: 347
+  gate/up pairs crossing source-shard boundaries: 38
+
+Toolchain:
+  SGLang 42a56dc505f775d6f54e9d27a9b57c66023420a0
+  FlashInfer 008122fa75c7a27c839feea57a6ef8e8846fa265
+  NVIDIA ModelOpt 0.47.0rc0 / 022767c7ab3d7d36211affd85e5c496770cde768
+
+Projected output tensor payload:
+  184,905,778,296 bytes
+  172.2069255039096 GiB
+
+The first preflight failed closed on the first cross-shard gate/up pair. The
+producer was corrected to open the partner shard on demand while preserving
+joint gate/up calibration and one shared W13 global scale. The second preflight
+passed and reported all 38 cross-shard pairs. No output directory was created.
+
+This is source-layout and size-projection evidence only. It is not an artifact,
+quality, serving, capacity, or performance result.

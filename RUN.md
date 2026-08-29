@@ -13,7 +13,8 @@ MXFP4 artifact: its metadata and weight contract are different.
 
 The default profile enables vision and native adaptive MTP, uses TP=2/EP=1,
 requests a 524,288-token shared pool, admits four live requests, reserves 20
-BF16 recurrent-state slots, and captures decode graphs through batch size 4.
+BF16 recurrent-state slots, keeps the protected BF16 shared experts outside the
+FP4 fused bank, and captures decode graphs through batch size 4.
 Override values explicitly during staged qualification, for example:
 
 ```bash

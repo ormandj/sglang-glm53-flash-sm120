@@ -1,0 +1,35 @@
+v0.1.0-rc.18 immutable image build receipt
+Date: 2026-08-28 America/Chicago
+
+Forgejo source commit:
+  10d8631a869fcd52ee730886b472b35fa7f5a255
+Forgejo validation task:
+  #48 success, 50s
+Forgejo immutable build task:
+  #47 success, 3m27s
+Image:
+  git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.18
+Digest:
+  sha256:9e6165cfd6e949f8cd7d84eb9304c9892271b1e54624085e7ad6c0a31e5d855f
+
+An independent clean build reproduction completed before the Forgejo push and
+printed:
+  BUILD_REPRO_OK Glm5NextForConditionalGeneration
+
+The published digest was then pulled on quasar and its import assertion printed:
+  RC18_IMAGE_OK
+  SGLang 42a56dc505f775d6f54e9d27a9b57c66023420a0
+  FlashInfer 008122fa75c7a27c839feea57a6ef8e8846fa265
+  NVIDIA ModelOpt 0.47.0rc0 / 022767c7ab3d7d36211affd85e5c496770cde768
+
+Both repository provenance verifiers independently reproduced:
+  SGLang tree 16eb1fe669e54253b16d206a21e79e9cc7ea6132
+  FlashInfer tree 0462b5c545eb145cb96001285afe4cc89de30605
+  ModelOpt tree 9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9
+  ModelOpt release tag 0.47.0rc0 at the pinned commit
+  base index sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
+  base amd64 manifest sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
+  no local runtime patches
+
+This receipt proves the image build and identities only. It is not model
+correctness, quality, capacity, vision, MTP, or performance evidence.
