@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.29`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.29`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.30`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.30`.
 
-**v0.1.0-rc.29 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.30 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -88,7 +88,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.29 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.30 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

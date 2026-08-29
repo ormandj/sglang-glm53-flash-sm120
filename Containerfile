@@ -5,7 +5,7 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=29
+ARG GLM53_RELEASE_CANDIDATE=30
 ARG GLM53_CACHE_SCHEMA=v17
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
@@ -161,7 +161,10 @@ g=Glm5NextForConditionalGenerationNextN.__new__(Glm5NextForConditionalGeneration
 assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['*.self_attn.*']}),q) is q; \
 assert g._resolve_nextn_quant_config(SimpleNamespace(num_hidden_layers=45,quantization_config={'ignore':['model.layers.45.*']}),q) is None; \
 eagle_init=inspect.getsource(EagleDraftWorker.__init__); \
-assert eagle_init.index('self._init_dsa_index_share_state()') < eagle_init.index('self.init_lm_head()'); \
+assert 'self._init_dsa_index_share_state()' in eagle_init; \
+assert 'self.init_lm_head()' not in eagle_init; \
+eagle_pool_init=inspect.getsource(EagleDraftWorker.alloc_memory_pool); \
+assert eagle_pool_init.index('self.draft_worker.alloc_memory_pool') < eagle_pool_init.index('self.init_lm_head()'); \
 assert '_embed_and_head_shared' not in inspect.getsource(EagleDraftWorker.init_lm_head); \
 model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration'); \
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \

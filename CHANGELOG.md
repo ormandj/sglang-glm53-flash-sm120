@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0-rc.30
+
+- Retain v0.1.0-rc.29's exact SGLang, FlashInfer, ModelOpt, model, cache ABI,
+  and runtime profile. Correct the build-only draft-sharing lifecycle contract
+  to inspect `alloc_memory_pool()`, where the ordinary embedding/output-head
+  rebind actually occurs. v0.1.0-rc.29 failed before image publication;
+  v0.1.0-rc.30 remains unbuilt and unqualified.
+
 ## v0.1.0-rc.29
 
 - Pin SGLang integration commit
