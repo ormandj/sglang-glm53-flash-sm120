@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.0-rc.22
+
+- Advance SGLang to `6a0b9caba5b324bc7d52f976c02f6ae57b116dea` /
+  tree `6a49f92e7f2ade242845a1054845a5ea4ec8f1b0` and FlashInfer to
+  `be0d04071cec17666bed9940109228caeab23911` / tree
+  `ccabb6e13093ad7d0101a640a99ff296cfe6d133`.
+- Integrate FlashInfer pull request 4802's native SM120 no-RoPE sparse-MLA
+  kernel for GLM-5.3. Preserve all 2,051 model candidates by padding with
+  `-1` to the 2,176-entry physical contract and use a zero-initialized
+  656-byte scaled-FP8 cache row with a 528-byte meaningful prefix.
+- Retain one persistent FlashInfer runner and carve small-batch decode scratch
+  from SGLang's existing workspace. Keep the proven in-place W4A16 prepared
+  weights, exact ModelOpt quantization contract, vision, and native MTP.
+- Select `flashinfer_sparse_mla` for both prefill and decode and bump the cache
+  schema to `v13`. This is a source candidate; performance, capacity, and
+  quality remain unqualified until exact-hardware evidence is recorded.
+
 ## v0.1.0-rc.21
 
 - Advance SGLang to `6e5844d435838c68ab5c2c78b5b49c4136a541de` / tree

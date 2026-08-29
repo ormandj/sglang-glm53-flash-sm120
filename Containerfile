@@ -5,19 +5,19 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=21
-ARG GLM53_CACHE_SCHEMA=v12
+ARG GLM53_RELEASE_CANDIDATE=22
+ARG GLM53_CACHE_SCHEMA=v13
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=6e5844d435838c68ab5c2c78b5b49c4136a541de
-ARG GLM53_SGLANG_TREE=7c5a1f0aaab0c4bca3497e592c95dccef7c2baf6
+ARG GLM53_SGLANG_HEAD=6a0b9caba5b324bc7d52f976c02f6ae57b116dea
+ARG GLM53_SGLANG_TREE=6a49f92e7f2ade242845a1054845a5ea4ec8f1b0
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_HEAD=81113d3c659f9ce692aef6cfa3ca48452d0f1e9d
-ARG GLM53_FLASHINFER_TREE=bb8a2d438976b0b78abb8fce0f0e4a968ed8b3c6
+ARG GLM53_FLASHINFER_HEAD=be0d04071cec17666bed9940109228caeab23911
+ARG GLM53_FLASHINFER_TREE=ccabb6e13093ad7d0101a640a99ff296cfe6d133
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -59,7 +59,8 @@ ENV SGLANG_SOURCE_ROOT=/opt/sglang-source \
 
 # Replace the unverifiable vendor Python tree with the exact integration tree.
 # The branch is based on current SGLang main and contains GLM-5.3 support,
-# raw-layout FP8 TileLang DSA, and the E4M3-K32 W4A16 loader/runner contract.
+# native FlashInfer SM120 NoPE sparse MLA, and the E4M3-K32 W4A16
+# loader/runner contract.
 RUN set -eux; \
     git init -q "${SGLANG_SOURCE_ROOT}"; \
     cd "${SGLANG_SOURCE_ROOT}"; \
@@ -73,16 +74,18 @@ RUN set -eux; \
       python/sglang/srt/models/glm5_next_nextn.py \
       python/sglang/srt/models/deepseek_nextn.py \
       python/sglang/srt/arg_groups/model_hook.py \
+      python/sglang/kernels/ops/attention/flash_mla_sm120.py \
       python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
+      python/sglang/srt/mem_cache/kv_cache_configurator.py \
       python/sglang/srt/layers/quantization/modelopt_quant.py \
       python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 
 # Build FlashInfer from the exact SM120 integration tree. It contains
-# upstream's >INT32 W4A16 expert-bank correction, exact TC-decode tile replay,
-# and the explicit ModelOpt E2M1/E4M3-K32 preparation contract. Generic cubin
-# bundles are deliberately removed so this image cannot silently select a
-# kernel built for another GPU.
+# upstream's native NoPE sparse-MLA SM120 kernels, >INT32 W4A16 expert-bank
+# correction, exact TC-decode tile replay, and the explicit ModelOpt
+# E2M1/E4M3-K32 preparation contract. Generic cubin bundles are deliberately
+# removed so this image cannot silently select a kernel built for another GPU.
 RUN set -eux; \
     git init -q /tmp/flashinfer-source; \
     cd /tmp/flashinfer-source; \
@@ -129,6 +132,9 @@ from sglang.srt.models.glm5_next_nextn import Glm5NextForConditionalGenerationNe
 from sglang.srt.models.deepseek_nextn import DeepseekModelNextN; \
 from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
 from sglang.srt.layers.quantization import modelopt_quant; \
+from sglang.kernels.ops.attention import flash_mla_sm120; \
+from sglang.srt.mem_cache import kv_cache_configurator; \
+from flashinfer.mla import SparseMLASm120Wrapper; \
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
 from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights; \
 assert inspect.getfile(sglang).startswith('/opt/sglang-source/python/'); \
@@ -145,6 +151,11 @@ model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_def
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
 assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flashinfer_cutlass._run_flashinfer_b12x_w4a16); \
+assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS; \
+assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176; \
+assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656; \
+assert 'return 656' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
+assert SparseMLASm120Wrapper.__name__ == 'SparseMLASm120Wrapper'; \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
 
 ENV SGLANG_BUILD_COMMIT=${GLM53_SGLANG_HEAD} \
