@@ -2,8 +2,8 @@
 
 ## v0.1.0-rc.20
 
-- Advance SGLang to `ccbda6bf675dc99a0cf2044532db0335367ded2a` / tree
-  `9e123e05f9a7dba91499899a25709b97a78030e5` so GLM's native draft retains
+- Advance SGLang to `5b6297ce555a03c79a3dfec691bb2e1cdf70708c` / tree
+  `f8be560548744a22bc585f0160c3149daee9fb70` so GLM's native draft retains
   `modelopt_fp4` when its layer-45 routed experts are serialized FP4.
 - Keep the inherited DeepSeek ModelOpt draft default unquantized and keep GLM
   draft layers in BF16 when the checkpoint explicitly ignores the complete
@@ -14,6 +14,9 @@
 - Do not lower the absent RoPE-tail contribution as a zero-K FP8 TileLang GEMM
   for GLM's 512-wide NoPE DSA layout; SM120 rejects that otherwise empty MMA
   during layout inference.
+- Select the one-stage BF16 TileLang DSA schedule when the GPU exposes less
+  than 120 KiB of opt-in shared memory per block. This keeps GLM's NoPE decode
+  kernel below SM120's limit while retaining the two-stage datacenter default.
 - Retain v0.1.0-rc.19's exact FlashInfer and ModelOpt trees and bump the cache
   schema to `v12`. This is a runtime-loader correction, not a quality or
   performance claim.
