@@ -2,9 +2,9 @@
   "schema": 1,
   "product": "sglang-glm53-flash-sm120",
   "version": "0.1.0",
-  "candidate": 34,
-  "candidate_tag": "v0.1.0-rc.34",
+  "candidate": 35,
+  "candidate_tag": "v0.1.0-rc.35",
   "stable_tag": "v0.1.0",
-  "cache_schema": "v21",
+  "cache_schema": "v22",
   "platform": "linux/amd64"
 }

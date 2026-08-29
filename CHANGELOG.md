@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.35
+
+- Pin SGLang integration commit
+  `26a382e1d2c07ce5f99a317b6b8572f9814f6fe5` / tree
+  `56005c6d183c04e3869774c11598c52639322463` on unchanged upstream-main base
+  `4d53767b09429c67a4137352c762372923853eb6`.
+- Extend the debug-gated lifecycle diagnostic to full-KV radix insertion, node
+  split, and eviction. Distinguish an unmasked negative sentinel from reserved
+  physical slot zero and emit only numeric finish-length metadata while the
+  diagnostic gate is active. Advance the compiled-cache schema to `v22`.
+  This is an unbuilt, unqualified localization candidate, not a claimed crash
+  fix or performance result.
+
 ## v0.1.0-rc.34
 
 - Rebase the exact GLM integration onto upstream main

@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=34
-ARG GLM53_CACHE_SCHEMA=v21
+ARG GLM53_RELEASE_CANDIDATE=35
+ARG GLM53_CACHE_SCHEMA=v22
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=ba6dae453ec4bc829f1830ae5429e6f5386f7480
-ARG GLM53_SGLANG_TREE=8e11a5e0c3dccf79b5d0a615f8405bf1d826797c
+ARG GLM53_SGLANG_HEAD=26a382e1d2c07ce5f99a317b6b8572f9814f6fe5
+ARG GLM53_SGLANG_TREE=56005c6d183c04e3869774c11598c52639322463
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
@@ -87,6 +87,9 @@ RUN set -eux; \
       python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py \
       python/sglang/srt/mem_cache/kv_cache_configurator.py \
       python/sglang/srt/mem_cache/allocator/paged.py \
+      python/sglang/srt/mem_cache/unified_radix_cache.py \
+      python/sglang/srt/mem_cache/unified_cache/components/full_component.py \
+      python/sglang/srt/utils/async_probe.py \
       python/sglang/srt/layers/quantization/modelopt_quant.py \
       python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 
@@ -149,6 +152,9 @@ from sglang.kernels.ops.attention import flash_mla_sm120; \
 from sglang.srt.layers.attention.dsa import dsa_indexer_kpool, kpool_fp8_index; \
 from sglang.srt.mem_cache import kv_cache_configurator; \
 from sglang.srt.mem_cache.allocator.paged import PagedTokenToKVPoolAllocator; \
+from sglang.srt.mem_cache import unified_radix_cache; \
+from sglang.srt.mem_cache.unified_cache.components import full_component; \
+from sglang.srt.utils import async_probe; \
 from flashinfer.mla import SparseMLASm120Wrapper; \
 from flashinfer.mla._sparse_mla_sm120 import _bytes_per_token_for_model_type, _MODEL_TYPE_GLM53_NOPE; \
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe; \
@@ -197,6 +203,11 @@ alloc_extend_source=inspect.getsource(PagedTokenToKVPoolAllocator.alloc_extend);
 assert 'alloc_extend last_loc' in alloc_extend_source; \
 assert 'alloc_extend free_pages' in alloc_extend_source; \
 assert 'alloc_extend output' in alloc_extend_source; \
+assert 'index == 0 (reserved / unwritten slot?)' in inspect.getsource(async_probe.maybe_detect_oob); \
+assert 'UnifiedRadixCache.cache_finished_req insert values' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.cache_finished_req); \
+assert 'UnifiedRadixCache.cache_unfinished_req insert values' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.cache_unfinished_req); \
+assert 'FullComponent.redistribute_on_node_split source' in inspect.getsource(full_component.FullComponent.redistribute_on_node_split); \
+assert 'FullComponent.evict_component value' in inspect.getsource(full_component.FullComponent.evict_component); \
 assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 528; \
 assert callable(getattr(SparseMLASm120Wrapper, 'run', None)); \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
