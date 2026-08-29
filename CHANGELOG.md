@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.39 (diagnostic, not yet built or qualified)
+
+- Corrects the diagnostic module's environment import and advances the signed
+  SGLang integration to head
+  `66e03150e9611a61293bd8cc9fd640664dbe6c10` and tree
+  `216200b6a28d440886a66a5b0841fded40fed652`.
+- The corrected module imports successfully with the exact SGLang interpreter
+  in the running rc.37 container. Local syntax, formatting, import order, lint,
+  test registration, and whitespace checks also pass.
+- rc.38 passed repository validation but failed during the immutable build on
+  the incorrect import, before any rc.38 image was published.
+- The allocator snapshot diagnostic and runtime envelope are otherwise
+  unchanged. This remains fault localization, not a correctness fix or
+  qualification claim.
+
 ## v0.1.0-rc.38 (diagnostic, not yet built or qualified)
 
 - Advances the SGLang integration to signed head
