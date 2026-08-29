@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.0-rc.40 (diagnostic, not yet built or qualified)
+
+- Moves the pre-validation SGLang and FlashInfer integration provenance from
+  personal GitHub forks to the internal `homelab/sglang` and
+  `homelab/flashinfer` Forgejo repositories. Official upstream repositories
+  remain the source and eventual pull-request targets after validation; all
+  candidate builds and project-owned integration branches remain internal.
+- Advances the integration fork to head
+  `0d691b6ddf0d3e27ebb7343e78a64b203eb6949c` and tree
+  `179d7d1440c7f0ea800457718966097d4af33140`.
+- Adds a bounded, opt-in DSA CUDA-graph buffer lifetime probe for the paged
+  logits and fused top-k outputs. Probe mode records logical and backing-storage
+  address ranges without retaining tensors; retain mode additionally preserves
+  the captured owners for a controlled lifetime comparison.
+- Allocator and radix diagnostics report exact overlap or nearest adjacency to
+  those captured ranges when corruption is detected. The serving kernels,
+  quantization, vision path, and default runtime behavior are unchanged while
+  the probe is disabled.
+- This candidate is fault localization, not a correctness fix or qualification
+  claim.
+
 ## v0.1.0-rc.39 (diagnostic, not yet built or qualified)
 
 - Corrects the diagnostic module's environment import and advances the signed
