@@ -5,15 +5,15 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from an
 # exact source tree. No rc.14 MXFP4 or diagnostic patches are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=35
-ARG GLM53_CACHE_SCHEMA=v22
+ARG GLM53_RELEASE_CANDIDATE=36
+ARG GLM53_CACHE_SCHEMA=v23
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/ormandj/sglang.git
-ARG GLM53_SGLANG_HEAD=26a382e1d2c07ce5f99a317b6b8572f9814f6fe5
-ARG GLM53_SGLANG_TREE=56005c6d183c04e3869774c11598c52639322463
+ARG GLM53_SGLANG_HEAD=4b30b052e089ca18f6abd0c6052d57d953d6fa89
+ARG GLM53_SGLANG_TREE=6f91718151274b53825c0da1e51a1e496d3de791
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/ormandj/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf
@@ -204,8 +204,12 @@ assert 'alloc_extend last_loc' in alloc_extend_source; \
 assert 'alloc_extend free_pages' in alloc_extend_source; \
 assert 'alloc_extend output' in alloc_extend_source; \
 assert 'index == 0 (reserved / unwritten slot?)' in inspect.getsource(async_probe.maybe_detect_oob); \
+assert callable(async_probe.maybe_sync_detect_oob); \
+assert 'positions=' in inspect.getsource(async_probe.maybe_sync_detect_oob); \
 assert 'UnifiedRadixCache.cache_finished_req insert values' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.cache_finished_req); \
 assert 'UnifiedRadixCache.cache_unfinished_req insert values' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.cache_unfinished_req); \
+assert 'UnifiedRadixCache.insert completed tree' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.insert); \
+assert 'UnifiedRadixCache.match_prefix pre-walk tree' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.match_prefix); \
 assert 'FullComponent.redistribute_on_node_split source' in inspect.getsource(full_component.FullComponent.redistribute_on_node_split); \
 assert 'FullComponent.evict_component value' in inspect.getsource(full_component.FullComponent.evict_component); \
 assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 528; \

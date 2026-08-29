@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.36
+
+- Rebase the exact SGLang integration onto upstream main
+  `cdbfe90b4a6c728e03e6520862d792501b3a97bb` and pin integration commit
+  `4b30b052e089ca18f6abd0c6052d57d953d6fa89` / tree
+  `6f91718151274b53825c0da1e51a1e496d3de791`.
+- The exact rc.35 repeated distinct-suffix C4 diagnostic proved that the
+  invalid full-KV radix value detected at eviction is an upper-bound violation
+  of at least 65,600, not a negative sentinel or reserved slot zero. Add
+  diagnostic-gated synchronous value attribution at insert, new-node,
+  unevict, split, whole-tree insert and match, and eviction boundaries so the
+  next exact reproduction identifies where that value first appears. Advance
+  the compiled-cache schema to `v23`. This is an unbuilt, unqualified
+  localization candidate, not a claimed crash fix or performance result.
+
 ## v0.1.0-rc.35
 
 - Pin SGLang integration commit
