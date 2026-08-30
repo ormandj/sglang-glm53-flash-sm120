@@ -6173,10 +6173,10 @@ index 4f630c1247560ac814d8c0a7db1cce9bb14fa108..4225259982127def811728ed3c946f97
                  weights,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b42e8b5761c9cad032ba072d83ccc368ce8f67f
+index 0000000000000000000000000000000000000000..34c3f663798d35dcff42ec224f034f109dfdbafc
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-@@ -0,0 +1,1798 @@
+@@ -0,0 +1,1810 @@
 +from __future__ import annotations
 +
 +from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -6371,6 +6371,18 @@ index 0000000000000000000000000000000000000000..1b42e8b5761c9cad032ba072d83ccc36
 +        """Keep the ownership side effect outside any enclosing Dynamo graph."""
 +        retain_full_cuda_graph_owner(weights)
 +        return weights
++
++    @torch.compiler.disable
++    def _retain_paged_logits_capture_owner(
++        self,
++        logits: torch.Tensor,
++        topk_result: torch.Tensor,
++        layer_id: int,
++    ) -> torch.Tensor:
++        """Keep captured paged logits alive through graph replay."""
++        register_graph_buffer(logits, f"kpool-logits-layer-{layer_id}")
++        retain_full_cuda_graph_owner(logits)
++        return topk_result
 +
 +    @staticmethod
 +    def _cp_gather_concat(
@@ -7125,8 +7137,6 @@ index 0000000000000000000000000000000000000000..1b42e8b5761c9cad032ba072d83ccc36
 +                clean_logits=False,
 +            )
 +
-+        register_graph_buffer(logits, f"kpool-logits-layer-{layer_id}")
-+
 +        page_table_1, topk_offsets, _ = self._kpool_fused_topk_mapping(metadata)
 +        topk_result = self._topk_from_kpool_logits(
 +            logits,
@@ -7137,7 +7147,9 @@ index 0000000000000000000000000000000000000000..1b42e8b5761c9cad032ba072d83ccc36
 +            out_rows=num_q_padded if num_q_padded != n_real else None,
 +        )
 +        register_graph_buffer(topk_result, f"kpool-topk-layer-{layer_id}")
-+        return topk_result
++        return self._retain_paged_logits_capture_owner(
++            logits, topk_result, layer_id
++        )
 +
 +    def _should_chunk_mqa_logits(
 +        self, num_q: int, num_k: int, device: torch.device
@@ -24658,10 +24670,10 @@ index 81e0b08b0b7c4b5717ff2792782cf894c23faed7..a168c4253fc6307f2b3455ca5b2463b4
      sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..22689b5dda52b736aee95098cbc79ccf693459e7
+index 0000000000000000000000000000000000000000..d732d2e416351be0178268353f5a9669478db18c
 --- /dev/null
 +++ b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,124 @@
 +import pytest
 +import torch
 +
@@ -24737,6 +24749,55 @@ index 0000000000000000000000000000000000000000..22689b5dda52b736aee95098cbc79ccf
 +    torch.testing.assert_close(
 +        capture_owners[0], expected_replay, rtol=1e-5, atol=1e-6
 +    )
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
++def test_outer_torch_compile_preserves_paged_logits_capture_owner():
++    torch.manual_seed(51)
++    indexer = object.__new__(IndexerKPool)
++    values = torch.randn(16, 32, device="cuda")
++
++    def outer(value):
++        logits = value.float().square()
++        topk_result = logits.to(torch.int32)
++        return indexer._retain_paged_logits_capture_owner(
++            logits, topk_result, 7
++        )
++
++    compiled_outer = torch.compile(
++        outer, mode="max-autotune-no-cudagraphs", dynamic=False
++    )
++    compiled_outer(values)
++    torch.cuda.synchronize()
++
++    with collect_full_cuda_graph_owners() as owners:
++        output = compiled_outer(values)
++    torch.cuda.synchronize()
++
++    assert output.dtype == torch.int32
++    assert len(owners) == 1
++    assert owners[0].dtype == torch.float32
++    expected_replay = values.float().square()
++    torch.testing.assert_close(owners[0], expected_replay)
++
++    capture_stream = torch.cuda.Stream()
++    capture_stream.wait_stream(torch.cuda.current_stream())
++    with torch.cuda.stream(capture_stream):
++        compiled_outer(values)
++        compiled_outer(values)
++    torch.cuda.current_stream().wait_stream(capture_stream)
++
++    graph = torch.cuda.CUDAGraph()
++    with collect_full_cuda_graph_owners() as capture_owners:
++        with torch.cuda.graph(graph, stream=capture_stream):
++            captured_output = compiled_outer(values)
++
++    del captured_output
++    graph.replay()
++    torch.cuda.synchronize()
++
++    assert len(capture_owners) == 1
++    torch.testing.assert_close(capture_owners[0], expected_replay)
 diff --git a/test/registered/unit/attention/test_dsa_multistep_dedup.py b/test/registered/unit/attention/test_dsa_multistep_dedup.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..7378ed6f9f01d6d162e89ab4616a6f52e0daa2e4
@@ -25381,10 +25442,10 @@ index 0000000000000000000000000000000000000000..3b0e8ffd5f1e90595de888f29904358e
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..49532f01d386c305b92900301a65dee427bde0fd
+index 0000000000000000000000000000000000000000..89c248533456d446c2268b7fa44aec3ca4638303
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,145 @@
 +import unittest
 +from unittest import mock
 +
@@ -25472,6 +25533,28 @@ index 0000000000000000000000000000000000000000..49532f01d386c305b92900301a65dee4
 +
 +        self.assertEqual(len(owners), 1)
 +        self.assertIs(owners[0], output)
++
++    def test_outer_torch_compile_preserves_paged_logits_owner(self):
++        indexer = object.__new__(IndexerKPool)
++        values = torch.randn(16, 32)
++
++        def outer(value):
++            logits = value.float().square()
++            topk_result = logits.to(torch.int32)
++            return indexer._retain_paged_logits_capture_owner(
++                logits, topk_result, 7
++            )
++
++        compiled_outer = torch.compile(outer, backend="eager", dynamic=False)
++        compiled_outer(values)
++
++        with collect_full_cuda_graph_owners() as owners:
++            output = compiled_outer(values)
++
++        self.assertEqual(output.dtype, torch.int32)
++        self.assertEqual(len(owners), 1)
++        self.assertEqual(owners[0].dtype, torch.float32)
++        torch.testing.assert_close(owners[0], values.float().square())
 +
 +    def test_capture_without_full_graph_owner_scope_is_unchanged(self):
 +        indexer = object.__new__(IndexerKPool)

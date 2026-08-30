@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.0-rc.52 (paged-logits ownership candidate, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `7eff1bd551e57e83583f3546e745d0f310027af5` and the reproducible patched tree
+  to `c7ba3809e6a4c976dc73b4e94eba71e04f80adf4`.
+- Records the v0.1.0-rc.51 result: the complete gate ownership GPU suite passed
+  and 13 productive C4 waves completed, but wave 14 returned zero tokens before
+  both ranks found all 527 allocator entries overwritten by paired signed-FP32
+  values. This disproves the compiled head gate as the sole remaining writer.
+- Gives each full graph shape bounded ownership of `_get_topk_paged`'s FP32
+  paged-MQA logits output. The tensor is consumed by captured top-k work but is
+  not returned by the model; its previous Python diagnostic was also absorbed
+  before the top-k boundary by the enclosing compile. Only its ownership and
+  diagnostic handoff are kept outside Dynamo; paged-MQA and top-k math remain
+  compiled unchanged.
+- Adds CPU outer-compile and CUDA outer-compile/capture/replay regressions for
+  the paged-logits owner. Model values, quantization, vision, MTP, FP8 KV, DSA
+  kernels, and graph shapes are unchanged. Uses fresh cache schema `v39`; this
+  candidate remains unqualified pending exact-image GPU tests, memory fit,
+  sustained serving, and matched performance.
+
 ## v0.1.0-rc.51 (replay oracle correction, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to
