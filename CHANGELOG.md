@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.0-rc.46 (correctness candidate, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `df8325b1824d8f22aaa82acb11ed2ece56e4a879` and the reproducible patched tree
+  to `6207dca678cdab8ead0b56877d17f035bf787f98`.
+- Uses shared eager DSA head-gate math only for ordinary uncaptured extend, where
+  v0.1.0-rc.45's 64-token failure carried the exact signed-FP32 size signature
+  of the dynamically compiled output. Decode, target verification, draft
+  extension, torch.compile, and CUDA-graph modes retain the upstream compiled
+  fast path. This dispatch boundary incorporates a read-only Claude review.
+- Extends the failure-only page diagnostic with invalid count and first/last
+  invalid positions to identify the exact overwrite extent if the candidate
+  does not resolve the allocator mutation.
+- Retains model values, quantization, vision, MTP, full decode graphs, DSA
+  kernels, and FP8 KV. Uses fresh cache schema `v33`; this candidate remains
+  unqualified pending exact-image tests, sustained serving, and matched
+  prefill/decode measurements.
+
 ## v0.1.0-rc.45 (test-profile correction, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to

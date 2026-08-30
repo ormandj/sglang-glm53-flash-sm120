@@ -6173,10 +6173,10 @@ index 4f630c1247560ac814d8c0a7db1cce9bb14fa108..4225259982127def811728ed3c946f97
                  weights,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6bb457376bd6ec619c4d0dbe3422be149128c70
+index 0000000000000000000000000000000000000000..7d441beef9db10578fb3145ab1a4bb81b66686c8
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-@@ -0,0 +1,1773 @@
+@@ -0,0 +1,1796 @@
 +from __future__ import annotations
 +
 +from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -6340,12 +6340,28 @@ index 0000000000000000000000000000000000000000..c6bb457376bd6ec619c4d0dbe3422be1
 +        self.scale_fmt = scale_fmt
 +        self.softmax_scale = self.head_dim**-0.5
 +
-+    @torch.compile(dynamic=True)
-+    def _get_logits_head_gate(self, x: torch.Tensor, q_scale: torch.Tensor):
++    def _get_logits_head_gate_impl(self, x: torch.Tensor, q_scale: torch.Tensor):
 +        weights, _ = self.weights_proj(x.float())
 +        weights = weights * self.n_heads**-0.5
 +        weights = weights.unsqueeze(-1) * q_scale * self.softmax_scale
 +        return weights
++
++    @torch.compile(dynamic=True)
++    def _get_logits_head_gate(self, x: torch.Tensor, q_scale: torch.Tensor):
++        return self._get_logits_head_gate_impl(x, q_scale)
++
++    def _get_logits_head_gate_eager(
++        self, x: torch.Tensor, q_scale: torch.Tensor
++    ) -> torch.Tensor:
++        """Compute extend weights without a persistent compiled output buffer.
++
++        When ordinary extend is outside CUDA graph capture and torch.compile,
++        keeping its dynamic output in the caller's eager allocator/stream
++        lifetime avoids a compiled static output address surviving after the
++        returned tensor has been consumed. Decode, speculative, and captured
++        paths continue to use the compiled helper above.
++        """
++        return self._get_logits_head_gate_impl(x, q_scale)
 +
 +    @staticmethod
 +    def _cp_gather_concat(
@@ -7880,7 +7896,14 @@ index 0000000000000000000000000000000000000000..c6bb457376bd6ec619c4d0dbe3422be1
 +                return None
 +
 +        if weights is None:
-+            weights = self._get_logits_head_gate(x, q_scale)
++            if (
++                forward_batch.forward_mode.is_extend_without_speculative()
++                and not torch.compiler.is_compiling()
++                and not get_is_capture_mode()
++            ):
++                weights = self._get_logits_head_gate_eager(x, q_scale)
++            else:
++                weights = self._get_logits_head_gate(x, q_scale)
 +
 +        if is_cuda():
 +            if (
@@ -23494,10 +23517,10 @@ index ac37350b1119de11a6e94740055a6b1d2e5d5168..cc1efbc37de5b5ab5166339321d64b74
          self.dsa_extend_topk_buf = None
  
 diff --git a/python/sglang/srt/utils/async_probe.py b/python/sglang/srt/utils/async_probe.py
-index abe25cd9a0e54646f619cfbe4815a5f0a554049b..ccb2920a6a4dc9185427bf3ddb2d9439fa309948 100644
+index abe25cd9a0e54646f619cfbe4815a5f0a554049b..b4042c105cae17f15f876aa5e5cedd3c0dbc0e60 100644
 --- a/python/sglang/srt/utils/async_probe.py
 +++ b/python/sglang/srt/utils/async_probe.py
-@@ -131,16 +131,61 @@ def maybe_detect_oob(indices: Optional[torch.Tensor], low: int, high: int, msg:
+@@ -131,16 +131,85 @@ def maybe_detect_oob(indices: Optional[torch.Tensor], low: int, high: int, msg:
          return
      if indices is None or indices.numel() == 0:
          return
@@ -23551,12 +23574,36 @@ index abe25cd9a0e54646f619cfbe4815a5f0a554049b..ccb2920a6a4dc9185427bf3ddb2d9439
 +    if not bool(invalid.any().item()):
 +        return
 +
-+    positions = torch.nonzero(invalid, as_tuple=False).reshape(-1)[:8]
-+    values = flat[positions].detach().cpu().tolist()
++    try:
++        all_positions = torch.nonzero(invalid, as_tuple=False).reshape(-1)
++        invalid_count = all_positions.numel()
++        positions = all_positions[:8]
++        tail_positions = all_positions[-8:] if invalid_count > 8 else None
++        positions_list = positions.detach().cpu().tolist()
++        values = flat[positions].detach().cpu().tolist()
++        tail_positions_list = (
++            tail_positions.detach().cpu().tolist()
++            if tail_positions is not None
++            else None
++        )
++        tail_values = (
++            flat[tail_positions].detach().cpu().tolist()
++            if tail_positions is not None
++            else None
++        )
++    except RuntimeError as error:
++        invalid_count = "unavailable"
++        positions_list = f"unavailable ({type(error).__name__})"
++        values = f"unavailable ({type(error).__name__})"
++        tail_positions_list = None
++        tail_values = None
 +    raise AssertionError(
 +        f"index outside [{low}, {high}) at {msg}: "
 +        f"dtype={flat.dtype} numel={flat.numel()} min={minimum} max={maximum} "
-+        f"positions={positions.detach().cpu().tolist()} values={values}"
++        f"invalid_count={invalid_count} "
++        f"positions={positions_list} values={values} "
++        f"tail_positions={tail_positions_list} "
++        f"tail_values={tail_values}"
 +    )
 +
 +
