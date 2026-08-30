@@ -3809,10 +3809,17 @@ index 10342899ce..b8051a6f08 100644
 +    )
 +    return last_correct, (steps_to_track if has_track else None)
 diff --git a/python/sglang/srt/arg_groups/model_hook.py b/python/sglang/srt/arg_groups/model_hook.py
-index ad7eda7e42..50262dea49 100644
+index ad7eda7e42..c29b34a6b3 100644
 --- a/python/sglang/srt/arg_groups/model_hook.py
 +++ b/python/sglang/srt/arg_groups/model_hook.py
-@@ -44,6 +44,21 @@ from sglang.srt.utils.common import (
+@@ -38,12 +38,28 @@ from sglang.srt.runtime_context import get_platform
+ from sglang.srt.utils.common import (
+     get_quantization_config,
+     is_mps,
++    is_sm120_supported,
+     parse_connector_type,
+ )
+ 
  logger = logging.getLogger(__name__)
  
  
@@ -3834,7 +3841,7 @@ index ad7eda7e42..50262dea49 100644
  def handle_model_specific_adjustments(server_args: Any):
  
      cfg = resolving_view(server_args)
-@@ -72,6 +87,7 @@ def handle_model_specific_adjustments(server_args: Any):
+@@ -72,6 +88,7 @@ def handle_model_specific_adjustments(server_args: Any):
      model_config = model_config_of(server_args)
      hf_config = model_config.hf_config
      model_arch = hf_config.architectures[0]
@@ -11413,7 +11420,7 @@ index e469a61162..1b95e753fd 100644
      return torch.pow(2.0, torch.ceil(torch.log2(x.abs())))
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 9369ad2896..9af140747d 100644
+index 9369ad2896..23e3631c54 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -1,9 +1,10 @@
@@ -11479,7 +11486,11 @@ index 9369ad2896..9af140747d 100644
      dsa_cp_round_robin_split_data,
      dsa_cp_round_robin_split_q_seqs,
      dsa_use_prefill_cp,
-@@ -83,6 +108,8 @@ from sglang.srt.utils import (
+@@ -80,9 +105,12 @@ from sglang.srt.utils import (
+     is_cuda,
+     is_gfx95_supported,
+     is_hip,
++    is_sm100_supported,
      print_warning_once,
  )
  
@@ -11488,7 +11499,7 @@ index 9369ad2896..9af140747d 100644
  # Opt-in (default off): route the fp8 sparse-MLA prefill path through the Triton
  # per-query flash kernel instead of TileLang. Validated on gfx950 (GLM-5.1 @
  # TP4: 16 heads, d_v=512, tail=64). Reads q_nope/q_rope directly (skips the
-@@ -117,6 +144,19 @@ def _all_gather_dsa_trtllm_fp8_kv(
+@@ -117,6 +145,19 @@ def _all_gather_dsa_trtllm_fp8_kv(
      return kv.split((kv_lora_rank, qk_rope_head_dim), dim=-1)
  
  
@@ -11508,7 +11519,7 @@ index 9369ad2896..9af140747d 100644
  def materialize_full_kv_cp(
      attn_mla,
      forward_batch: ForwardBatch,
-@@ -171,6 +211,36 @@ def _to_2d_context_lens(seqlens_32: torch.Tensor, batch_size: int) -> torch.Tens
+@@ -171,6 +212,36 @@ def _to_2d_context_lens(seqlens_32: torch.Tensor, batch_size: int) -> torch.Tens
      return seqlens_32.contiguous().view(-1, 1)
  
  
@@ -11545,7 +11556,7 @@ index 9369ad2896..9af140747d 100644
  @dataclass(frozen=True)
  class DSAFlashMLAMetadata:
      """Metadata only needed by FlashMLA"""
-@@ -253,6 +323,20 @@ class DSAMetadata:
+@@ -253,6 +324,20 @@ class DSAMetadata:
      # batch index for each token.
      token_to_batch_idx: Optional[torch.Tensor] = None
  
@@ -11566,7 +11577,7 @@ index 9369ad2896..9af140747d 100644
  
  @torch.compile
  def _compiled_cat(tensors: list[torch.Tensor], dim: int = -1) -> torch.Tensor:
-@@ -275,6 +359,72 @@ def _cat(tensors: list[torch.Tensor], dim: int = -1) -> torch.Tensor:
+@@ -275,6 +360,72 @@ def _cat(tensors: list[torch.Tensor], dim: int = -1) -> torch.Tensor:
      return _compiled_cat([qk_nope, qk_rope], dim=dim)
  
  
@@ -11639,7 +11650,7 @@ index 9369ad2896..9af140747d 100644
  _DSA_IMPL_T: TypeAlias = Literal[
      "flashmla_sparse",
      "flashmla_sparse_q8",
-@@ -315,12 +465,65 @@ class DeepseekSparseAttnBackend(
+@@ -315,12 +466,65 @@ class DeepseekSparseAttnBackend(
          self.num_splits = (
              1 if get_exec().deterministic.enable_deterministic_inference else 0
          )
@@ -11707,7 +11718,7 @@ index 9369ad2896..9af140747d 100644
          self.max_context_len = model_runner.model_config.context_len
          self.num_q_heads = (
              model_runner.model_config.num_attention_heads // get_parallel().attn_tp_size
-@@ -340,6 +543,16 @@ class DeepseekSparseAttnBackend(
+@@ -340,6 +544,16 @@ class DeepseekSparseAttnBackend(
          self.supports_mha_one_shot: bool = True
          self.dsa_prefill_impl: _DSA_IMPL_T = get_exec().kernel.dsa_prefill_backend
          self.dsa_decode_impl: _DSA_IMPL_T = get_exec().kernel.dsa_decode_backend
@@ -11724,7 +11735,7 @@ index 9369ad2896..9af140747d 100644
          self.dsa_topk_backend: DSATopKBackend = DSATopKBackend.resolve(model_runner)
          if self.num_q_heads <= 64:
              self.flashmla_kv_num_q_heads = 64
-@@ -350,6 +563,23 @@ class DeepseekSparseAttnBackend(
+@@ -350,6 +564,23 @@ class DeepseekSparseAttnBackend(
              self.flashmla_kv_num_q_heads = self.num_q_heads
          self.enable_auto_select_prefill_impl = self.dsa_prefill_impl == "flashmla_auto"
  
@@ -11748,7 +11759,7 @@ index 9369ad2896..9af140747d 100644
          self._arange_buf = torch.arange(16384, device=self.device, dtype=torch.int32)
  
          if _is_hip:
-@@ -494,6 +724,22 @@ class DeepseekSparseAttnBackend(
+@@ -494,6 +725,22 @@ class DeepseekSparseAttnBackend(
                      device=model_runner.device,
                  ),
              )
@@ -11771,7 +11782,7 @@ index 9369ad2896..9af140747d 100644
          # Allocate global workspace buffer for TRT-LLM kernels (ragged attention on SM100/B200, or trtllm decode)
          elif self.device_sm_major >= 10 or self.dsa_decode_impl == "trtllm":
              self.workspace_buffer = get_buffer(
-@@ -654,6 +900,57 @@ class DeepseekSparseAttnBackend(
+@@ -654,6 +901,57 @@ class DeepseekSparseAttnBackend(
              "num_kv_splits": self.aiter_dsa_max_split_per_batch,
          }
  
@@ -11829,7 +11840,7 @@ index 9369ad2896..9af140747d 100644
      def _build_paged_mqa_schedule_2d_ctx_lens(
          self,
          forward_mode: ForwardMode,
-@@ -715,9 +1012,10 @@ class DeepseekSparseAttnBackend(
+@@ -715,9 +1013,10 @@ class DeepseekSparseAttnBackend(
          # nothing to refresh.
          if metadata.topk_v2_plan is None:
              return
@@ -11843,7 +11854,7 @@ index 9369ad2896..9af140747d 100644
  
      def _get_fused_topk_page_table(self, topk_indices: torch.Tensor) -> torch.Tensor:
          if (
-@@ -737,6 +1035,9 @@ class DeepseekSparseAttnBackend(
+@@ -737,6 +1036,9 @@ class DeepseekSparseAttnBackend(
              )
          return self._arange_buf[:length]
  
@@ -11853,7 +11864,7 @@ index 9369ad2896..9af140747d 100644
      def _graph_page_table_width(self, metadata: DSAMetadata) -> int:
          """Column count to scan req_to_token during graph replay. Reads the wide
          page_table_1 width when present, else req_to_token's width (the wide table
-@@ -755,6 +1056,245 @@ class DeepseekSparseAttnBackend(
+@@ -755,6 +1057,245 @@ class DeepseekSparseAttnBackend(
          )
          return page_table[:, strided_indices] // page_size
  
@@ -12099,7 +12110,7 @@ index 9369ad2896..9af140747d 100644
      def init_forward_metadata_out_graph(
          self,
          forward_batch: ForwardBatch,
-@@ -826,6 +1366,17 @@ class DeepseekSparseAttnBackend(
+@@ -826,6 +1367,17 @@ class DeepseekSparseAttnBackend(
          # seq_len_cpu of selected sequences
          indexer_seq_lens_cpu = forward_batch.seq_lens_cpu
          indexer_seq_lens = forward_batch.seq_lens
@@ -12117,7 +12128,7 @@ index 9369ad2896..9af140747d 100644
  
          if forward_batch.forward_mode.is_decode_or_idle():
              extend_seq_lens_cpu = [1] * batch_size
-@@ -925,6 +1476,11 @@ class DeepseekSparseAttnBackend(
+@@ -925,6 +1477,11 @@ class DeepseekSparseAttnBackend(
                      )
                  ]
              )
@@ -12129,7 +12140,7 @@ index 9369ad2896..9af140747d 100644
  
              if can_dsa_prefill_cp_round_robin_split(forward_batch):
                  if is_cp_v2_active(forward_batch):
-@@ -950,8 +1506,127 @@ class DeepseekSparseAttnBackend(
+@@ -950,8 +1507,127 @@ class DeepseekSparseAttnBackend(
                      else 0
                  )
                  page_table = page_table[bs_idx, :max_seqlen_k]
@@ -12258,7 +12269,7 @@ index 9369ad2896..9af140747d 100644
                  max_seqlen_q = (
                      max(extend_seq_lens_cpu) if len(extend_seq_lens_cpu) != 0 else 1
                  )
-@@ -1011,10 +1686,18 @@ class DeepseekSparseAttnBackend(
+@@ -1011,10 +1687,18 @@ class DeepseekSparseAttnBackend(
          dsa_cache_seqlens_int32 = compute_dsa_seqlens(
              original_seq_lens=seqlens_expanded,
              dsa_index_topk=self.dsa_index_topk,
@@ -12277,7 +12288,7 @@ index 9369ad2896..9af140747d 100644
          dsa_cu_seqlens_k = compute_cu_seqlens(dsa_cache_seqlens_int32)
          dsa_cu_seqlens_q = self.get_device_int32_arange(len(dsa_cu_seqlens_k))
  
-@@ -1072,6 +1755,12 @@ class DeepseekSparseAttnBackend(
+@@ -1072,6 +1756,12 @@ class DeepseekSparseAttnBackend(
              token_to_batch_idx=token_to_batch_idx,
              topk_v2_plan=self._build_topk_v2_plan(seqlens_expanded),
          )
@@ -12290,7 +12301,7 @@ index 9369ad2896..9af140747d 100644
          self.forward_metadata = metadata
  
      def _cal_indexer_k_start_end(
-@@ -1183,6 +1872,8 @@ class DeepseekSparseAttnBackend(
+@@ -1183,6 +1873,8 @@ class DeepseekSparseAttnBackend(
              and self.real_page_size > 1
              and self.hisparse_coordinator is None
              and not self.speculative_num_draft_tokens
@@ -12299,7 +12310,7 @@ index 9369ad2896..9af140747d 100644
              and self.use_fused_topk
              and self.dsa_topk_backend.should_use_topk_v2()
              and self.dsa_index_topk is not None
-@@ -1275,7 +1966,9 @@ class DeepseekSparseAttnBackend(
+@@ -1275,7 +1967,9 @@ class DeepseekSparseAttnBackend(
              # NOTE(dark): this is always arange, since we are decoding
              cu_seqlens_q = self.decode_cuda_graph_metadata["cu_seqlens_q"][: bs + 1]
              dsa_cache_seqlens_int32 = compute_dsa_seqlens(
@@ -12310,7 +12321,7 @@ index 9369ad2896..9af140747d 100644
              )
  
              seqlens_expanded = cache_seqlens_int32
-@@ -1338,7 +2031,9 @@ class DeepseekSparseAttnBackend(
+@@ -1338,7 +2032,9 @@ class DeepseekSparseAttnBackend(
                  ]
              )
              dsa_cache_seqlens_int32 = compute_dsa_seqlens(
@@ -12321,7 +12332,7 @@ index 9369ad2896..9af140747d 100644
              )
              dsa_extend_seq_lens_list = [1] * bs * self.speculative_num_draft_tokens
  
-@@ -1400,6 +2095,7 @@ class DeepseekSparseAttnBackend(
+@@ -1400,6 +2096,7 @@ class DeepseekSparseAttnBackend(
              dsa_extend_seq_lens_list=dsa_extend_seq_lens_list,
              topk_v2_plan=self._build_topk_v2_plan(seqlens_expanded),
          )
@@ -12329,7 +12340,7 @@ index 9369ad2896..9af140747d 100644
          self.decode_cuda_graph_metadata[bs] = metadata
          self.forward_metadata = metadata
  
-@@ -1434,24 +2130,65 @@ class DeepseekSparseAttnBackend(
+@@ -1434,24 +2131,65 @@ class DeepseekSparseAttnBackend(
              )
              return
  
@@ -12400,7 +12411,7 @@ index 9369ad2896..9af140747d 100644
                  fused_dsa_decode_metadata(
                      seq_lens=seq_lens,
                      req_pool_indices=req_pool_indices,
-@@ -1466,6 +2203,7 @@ class DeepseekSparseAttnBackend(
+@@ -1466,6 +2204,7 @@ class DeepseekSparseAttnBackend(
                      max_len=max_len,
                      dsa_index_topk=self.dsa_index_topk,
                      real_page_size=self.real_page_size,
@@ -12408,7 +12419,7 @@ index 9369ad2896..9af140747d 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  dsa_cache_seqlens = metadata.dsa_cache_seqlens_int32
-@@ -1482,18 +2220,22 @@ class DeepseekSparseAttnBackend(
+@@ -1482,18 +2221,22 @@ class DeepseekSparseAttnBackend(
                  page_indices = self.req_to_token[req_pool_indices, :max_len]
                  metadata.page_table_1[:, :max_len].copy_(page_indices)
                  dsa_cache_seqlens = compute_dsa_seqlens(
@@ -12436,7 +12447,7 @@ index 9369ad2896..9af140747d 100644
                  paged_mqa_ctx_lens_2d = None
                  if (
                      self.speculative_num_draft_tokens >= 2
-@@ -1523,6 +2265,7 @@ class DeepseekSparseAttnBackend(
+@@ -1523,6 +2266,7 @@ class DeepseekSparseAttnBackend(
                      real_page_size=self.real_page_size,
                      next_n=self.speculative_num_draft_tokens,
                      paged_mqa_ctx_lens_2d=paged_mqa_ctx_lens_2d,
@@ -12444,7 +12455,7 @@ index 9369ad2896..9af140747d 100644
                  )
                  target_verify_ctx_lens_written = paged_mqa_ctx_lens_2d is not None
                  cache_seqlens = metadata.cache_seqlens_int32
-@@ -1565,7 +2308,9 @@ class DeepseekSparseAttnBackend(
+@@ -1565,7 +2309,9 @@ class DeepseekSparseAttnBackend(
                  )
                  metadata.dsa_seqlens_expanded.copy_(seqlens_expanded)
                  dsa_cache_seqlens = compute_dsa_seqlens(
@@ -12455,7 +12466,7 @@ index 9369ad2896..9af140747d 100644
                  )
                  metadata.dsa_cache_seqlens_int32.copy_(dsa_cache_seqlens)
          elif forward_mode.is_draft_extend_v2():
-@@ -1587,11 +2332,13 @@ class DeepseekSparseAttnBackend(
+@@ -1587,11 +2333,13 @@ class DeepseekSparseAttnBackend(
                  device=self.device,
              )
  
@@ -12473,7 +12484,7 @@ index 9369ad2896..9af140747d 100644
                  fused_dsa_draft_extend_metadata(
                      seq_lens=seq_lens,
                      extend_seq_lens=extend_seq_lens,
-@@ -1612,6 +2359,7 @@ class DeepseekSparseAttnBackend(
+@@ -1612,6 +2360,7 @@ class DeepseekSparseAttnBackend(
                      max_extend_len=self.speculative_num_draft_tokens,
                      max_total_len=bs * self.speculative_num_draft_tokens,
                      static_extend_len=True,
@@ -12481,7 +12492,7 @@ index 9369ad2896..9af140747d 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  seqlens_expanded = metadata.dsa_seqlens_expanded[:total_extend_len]
-@@ -1642,7 +2390,9 @@ class DeepseekSparseAttnBackend(
+@@ -1642,7 +2391,9 @@ class DeepseekSparseAttnBackend(
                      seqlens_expanded
                  )
                  dsa_cache_seqlens = compute_dsa_seqlens(
@@ -12492,7 +12503,7 @@ index 9369ad2896..9af140747d 100644
                  )
                  metadata.dsa_cache_seqlens_int32.copy_(dsa_cache_seqlens)
  
-@@ -1696,6 +2446,19 @@ class DeepseekSparseAttnBackend(
+@@ -1696,6 +2447,19 @@ class DeepseekSparseAttnBackend(
          else:
              assert metadata.real_page_table is metadata.page_table_1
  
@@ -12512,7 +12523,7 @@ index 9369ad2896..9af140747d 100644
          if self.dsa_decode_impl == "flashmla_kv":
              flashmla_metadata = metadata.flashmla_metadata.slice(
                  slice(0, seqlens_expanded_size + 1)
-@@ -1709,6 +2472,290 @@ class DeepseekSparseAttnBackend(
+@@ -1709,6 +2473,290 @@ class DeepseekSparseAttnBackend(
  
          self.forward_metadata = metadata
  
@@ -12803,7 +12814,7 @@ index 9369ad2896..9af140747d 100644
      def init_forward_metadata_replay_cuda_graph_from_precomputed(
          self,
          bs: int,
-@@ -1728,6 +2775,45 @@ class DeepseekSparseAttnBackend(
+@@ -1728,6 +2776,45 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.decode_cuda_graph_metadata[bs]
  
@@ -12849,7 +12860,7 @@ index 9369ad2896..9af140747d 100644
          # Track whether fused kernel succeeded
          fused_kernel_succeeded = False
  
-@@ -1848,27 +2934,143 @@ class DeepseekSparseAttnBackend(
+@@ -1848,27 +2935,143 @@ class DeepseekSparseAttnBackend(
                  flashmla_metadata = metadata.flashmla_metadata.slice(slice(0, size + 1))
                  flashmla_metadata.copy_(precomputed.flashmla_metadata)
  
@@ -13007,7 +13018,7 @@ index 9369ad2896..9af140747d 100644
          self.forward_metadata = metadata
  
      def forward_extend(
-@@ -1901,6 +3103,17 @@ class DeepseekSparseAttnBackend(
+@@ -1901,6 +3104,17 @@ class DeepseekSparseAttnBackend(
              else self.dsa_prefill_impl
          )
  
@@ -13025,7 +13036,7 @@ index 9369ad2896..9af140747d 100644
          if dsa_impl == "trtllm" and not self.use_mha:
              return self._forward_trtllm(
                  q,
-@@ -1957,7 +3170,9 @@ class DeepseekSparseAttnBackend(
+@@ -1957,7 +3171,9 @@ class DeepseekSparseAttnBackend(
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
@@ -13036,7 +13047,7 @@ index 9369ad2896..9af140747d 100644
              )
          else:
              q_all = q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim)
-@@ -2046,6 +3261,10 @@ class DeepseekSparseAttnBackend(
+@@ -2046,6 +3262,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -13047,7 +13058,7 @@ index 9369ad2896..9af140747d 100644
              )
          elif dsa_impl in ("flashmla_sparse", "flashmla_sparse_q8"):
              if topk_transform_method == TopkTransformMethod.RAGGED:
-@@ -2153,16 +3372,35 @@ class DeepseekSparseAttnBackend(
+@@ -2153,16 +3373,35 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
              )
          elif dsa_impl == "fa3":
@@ -13088,7 +13099,7 @@ index 9369ad2896..9af140747d 100644
                  sm_scale=layer.scaling,
                  logit_cap=layer.logit_cap,
                  page_size=1,
-@@ -2202,7 +3440,10 @@ class DeepseekSparseAttnBackend(
+@@ -2202,7 +3441,10 @@ class DeepseekSparseAttnBackend(
          metadata = self.forward_metadata
          assert causal, "DSA is causal only"
  
@@ -13100,7 +13111,7 @@ index 9369ad2896..9af140747d 100644
              return self._forward_trtllm(
                  q,
                  k,
-@@ -2239,7 +3480,9 @@ class DeepseekSparseAttnBackend(
+@@ -2239,7 +3481,9 @@ class DeepseekSparseAttnBackend(
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
@@ -13111,7 +13122,7 @@ index 9369ad2896..9af140747d 100644
              )
              # Caller passed split q_nope / q_rope; we'll need to concat below if
              # the chosen impl wants q_all.
-@@ -2272,7 +3515,7 @@ class DeepseekSparseAttnBackend(
+@@ -2272,7 +3516,7 @@ class DeepseekSparseAttnBackend(
                  page_size=1,
              )
  
@@ -13120,7 +13131,7 @@ index 9369ad2896..9af140747d 100644
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashmla_sparse(
-@@ -2283,7 +3526,7 @@ class DeepseekSparseAttnBackend(
+@@ -2283,7 +3527,7 @@ class DeepseekSparseAttnBackend(
                  v_head_dim=layer.v_head_dim,
                  topk_length=metadata.dsa_cache_seqlens_int32,
              )
@@ -13129,7 +13140,7 @@ index 9369ad2896..9af140747d 100644
              if q_all is None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashinfer_sparse_mla(
-@@ -2294,7 +3537,7 @@ class DeepseekSparseAttnBackend(
+@@ -2294,7 +3538,7 @@ class DeepseekSparseAttnBackend(
                  sm_scale=layer.scaling,
                  skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              )
@@ -13138,7 +13149,7 @@ index 9369ad2896..9af140747d 100644
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashmla_kv(
-@@ -2307,7 +3550,7 @@ class DeepseekSparseAttnBackend(
+@@ -2307,7 +3551,7 @@ class DeepseekSparseAttnBackend(
                  metadata=metadata,
                  page_table_1=page_table_1,
              )
@@ -13147,7 +13158,7 @@ index 9369ad2896..9af140747d 100644
              # Cat-skip (HIP-only): when caller passes q_rope=None on HIP, q_all
              # has already been set to a zero-copy view of q in the else branch
              # above and we can reuse it directly. The `not _is_hip` clause keeps
-@@ -2320,8 +3563,12 @@ class DeepseekSparseAttnBackend(
+@@ -2320,8 +3564,12 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -13161,7 +13172,7 @@ index 9369ad2896..9af140747d 100644
              return self._forward_fa3(
                  q_rope=q_rope,
                  kv_cache=kv_cache,
-@@ -2336,7 +3583,7 @@ class DeepseekSparseAttnBackend(
+@@ -2336,7 +3584,7 @@ class DeepseekSparseAttnBackend(
                  logit_cap=layer.logit_cap,
                  page_size=1,
              )
@@ -13170,7 +13181,7 @@ index 9369ad2896..9af140747d 100644
              if q_all is None or not _is_hip:
                  q_all = torch.cat([q_nope, q_rope], dim=-1)
              return self._forward_aiter(
-@@ -2349,7 +3596,7 @@ class DeepseekSparseAttnBackend(
+@@ -2349,7 +3597,7 @@ class DeepseekSparseAttnBackend(
              )
  
          else:
@@ -13179,7 +13190,7 @@ index 9369ad2896..9af140747d 100644
  
      def _forward_fa3(
          self,
-@@ -2369,13 +3616,21 @@ class DeepseekSparseAttnBackend(
+@@ -2369,13 +3617,21 @@ class DeepseekSparseAttnBackend(
          k_rope_cache = kv_cache[:, :, v_head_dim:]
          c_kv_cache = kv_cache[:, :, :v_head_dim]
          qk_rope_dim = k_rope_cache.shape[-1]
@@ -13204,7 +13215,7 @@ index 9369ad2896..9af140747d 100644
              page_table=page_table,
              cache_seqlens=cache_seqlens,
              cu_seqlens_q=cu_seqlens_q,
-@@ -2783,6 +4038,7 @@ class DeepseekSparseAttnBackend(
+@@ -2783,6 +4039,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -13212,7 +13223,7 @@ index 9369ad2896..9af140747d 100644
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -2927,9 +4183,34 @@ class DeepseekSparseAttnBackend(
+@@ -2927,9 +4184,34 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -13247,7 +13258,7 @@ index 9369ad2896..9af140747d 100644
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3129,39 +4410,50 @@ class DeepseekSparseAttnBackend(
+@@ -3129,39 +4411,50 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.forward_metadata
  
@@ -13325,7 +13336,7 @@ index 9369ad2896..9af140747d 100644
                  if is_cp_v2_active(forward_batch):
                      k, k_rope = get_cp_strategy().all_gather_dsa_trtllm_fp8_kv(
                          forward_batch, k, k_rope
-@@ -3219,6 +4511,12 @@ class DeepseekSparseAttnBackend(
+@@ -3219,6 +4512,12 @@ class DeepseekSparseAttnBackend(
                  topk_indices=topk_indices,
                  page_size=1,
              )
@@ -13338,7 +13349,7 @@ index 9369ad2896..9af140747d 100644
  
          q_scale = 1.0
          k_scale = (
-@@ -3264,11 +4562,16 @@ class DeepseekSparseAttnBackend(
+@@ -3264,11 +4563,16 @@ class DeepseekSparseAttnBackend(
              block_tables=block_tables,
              seq_lens=seq_lens,
              max_seq_len=metadata.max_seq_len_k,
@@ -13356,7 +13367,7 @@ index 9369ad2896..9af140747d 100644
          )
  
          return out
-@@ -3302,13 +4605,11 @@ class DeepseekSparseAttnBackend(
+@@ -3302,13 +4606,11 @@ class DeepseekSparseAttnBackend(
          """
          Decide all attention prefill dispatch strategies for this batch.
          """
@@ -13375,7 +13386,7 @@ index 9369ad2896..9af140747d 100644
  
          # Decide MHA vs MLA
          if is_in_tc_piecewise_cuda_graph() or is_in_breakable_cuda_graph():
-@@ -3455,6 +4756,19 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3455,6 +4757,19 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -13395,7 +13406,7 @@ index 9369ad2896..9af140747d 100644
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3588,6 +4902,16 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3588,6 +4903,16 @@ class DeepseekSparseAttnMultiStepBackend:
                      precomputed.seqlens_expanded_size,
                  )
  
@@ -13412,7 +13423,7 @@ index 9369ad2896..9af140747d 100644
                  # Copy remaining backends one by one (if > 3 backends)
                  for i in range(3, self.speculative_num_steps - 1):
                      self.attn_backends[
-@@ -3616,15 +4940,36 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3616,15 +4941,36 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:

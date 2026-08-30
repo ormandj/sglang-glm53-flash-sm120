@@ -1,6 +1,13 @@
 # Changelog
 
-## v0.1.0-rc.58 (current-main rebase with upstream PR revisions, not yet built or qualified)
+## v0.1.0-rc.59 (current-main rebase with upstream PR revisions, not yet built or qualified)
+
+- Supersedes the built-but-unqualified v0.1.0-rc.58, whose first serving
+  start crash-looped on a rebase fallout: the merge kept upstream's trimmed
+  import lists, orphaning `is_sm120_supported` in the GLM SM120 prenorm hook
+  and `is_sm100_supported` in the DSA ctx-lens guard. Both imports are
+  restored and `ruff --select F821` over `python/sglang/srt` reports zero
+  undefined names.
 
 - Supersedes the unpublished v0.1.0-rc.57, whose image build failed at the
   in-image source assertion layer: the fused-MHC ownership assert still
@@ -29,7 +36,7 @@
 - 55 registered unit/CUDA tests for the merged tree pass in the rc56 image
   environment, and the GLM model modules import cleanly against the
   refactored upstream configuration layer.
-- Uses fresh cache schema `v45`. This candidate remains unqualified pending
+- Uses fresh cache schema `v46`. This candidate remains unqualified pending
   the exact-image GPU gate, sustained C4 serving, and matched baselines.
 
 ## v0.1.0-rc.56 (graph-referenced MoE workspace pinning fix, not yet built or qualified)
