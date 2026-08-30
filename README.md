@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.48`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.48`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.49`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.49`.
 
-**v0.1.0-rc.48 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.49 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -62,27 +62,27 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v35` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v36` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
 The preceding capture-ownership change remains: every full CUDA graph shape
 owns the optimized MHC split-K scratch tensors captured by the standalone
-prenorm and fused post/pre paths. The v0.1.0-rc.48 correctness change extends
-the same bounded ownership to the compiled DSA head-gate output consumed by
-captured top-k kernels. Recapturing a shape replaces its prior owners, backend
-cleanup releases them, and target and MTP draft backends keep separate owner
-sets. Calls outside full-graph capture do not retain state, while CUDA capture
-without an owner scope fails explicitly instead of silently leaving a stale
-address. All execution modes retain the same compiled gate math, preserving
-the optimized prefill, verification, draft, and decode paths.
+prenorm and fused post/pre paths. v0.1.0-rc.49 extends the same bounded
+ownership to the compiled DSA head-gate output consumed by captured top-k
+kernels even when SGLang encloses the model in `torch.compile`. Only the Python
+owner handoff is kept outside Dynamo; the gate math remains compiled.
+Recapturing a shape replaces its prior owners, backend cleanup releases them,
+and target and MTP draft backends keep separate owner sets. Calls outside a
+full-graph owner scope do not retain state or change supported breakable-backend
+behavior.
 
-This replaces v0.1.0-rc.46's eager-extend experiment. Sustained exact-image
-serving disproved that boundary when all 527 live allocator entries were
-overwritten by plausible signed-FP32 activations immediately after captured C4
-decode began. The capture-scoped owner fixes the address lifetime directly;
-model values, quantization, vision, MTP, KV format, and graph shapes do not
-change.
+This replaces v0.1.0-rc.48's incomplete direct-call ownership wrapper. That
+image passed the focused direct GPU gate, then failed in sustained C4 wave 10
+with all 527 allocator entries overwritten. A separate exact-image diagnostic
+reported one retained owner for the direct call and zero through the enclosing
+compile path. The disabled ownership boundary fixes that concrete gap without
+changing model values, quantization, vision, MTP, KV format, or graph shapes.
 
 The candidate also carries debug-gated allocator and unified-radix probes. The
 exact v0.1.0-rc.36 diagnostic first observed the bad whole-tree state
@@ -94,7 +94,7 @@ value to its node, parent, key length, storage pointer and offset, preserves an
 exact snapshot across each action, and rejects any allocator free whose byte
 range overlaps a reachable Full value. The checks are inactive in ordinary
 serving and remain diagnostic; bounded ownership of the captured MHC scratch
-and compiled DSA gate output is the v0.1.0-rc.48 runtime fix.
+and compiled DSA gate output is the v0.1.0-rc.49 runtime fix.
 
 The preceding v0.1.0-rc.42 change closes a diagnostic-ordering gap exposed by
 the v0.1.0-rc.41
@@ -130,7 +130,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.48 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.49 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

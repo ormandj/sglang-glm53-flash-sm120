@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.0-rc.49 (outer-compile ownership candidate, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `de5b13df5da97a70b290157b44e03296ea9e74c5` and the reproducible patched tree
+  to `8d99bf2e8b5eab0a0653c2015e30e979bd9e068c`.
+- Records the exact v0.1.0-rc.48 failure: nine C4 waves completed before wave
+  10 overwrote all 527 live allocator entries. A separate exact-image test
+  reproduced the implementation gap directly: the gate wrapper retained one
+  owner when called directly and zero through SGLang's enclosing
+  `torch.compile` path.
+- Keeps the DSA gate math compiled while placing only the Python capture-owner
+  handoff behind `torch.compiler.disable`, so Dynamo cannot fold away the
+  active capture scope. Removes the prior missing-scope hard failure to avoid a
+  regression on the supported breakable backend.
+- Adds a CPU outer-compile regression, CUDA outer-compile retention, and real
+  CUDA capture/replay coverage. The final source shape incorporates a read-only
+  Claude review. Model values, quantization, vision, MTP, FP8 KV, DSA kernels,
+  and graph shapes are unchanged. Uses fresh cache schema `v36`; this candidate
+  remains unqualified pending exact-image GPU tests, sustained serving, and
+  matched startup/prefill/decode measurements.
+
 ## v0.1.0-rc.48 (test correction, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to
