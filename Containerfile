@@ -6,8 +6,8 @@
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=52
-ARG GLM53_CACHE_SCHEMA=v39
+ARG GLM53_RELEASE_CANDIDATE=53
+ARG GLM53_CACHE_SCHEMA=v40
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
@@ -15,8 +15,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f8
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=cdbfe90b4a6c728e03e6520862d792501b3a97bb
 ARG GLM53_SGLANG_UPSTREAM_TREE=68a9d2477cf06c8e0a737997439272ebdc2da1c8
-ARG GLM53_SGLANG_TREE=c7ba3809e6a4c976dc73b4e94eba71e04f80adf4
-ARG GLM53_SGLANG_PATCH_SHA256=7f8fcfe7fe1a135b3dd69699fc747d071c8bb9c43e795d1141e0c2567739ad5a
+ARG GLM53_SGLANG_TREE=91dbea66838d48d4c80c2cb25ee834d0199ee90a
+ARG GLM53_SGLANG_PATCH_SHA256=65b3da8e41a0e5a0e26df31443cd552f6b8e282ad491f7d59db7c4a10a34aad4
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=e425c7b029ca90d5d01ff207913b070863d35a5b
@@ -220,7 +220,8 @@ paged_logits_owner_source=inspect.getsource(dsa_indexer_kpool.IndexerKPool._reta
 assert '@torch.compiler.disable' in paged_logits_owner_source; \
 assert 'retain_full_cuda_graph_owner(logits)' in paged_logits_owner_source; \
 assert 'register_graph_buffer(logits' in paged_logits_owner_source; \
-assert '_retain_paged_logits_capture_owner' in inspect.getsource(dsa_indexer_kpool.IndexerKPool._get_topk_paged); \
+paged_topk_source=inspect.getsource(dsa_indexer_kpool.IndexerKPool._get_topk_paged); \
+assert paged_topk_source.index('_retain_paged_logits_capture_owner(logits, layer_id)') < paged_topk_source.index('topk_result = self._topk_from_kpool_logits('); \
 assert callable(kpool_fp8_index.precompile_index_prefix_gather); \
 assert callable(flashinfer_cutlass.precompile_w4a16_prefill_routes); \
 assert '(256, 320, 512, 1024, 2048, 4096, 8192)' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \

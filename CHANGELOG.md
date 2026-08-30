@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.0-rc.53 (pre-top-k logits ownership candidate, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `aae81abce55f5c894a6a072fc7f8b6853935b55e` and the reproducible patched tree
+  to `91dbea66838d48d4c80c2cb25ee834d0199ee90a`.
+- Records the v0.1.0-rc.52 result: its complete focused GPU suite passed, but
+  the exact C4 serving profile failed during cold wave 1. The radix overwrite
+  covered 26,880 int64 slots whose halves decode as 53,760 plausible FP32
+  scores, exactly the target-verify paged-logits shape `24 x 2240`.
+- Moves the disabled paged-logits owner handoff before fused top-k and returns
+  the real DeepGEMM view through that boundary. The preceding post-consumer
+  handoff did not prevent the exact-shape overwrite even though its synthetic
+  ownership test passed. No DSA kernel, tensor value, graph shape,
+  quantization, vision, MTP, or KV format changes.
+- Adds an exact-shape CUDA regression that executes the real DeepGEMM paged-MQA
+  producer under the served outer compile mode, verifies capture ownership,
+  and confirms another CUDA graph sharing the pool cannot reuse or overwrite
+  the owned allocation. A read-only Claude review rejected broad method-level
+  disabling and unproven top-k retention; both were removed from this scoped
+  candidate.
+- Uses fresh cache schema `v40`. This candidate remains unqualified pending the
+  exact-image GPU gate, sustained C4 serving, and matched memory/performance.
+
 ## v0.1.0-rc.52 (paged-logits ownership candidate, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to
