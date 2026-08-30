@@ -16724,7 +16724,7 @@ index 851d32db6422fe0c53dc71e695715b1af66d9cb9..db2af2c4ab3d891979ec4f08d21b727d
          raise NotImplementedError()
  
 diff --git a/python/sglang/srt/mem_cache/allocator/paged.py b/python/sglang/srt/mem_cache/allocator/paged.py
-index f21c077f623b778c715a5ffdeae6815619a8b7df..8c3902b169a4e46cbf2ae5e4b19cd83424920a7b 100755
+index f21c077f623b778c715a5ffdeae6815619a8b7df..256e7d222c028799dfcd1b70c4ed01e7ea11b031 100755
 --- a/python/sglang/srt/mem_cache/allocator/paged.py
 +++ b/python/sglang/srt/mem_cache/allocator/paged.py
 @@ -28,6 +28,7 @@ from sglang.kernels.ops.memory.allocator import (
@@ -16870,7 +16870,7 @@ index f21c077f623b778c715a5ffdeae6815619a8b7df..8c3902b169a4e46cbf2ae5e4b19cd834
          ps = self.page_size
          offset = start_pos % ps
          if offset == 0:
-@@ -308,10 +368,90 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
+@@ -308,10 +368,100 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
          assert len(torch.unique(pages)) == len(pages)
  
      def _release_page_ids(self, *page_ids: torch.Tensor):
@@ -16902,17 +16902,32 @@ index f21c077f623b778c715a5ffdeae6815619a8b7df..8c3902b169a4e46cbf2ae5e4b19cd834
 +        if pages.is_cuda:
 +            torch.cuda.synchronize(pages.device)
 +
++    def _debug_check_pages_in_range(
++        self, pages: torch.Tensor, boundary: str
++    ) -> None:
++        try:
++            maybe_sync_detect_oob(
++                pages,
++                1,
++                self.num_pages + 1,
++                f"PagedTokenToKVPoolAllocator.free_pages at {boundary}",
++            )
++        except AssertionError as error:
++            from sglang.srt.layers.attention.dsa.graph_buffer_lifetime import (
++                describe_graph_buffer_overlap,
++            )
++
++            raise AssertionError(
++                f"{error} "
++                f"dsa_graph_buffers={describe_graph_buffer_overlap(pages)}"
++            ) from error
++
 +    def _debug_check_free_pages(self, boundary: str) -> None:
 +        if not envs.SGLANG_ENABLE_ASYNC_ASSERT.get():
 +            return
 +        pages = self.free_pages
 +        self._debug_sync_pages(pages)
-+        maybe_sync_detect_oob(
-+            pages,
-+            1,
-+            self.num_pages + 1,
-+            f"PagedTokenToKVPoolAllocator.free_pages at {boundary}",
-+        )
++        self._debug_check_pages_in_range(pages, boundary)
 +        expected = self._debug_free_pages_snapshot
 +        if expected is None:
 +            return
@@ -16948,12 +16963,7 @@ index f21c077f623b778c715a5ffdeae6815619a8b7df..8c3902b169a4e46cbf2ae5e4b19cd834
 +            return
 +        pages = self.free_pages
 +        self._debug_sync_pages(pages)
-+        maybe_sync_detect_oob(
-+            pages,
-+            1,
-+            self.num_pages + 1,
-+            f"PagedTokenToKVPoolAllocator.free_pages at {boundary}",
-+        )
++        self._debug_check_pages_in_range(pages, boundary)
 +        self._debug_free_pages_snapshot = pages.detach().clone()
 +        self._debug_free_pages_metadata = self._debug_pages_metadata(pages)
 +        self._debug_free_pages_boundary = boundary
@@ -16961,7 +16971,7 @@ index f21c077f623b778c715a5ffdeae6815619a8b7df..8c3902b169a4e46cbf2ae5e4b19cd834
  
      def free_group_begin(self):
          super().free_group_begin()
-@@ -336,11 +476,21 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
+@@ -336,11 +486,21 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
          self.free_group = None
          self.free_page_reps_group = []
          self.release_pages = torch.empty((0,), dtype=torch.int64, device=self.device)
@@ -26042,10 +26052,10 @@ index 0000000000000000000000000000000000000000..64540d8f017db6496200ce331533b657
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..55d647972434ffc43cff80c0db0bfb5f034ebaaa
+index 0000000000000000000000000000000000000000..94ebc938503a83b2a566fc45a7a9a9d49dae0b54
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,61 @@
 +import unittest
 +from unittest.mock import patch
 +
@@ -26085,6 +26095,24 @@ index 0000000000000000000000000000000000000000..55d647972434ffc43cff80c0db0bfb5f
 +            "previous=after first operation current=before second operation",
 +        ):
 +            allocator._debug_check_free_pages("before second operation")
++
++    @patch("sglang.srt.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True)
++    @patch(
++        "sglang.srt.layers.attention.dsa.graph_buffer_lifetime."
++        "describe_graph_buffer_overlap",
++        return_value="logical-overlap:kpool-logits-layer-0",
++    )
++    def test_oob_includes_graph_buffer_overlap(self, describe_overlap, _):
++        allocator = self._allocator()
++        allocator.free_pages[0] = 4096
++
++        with self.assertRaisesRegex(
++            AssertionError,
++            "dsa_graph_buffers=logical-overlap:kpool-logits-layer-0",
++        ):
++            allocator._debug_check_free_pages("before alloc_extend")
++
++        describe_overlap.assert_called_once_with(allocator.free_pages)
 +
 +
 +if __name__ == "__main__":

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-rc.42 (diagnostic, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `f9ec47104ecc21474ce440551e6a4a665425d45a` and the reproducible patched tree
+  to `e073130636827c183bbc874b672f039d9cbaed1f`.
+- Appends captured DSA graph-buffer overlap or nearest-range context to the
+  first debug-gated paged-allocator range failure. This closes the diagnostic
+  ordering gap observed in the rc.41 full-speed control, where the initial
+  range assertion terminated the scheduler before the existing overlap report.
+- Uses fresh cache schema `v29`. Model values, quantization, vision, MTP,
+  serving kernels, tensor-retention policy, and synchronization policy are
+  unchanged. This candidate is fault localization, not a correctness fix or
+  qualification claim.
+
 ## v0.1.0-rc.41 (diagnostic, not yet built or qualified)
 
 - Fetches exact official SGLang and FlashInfer base commits, then applies the
