@@ -1,27 +1,28 @@
 # Changelog
 
-## v0.1.0-rc.54 (captured-writer range diagnostic, not yet built or qualified)
+## v0.1.0-rc.55 (allocator-history forensics diagnostic, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to
-  `d237deba307eec9efaaf8e5a3851e118b42163d8` and the reproducible patched tree
-  to `1f2fbca98eb5c0807f1de04a94bd3b053da99061`.
-- Records the v0.1.0-rc.53 result: its complete focused GPU suite passed and
-  18 distinct-prefix C4 waves completed, but wave 19 restarted the model after
-  all 527 allocator slots were overwritten by paired FP32 activations. The
-  cold exact `24 x 2240` paged-logits overwrite from v0.1.0-rc.52 did not recur.
-- Extends the existing bounded capture-time range probe to the retained
-  standalone-MHC split-K scratch and the returned Triton-KDA packed output.
-  This does not change ownership or tensor values; it lets the next allocator
-  assertion identify an exact overlap or report the nearest candidate range.
-- Hardens the paged-logits tests by asserting production retain-before-top-k
-  ordering, exact DeepGEMM storage identity, non-overlapping shared-pool ranges,
-  a pre-capture numerical oracle, and CUDA/DeepGEMM skip guards. These are
-  test-only changes to the already-served pre-top-k boundary.
-- Three read-only Claude reviews rejected broad retention, an incorrect extra
-  MHC compiler boundary, and persistent-state probe targets. Those changes are
-  absent; this candidate records only capture-pool objects that can carry the
-  observed stale-writer signal.
-- Uses fresh cache schema `v41`. This candidate remains unqualified pending the
+  `beb00a4370a3c800221c20d8f2f84daa98ebe3ca` and the reproducible patched tree
+  to `232e6d6955dcf5f6a696d0b4bbbb657c0761a05d`.
+- Records the v0.1.0-rc.54 result: its complete focused GPU suite passed and
+  16 distinct-prefix C4 waves completed, but wave 17 restarted the model after
+  all 527 allocator slots were again overwritten by paired FP32 activations.
+  The recorded MHC scratch ranges were about 763 GB from the damaged
+  allocation and the instrumented KDA packed path never executed, ruling both
+  out as the writer.
+- Replaces per-writer range guessing with allocator-history forensics: when
+  `SGLANG_MEM_FORENSICS_DIR` is set, the runtime records CUDA caching-allocator
+  history with Python allocation stacks from model-runner initialization,
+  snapshots it when the scheduler reaches its event loop (every graph capture
+  complete, capture-era blocks still alive), and snapshots again when the
+  paged-allocator corruption diagnostics fire. Mapping the damaged `data_ptr`
+  onto the readiness snapshot names the exact allocation site of the block a
+  captured CUDA graph still writes through.
+- No ownership, tensor-value, graph-shape, quantization, vision, MTP, or KV
+  format changes. Recording and dumps are inert unless the directory variable
+  is set, and dump failures are logged without masking the original assertion.
+- Uses fresh cache schema `v42`. This candidate remains unqualified pending the
   exact-image GPU gate and sustained C4 diagnostic serving.
 
 ## v0.1.0-rc.52 (paged-logits ownership candidate, not yet built or qualified)
