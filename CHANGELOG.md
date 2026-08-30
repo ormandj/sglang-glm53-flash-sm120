@@ -1,29 +1,33 @@
 # Changelog
 
-## v0.1.0-rc.55 (allocator-history forensics diagnostic, not yet built or qualified)
+## v0.1.0-rc.56 (graph-referenced MoE workspace pinning fix, not yet built or qualified)
 
-- Advances the internal SGLang integration working head to
-  `beb00a4370a3c800221c20d8f2f84daa98ebe3ca` and the reproducible patched tree
-  to `232e6d6955dcf5f6a696d0b4bbbb657c0761a05d`.
-- Records the v0.1.0-rc.54 result: its complete focused GPU suite passed and
-  16 distinct-prefix C4 waves completed, but wave 17 restarted the model after
-  all 527 allocator slots were again overwritten by paired FP32 activations.
-  The recorded MHC scratch ranges were about 763 GB from the damaged
-  allocation and the instrumented KDA packed path never executed, ruling both
-  out as the writer.
-- Replaces per-writer range guessing with allocator-history forensics: when
-  `SGLANG_MEM_FORENSICS_DIR` is set, the runtime records CUDA caching-allocator
-  history with Python allocation stacks from model-runner initialization,
-  snapshots it when the scheduler reaches its event loop (every graph capture
-  complete, capture-era blocks still alive), and snapshots again when the
-  paged-allocator corruption diagnostics fire. Mapping the damaged `data_ptr`
-  onto the readiness snapshot names the exact allocation site of the block a
-  captured CUDA graph still writes through.
-- No ownership, tensor-value, graph-shape, quantization, vision, MTP, or KV
-  format changes. Recording and dumps are inert unless the directory variable
-  is set, and dump failures are logged without masking the original assertion.
-- Uses fresh cache schema `v42`. This candidate remains unqualified pending the
-  exact-image GPU gate and sustained C4 diagnostic serving.
+- Advances the internal FlashInfer integration working head to
+  `a88945702895d065d3c9f18e3d5bf91d8b65e14c` and the reproducible patched tree
+  to `0259efac367535ccea76be9894c478232b9aee8e`. The SGLang tree is unchanged
+  from v0.1.0-rc.55 (`232e6d6955dcf5f6a696d0b4bbbb657c0761a05d`), keeping the
+  allocator-history forensics available.
+- Records the v0.1.0-rc.55 result: its exact-image GPU gate passed, four
+  distinct-prefix C4 waves completed, and the wave-5 corruption reproduced
+  with forensics recording active. The readiness and corruption snapshots
+  attribute the damage exactly: the 527-slot free_pages tensor was allocated
+  inside the virtual-address range of a freed 393,216-byte FlashInfer SM120
+  W4A16 MoE dispatch workspace. That workspace was cached during warmup,
+  recorded by the captured decode graphs, then replaced (and freed) by the
+  first serving prefill whose routed_rows exceeded its capacity; the graphs
+  kept replaying activation writes through the stale pointers. Removing
+  expandable segments turns the same stale write into the immediate illegal
+  memory access observed by the v0.1.0-rc.39 control.
+- Fixes the root cause in FlashInfer's SM12x MoE dispatch: workspaces handed
+  out while a CUDA graph capture is underway are marked graph-referenced, and
+  cache replacement or clear parks them in a process-lifetime list instead of
+  freeing them. No kernel, tensor-value, quantization, vision, MTP, KV format,
+  or graph-shape changes; the retained storage is one decode-sized workspace
+  per cache key.
+- Adds focused unit coverage for the mark/retire/clear semantics.
+- Uses fresh cache schema `v43`. This candidate remains unqualified pending
+  the exact-image GPU gate and sustained C4 serving beyond every historical
+  failure boundary.
 
 ## v0.1.0-rc.52 (paged-logits ownership candidate, not yet built or qualified)
 

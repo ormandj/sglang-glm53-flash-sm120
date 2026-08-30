@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.55`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.55`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.56`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.56`.
 
-**v0.1.0-rc.55 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.56 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -62,13 +62,13 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v42` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v43` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
 The preceding capture-ownership change remains: every full CUDA graph shape
 owns the optimized MHC split-K scratch tensors captured by the standalone
-prenorm and fused post/pre paths. v0.1.0-rc.55 retains the same bounded
+prenorm and fused post/pre paths. v0.1.0-rc.56 retains the same bounded
 ownership for the compiled DSA head-gate output and the FP32 paged-MQA logits
 consumed by captured top-k kernels even when SGLang encloses the model in
 `torch.compile`. The paged-logits handoff now returns the real DeepGEMM view
@@ -80,13 +80,16 @@ and target and MTP draft backends keep separate owner sets. Calls outside a
 full-graph owner scope do not retain state or change supported breakable-backend
 behavior.
 
-v0.1.0-rc.54 passed its exact-image GPU gate and 16 distinct-prefix C4 waves,
-but wave 17 restarted the model after all 527 allocator slots were again
-overwritten by paired FP32 activations. Its capture-time range records place
-the retained MHC scratch about 763 GB from the damaged allocation and show the
-instrumented KDA packed path never executed, ruling both out as the writer.
-This candidate leaves every runtime serving path unchanged and adds only
-allocator-history forensics.
+v0.1.0-rc.55's forensics run reproduced the corruption at wave 5 and
+attributed it exactly: the damaged free_pages tensor occupied the
+virtual-address range of a freed 393,216-byte FlashInfer SM120 W4A16 MoE
+dispatch workspace. That workspace was cached during capture warmup, recorded
+by the decode graphs, then replaced and freed by the first serving prefill
+whose routed_rows exceeded its capacity; every later replay wrote activations
+through the stale pointers. This candidate fixes that root cause: workspaces
+handed out during an active CUDA graph capture are marked graph-referenced
+and parked for the process lifetime on cache replacement or clear, never
+freed. The SGLang tree and every serving path are otherwise unchanged.
 
 When `SGLANG_MEM_FORENSICS_DIR` is set, the runtime records CUDA
 caching-allocator history with Python allocation stacks from model-runner
@@ -115,7 +118,7 @@ value to its node, parent, key length, storage pointer and offset, preserves an
 exact snapshot across each action, and rejects any allocator free whose byte
 range overlaps a reachable Full value. The checks are inactive in ordinary
 serving and remain diagnostic; bounded ownership of the captured MHC scratch
-compiled DSA gate output, and paged-MQA logits are the v0.1.0-rc.55 runtime
+compiled DSA gate output, and paged-MQA logits are the v0.1.0-rc.56 runtime
 candidate.
 
 The preceding v0.1.0-rc.42 change closes a diagnostic-ordering gap exposed by
@@ -154,7 +157,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.55 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.56 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

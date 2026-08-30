@@ -1,9 +1,9 @@
-# Running `v0.1.0-rc.55`
+# Running `v0.1.0-rc.56`
 
 ```bash
-export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.55
+export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.56
 export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-E4M3-K32-MSE
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v42
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v43
 ./examples/serve-glm53-flash.sh
 ```
 
@@ -24,4 +24,4 @@ CUDA_GRAPH_MAX_BS=1 \
 ```
 
 Use a new cache directory for every candidate/runtime/graph combination. Never
-reuse an earlier candidate's cache with `v0.1.0-rc.55`.
+reuse an earlier candidate's cache with `v0.1.0-rc.56`.

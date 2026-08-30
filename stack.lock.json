@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 55,
-    "candidate_tag": "v0.1.0-rc.55",
+    "candidate": 56,
+    "candidate_tag": "v0.1.0-rc.56",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v42"
+    "cache_schema": "v43"
   },
   "image": {
-    "tag": "v0.1.0-rc.55",
+    "tag": "v0.1.0-rc.56",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,8 +44,8 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "55"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v42"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "56"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v43"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
     {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
@@ -59,8 +59,8 @@
     {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
     {"arg": "GLM53_FLASHINFER_HEAD", "value": "e425c7b029ca90d5d01ff207913b070863d35a5b"},
     {"arg": "GLM53_FLASHINFER_UPSTREAM_TREE", "value": "cd9bf5311aa0521ce3972c2d93481a13836d5268"},
-    {"arg": "GLM53_FLASHINFER_TREE", "value": "6a957df7b48adac53ac27d2156b46bc2455ce157"},
-    {"arg": "GLM53_FLASHINFER_PATCH_SHA256", "value": "d57993d3fb2a90672c2a28a8f058194146ebbdafd5979df72995a7cc2ec506be"},
+    {"arg": "GLM53_FLASHINFER_TREE", "value": "0259efac367535ccea76be9894c478232b9aee8e"},
+    {"arg": "GLM53_FLASHINFER_PATCH_SHA256", "value": "d26f5846f686a4150bf6524ae892dd8b4fc4ad5a0929b238d2af3dc2b2844df7"},
     {"arg": "GLM53_MODELOPT_REPOSITORY", "value": "https://github.com/NVIDIA/Model-Optimizer.git"},
     {"arg": "GLM53_MODELOPT_VERSION", "value": "0.47.0rc0"},
     {"arg": "GLM53_MODELOPT_RELEASE_TAG", "value": "0.47.0rc0"},
@@ -90,14 +90,14 @@
       "package_version": "0.6.18",
       "head": "e425c7b029ca90d5d01ff207913b070863d35a5b",
       "upstream_tree": "cd9bf5311aa0521ce3972c2d93481a13836d5268",
-      "tree": "6a957df7b48adac53ac27d2156b46bc2455ce157",
+      "tree": "0259efac367535ccea76be9894c478232b9aee8e",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "d57993d3fb2a90672c2a28a8f058194146ebbdafd5979df72995a7cc2ec506be",
+      "patch_sha256": "d26f5846f686a4150bf6524ae892dd8b4fc4ad5a0929b238d2af3dc2b2844df7",
       "working_repository": "https://git.home.corenode.com/homelab/flashinfer.git",
       "working_branch": "integration/glm53-packed-kv528",
-      "working_head": "7cbd1aecd7581137f3b18dfbb4f47b09957dc7cf",
+      "working_head": "a88945702895d065d3c9f18e3d5bf91d8b65e14c",
       "upstream_main_base": "e425c7b029ca90d5d01ff207913b070863d35a5b",
-      "included_upstream_work": ["flashinfer#4802", "flashinfer#4687", "native 528-byte GLM NoPE KV rows with padded decode-row compatibility", "SM120 W4A16 TC-decode ultra-tile replay validation", "ModelOpt E2M1/E4M3-K32 W4A16 preparation"]
+      "included_upstream_work": ["flashinfer#4802", "flashinfer#4687", "native 528-byte GLM NoPE KV rows with padded decode-row compatibility", "SM120 W4A16 TC-decode ultra-tile replay validation", "ModelOpt E2M1/E4M3-K32 W4A16 preparation", "process-lifetime pinning of graph-referenced SM12x MoE workspaces across cache replacement and clear"]
     },
     "modelopt": {
       "repository": "https://github.com/NVIDIA/Model-Optimizer.git",
@@ -119,10 +119,10 @@
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "d57993d3fb2a90672c2a28a8f058194146ebbdafd5979df72995a7cc2ec506be",
+      "sha256": "d26f5846f686a4150bf6524ae892dd8b4fc4ad5a0929b238d2af3dc2b2844df7",
       "base_head": "e425c7b029ca90d5d01ff207913b070863d35a5b",
       "base_tree": "cd9bf5311aa0521ce3972c2d93481a13836d5268",
-      "result_tree": "6a957df7b48adac53ac27d2156b46bc2455ce157"
+      "result_tree": "0259efac367535ccea76be9894c478232b9aee8e"
     }
   ],
   "runtime_profile": {
@@ -147,6 +147,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.55 is not built or qualified"
+    "claims": "v0.1.0-rc.56 is not built or qualified"
   }
 }
