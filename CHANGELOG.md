@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.0-rc.48 (test correction, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `c049839c0ecaf0e5b79e8d8c46addcc34b84a568` and the reproducible patched tree
+  to `6c706bf37853ac96f2bb4a001fbe92bcaadf4455`.
+- Corrects the focused CPU regression so its mocked compiled DSA gate remains
+  active for both the capture-scoped call and the subsequent eager call. The
+  v0.1.0-rc.47 exact-image Job stopped at this test before executing any CUDA
+  assertion because the second call reached an intentionally uninitialized
+  synthetic `IndexerKPool` after the mock had ended.
+- Retains the complete v0.1.0-rc.47 runtime fix byte-for-byte: compiled DSA
+  gate outputs remain capture-owned per full graph shape, and model values,
+  quantization, vision, MTP, FP8 KV, optimized kernels, and graph shapes are
+  unchanged. Uses fresh cache schema `v35`; this candidate remains unqualified
+  pending the complete exact-image GPU gate and sustained serving.
+
 ## v0.1.0-rc.47 (correctness candidate, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to

@@ -25302,10 +25302,10 @@ index 0000000000000000000000000000000000000000..3b0e8ffd5f1e90595de888f29904358e
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..88e14ddcbf8c8f89350d8b5fb3c783b7e1421803
+index 0000000000000000000000000000000000000000..a659df80d6af1ec054dc246afea66a381f3c46a5
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +import unittest
 +from unittest import mock
 +
@@ -25346,14 +25346,15 @@ index 0000000000000000000000000000000000000000..88e14ddcbf8c8f89350d8b5fb3c783b7
 +
 +        with mock.patch.object(
 +            IndexerKPool, "_get_logits_head_gate_compiled", return_value=output
-+        ) as compiled_gate, collect_full_cuda_graph_owners() as owners:
-+            captured_result = indexer._get_logits_head_gate(
++        ) as compiled_gate:
++            with collect_full_cuda_graph_owners() as owners:
++                captured_result = indexer._get_logits_head_gate(
++                    mock.sentinel.hidden, mock.sentinel.scale
++                )
++
++            eager_result = indexer._get_logits_head_gate(
 +                mock.sentinel.hidden, mock.sentinel.scale
 +            )
-+
-+        eager_result = indexer._get_logits_head_gate(
-+            mock.sentinel.hidden, mock.sentinel.scale
-+        )
 +
 +        self.assertIs(captured_result, output)
 +        self.assertIs(eager_result, output)
