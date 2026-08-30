@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.42`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.42`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.43`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.43`.
 
-**v0.1.0-rc.42 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.43 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -62,9 +62,18 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v29` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v30` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
+
+The v0.1.0-rc.43 correctness change gives each full CUDA graph shape explicit
+ownership of the optimized MHC prenorm split-K scratch tensors captured by that
+graph. Recapturing a shape replaces its prior owners, and backend cleanup
+releases them. Warmup, eager execution, and replay do not append retained
+state. This preserves the optimized kernel and the complete decode graph set
+while preventing later radix allocations from reusing storage still addressed
+by a captured graph. Target and MTP draft graphs keep separate bounded owner
+sets because each full-graph backend owns its own capture state.
 
 The candidate also carries debug-gated allocator and unified-radix probes. The
 exact v0.1.0-rc.36 diagnostic first observed the bad whole-tree state
@@ -75,12 +84,14 @@ candidate synchronizes around every insert action, maps every reachable Full
 value to its node, parent, key length, storage pointer and offset, preserves an
 exact snapshot across each action, and rejects any allocator free whose byte
 range overlaps a reachable Full value. The checks are inactive in ordinary
-serving. This is fault localization, not a claimed runtime fix.
+serving and remain diagnostic; the bounded MHC graph ownership above is the
+v0.1.0-rc.43 runtime fix.
 
-This candidate also closes a diagnostic-ordering gap exposed by the rc.41
+The preceding v0.1.0-rc.42 change closes a diagnostic-ordering gap exposed by
+the v0.1.0-rc.41
 full-speed control: the first paged-allocator range failure now appends the
 captured DSA graph-buffer overlap or nearest-range context before the scheduler
-exits. This changes only debug-gated failure reporting; it does not change a
+exits. That change affects only debug-gated failure reporting; it does not change a
 serving kernel, tensor lifetime, model value, or synchronization policy.
 
 The exact v0.1.0-rc.19 FlashInfer TC-decode replay fix remains pinned. Its
@@ -110,7 +121,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.42 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.43 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

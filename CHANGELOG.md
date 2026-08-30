@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.0-rc.43 (correctness fix, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `46c49ca6696fe14d9290a55d0d8738b28a255f0d` and the reproducible patched tree
+  to `3b7a01864a7f87fb750191c15615676b32ce32d3`.
+- Makes full CUDA graphs retain the optimized MHC prenorm split-K scratch
+  tensors for the lifetime of each captured shape. Recapture replaces the
+  prior owners and graph cleanup releases them, so eager execution and graph
+  replay do not accumulate per-request state.
+- Keeps optimized MHC prenorm, full decode graphs, DSA backends, quantization,
+  vision, FP8 KV, and adaptive MTP enabled. It also adds focused ownership
+  regression coverage and corrects the allocator snapshot test's environment
+  mock target.
+- Uses fresh cache schema `v30`. This is a correctness candidate; it remains
+  unqualified until the exact image passes the in-image unit test and sustained
+  distinct-prefix C4 validation on the two RTX PRO 6000 Blackwell GPUs.
+
 ## v0.1.0-rc.42 (diagnostic, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to

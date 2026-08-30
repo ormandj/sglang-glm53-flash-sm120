@@ -3276,10 +3276,29 @@ index ba9b7a5c8cecc7d567aa7a779ddd684a6cd08438..6ed36d5e8a93d7f7160035ee1d81faac
          kv_buffer,
          cache_k_nope,
 diff --git a/python/sglang/kernels/ops/layernorm/mhc.py b/python/sglang/kernels/ops/layernorm/mhc.py
-index ebe4e3a8ad78a7e2cbaafd1728f0673e2fc5d7b9..b4a00c4419f7eda552f85d235478825c0f8db304 100644
+index ebe4e3a8ad78a7e2cbaafd1728f0673e2fc5d7b9..20d7c3289fe3233ecb823af44841b358b356eeb2 100644
 --- a/python/sglang/kernels/ops/layernorm/mhc.py
 +++ b/python/sglang/kernels/ops/layernorm/mhc.py
-@@ -1563,6 +1563,220 @@ def mhc_fused_post_pre(
+@@ -16,6 +16,9 @@ from sglang.srt.environ import envs
+ from sglang.srt.layers.attention.dsa.utils import is_dsa_prefill_cp_round_robin_split
+ from sglang.srt.layers.dp_attention import is_allocation_symmetric
+ from sglang.srt.layers.utils.common import strict_contiguous
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    retain_full_cuda_graph_owner,
++)
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -885,6 +888,8 @@ def mhc_pre(
+             partial_sqrsum = torch.empty(
+                 n_splits_pre, num_tokens, dtype=torch.float32, device=residual.device
+             )
++            retain_full_cuda_graph_owner(partial_out)
++            retain_full_cuda_graph_owner(partial_sqrsum)
+             kernel_0(
+                 residual_flat.view(num_tokens, hc_hidden_size),
+                 fn_flat,
+@@ -1563,6 +1568,220 @@ def mhc_fused_post_pre(
      )
  
  
@@ -19463,6 +19482,50 @@ index d7787a4c168711b2ad340f4e96a45b01bea0cb15..5100dd3f70b806dcc6f1051cd9bbf340
  
      def _prepare_forward_metadata_for_replay(
          self,
+diff --git a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
+index aa5b9f3db4c5beca8c2bc1168df7fe8d23c65847..baca919ea38d8ecc787cb1628e0fb64ea0645d51 100644
+--- a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
++++ b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
+@@ -30,6 +30,9 @@ from sglang.srt.distributed.device_communicators.pynccl_allocator import (
+ from sglang.srt.model_executor.runner_backend.base_cuda_graph_backend import (
+     BaseCudaGraphBackend,
+ )
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    collect_full_cuda_graph_owners,
++)
+ from sglang.srt.model_executor.runner_utils.pool import (
+     get_or_create_global_graph_memory_pool,
+     graph_pool_capture_scope,
+@@ -59,6 +62,7 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
+     ) -> None:
+         self._graphs: Dict[Any, torch.cuda.CUDAGraph] = {}
+         self._outputs: Dict[Any, Any] = {}
++        self._capture_owners: Dict[Any, tuple[Any, ...]] = {}
+         self._pool = None
+         self._cuda_graph_runner = cuda_graph_runner
+         self._device_module = cuda_graph_runner.device_module
+@@ -128,6 +132,7 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
+             graph_ctx = self._device_module.graph
+ 
+         with (
++            collect_full_cuda_graph_owners() as capture_owners,
+             graph_pool_capture_scope(),
+             graph_ctx(cuda_graph=graph, pool=self._pool, stream=self._capture_stream),
+         ):
+@@ -138,6 +143,7 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
+ 
+         self._graphs[shape_key] = graph
+         self._outputs[shape_key] = out
++        self._capture_owners[shape_key] = tuple(capture_owners)
+ 
+     def can_run(self, forward_batch: ForwardBatch, shape_key: ShapeKey) -> bool:
+         return shape_key in self._graphs
+@@ -159,4 +165,5 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
+     def cleanup(self) -> None:
+         self._graphs.clear()
+         self._outputs.clear()
++        self._capture_owners.clear()
+         self._pool = None
 diff --git a/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py b/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
 index 59f4a2e6b4d0d4daa0dc859b5143d39b7d96a404..19ae1cf5d6690b09872e37621dc26421d21842a6 100644
 --- a/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
@@ -19491,6 +19554,44 @@ index 59f4a2e6b4d0d4daa0dc859b5143d39b7d96a404..19ae1cf5d6690b09872e37621dc26421
          from sglang.srt.compilation.weak_ref_tensor import weak_ref_tensors
  
          return weak_ref_tensors(x)
+diff --git a/python/sglang/srt/model_executor/runner_utils/capture_owner.py b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b0fb64062de560febe6b4e0024578963d21e3891
+--- /dev/null
++++ b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
+@@ -0,0 +1,32 @@
++from __future__ import annotations
++
++from contextlib import contextmanager
++from contextvars import ContextVar
++from typing import Any, Iterator, Optional
++
++
++_full_cuda_graph_owners: ContextVar[Optional[list[Any]]] = ContextVar(
++    "full_cuda_graph_owners", default=None
++)
++
++
++@contextmanager
++def collect_full_cuda_graph_owners() -> Iterator[list[Any]]:
++    """Collect tensor owners whose addresses are recorded by one full graph."""
++
++    owners: list[Any] = []
++    token = _full_cuda_graph_owners.set(owners)
++    try:
++        yield owners
++    finally:
++        _full_cuda_graph_owners.reset(token)
++
++
++def retain_full_cuda_graph_owner(owner: Any) -> bool:
++    """Retain ``owner`` when called from an active full-graph capture."""
++
++    owners = _full_cuda_graph_owners.get()
++    if owners is None:
++        return False
++    owners.append(owner)
++    return True
 diff --git a/python/sglang/srt/model_loader/loader.py b/python/sglang/srt/model_loader/loader.py
 index dee6486b782b6670f47594a2d2a25b39c545230d..63b4e5c1d6d828425b54ae2167071114d6ec886a 100644
 --- a/python/sglang/srt/model_loader/loader.py
@@ -26052,10 +26153,10 @@ index 0000000000000000000000000000000000000000..64540d8f017db6496200ce331533b657
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..94ebc938503a83b2a566fc45a7a9a9d49dae0b54
+index 0000000000000000000000000000000000000000..3a68150f13c7dad0d456007c287baf2b09ac66d0
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,67 @@
 +import unittest
 +from unittest.mock import patch
 +
@@ -26078,13 +26179,17 @@ index 0000000000000000000000000000000000000000..94ebc938503a83b2a566fc45a7a9a9d4
 +        allocator._debug_free_pages_boundary = None
 +        return allocator
 +
-+    @patch("sglang.srt.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True)
++    @patch(
++        "sglang.srt.environ.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True
++    )
 +    def test_unchanged_state_passes(self, _):
 +        allocator = self._allocator()
 +        allocator._debug_capture_free_pages("after first operation")
 +        allocator._debug_check_free_pages("before second operation")
 +
-+    @patch("sglang.srt.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True)
++    @patch(
++        "sglang.srt.environ.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True
++    )
 +    def test_change_between_operations_is_attributed(self, _):
 +        allocator = self._allocator()
 +        allocator._debug_capture_free_pages("after first operation")
@@ -26096,7 +26201,9 @@ index 0000000000000000000000000000000000000000..94ebc938503a83b2a566fc45a7a9a9d4
 +        ):
 +            allocator._debug_check_free_pages("before second operation")
 +
-+    @patch("sglang.srt.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True)
++    @patch(
++        "sglang.srt.environ.envs.SGLANG_ENABLE_ASYNC_ASSERT.get", return_value=True
++    )
 +    @patch(
 +        "sglang.srt.layers.attention.dsa.graph_buffer_lifetime."
 +        "describe_graph_buffer_overlap",
@@ -26410,6 +26517,81 @@ index 0000000000000000000000000000000000000000..414623fc5c14ee646864264e7ce21ed8
 +    prepare_cp_forward.assert_called_once_with(batch)
 +    model_runner.attn_backend.init_forward_metadata.assert_called_once_with(batch)
 +    runner._execute_extend_cp_v2.assert_called_once()
+diff --git a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
+index 4987bce1f59d59e7ddd2f60e972207ec293d3a9a..b0dffd27e48bf6efb609cda98c8660a853462cda 100644
+--- a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
++++ b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
+@@ -20,7 +20,9 @@ profiler stepping) is pure-Python and runs on CPU.
+ """
+ 
+ import contextlib
++import gc
+ import unittest
++import weakref
+ from types import SimpleNamespace
+ from unittest import mock
+ 
+@@ -28,6 +30,9 @@ from sglang.srt.model_executor.runner.shape_key import ShapeKey
+ from sglang.srt.model_executor.runner_backend.full_cuda_graph_backend import (
+     FullCudaGraphBackend,
+ )
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    retain_full_cuda_graph_owner,
++)
+ from sglang.test.ci.ci_register import register_cpu_ci
+ from sglang.test.test_utils import CustomTestCase
+ 
+@@ -54,6 +59,7 @@ def _make_backend(runner):
+     backend = FullCudaGraphBackend.__new__(FullCudaGraphBackend)
+     backend._graphs = {}
+     backend._outputs = {}
++    backend._capture_owners = {}
+     backend._pool = None
+     backend._capture_stream = None
+     backend._memory_saver_adapter = None
+@@ -104,6 +110,42 @@ class TestCaptureOneNoProfiling(CustomTestCase):
+         self.assertEqual(backend._graphs[shape_key], "GRAPH")
+         self.assertIs(backend._outputs[shape_key], sentinel_out)
+ 
++    def test_retains_only_capture_owners_and_releases_on_replacement(self):
++        runner = _make_runner(enable_profile=False, profiler=None)
++        backend = _make_backend(runner)
++        shape_key = ShapeKey(size=4)
++        captured_refs = []
++
++        class Owner:
++            pass
++
++        def forward_fn():
++            owner = Owner()
++            if retain_full_cuda_graph_owner(owner):
++                captured_refs.append(weakref.ref(owner))
++            return object()
++
++        with mock.patch("torch.cuda.CUDAGraph", return_value="GRAPH-1"):
++            backend.capture_one(shape_key, forward_fn)
++
++        self.assertEqual(len(captured_refs), 1)
++        self.assertIsNotNone(captured_refs[0]())
++        self.assertEqual(len(backend._capture_owners[shape_key]), 1)
++
++        with mock.patch("torch.cuda.CUDAGraph", return_value="GRAPH-2"):
++            backend.capture_one(shape_key, forward_fn)
++        gc.collect()
++
++        self.assertEqual(len(captured_refs), 2)
++        self.assertIsNone(captured_refs[0]())
++        self.assertIsNotNone(captured_refs[1]())
++        self.assertEqual(len(backend._capture_owners[shape_key]), 1)
++
++        backend.cleanup()
++        gc.collect()
++        self.assertIsNone(captured_refs[1]())
++        self.assertEqual(backend._capture_owners, {})
++
+     def test_enable_flag_set_but_no_profiler_attr_does_not_step(self):
+         # The runner advertises the flag but never created a profiler; the
+         # getattr guard must keep capture_one on the non-profiling path.
 diff --git a/test/registered/unit/model_executor/test_pool_configurator.py b/test/registered/unit/model_executor/test_pool_configurator.py
 index 3412a18d274893d07911cb64d3e6d4ea36263e4f..752ece2d24c8ef414a6d0ba119161b05ef5b742d 100644
 --- a/test/registered/unit/model_executor/test_pool_configurator.py
