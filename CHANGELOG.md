@@ -1,6 +1,13 @@
 # Changelog
 
-## v0.1.0-rc.59 (current-main rebase with upstream PR revisions, not yet built or qualified)
+## v0.1.0-rc.60 (current-main rebase with upstream PR revisions, not yet built or qualified)
+
+- Supersedes v0.1.0-rc.59, whose serving start hit an `assert page_size ==
+  64` in the DSA KV pool: the upstream per-model override refactor moved the
+  DeepSeek/DSA family provider to `model_overrides/deepseek_v2.py` with its
+  own registration list, which omitted `Glm5NextForConditionalGeneration`, so
+  the DSA page-size default never fired. The architecture is now registered
+  with that provider.
 
 - Supersedes the built-but-unqualified v0.1.0-rc.58, whose first serving
   start crash-looped on a rebase fallout: the merge kept upstream's trimmed
@@ -36,7 +43,7 @@
 - 55 registered unit/CUDA tests for the merged tree pass in the rc56 image
   environment, and the GLM model modules import cleanly against the
   refactored upstream configuration layer.
-- Uses fresh cache schema `v46`. This candidate remains unqualified pending
+- Uses fresh cache schema `v47`. This candidate remains unqualified pending
   the exact-image GPU gate, sustained C4 serving, and matched baselines.
 
 ## v0.1.0-rc.56 (graph-referenced MoE workspace pinning fix, not yet built or qualified)

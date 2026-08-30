@@ -3849,6 +3849,26 @@ index ad7eda7e42..c29b34a6b3 100644
  
      if model_arch == "InternS2MobiusForConditionalGeneration":
          unsupported = []
+diff --git a/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py b/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py
+index e50d65be17..537f283f68 100644
+--- a/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py
++++ b/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py
+@@ -1,6 +1,6 @@
+ """Config-time override declarations for deepseek_v2.
+ 
+-Architectures: DeepseekV32ForCausalLM, DeepseekV3ForCausalLM, Dots3NoteForCausalLM, GlmMoeDsaForCausalLM, KimiK25ForConditionalGeneration, LongcatFlashForCausalLM, LongcatFlashForCausalLMNextN, MistralLarge3ForCausalLM, PixtralForConditionalGeneration.
++Architectures: DeepseekV32ForCausalLM, DeepseekV3ForCausalLM, Dots3NoteForCausalLM, Glm5NextForConditionalGeneration, GlmMoeDsaForCausalLM, KimiK25ForConditionalGeneration, LongcatFlashForCausalLM, LongcatFlashForCausalLMNextN, MistralLarge3ForCausalLM, PixtralForConditionalGeneration.
+ """
+ 
+ import logging
+@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
+     "MistralLarge3ForCausalLM",
+     "PixtralForConditionalGeneration",
+     "GlmMoeDsaForCausalLM",
++    "Glm5NextForConditionalGeneration",
+     "LongcatFlashForCausalLM",
+     "LongcatFlashForCausalLMNextN",
+     "Dots3NoteForCausalLM",
 diff --git a/python/sglang/srt/arg_groups/overrides.py b/python/sglang/srt/arg_groups/overrides.py
 index 27703d3b04..b459d7646f 100644
 --- a/python/sglang/srt/arg_groups/overrides.py
