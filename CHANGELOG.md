@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.0-rc.51 (replay oracle correction, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `d570a59039897ced3c3b25ec8521d8dfe0ddc252` and the reproducible patched tree
+  to `b60bacdca75653b1fa85952c3bb9ad2c162676fe`.
+- Corrects the real CUDA graph replay oracle to compare the first replay with
+  an already-executed outer-compiled reference. CUDA capture records the graph
+  but does not populate the captured output before replay; v0.1.0-rc.50's
+  synchronized pre-replay clone therefore still held stale storage.
+- Retains the v0.1.0-rc.49 runtime fix byte-for-byte. Both v0.1.0-rc.49 and
+  v0.1.0-rc.50 passed the CPU outer-compile regression and the CUDA direct and
+  outer owner assertions before their replay-oracle failures. Model values,
+  quantization, vision, MTP, FP8 KV, DSA kernels, and graph shapes are
+  unchanged. Uses fresh cache schema `v38`; this candidate remains unqualified
+  pending the complete GPU gate, sustained serving, and matched performance.
+
 ## v0.1.0-rc.50 (test synchronization, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to
