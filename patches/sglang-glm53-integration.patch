@@ -3276,10 +3276,16 @@ index ba9b7a5c8c..6ed36d5e8a 100644
          kv_buffer,
          cache_k_nope,
 diff --git a/python/sglang/kernels/ops/layernorm/mhc.py b/python/sglang/kernels/ops/layernorm/mhc.py
-index ebe4e3a8ad..553a6adea7 100644
+index ebe4e3a8ad..b560addab8 100644
 --- a/python/sglang/kernels/ops/layernorm/mhc.py
 +++ b/python/sglang/kernels/ops/layernorm/mhc.py
-@@ -16,6 +16,9 @@ from sglang.srt.environ import envs
+@@ -13,9 +13,15 @@ from sglang.srt.distributed.device_communicators.pynccl_allocator import (
+ )
+ from sglang.srt.distributed.parallel_state import get_tp_group
+ from sglang.srt.environ import envs
++from sglang.srt.layers.attention.dsa.graph_buffer_lifetime import (
++    register_graph_buffer,
++)
  from sglang.srt.layers.attention.dsa.utils import is_dsa_prefill_cp_round_robin_split
  from sglang.srt.layers.dp_attention import is_allocation_symmetric
  from sglang.srt.layers.utils.common import strict_contiguous
@@ -3289,16 +3295,18 @@ index ebe4e3a8ad..553a6adea7 100644
  
  logger = logging.getLogger(__name__)
  
-@@ -885,6 +888,8 @@ def mhc_pre(
+@@ -885,6 +891,10 @@ def mhc_pre(
              partial_sqrsum = torch.empty(
                  n_splits_pre, num_tokens, dtype=torch.float32, device=residual.device
              )
 +            retain_full_cuda_graph_owner(partial_out)
 +            retain_full_cuda_graph_owner(partial_sqrsum)
++            register_graph_buffer(partial_out, "mhc-pre-partial-out")
++            register_graph_buffer(partial_sqrsum, "mhc-pre-partial-sqrsum")
              kernel_0(
                  residual_flat.view(num_tokens, hc_hidden_size),
                  fn_flat,
-@@ -1414,6 +1419,8 @@ def mhc_fused_post_pre(
+@@ -1414,6 +1424,8 @@ def mhc_fused_post_pre(
          dtype=torch.float32,
          device=residual.device,
      )
@@ -3307,7 +3315,7 @@ index ebe4e3a8ad..553a6adea7 100644
      residual_cur = torch.empty_like(residual_flat)
  
      if num_tokens <= fma_token_threshold:
-@@ -1563,6 +1570,220 @@ def mhc_fused_post_pre(
+@@ -1563,6 +1575,220 @@ def mhc_fused_post_pre(
      )
  
  
@@ -6173,7 +6181,7 @@ index 4f630c1247..4225259982 100644
                  weights,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000000..795147670c
+index 0000000000..39f4c0a4af
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 @@ -0,0 +1,1811 @@
@@ -7136,9 +7144,9 @@ index 0000000000..795147670c
 +                clean_logits=False,
 +            )
 +
-+        # The disabled helper must return logits before their final consumer.
-+        # This makes the real DeepGEMM view cross the outer Dynamo boundary;
-+        # retaining it only after top-k lets the allocation remain internal.
++        # Return logits through a disabled boundary before their final consumer.
++        # The rc52 post-consumer boundary left an exact paged-logits overwrite;
++        # rc53 removed that signature, although a different writer remained.
 +        logits = self._retain_paged_logits_capture_owner(logits, layer_id)
 +        page_table_1, topk_offsets, _ = self._kpool_fused_topk_mapping(metadata)
 +        topk_result = self._topk_from_kpool_logits(
@@ -14594,10 +14602,28 @@ index 9872cf5473..70b8b5af21 100644
          # flash_kda wants A_log [H] fp32 and dt_bias [H, K] fp32. The model
          # stores A_log as [1, 1, H, 1] and dt_bias as 1D [H*K], so reshape both.
 diff --git a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
-index 400a5303c7..8ecbad1589 100644
+index 400a5303c7..09d94280b3 100644
 --- a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 +++ b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
-@@ -171,7 +171,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
+@@ -2,6 +2,9 @@ from typing import Optional
+ 
+ import torch
+ 
++from sglang.srt.layers.attention.dsa.graph_buffer_lifetime import (
++    register_graph_buffer,
++)
+ from sglang.srt.layers.attention.linear.kernels.kernel_backend import (
+     LinearAttnKernelBase,
+ )
+@@ -54,6 +57,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
+         """
+         B = mixed_qkv.shape[0]
+         out = mixed_qkv.new_empty(B, 1, num_v_heads, head_v_dim)
++        register_graph_buffer(out, "kda-packed-output")
+ 
+         # KDA ReplaySSM buffered decode: drop-in for the packed decode, same
+         # args plus the three per-layer ring caches + the per-row write cursor
+@@ -171,7 +175,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
          intermediate_states_buffer: torch.Tensor,
          intermediate_state_indices: torch.Tensor,
          cache_steps: int,
@@ -14606,7 +14632,7 @@ index 400a5303c7..8ecbad1589 100644
          lower_bound: Optional[float] = None,
          # fused ReplaySSM ring-write (dense verify only; off elsewhere).
          cache_ring: bool = False,
-@@ -229,6 +229,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
+@@ -229,6 +233,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
          A_log: Optional[torch.Tensor] = None,
          dt_bias: Optional[torch.Tensor] = None,
          lower_bound: Optional[float] = None,
@@ -14614,7 +14640,7 @@ index 400a5303c7..8ecbad1589 100644
          return_intermediate_states: bool = False,
          **kwargs,
      ) -> tuple[torch.Tensor, torch.Tensor | None]:
-@@ -245,5 +246,6 @@ class TritonKDAKernel(LinearAttnKernelBase):
+@@ -245,5 +250,6 @@ class TritonKDAKernel(LinearAttnKernelBase):
              A_log=A_log,
              dt_bias=dt_bias,
              lower_bound=lower_bound,
@@ -24671,10 +24697,10 @@ index 81e0b08b0b..a168c4253f 100644
      sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
 new file mode 100644
-index 0000000000..e36a65435e
+index 0000000000..f8c88e7ee6
 --- /dev/null
 +++ b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,224 @@
 +import pytest
 +import torch
 +
@@ -24802,9 +24828,12 @@ index 0000000000..e36a65435e
 +
 +@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 +def test_deepgemm_paged_logits_owner_survives_shared_pool_capture():
-+    import deep_gemm
++    if torch.cuda.get_device_capability()[0] < 9:
++        pytest.skip("DeepGEMM paged MQA requires SM90 or newer")
++    deep_gemm = pytest.importorskip("deep_gemm")
 +
 +    torch.manual_seed(52)
++    torch._dynamo.reset()
 +    batch_size = 24
 +    max_context_len = 2240
 +    block_size = 64
@@ -24851,7 +24880,7 @@ index 0000000000..e36a65435e
 +    compiled_outer = torch.compile(
 +        outer, mode="max-autotune-no-cudagraphs", dynamic=False
 +    )
-+    compiled_outer(q_fp8)
++    expected = compiled_outer(q_fp8).detach().clone()
 +    torch.cuda.synchronize()
 +
 +    capture_stream = torch.cuda.Stream()
@@ -24867,26 +24896,35 @@ index 0000000000..e36a65435e
 +        with torch.cuda.graph(graph, pool=pool, stream=capture_stream):
 +            captured_output = compiled_outer(q_fp8)
 +
-+    del captured_output
-+    graph.replay()
-+    torch.cuda.synchronize()
-+
 +    assert len(capture_owners) == 1
 +    owner = capture_owners[0]
 +    assert owner.shape == (batch_size, max_context_len)
 +    assert owner.dtype == torch.float32
-+    expected = owner.detach().clone()
++    assert (
++        owner.untyped_storage().data_ptr()
++        == captured_output.untyped_storage().data_ptr()
++    )
++
++    graph.replay()
++    torch.cuda.synchronize()
++    torch.testing.assert_close(owner[:, :1], expected)
++    del captured_output
++    expected_owner = owner.detach().clone()
 +
 +    other_graph = torch.cuda.CUDAGraph()
 +    with torch.cuda.graph(other_graph, pool=pool, stream=capture_stream):
 +        other = torch.empty_like(owner)
 +        other.fill_(17.0)
-+    assert other.data_ptr() != owner.data_ptr()
++    owner_start = owner.untyped_storage().data_ptr()
++    owner_end = owner_start + owner.untyped_storage().nbytes()
++    other_start = other.untyped_storage().data_ptr()
++    other_end = other_start + other.untyped_storage().nbytes()
++    assert owner_end <= other_start or other_end <= owner_start
 +    del other
 +
 +    other_graph.replay()
 +    torch.cuda.synchronize()
-+    torch.testing.assert_close(owner, expected)
++    torch.testing.assert_close(owner, expected_owner)
 diff --git a/test/registered/unit/attention/test_dsa_multistep_dedup.py b/test/registered/unit/attention/test_dsa_multistep_dedup.py
 new file mode 100644
 index 0000000000..7378ed6f9f
@@ -25531,15 +25569,16 @@ index 0000000000..3b0e8ffd5f
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 new file mode 100644
-index 0000000000..28f5e0898a
+index 0000000000..b29f8f462a
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,213 @@
 +import unittest
 +from unittest import mock
 +
 +import torch
 +
++from sglang.srt.layers.attention.dsa import dsa_indexer_kpool as kpool_module
 +from sglang.srt.layers.attention.dsa.dsa_indexer_kpool import IndexerKPool
 +from sglang.srt.model_executor.runner_utils.capture_owner import (
 +    collect_full_cuda_graph_owners,
@@ -25560,6 +25599,75 @@ index 0000000000..28f5e0898a
 +
 +
 +class TestDSALogitsGateOwner(unittest.TestCase):
++    def test_paged_path_retains_real_logits_before_topk(self):
++        indexer = object.__new__(IndexerKPool)
++        q_fp8 = torch.empty(24, 32, 128)
++        weights = torch.empty(24, 32, 1)
++        seqlens = torch.full((24,), 2240, dtype=torch.int32)
++        block_tables = torch.zeros(24, 35, dtype=torch.int32)
++        kv_cache = torch.empty(1, 64 * 132)
++        logits = torch.empty(24, 2240)
++        topk = torch.empty(24, 2051, dtype=torch.int32)
++        events = []
++
++        forward_batch = mock.Mock()
++        forward_batch.forward_mode.is_target_verify.return_value = True
++        metadata = mock.Mock()
++        metadata.get_page_table_64.return_value = block_tables
++        metadata.get_seqlens_expanded.return_value = seqlens
++        pool = mock.Mock(page_size=64)
++        fake_deep_gemm = mock.Mock()
++        fake_deep_gemm.fp8_paged_mqa_logits.return_value = logits
++
++        def retain(candidate, layer_id):
++            events.append(("retain", candidate, layer_id))
++            return candidate
++
++        def consume(candidate, *args, **kwargs):
++            events.append(("topk", candidate))
++            return topk
++
++        with (
++            mock.patch.object(
++                kpool_module, "get_token_to_kv_pool", return_value=pool
++            ),
++            mock.patch.object(kpool_module, "deep_gemm", fake_deep_gemm, create=True),
++            mock.patch.object(kpool_module, "register_graph_buffer"),
++            mock.patch.object(
++                IndexerKPool, "_get_index_k_read_buffer", return_value=kv_cache
++            ),
++            mock.patch.object(
++                IndexerKPool,
++                "_get_kpool_decode_metadata",
++                return_value=(seqlens, seqlens.unsqueeze(1), block_tables, None),
++            ),
++            mock.patch.object(
++                IndexerKPool, "_should_use_tilelang_paged_mqa_logits", return_value=False
++            ),
++            mock.patch.object(
++                IndexerKPool,
++                "_kpool_fused_topk_mapping",
++                return_value=(block_tables, None, None),
++            ),
++            mock.patch.object(
++                IndexerKPool,
++                "_retain_paged_logits_capture_owner",
++                side_effect=retain,
++            ),
++            mock.patch.object(
++                IndexerKPool, "_topk_from_kpool_logits", side_effect=consume
++            ),
++        ):
++            result = indexer._get_topk_paged(
++                forward_batch, 7, q_fp8, weights, metadata
++            )
++
++        self.assertIs(result, topk)
++        self.assertEqual([event[0] for event in events], ["retain", "topk"])
++        self.assertIs(events[0][1], logits)
++        self.assertEqual(events[0][2], 7)
++        self.assertIs(events[1][1], logits)
++
 +    def test_compiled_output_is_owned_by_active_full_graph_capture(self):
 +        indexer = object.__new__(IndexerKPool)
 +        output = torch.empty(24, 32, 1)
