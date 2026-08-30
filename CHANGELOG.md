@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.0-rc.47 (correctness candidate, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `8ec12a81db64d86419c2e0d3ddfb3bd35e83c298` and the reproducible patched tree
+  to `3d6c940262478a1818972312c3318c669090cd06`.
+- Records the exact v0.1.0-rc.46 sustained-serving failure: after eleven warm
+  C4 waves, the next captured decode overwrote all 527 live allocator entries
+  with plausible paired FP32 activations. This disproves the eager-extend
+  lifetime boundary tested by v0.1.0-rc.46.
+- Restores the compiled DSA head-gate path for every execution mode and gives
+  each full CUDA graph shape bounded ownership of the compiled output consumed
+  by its captured top-k kernels. Recapture replaces the prior owner set,
+  cleanup releases it, eager execution retains nothing, and unsupported CUDA
+  capture without an owner scope fails explicitly.
+- Adds focused ownership, replacement, cleanup, and missing-scope tests. Model
+  values, quantization, vision, MTP, FP8 KV, optimized prefill/decode kernels,
+  and full decode graph shapes are unchanged. Uses fresh cache schema `v34`;
+  this candidate remains unqualified pending exact-image GPU tests, sustained
+  serving, and matched performance measurements.
+
 ## v0.1.0-rc.46 (correctness candidate, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to

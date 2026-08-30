@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.46`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.46`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.47`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.47`.
 
-**v0.1.0-rc.46 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.47 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -62,25 +62,27 @@ The preceding GLM NextN correction remains included. The
 inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
 native draft is BF16, while GLM may serialize the layer-45 routed experts as
 FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v33` prevents reuse of
+whole-layer ignore still selects BF16. Cache schema `v34` prevents reuse of
 graphs and JIT objects built against the preceding SGLang, FlashInfer, and
 late-compilation behavior.
 
-The v0.1.0-rc.46 correctness change gives each full CUDA graph shape explicit
-ownership of every optimized MHC split-K scratch tensor captured by the
-standalone prenorm and fused post/pre paths. Recapturing a shape replaces its
-prior owners, and backend cleanup releases them. Warmup, eager execution, and
-replay do not append retained state. This preserves the optimized kernels and
-the complete decode graph set while preventing later radix allocations from
-reusing storage still addressed by a captured graph. Target and MTP draft
-graphs keep separate bounded owner sets because each full-graph backend owns
-its own capture state.
+The preceding capture-ownership change remains: every full CUDA graph shape
+owns the optimized MHC split-K scratch tensors captured by the standalone
+prenorm and fused post/pre paths. The v0.1.0-rc.47 correctness change extends
+the same bounded ownership to the compiled DSA head-gate output consumed by
+captured top-k kernels. Recapturing a shape replaces its prior owners, backend
+cleanup releases them, and target and MTP draft backends keep separate owner
+sets. Calls outside full-graph capture do not retain state, while CUDA capture
+without an owner scope fails explicitly instead of silently leaving a stale
+address. All execution modes retain the same compiled gate math, preserving
+the optimized prefill, verification, draft, and decode paths.
 
-The candidate also keeps the upstream-optimized compiled DSA head-gate helper
-for decode, target verification, draft extension, and captured execution. Only
-ordinary eager extend uses the same math without a persistent compiled output
-buffer. This isolates the signed-FP32 lifetime candidate observed at the
-64-token prefill failure boundary without trading away decode graph speed.
+This replaces v0.1.0-rc.46's eager-extend experiment. Sustained exact-image
+serving disproved that boundary when all 527 live allocator entries were
+overwritten by plausible signed-FP32 activations immediately after captured C4
+decode began. The capture-scoped owner fixes the address lifetime directly;
+model values, quantization, vision, MTP, KV format, and graph shapes do not
+change.
 
 The candidate also carries debug-gated allocator and unified-radix probes. The
 exact v0.1.0-rc.36 diagnostic first observed the bad whole-tree state
@@ -91,8 +93,8 @@ candidate synchronizes around every insert action, maps every reachable Full
 value to its node, parent, key length, storage pointer and offset, preserves an
 exact snapshot across each action, and rejects any allocator free whose byte
 range overlaps a reachable Full value. The checks are inactive in ordinary
-serving and remain diagnostic; the bounded MHC graph ownership above is the
-v0.1.0-rc.46 runtime fix.
+serving and remain diagnostic; bounded ownership of the captured MHC scratch
+and compiled DSA gate output is the v0.1.0-rc.47 runtime fix.
 
 The preceding v0.1.0-rc.42 change closes a diagnostic-ordering gap exposed by
 the v0.1.0-rc.41
@@ -128,7 +130,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.46 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.47 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

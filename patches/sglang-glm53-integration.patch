@@ -6173,10 +6173,10 @@ index 4f630c1247560ac814d8c0a7db1cce9bb14fa108..4225259982127def811728ed3c946f97
                  weights,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..7d441beef9db10578fb3145ab1a4bb81b66686c8
+index 0000000000000000000000000000000000000000..a57c03d372c063a02ea77eb28b5273341b374fb4
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-@@ -0,0 +1,1796 @@
+@@ -0,0 +1,1800 @@
 +from __future__ import annotations
 +
 +from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -6198,6 +6198,9 @@ index 0000000000000000000000000000000000000000..7d441beef9db10578fb3145ab1a4bb81
 +)
 +from sglang.srt.layers.layernorm import LayerNorm
 +from sglang.srt.layers.utils import MultiPlatformOp
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    retain_full_cuda_graph_owner,
++)
 +from sglang.srt.utils import add_prefix, ceil_align, is_cuda, is_hip, is_npu
 +
 +if is_cuda():
@@ -6340,28 +6343,36 @@ index 0000000000000000000000000000000000000000..7d441beef9db10578fb3145ab1a4bb81
 +        self.scale_fmt = scale_fmt
 +        self.softmax_scale = self.head_dim**-0.5
 +
-+    def _get_logits_head_gate_impl(self, x: torch.Tensor, q_scale: torch.Tensor):
++    @torch.compile(dynamic=True)
++    def _get_logits_head_gate_compiled(
++        self, x: torch.Tensor, q_scale: torch.Tensor
++    ) -> torch.Tensor:
 +        weights, _ = self.weights_proj(x.float())
 +        weights = weights * self.n_heads**-0.5
 +        weights = weights.unsqueeze(-1) * q_scale * self.softmax_scale
 +        return weights
 +
-+    @torch.compile(dynamic=True)
-+    def _get_logits_head_gate(self, x: torch.Tensor, q_scale: torch.Tensor):
-+        return self._get_logits_head_gate_impl(x, q_scale)
-+
-+    def _get_logits_head_gate_eager(
++    def _get_logits_head_gate(
 +        self, x: torch.Tensor, q_scale: torch.Tensor
 +    ) -> torch.Tensor:
-+        """Compute extend weights without a persistent compiled output buffer.
++        """Retain a compiled output whose address is baked into a full graph.
 +
-+        When ordinary extend is outside CUDA graph capture and torch.compile,
-+        keeping its dynamic output in the caller's eager allocator/stream
-+        lifetime avoids a compiled static output address surviving after the
-+        returned tensor has been consumed. Decode, speculative, and captured
-+        paths continue to use the compiled helper above.
++        The capture-owner helper is a no-op outside an active capture. During
++        capture, the full graph backend stores the returned owner with that
++        graph shape and releases it on recapture or backend cleanup.
 +        """
-+        return self._get_logits_head_gate_impl(x, q_scale)
++        weights = self._get_logits_head_gate_compiled(x, q_scale)
++        if not torch.compiler.is_compiling():
++            retained = retain_full_cuda_graph_owner(weights)
++            if (
++                weights.is_cuda
++                and not retained
++                and torch.cuda.is_current_stream_capturing()
++            ):
++                raise RuntimeError(
++                    "DSA gate captured without a full-graph owner scope"
++                )
++        return weights
 +
 +    @staticmethod
 +    def _cp_gather_concat(
@@ -7896,14 +7907,7 @@ index 0000000000000000000000000000000000000000..7d441beef9db10578fb3145ab1a4bb81
 +                return None
 +
 +        if weights is None:
-+            if (
-+                forward_batch.forward_mode.is_extend_without_speculative()
-+                and not torch.compiler.is_compiling()
-+                and not get_is_capture_mode()
-+            ):
-+                weights = self._get_logits_head_gate_eager(x, q_scale)
-+            else:
-+                weights = self._get_logits_head_gate(x, q_scale)
++            weights = self._get_logits_head_gate(x, q_scale)
 +
 +        if is_cuda():
 +            if (
@@ -25292,6 +25296,87 @@ index 0000000000000000000000000000000000000000..3b0e8ffd5f1e90595de888f29904358e
 +            lifetime.register_graph_buffer(tensor, "warmup")
 +
 +        self.assertEqual(lifetime._state_for_test(), ([], []))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..88e14ddcbf8c8f89350d8b5fb3c783b7e1421803
+--- /dev/null
++++ b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
+@@ -0,0 +1,75 @@
++import unittest
++from unittest import mock
++
++import torch
++
++from sglang.srt.layers.attention.dsa.dsa_indexer_kpool import IndexerKPool
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    collect_full_cuda_graph_owners,
++    retain_full_cuda_graph_owner,
++)
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=2, suite="base-a-test-cpu")
++
++
++class TestDSALogitsGateOwner(unittest.TestCase):
++    def test_compiled_output_is_owned_by_active_full_graph_capture(self):
++        indexer = object.__new__(IndexerKPool)
++        output = torch.empty(24, 32, 1)
++
++        with mock.patch.object(
++            IndexerKPool, "_get_logits_head_gate_compiled", return_value=output
++        ) as compiled_gate, collect_full_cuda_graph_owners() as owners:
++            result = indexer._get_logits_head_gate(
++                mock.sentinel.hidden, mock.sentinel.scale
++            )
++
++        self.assertIs(result, output)
++        self.assertEqual(len(owners), 1)
++        self.assertIs(owners[0], output)
++        compiled_gate.assert_called_once_with(
++            mock.sentinel.hidden, mock.sentinel.scale
++        )
++
++    def test_eager_call_does_not_create_process_global_owners(self):
++        indexer = object.__new__(IndexerKPool)
++        output = torch.empty(64, 32, 1)
++
++        with mock.patch.object(
++            IndexerKPool, "_get_logits_head_gate_compiled", return_value=output
++        ) as compiled_gate, collect_full_cuda_graph_owners() as owners:
++            captured_result = indexer._get_logits_head_gate(
++                mock.sentinel.hidden, mock.sentinel.scale
++            )
++
++        eager_result = indexer._get_logits_head_gate(
++            mock.sentinel.hidden, mock.sentinel.scale
++        )
++
++        self.assertIs(captured_result, output)
++        self.assertIs(eager_result, output)
++        self.assertEqual(len(owners), 1)
++        self.assertIs(owners[0], output)
++        self.assertFalse(retain_full_cuda_graph_owner(object()))
++        self.assertEqual(compiled_gate.call_count, 2)
++
++    def test_cuda_capture_without_owner_scope_fails_explicitly(self):
++        indexer = object.__new__(IndexerKPool)
++        output = mock.Mock(is_cuda=True)
++
++        with mock.patch.object(
++            IndexerKPool, "_get_logits_head_gate_compiled", return_value=output
++        ), mock.patch.object(
++            torch.cuda, "is_current_stream_capturing", return_value=True
++        ):
++            with self.assertRaisesRegex(
++                RuntimeError, "captured without a full-graph owner scope"
++            ):
++                indexer._get_logits_head_gate(
++                    mock.sentinel.hidden, mock.sentinel.scale
++                )
 +
 +
 +if __name__ == "__main__":
