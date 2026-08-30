@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.45 (test-profile correction, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `69bb461a90a2deee1323653bcad31dbdb42c7e75` and the reproducible patched tree
+  to `f059337d81308c985593dac980878b3f3c23082a`.
+- Makes the standalone fused MHC GPU regression explicitly select the TileLang
+  prenorm fallback used by the GLM SM120 serving profile. The v0.1.0-rc.44
+  in-image run otherwise inherited the generic DeepGEMM-on default and failed
+  before its non-empty fused comparisons because that optional backend is not
+  available in the image.
+- Retains the exact v0.1.0-rc.44 runtime fix, model values, quantization,
+  vision, MTP, full decode graphs, prefill, and DSA backends. Uses fresh cache
+  schema `v32`; this candidate remains unqualified pending exact-image tests
+  and sustained distinct-prefix C4 validation.
+
 ## v0.1.0-rc.44 (correctness fix, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to

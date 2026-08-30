@@ -14,7 +14,7 @@ done
 "$repo/scripts/validate-release.sh"
 
 [[ "$(jq -er '.patches | length' "$lock")" == 2 ]] || {
-  echo "v0.1.0-rc.44 requires exactly two integration patches" >&2; exit 1;
+  echo "v0.1.0-rc.45 requires exactly two integration patches" >&2; exit 1;
 }
 while IFS= read -r patch_path; do
   [[ -f "$repo/$patch_path" ]] || { echo "missing patch: $patch_path" >&2; exit 1; }
