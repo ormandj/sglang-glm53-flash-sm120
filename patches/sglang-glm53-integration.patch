@@ -3276,7 +3276,7 @@ index ba9b7a5c8cecc7d567aa7a779ddd684a6cd08438..6ed36d5e8a93d7f7160035ee1d81faac
          kv_buffer,
          cache_k_nope,
 diff --git a/python/sglang/kernels/ops/layernorm/mhc.py b/python/sglang/kernels/ops/layernorm/mhc.py
-index ebe4e3a8ad78a7e2cbaafd1728f0673e2fc5d7b9..20d7c3289fe3233ecb823af44841b358b356eeb2 100644
+index ebe4e3a8ad78a7e2cbaafd1728f0673e2fc5d7b9..553a6adea7ccb0cbaf32731cddbc8558c29f87c4 100644
 --- a/python/sglang/kernels/ops/layernorm/mhc.py
 +++ b/python/sglang/kernels/ops/layernorm/mhc.py
 @@ -16,6 +16,9 @@ from sglang.srt.environ import envs
@@ -3298,7 +3298,16 @@ index ebe4e3a8ad78a7e2cbaafd1728f0673e2fc5d7b9..20d7c3289fe3233ecb823af44841b358
              kernel_0(
                  residual_flat.view(num_tokens, hc_hidden_size),
                  fn_flat,
-@@ -1563,6 +1568,220 @@ def mhc_fused_post_pre(
+@@ -1414,6 +1419,8 @@ def mhc_fused_post_pre(
+         dtype=torch.float32,
+         device=residual.device,
+     )
++    retain_full_cuda_graph_owner(gemm_out_mul)
++    retain_full_cuda_graph_owner(gemm_out_sqrsum)
+     residual_cur = torch.empty_like(residual_flat)
+ 
+     if num_tokens <= fma_token_threshold:
+@@ -1563,6 +1570,220 @@ def mhc_fused_post_pre(
      )
  
  
@@ -24075,6 +24084,80 @@ index 0000000000000000000000000000000000000000..6e81fa7173505c8eeb6db86cf27a5b72
 +
 +if __name__ == "__main__":
 +    sys.exit(pytest.main([__file__]))
+diff --git a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
+index 7e9a5a65cd99cea1ddfe7ec00121138c2ada3da5..c4f36ed8fb27b47a0055ca54d2129caa16c16bce 100644
+--- a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
++++ b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
+@@ -5,6 +5,9 @@ import torch
+ 
+ import sglang.kernels.ops.layernorm.mhc as mhc
+ from sglang.kernels.ops.layernorm.mhc import mhc_fused_post_pre, mhc_post, mhc_pre
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    collect_full_cuda_graph_owners,
++)
+ from sglang.test.ci.ci_register import register_cuda_ci
+ 
+ register_cuda_ci(est_time=30, stage="base-b", runner_config="1-gpu-large")
+@@ -78,25 +81,27 @@ def test_mhc_fused_post_pre_matches_unfused(
+             norm_weight=norm_weight,
+             norm_eps=norm_eps,
+         )
+-    residual_out, post_out, comb_out, layer_out = mhc_fused_post_pre(
+-        x,
+-        residual,
+-        post_prev,
+-        comb_prev,
+-        fn,
+-        hc_scale,
+-        hc_base,
+-        rms_eps,
+-        hc_eps,
+-        hc_eps,
+-        2.0,
+-        sinkhorn_repeat,
+-        norm_weight=norm_weight,
+-        norm_eps=norm_eps,
+-    )
++    with collect_full_cuda_graph_owners() as capture_owners:
++        residual_out, post_out, comb_out, layer_out = mhc_fused_post_pre(
++            x,
++            residual,
++            post_prev,
++            comb_prev,
++            fn,
++            hc_scale,
++            hc_base,
++            rms_eps,
++            hc_eps,
++            hc_eps,
++            2.0,
++            sinkhorn_repeat,
++            norm_weight=norm_weight,
++            norm_eps=norm_eps,
++        )
+ 
+     torch.cuda.synchronize()
+     if num_tokens == 0:
++        assert capture_owners == []
+         assert residual_out.shape == residual.shape
+         assert post_out.shape == (0, hc_mult, 1)
+         assert comb_out.shape == (0, hc_mult, hc_mult)
+@@ -107,6 +112,15 @@ def test_mhc_fused_post_pre_matches_unfused(
+         assert layer_out.dtype == torch.bfloat16
+         return
+ 
++    assert len(capture_owners) == 2
++    gemm_out_mul_owner, gemm_out_sqrsum_owner = capture_owners
++    assert gemm_out_mul_owner.dtype == torch.float32
++    assert gemm_out_mul_owner.ndim == 3
++    assert gemm_out_mul_owner.shape[1:] == (num_tokens, hc_mult3)
++    assert gemm_out_sqrsum_owner.dtype == torch.float32
++    assert gemm_out_sqrsum_owner.ndim == 2
++    assert gemm_out_sqrsum_owner.shape == gemm_out_mul_owner.shape[:2]
++
+     assert residual_ref is not None
+     assert post_ref is not None
+     assert comb_ref is not None
 diff --git a/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py b/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py
 index 7007fd9897fc188461ff21db3361b1fa283986d8..f7cde67b841d871f0a68dece5859db00063de0a4 100644
 --- a/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py

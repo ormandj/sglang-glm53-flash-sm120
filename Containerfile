@@ -6,8 +6,8 @@
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=43
-ARG GLM53_CACHE_SCHEMA=v30
+ARG GLM53_RELEASE_CANDIDATE=44
+ARG GLM53_CACHE_SCHEMA=v31
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
@@ -15,8 +15,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f8
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=cdbfe90b4a6c728e03e6520862d792501b3a97bb
 ARG GLM53_SGLANG_UPSTREAM_TREE=68a9d2477cf06c8e0a737997439272ebdc2da1c8
-ARG GLM53_SGLANG_TREE=3b7a01864a7f87fb750191c15615676b32ce32d3
-ARG GLM53_SGLANG_PATCH_SHA256=3e54c1de8425237bd66d650408743d048f867a704828313e21f54db654c73878
+ARG GLM53_SGLANG_TREE=1a7fc14d8216ba3f2bfcfc88b76d11017940872b
+ARG GLM53_SGLANG_PATCH_SHA256=9d0364441848086afd83b14acb2f9314d539e78b5d51104fbb820a57ae9c270a
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=e425c7b029ca90d5d01ff207913b070863d35a5b
@@ -100,6 +100,7 @@ RUN set -eux; \
       python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py \
       python/sglang/kernels/ops/attention/flash_mla_sm120.py \
       python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
+      python/sglang/kernels/ops/layernorm/mhc.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
       python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py \
       python/sglang/srt/layers/attention/linear/kda_backend.py \
@@ -172,6 +173,7 @@ from sglang.srt.layers.attention.linear.kda_backend import KDAAttnBackend; \
 from sglang.srt.layers.moe.moe_runner import flashinfer_cutlass; \
 from sglang.srt.layers.quantization import modelopt_quant; \
 from sglang.kernels.ops.attention import flash_mla_sm120; \
+from sglang.kernels.ops.layernorm import mhc; \
 from sglang.srt.layers.attention.dsa import dsa_indexer_kpool, kpool_fp8_index; \
 from sglang.srt.mem_cache import kv_cache_configurator; \
 from sglang.srt.mem_cache.allocator.paged import PagedTokenToKVPoolAllocator; \
@@ -201,6 +203,7 @@ assert eagle_pool_init.index('self.draft_worker.alloc_memory_pool') < eagle_pool
 assert '_embed_and_head_shared' not in inspect.getsource(EagleDraftWorker.init_lm_head); \
 model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration'); \
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
+assert inspect.getsource(mhc.mhc_fused_post_pre).count('retain_full_cuda_graph_owner(') == 2; \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
 assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flashinfer_cutlass._run_flashinfer_b12x_w4a16); \
 assert callable(kda.precompile_kda_prefill_kernels); \

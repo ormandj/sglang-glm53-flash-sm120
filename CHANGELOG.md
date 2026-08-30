@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.0-rc.44 (correctness fix, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `3477f7b5188df80ffce5be91b940bb3ff242ee7f` and the reproducible patched tree
+  to `1a7fc14d8216ba3f2bfcfc88b76d11017940872b`.
+- Extends capture-scoped ownership to the two local FP32 split-K scratch
+  tensors in the SM120 fused MHC post/pre path. The first ownership change
+  covered the standalone prenorm writer but rc.43 later reproduced the same
+  512-byte overwrite signature from this separate fused writer.
+- Adds focused CUDA regression coverage for empty and non-empty fused calls,
+  including exact owner count, dtype, rank, and shape relationships.
+- Keeps quantization, model values, vision, MTP, full decode graphs, prefill,
+  and DSA backends unchanged. Uses fresh cache schema `v31`; this candidate is
+  unqualified until its exact image passes in-image tests and sustained
+  distinct-prefix C4 validation on the two RTX PRO 6000 Blackwell GPUs.
+
 ## v0.1.0-rc.43 (correctness fix, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to
