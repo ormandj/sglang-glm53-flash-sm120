@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.50 (test synchronization, not yet built or qualified)
+
+- Advances the internal SGLang integration working head to
+  `d502134bc84e319198078c84b9f313ed42eab5de` and the reproducible patched tree
+  to `622f994b2cde2c2bf2ca82d1611a51b15cfd3bbc`.
+- Synchronizes the CUDA replay test's asynchronous expected-value clone before
+  replay begins. v0.1.0-rc.49 passed all five CPU ownership tests and reached
+  the CUDA replay comparison, but the test allowed replay to race that clone;
+  this was a test-oracle defect, not a runtime ownership failure.
+- Retains the v0.1.0-rc.49 runtime fix byte-for-byte: only the Python owner
+  handoff is outside Dynamo, while gate math, model values, quantization,
+  vision, MTP, FP8 KV, DSA kernels, and graph shapes remain unchanged. Uses
+  fresh cache schema `v37`; this candidate remains unqualified pending the
+  complete exact-image GPU gate, sustained serving, and matched performance.
+
 ## v0.1.0-rc.49 (outer-compile ownership candidate, not yet built or qualified)
 
 - Advances the internal SGLang integration working head to

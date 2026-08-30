@@ -24658,10 +24658,10 @@ index 81e0b08b0b7c4b5717ff2792782cf894c23faed7..a168c4253fc6307f2b3455ca5b2463b4
      sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..3d589c567097b6a23e46f3351fb4b6d53a42ef8b
+index 0000000000000000000000000000000000000000..55d0fa5856bae1336d3d67b844590f952d8b167b
 --- /dev/null
 +++ b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,74 @@
 +import pytest
 +import torch
 +
@@ -24729,6 +24729,7 @@ index 0000000000000000000000000000000000000000..3d589c567097b6a23e46f3351fb4b6d5
 +
 +    torch.cuda.current_stream().wait_stream(capture_stream)
 +    expected = captured_output.detach().clone()
++    torch.cuda.synchronize()
 +    del captured_output
 +    graph.replay()
 +    torch.cuda.synchronize()
