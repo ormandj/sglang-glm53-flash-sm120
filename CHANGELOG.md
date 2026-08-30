@@ -1,6 +1,19 @@
 # Changelog
 
-## v0.1.0-rc.60 (current-main rebase with upstream PR revisions, not yet built or qualified)
+## v0.1.0-rc.61 (current-main rebase, kv_committed_len reader fix, not yet built or qualified)
+
+- Supersedes v0.1.0-rc.60, whose first chunked prefill crashed with
+  `AttributeError: 'Req' object has no attribute 'kv_committed_len'` in
+  `stash_chunked_request → maybe_cache_unfinished_req`: upstream moved
+  `kv_committed_len` onto the request's KV record (`5ec959965b`, "Settle
+  extend kv_committed_len inside alloc_for_extend") and two carried radix
+  diagnostic log lines in `unified_radix_cache.py` still read the old
+  `req.kv_committed_len` attribute. Both now read `req.kv.kv_committed_len`;
+  every other request attribute read by the carried mem_cache code was
+  audited against the current upstream `Req` class (no other stale reads).
+  Cache schema bumped to v48.
+
+## v0.1.0-rc.60 (current-main rebase with upstream PR revisions, superseded before qualification)
 
 - Supersedes v0.1.0-rc.59, whose serving start hit an `assert page_size ==
   64` in the DSA KV pool: the upstream per-model override refactor moved the
