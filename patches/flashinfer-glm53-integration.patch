@@ -1347,74 +1347,184 @@ index 51839a24..0c685fd3 100644
          Register the result with ``MoEWeightPack.prepare_for("b12x_w4a16", ...)``.
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
          """
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
+index fe7b4c47..b6a9e219 100644
+--- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
+@@ -11,6 +11,7 @@ from .moe_dispatch import (
+     allocate_sm120_static_workspace,
+     allocate_sm120_dynamic_workspace,
+     clear_sm120_moe_caches,
++    release_graph_referenced_workspaces,
+     launch_sm120_static_moe,
+     launch_sm120_dynamic_moe,
+     launch_sm120_moe,
+@@ -28,6 +29,7 @@ __all__ = [
+     "allocate_sm120_static_workspace",
+     "allocate_sm120_dynamic_workspace",
+     "clear_sm120_moe_caches",
++    "release_graph_referenced_workspaces",
+     "launch_sm120_static_moe",
+     "launch_sm120_dynamic_moe",
+     "launch_sm120_moe",
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-index 29a0588b..4b0767a9 100644
+index 29a0588b..8e72d534 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-@@ -2840,13 +2840,37 @@ _Sm120Workspace = Union[
+@@ -9,6 +9,7 @@ from __future__ import annotations
+ 
+ import hashlib
+ import os
++import threading
+ import weakref
+ from dataclasses import dataclass
+ from typing import Any, Dict, Optional, Tuple, Union
+@@ -2838,16 +2839,64 @@ _Sm120Workspace = Union[
+ ]
+ 
  # Stores the workspace with the largest capacity seen per key and never
- # shrinks within a process. clear_sm120_moe_caches() releases everything.
+-# shrinks within a process. clear_sm120_moe_caches() releases everything.
++# shrinks within a process. clear_sm120_moe_caches() releases entries that no
++# captured CUDA graph references; graph-referenced entries are parked instead
++# (see _GRAPH_REFERENCED_WORKSPACES).
  _WORKSPACE_CACHE: Dict[Tuple, _Sm120Workspace] = {}
 +# Workspaces handed out while a CUDA graph capture was underway. A captured
-+# graph replays through the workspace's raw device pointers for the lifetime
-+# of the process, so once a workspace is graph-referenced its storage must
-+# never return to the allocator: replacement or cache clearing would let the
-+# freed pages back a later unrelated allocation that replay then overwrites.
++# graph replays through the workspace's raw device pointers, so once a
++# workspace is graph-referenced its storage must not return to the allocator
++# while any capturing graph can still replay: replacement or cache clearing
++# would let the freed pages back a later unrelated allocation that replay
++# then overwrites. Growth is one parked workspace per replacement or clear of
++# a graph-referenced entry; release_graph_referenced_workspaces() frees them
++# once the caller has destroyed every graph captured against them.
 +_GRAPH_REFERENCED_WORKSPACES: list = []
++# Serializes cache lookup and marking against replacement and clearing so a
++# concurrent mutation cannot drop a workspace between a capture-time cache
++# read and its graph-referenced marking.
++_WORKSPACE_CACHE_LOCK = threading.Lock()
 +
 +
 +def _mark_graph_referenced(workspace):
-+    if _is_cuda_graph_capturing():
++    if workspace is not None and _is_cuda_graph_capturing():
 +        workspace._sm12x_graph_referenced = True
 +    return workspace
 +
 +
 +def _retire_workspace(workspace) -> None:
-+    """Drop a cache entry; graph-referenced storage is kept alive forever."""
-+    if workspace is not None and getattr(
-+        workspace, "_sm12x_graph_referenced", False
-+    ):
++    """Drop a cache entry; graph-referenced storage is parked, not freed."""
++    if workspace is not None and getattr(workspace, "_sm12x_graph_referenced", False):
 +        _GRAPH_REFERENCED_WORKSPACES.append(workspace)
++
++
++def release_graph_referenced_workspaces() -> None:
++    """Free workspaces parked for captured CUDA graphs.
++
++    Only call this after every CUDA graph captured while SM12x MoE
++    workspaces were cached has been destroyed; a remaining graph would
++    replay through freed storage. Graph-referenced markers on workspaces
++    still in the cache are also cleared, since the graphs that recorded
++    them no longer exist.
++    """
++    with _WORKSPACE_CACHE_LOCK:
++        _GRAPH_REFERENCED_WORKSPACES.clear()
++        for workspace in _WORKSPACE_CACHE.values():
++            if getattr(workspace, "_sm12x_graph_referenced", False):
++                workspace._sm12x_graph_referenced = False  # type: ignore[union-attr]
  
  
  def clear_sm120_moe_caches() -> None:
      """Release every module-level SM12x MoE cache.
  
 -    References held by callers are unaffected.
-+    References held by callers are unaffected. Workspaces recorded by a live
-+    CUDA graph capture are parked instead of released; see
-+    _GRAPH_REFERENCED_WORKSPACES.
++    References held by callers are unaffected. Workspaces recorded by a
++    captured CUDA graph are parked instead of released; see
++    release_graph_referenced_workspaces().
      """
-+    for workspace in _WORKSPACE_CACHE.values():
-+        _retire_workspace(workspace)
-     _WORKSPACE_CACHE.clear()
+-    _WORKSPACE_CACHE.clear()
++    with _WORKSPACE_CACHE_LOCK:
++        for workspace in _WORKSPACE_CACHE.values():
++            _retire_workspace(workspace)
++        _WORKSPACE_CACHE.clear()
      _WEIGHT_CACHE.clear()
      _W4A16_WEIGHT_CACHE.clear()
-@@ -2982,13 +3006,13 @@ def _get_cached_workspace(
-         if isinstance(cached, Sm120DynamicMoEWorkspace):
-             if cached.routed_rows_capacity >= max(1, routed_rows):
-                 assert tile_m is None or cached.tile_m == tile_m
--                return cached
-+                return _mark_graph_referenced(cached)
-         elif isinstance(cached, Sm120W4A16MoEWorkspace):
-             if cached.routed_rows_capacity >= max(1, routed_rows):
--                return cached
-+                return _mark_graph_referenced(cached)
-         else:
-             if cached.max_rows >= max(1, routed_rows):
--                return cached
-+                return _mark_graph_referenced(cached)
- 
-     if quant_mode == "w4a16" and _is_cuda_graph_capturing():
-         raise RuntimeError(
-@@ -3011,8 +3035,9 @@ def _get_cached_workspace(
-         activation=activation,
+     _PADDED_WEIGHT_CACHE.clear()
+@@ -2976,43 +3025,45 @@ def _get_cached_workspace(
+         activation,
+         tile_m,
      )
+-    cached = _WORKSPACE_CACHE.get(cache_key)
+-
+-    if cached is not None:
+-        if isinstance(cached, Sm120DynamicMoEWorkspace):
+-            if cached.routed_rows_capacity >= max(1, routed_rows):
+-                assert tile_m is None or cached.tile_m == tile_m
+-                return cached
+-        elif isinstance(cached, Sm120W4A16MoEWorkspace):
+-            if cached.routed_rows_capacity >= max(1, routed_rows):
+-                return cached
+-        else:
+-            if cached.max_rows >= max(1, routed_rows):
+-                return cached
+-
+-    if quant_mode == "w4a16" and _is_cuda_graph_capturing():
+-        raise RuntimeError(
+-            "W4A16 workspace is not initialized for CUDA graph capture; "
+-            "provide a preallocated workspace from "
+-            "allocate_sm120_moe_workspace(..., quant_mode='w4a16') or warm the "
+-            "functional path before capture."
++    with _WORKSPACE_CACHE_LOCK:
++        cached = _WORKSPACE_CACHE.get(cache_key)
++
++        if cached is not None:
++            if isinstance(cached, Sm120DynamicMoEWorkspace):
++                if cached.routed_rows_capacity >= max(1, routed_rows):
++                    assert tile_m is None or cached.tile_m == tile_m
++                    return _mark_graph_referenced(cached)
++            elif isinstance(cached, Sm120W4A16MoEWorkspace):
++                if cached.routed_rows_capacity >= max(1, routed_rows):
++                    return _mark_graph_referenced(cached)
++            else:
++                if cached.max_rows >= max(1, routed_rows):
++                    return _mark_graph_referenced(cached)
++
++        if quant_mode == "w4a16" and _is_cuda_graph_capturing():
++            raise RuntimeError(
++                "W4A16 workspace is not initialized for CUDA graph capture; "
++                "provide a preallocated workspace from "
++                "allocate_sm120_moe_workspace(..., quant_mode='w4a16') or warm the "
++                "functional path before capture."
++            )
++        workspace = allocate_sm120_moe_workspace(
++            state_E=state_E,
++            weight_E=weight_E,
++            routed_rows=routed_rows,
++            k=k,
++            n=n,
++            num_topk=num_topk,
++            device=device,
++            quant_mode=quant_mode,
++            activation_precision=activation_precision,
++            backend=backend,
++            activation=activation,
+         )
+-    workspace = allocate_sm120_moe_workspace(
+-        state_E=state_E,
+-        weight_E=weight_E,
+-        routed_rows=routed_rows,
+-        k=k,
+-        n=n,
+-        num_topk=num_topk,
+-        device=device,
+-        quant_mode=quant_mode,
+-        activation_precision=activation_precision,
+-        backend=backend,
+-        activation=activation,
+-    )
  
-+    _retire_workspace(cached)
-     _WORKSPACE_CACHE[cache_key] = workspace
+-    _WORKSPACE_CACHE[cache_key] = workspace
 -    return workspace
-+    return _mark_graph_referenced(workspace)
++        _retire_workspace(cached)
++        _WORKSPACE_CACHE[cache_key] = workspace
++        return _mark_graph_referenced(workspace)
  
  
  # ==========================================================================
@@ -14426,33 +14536,78 @@ index 49bb3a4a..2675874e 100644
      methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
-index 00000000..208b6470
+index 00000000..ccc8836c
 --- /dev/null
 +++ b/tests/moe/test_b12x_workspace_graph_pinning.py
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,206 @@
 +"""SM12x MoE workspace cache must never free graph-referenced storage.
 +
 +A captured CUDA graph replays through the raw device pointers of whatever
 +workspace was live during capture. If the cache replaces that workspace (a
 +larger routed_rows call arrives) or is cleared, dropping the old workspace
 +returns its pages to the allocator and later replay overwrites an unrelated
-+allocation. These tests pin the retire/mark semantics without requiring the
-+full MoE launch path.
++allocation. These tests pin the marking and retirement semantics and drive
++the real cache functions through hit, replacement, clear, and release.
 +"""
 +
 +from types import SimpleNamespace
 +from unittest import mock
 +
++import pytest
++
 +from flashinfer.fused_moe.cute_dsl.blackwell_sm12x import moe_dispatch
 +
 +
-+def _fresh_state():
++_MODULE_CACHES = (
++    "_WORKSPACE_CACHE",
++    "_WEIGHT_CACHE",
++    "_W4A16_WEIGHT_CACHE",
++    "_PADDED_WEIGHT_CACHE",
++    "_STATIC_KERNEL_CACHE",
++    "_MICRO_KERNEL_CACHE",
++    "_DIRECT_MICRO_LAUNCH_CACHE",
++    "_DIRECT_MICRO_KERNEL_CACHE",
++    "_DYNAMIC_KERNEL_CACHE",
++)
++
++
++@pytest.fixture(autouse=True)
++def _isolated_workspace_state():
++    saved = {name: dict(getattr(moe_dispatch, name)) for name in _MODULE_CACHES}
++    saved_parked = list(moe_dispatch._GRAPH_REFERENCED_WORKSPACES)
 +    moe_dispatch._WORKSPACE_CACHE.clear()
 +    moe_dispatch._GRAPH_REFERENCED_WORKSPACES.clear()
++    yield
++    for name in _MODULE_CACHES:
++        cache = getattr(moe_dispatch, name)
++        cache.clear()
++        cache.update(saved[name])
++    moe_dispatch._GRAPH_REFERENCED_WORKSPACES.clear()
++    moe_dispatch._GRAPH_REFERENCED_WORKSPACES.extend(saved_parked)
++
++
++def _get(routed_rows, capturing):
++    with mock.patch.object(
++        moe_dispatch, "_is_cuda_graph_capturing", return_value=capturing
++    ):
++        return moe_dispatch._get_cached_workspace(
++            backend="static",
++            state_E=2,
++            weight_E=2,
++            routed_rows=routed_rows,
++            k=64,
++            n=64,
++            num_topk=1,
++            device="cpu",
++            quant_mode="nvfp4",
++        )
++
++
++def _fake_allocate(*, routed_rows, **kwargs):
++    return SimpleNamespace(max_rows=routed_rows)
 +
 +
 +def test_mark_is_noop_outside_capture():
-+    _fresh_state()
 +    workspace = SimpleNamespace()
 +    with mock.patch.object(
 +        moe_dispatch, "_is_cuda_graph_capturing", return_value=False
@@ -14465,38 +14620,129 @@ index 00000000..208b6470
 +
 +
 +def test_capture_marked_workspace_is_parked_on_retire():
-+    _fresh_state()
 +    workspace = SimpleNamespace()
-+    with mock.patch.object(
-+        moe_dispatch, "_is_cuda_graph_capturing", return_value=True
-+    ):
++    with mock.patch.object(moe_dispatch, "_is_cuda_graph_capturing", return_value=True):
 +        out = moe_dispatch._mark_graph_referenced(workspace)
 +    assert out is workspace
-+    assert workspace._sm12x_graph_referenced is True
-+    moe_dispatch._retire_workspace(workspace)
-+    assert moe_dispatch._GRAPH_REFERENCED_WORKSPACES == [workspace]
-+
-+
-+def test_retire_none_is_noop():
-+    _fresh_state()
++    assert workspace._sm12x_graph_referenced
 +    moe_dispatch._retire_workspace(None)
-+    assert moe_dispatch._GRAPH_REFERENCED_WORKSPACES == []
++    moe_dispatch._retire_workspace(workspace)
++    assert [workspace] == moe_dispatch._GRAPH_REFERENCED_WORKSPACES
 +
 +
-+def test_clear_caches_parks_graph_referenced_entries():
-+    _fresh_state()
-+    referenced = SimpleNamespace(_sm12x_graph_referenced=True)
++def test_cache_hit_during_capture_marks_the_cached_workspace():
++    with mock.patch.object(
++        moe_dispatch, "allocate_sm120_moe_workspace", side_effect=_fake_allocate
++    ):
++        first = _get(routed_rows=8, capturing=False)
++        assert not getattr(first, "_sm12x_graph_referenced", False)
++        hit = _get(routed_rows=8, capturing=True)
++    assert hit is first
++    assert hit._sm12x_graph_referenced
++
++
++def test_replacement_parks_graph_referenced_workspace_and_drops_plain():
++    with mock.patch.object(
++        moe_dispatch, "allocate_sm120_moe_workspace", side_effect=_fake_allocate
++    ):
++        captured = _get(routed_rows=8, capturing=True)
++        replaced = _get(routed_rows=16, capturing=False)
++        assert replaced is not captured
++        assert [captured] == moe_dispatch._GRAPH_REFERENCED_WORKSPACES
++
++        plain = _get(routed_rows=16, capturing=False)
++        assert plain is replaced
++        _get(routed_rows=32, capturing=False)
++    assert [captured] == moe_dispatch._GRAPH_REFERENCED_WORKSPACES
++
++
++def test_workspace_allocated_during_capture_is_marked():
++    with mock.patch.object(
++        moe_dispatch, "allocate_sm120_moe_workspace", side_effect=_fake_allocate
++    ):
++        workspace = _get(routed_rows=8, capturing=True)
++    assert workspace._sm12x_graph_referenced
++
++
++def test_clear_caches_parks_graph_referenced_entries_and_release_frees_them():
++    with mock.patch.object(
++        moe_dispatch, "allocate_sm120_moe_workspace", side_effect=_fake_allocate
++    ):
++        captured = _get(routed_rows=8, capturing=True)
 +    plain = SimpleNamespace()
-+    moe_dispatch._WORKSPACE_CACHE[("referenced",)] = referenced
 +    moe_dispatch._WORKSPACE_CACHE[("plain",)] = plain
 +    moe_dispatch.clear_sm120_moe_caches()
 +    assert moe_dispatch._WORKSPACE_CACHE == {}
-+    assert moe_dispatch._GRAPH_REFERENCED_WORKSPACES == [referenced]
++    assert [captured] == moe_dispatch._GRAPH_REFERENCED_WORKSPACES
++
++    moe_dispatch.release_graph_referenced_workspaces()
++    assert moe_dispatch._GRAPH_REFERENCED_WORKSPACES == []
++
++
++def test_release_unmarks_workspaces_still_in_the_cache():
++    with mock.patch.object(
++        moe_dispatch, "allocate_sm120_moe_workspace", side_effect=_fake_allocate
++    ):
++        captured = _get(routed_rows=8, capturing=True)
++        moe_dispatch.release_graph_referenced_workspaces()
++        assert not captured._sm12x_graph_referenced
++        # After release the entry behaves as plain: growth drops it.
++        _get(routed_rows=16, capturing=False)
++    assert moe_dispatch._GRAPH_REFERENCED_WORKSPACES == []
++
++
++def test_concurrent_replacement_cannot_drop_a_capture_marked_workspace():
++    import threading
++
++    entered = threading.Event()
++    proceed = threading.Event()
++
++    def capturing_slowly():
++        entered.set()
++        proceed.wait(timeout=5)
++        return True
++
++    with mock.patch.object(
++        moe_dispatch, "allocate_sm120_moe_workspace", side_effect=_fake_allocate
++    ):
++        first = _get(routed_rows=8, capturing=False)
++
++        def capture_lookup():
++            with mock.patch.object(
++                moe_dispatch, "_is_cuda_graph_capturing", capturing_slowly
++            ):
++                moe_dispatch._get_cached_workspace(
++                    backend="static",
++                    state_E=2,
++                    weight_E=2,
++                    routed_rows=8,
++                    k=64,
++                    n=64,
++                    num_topk=1,
++                    device="cpu",
++                    quant_mode="nvfp4",
++                )
++
++        capture_thread = threading.Thread(target=capture_lookup)
++        capture_thread.start()
++        assert entered.wait(timeout=5)
++
++        replace_thread = threading.Thread(
++            target=lambda: _get(routed_rows=16, capturing=False)
++        )
++        replace_thread.start()
++        # The replacement must block on the cache lock until marking finishes.
++        replace_thread.join(timeout=0.2)
++        assert replace_thread.is_alive()
++        proceed.set()
++        capture_thread.join(timeout=5)
++        replace_thread.join(timeout=5)
++
++    assert first._sm12x_graph_referenced
++    assert [first] == moe_dispatch._GRAPH_REFERENCED_WORKSPACES
 +
 +
 +if __name__ == "__main__":
 +    import sys
-+
-+    import pytest
 +
 +    sys.exit(pytest.main([__file__, "-q"]))

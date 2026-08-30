@@ -3276,49 +3276,113 @@ index ba9b7a5c8c..6ed36d5e8a 100644
          kv_buffer,
          cache_k_nope,
 diff --git a/python/sglang/kernels/ops/layernorm/mhc.py b/python/sglang/kernels/ops/layernorm/mhc.py
-index ebe4e3a8ad..b560addab8 100644
+index ebe4e3a8ad..7d0f560753 100644
 --- a/python/sglang/kernels/ops/layernorm/mhc.py
 +++ b/python/sglang/kernels/ops/layernorm/mhc.py
-@@ -13,9 +13,15 @@ from sglang.srt.distributed.device_communicators.pynccl_allocator import (
- )
- from sglang.srt.distributed.parallel_state import get_tp_group
- from sglang.srt.environ import envs
-+from sglang.srt.layers.attention.dsa.graph_buffer_lifetime import (
-+    register_graph_buffer,
-+)
+@@ -16,6 +16,25 @@ from sglang.srt.environ import envs
  from sglang.srt.layers.attention.dsa.utils import is_dsa_prefill_cp_round_robin_split
  from sglang.srt.layers.dp_attention import is_allocation_symmetric
  from sglang.srt.layers.utils.common import strict_contiguous
++from sglang.srt.layers.attention.dsa.graph_buffer_lifetime import (
++    register_graph_buffer,
++)
 +from sglang.srt.model_executor.runner_utils.capture_owner import (
 +    retain_full_cuda_graph_owner,
 +)
++
++
++@torch.compiler.disable
++def _retain_mhc_capture_owners(*tensors: torch.Tensor) -> None:
++    """Retain scratch tensors whose addresses a full graph capture records.
++
++    No-op outside an active full-graph capture scope. The compiler-disable
++    boundary keeps the retention side effect out of any enclosing Dynamo
++    graph, which would otherwise trace it away.
++    """
++    for tensor in tensors:
++        retain_full_cuda_graph_owner(tensor)
++
  
  logger = logging.getLogger(__name__)
  
-@@ -885,6 +891,10 @@ def mhc_pre(
+@@ -844,6 +863,7 @@ def mhc_pre(
+         gemm_out_sqrsum = torch.empty(
+             n_splits, num_tokens, dtype=torch.float32, device=residual.device
+         )
++        _retain_mhc_capture_owners(gemm_out_mul, gemm_out_sqrsum)
+ 
+         from sglang.srt.layers.deep_gemm_wrapper.entrypoint import tf32_hc_prenorm_gemm
+ 
+@@ -885,6 +905,9 @@ def mhc_pre(
              partial_sqrsum = torch.empty(
                  n_splits_pre, num_tokens, dtype=torch.float32, device=residual.device
              )
-+            retain_full_cuda_graph_owner(partial_out)
-+            retain_full_cuda_graph_owner(partial_sqrsum)
++            _retain_mhc_capture_owners(partial_out, partial_sqrsum)
 +            register_graph_buffer(partial_out, "mhc-pre-partial-out")
 +            register_graph_buffer(partial_sqrsum, "mhc-pre-partial-sqrsum")
              kernel_0(
                  residual_flat.view(num_tokens, hc_hidden_size),
                  fn_flat,
-@@ -1414,6 +1424,8 @@ def mhc_fused_post_pre(
-         dtype=torch.float32,
-         device=residual.device,
-     )
-+    retain_full_cuda_graph_owner(gemm_out_mul)
-+    retain_full_cuda_graph_owner(gemm_out_sqrsum)
-     residual_cur = torch.empty_like(residual_flat)
- 
+@@ -907,6 +930,7 @@ def mhc_pre(
+             gemm_out_sqrsum = torch.empty(
+                 n_splits, num_tokens, dtype=torch.float32, device=residual.device
+             )
++            _retain_mhc_capture_owners(gemm_out_mul, gemm_out_sqrsum)
+             assert (
+                 n_splits == 1
+             ), "The simple TileLang version gemm_sqrsum doesn't support split-k"
+@@ -933,6 +957,10 @@ def mhc_pre(
+         )
+         if not norm_weight_bf.is_contiguous():
+             norm_weight_bf = norm_weight_bf.contiguous()
++        if norm_weight_bf is not norm_weight:
++            # Only a converted or contiguous copy has a dying owner; the
++            # caller's own parameter tensor outlives the graph already.
++            _retain_mhc_capture_owners(norm_weight_bf)
+         mhc_pre_big_fuse_with_norm_tilelang(
+             gemm_out_mul,
+             gemm_out_sqrsum,
+@@ -1419,6 +1447,7 @@ def mhc_fused_post_pre(
      if num_tokens <= fma_token_threshold:
-@@ -1563,6 +1575,220 @@ def mhc_fused_post_pre(
-     )
+         # Small-batch path: one TileLang launch computes hc_post, the bf16
+         # residual write, GEMM partials, and the RMS square-sum partials.
++        _retain_mhc_capture_owners(gemm_out_mul, gemm_out_sqrsum)
+         mhc_fused_post_pre_fma_tilelang(
+             comb_res_mix.view(num_tokens, hc_mult, hc_mult),
+             residual_flat,
+@@ -1450,6 +1479,7 @@ def mhc_fused_post_pre(
+         if envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get():
+             import deep_gemm
  
- 
++            _retain_mhc_capture_owners(gemm_out_mul, gemm_out_sqrsum)
+             deep_gemm.tf32_hc_prenorm_gemm(
+                 residual_cur.view(num_tokens, hc_hidden_size),
+                 fn,
+@@ -1466,6 +1496,7 @@ def mhc_fused_post_pre(
+             gemm_out_sqrsum_1d = torch.empty(
+                 num_tokens, dtype=torch.float32, device=residual.device
+             )
++            _retain_mhc_capture_owners(gemm_out_mul_2d, gemm_out_sqrsum_1d)
+             mhc_pre_gemm_sqrsum_tilelang(
+                 residual_cur.view(num_tokens, hc_hidden_size),
+                 fn,
+@@ -1512,6 +1543,10 @@ def mhc_fused_post_pre(
+         )
+         if not norm_weight_bf.is_contiguous():
+             norm_weight_bf = norm_weight_bf.contiguous()
++        if norm_weight_bf is not norm_weight:
++            # Only a converted or contiguous copy has a dying owner; the
++            # caller's own parameter tensor outlives the graph already.
++            _retain_mhc_capture_owners(norm_weight_bf)
+         mhc_pre_big_fuse_with_norm_tilelang(
+             gemm_out_mul,
+             gemm_out_sqrsum,
+@@ -1618,3 +1653,274 @@ def npu_hc_pre(
+     # not fold input_layernorm. Return norm_fused=False so the caller
+     # applies the layernorm itself, matching the deepgemm/torch paths.
+     return y.to(dtype), post, comb, False
++
++
 +def hc_expand(x: torch.Tensor, n: int) -> torch.Tensor:
 +    """[s, hidden_size] -> [s, n * hidden_size] by replication."""
 +    return x.repeat(1, n)
@@ -3533,9 +3597,61 @@ index ebe4e3a8ad..b560addab8 100644
 +    return out.view(s, -1)
 +
 +
- def npu_hc_pre(
-     x: torch.Tensor,
-     hc_fn: torch.Tensor,
++def npu_hc_pre(
++    x: torch.Tensor,
++    hc_fn: torch.Tensor,
++    hc_scale: torch.Tensor,
++    hc_base: torch.Tensor,
++    hc_mult: int,
++    hc_sinkhorn_iters: int,
++    rms_norm_eps: float,
++    hc_eps: float,
++    forward_batch=None,
++) -> tuple:
++    """NPU-accelerated hc_pre via the custom_ops kernel.
++
++    Returns (y, post, comb, norm_fused).  norm_fused is always False
++    because npu_hc_pre does not fold input_layernorm — the caller must
++    apply it separately.
++    """
++    shape, dtype = x.size(), x.dtype
++
++    # IDLE / empty short-circuit, mirroring the dsv4-flash source.
++    # The kernel emits post/comb in fp32 (sinkhorn iterates in fp32),
++    # so the dummies must too — otherwise downstream comb/post-aware
++    # ops see a silent fp32 ↔ bf16 split between idle and non-idle
++    # batches.
++    is_idle = forward_batch is not None and forward_batch.forward_mode.is_idle()
++    if is_idle or x.shape[0] == 0:
++        bs = x.shape[0]
++        y = torch.empty((bs, shape[-1]), dtype=dtype, device=x.device)
++        post = torch.empty((bs, hc_mult), dtype=torch.float32, device=x.device)
++        comb = torch.empty(
++            (bs, hc_mult, hc_mult),
++            dtype=torch.float32,
++            device=x.device,
++        )
++        return y, post, comb, False
++
++    # Note the return order: (y, post, comb) — y is the (T, hidden)
++    # mixed activation, post / comb are the hc_post inputs. The
++    # fused kernel emits y in fp32 (sinkhorn iterates in fp32), so
++    # cast back to the input dtype before the downstream
++    # aclnnRmsNorm (which has no x=fp32 / gamma=bf16 overload).
++    y, post, comb = torch.ops.custom.npu_hc_pre(
++        x,
++        hc_fn,
++        hc_scale,
++        hc_base,
++        hc_mult=hc_mult,
++        hc_sinkhorn_iters=hc_sinkhorn_iters,
++        norm_eps=rms_norm_eps,
++        hc_eps=hc_eps,
++    )
++    # npu_hc_pre uses norm_eps for sinkhorn's internal RMS only; it does
++    # not fold input_layernorm. Return norm_fused=False so the caller
++    # applies the layernorm itself, matching the deepgemm/torch paths.
++    return y.to(dtype), post, comb, False
 diff --git a/python/sglang/kernels/ops/moe/kpool_topk_transform.py b/python/sglang/kernels/ops/moe/kpool_topk_transform.py
 new file mode 100644
 index 0000000000..a3bfd04fcc
@@ -3693,10 +3809,10 @@ index 10342899ce..b8051a6f08 100644
 +    )
 +    return last_correct, (steps_to_track if has_track else None)
 diff --git a/python/sglang/srt/arg_groups/model_hook.py b/python/sglang/srt/arg_groups/model_hook.py
-index 4db9df2528..1dc336f17a 100644
+index ad7eda7e42..50262dea49 100644
 --- a/python/sglang/srt/arg_groups/model_hook.py
 +++ b/python/sglang/srt/arg_groups/model_hook.py
-@@ -49,6 +49,21 @@ from sglang.srt.utils.common import (
+@@ -44,6 +44,21 @@ from sglang.srt.utils.common import (
  logger = logging.getLogger(__name__)
  
  
@@ -3716,9 +3832,9 @@ index 4db9df2528..1dc336f17a 100644
 +
 +
  def handle_model_specific_adjustments(server_args: Any):
-     from sglang.srt.arg_groups.overrides import attention_backends_of
  
-@@ -78,6 +93,7 @@ def handle_model_specific_adjustments(server_args: Any):
+     cfg = resolving_view(server_args)
+@@ -72,6 +87,7 @@ def handle_model_specific_adjustments(server_args: Any):
      model_config = model_config_of(server_args)
      hf_config = model_config.hf_config
      model_arch = hf_config.architectures[0]
@@ -3727,18 +3843,10 @@ index 4db9df2528..1dc336f17a 100644
      if model_arch == "InternS2MobiusForConditionalGeneration":
          unsupported = []
 diff --git a/python/sglang/srt/arg_groups/overrides.py b/python/sglang/srt/arg_groups/overrides.py
-index 87170be603..5d136f5ebf 100644
+index 27703d3b04..b459d7646f 100644
 --- a/python/sglang/srt/arg_groups/overrides.py
 +++ b/python/sglang/srt/arg_groups/overrides.py
-@@ -795,6 +795,7 @@ def _kimi_k3_moe_runner_overrides(server_args: Any, hf_config: Any) -> dict:
-     "MistralLarge3ForCausalLM",
-     "PixtralForConditionalGeneration",
-     "GlmMoeDsaForCausalLM",
-+    "Glm5NextForConditionalGeneration",
-     "LongcatFlashForCausalLM",
-     "LongcatFlashForCausalLMNextN",
-     "Dots3NoteForCausalLM",
-@@ -1806,6 +1807,7 @@ _MAMBA_RADIX_CACHE_ARCHS = frozenset(
+@@ -511,6 +511,7 @@ _MAMBA_RADIX_CACHE_ARCHS = frozenset(
          "Lfm2ForCausalLM",
          "Lfm2MoeForCausalLM",
          "ZayaForCausalLM",
@@ -3746,7 +3854,7 @@ index 87170be603..5d136f5ebf 100644
      }
  )
  
-@@ -1828,6 +1830,7 @@ _MAMBA_EXTRA_BUFFER_ARCHS = frozenset(
+@@ -532,6 +533,7 @@ _MAMBA_EXTRA_BUFFER_ARCHS = frozenset(
          "BailingMoeV3ForCausalLM",
          "FalconH1ForCausalLM",
          "GraniteMoeHybridForCausalLM",
@@ -3754,7 +3862,7 @@ index 87170be603..5d136f5ebf 100644
          "NemotronHForCausalLM",
          "NemotronHPuzzleForCausalLM",
          # KDA-based: same MambaPool ping-pong machinery as GDN; requires the
-@@ -1945,21 +1948,51 @@ def _check_tilelang_dsa_fp8_kv(
+@@ -649,21 +651,51 @@ def _check_tilelang_dsa_fp8_kv(
      decode_backend: Optional[str],
      *,
      hip: bool,
@@ -3786,11 +3894,7 @@ index 87170be603..5d136f5ebf 100644
 +            "--kv-cache-dtype bfloat16 with DCP, or dcp_size 1 with fp8."
 +        )
 +    if prefill_backend != decode_backend:
-         raise ValueError(
--            "The tilelang DSA prefill/decode kernels only support an fp8_e4m3 KV "
--            "cache on ROCm/HIP; on CUDA they require a bfloat16 KV cache. Use "
--            "--kv-cache-dtype bfloat16 with the tilelang backend, or keep "
--            "--kv-cache-dtype fp8_e4m3 and pick an fp8-capable DSA backend "
++        raise ValueError(
 +            "On CUDA, an fp8_e4m3 KV cache with a tilelang DSA backend requires "
 +            "BOTH --dsa-prefill-backend and --dsa-decode-backend to be tilelang: "
 +            "tilelang consumes the raw fp8 MLA KV layout, while the other CUDA "
@@ -3801,7 +3905,11 @@ index 87170be603..5d136f5ebf 100644
 +
 +    major, minor = torch.cuda.get_device_capability()
 +    if major * 10 + minor < 89:
-+        raise ValueError(
+         raise ValueError(
+-            "The tilelang DSA prefill/decode kernels only support an fp8_e4m3 KV "
+-            "cache on ROCm/HIP; on CUDA they require a bfloat16 KV cache. Use "
+-            "--kv-cache-dtype bfloat16 with the tilelang backend, or keep "
+-            "--kv-cache-dtype fp8_e4m3 and pick an fp8-capable DSA backend "
 +            "The tilelang DSA fp8_e4m3 KV path on CUDA requires fp8 tensor-core "
 +            f"MMA (SM89+); got sm_{major}{minor}. Use --kv-cache-dtype bfloat16 "
 +            "with the tilelang backend, or pick an fp8-capable DSA backend "
@@ -3815,7 +3923,7 @@ index 87170be603..5d136f5ebf 100644
  
  
  @register_post_process
-@@ -1986,7 +2019,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
+@@ -690,7 +722,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
      declared: Dict[str, Any] = {}
      model_arch = hf_config.architectures[0]
      is_glm_sm12_fp8 = (
@@ -3829,23 +3937,21 @@ index 87170be603..5d136f5ebf 100644
 +        )
          and major == 12
          and kv_cache_dtype == "fp8_e4m3"
-         and not is_hip()
-@@ -2039,7 +2078,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
- 
+         and not get_platform().is_hip
+@@ -744,7 +782,11 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
      prefill = declared.get("dsa_prefill_backend", view.dsa_prefill_backend)
      decode = declared.get("dsa_decode_backend", view.dsa_decode_backend)
--    _check_tilelang_dsa_fp8_kv(kv_cache_dtype, prefill, decode, hip=is_hip())
-+    _check_tilelang_dsa_fp8_kv(
+     _check_tilelang_dsa_fp8_kv(
+-        kv_cache_dtype, prefill, decode, hip=get_platform().is_hip
 +        kv_cache_dtype,
 +        prefill,
 +        decode,
-+        hip=is_hip(),
++        hip=get_platform().is_hip,
 +        dcp_size=getattr(view, "dcp_size", 1) or 1,
-+    )
+     )
      logger.warning(
          f"Set DSA backends for {kv_cache_dtype} KV Cache: "
-         f"prefill={prefill}, decode={decode}."
-@@ -2056,6 +2101,7 @@ _DEEPSEEK_FAMILY_ARCHS = frozenset(
+@@ -762,6 +804,7 @@ _DEEPSEEK_FAMILY_ARCHS = frozenset(
          "MistralLarge3ForCausalLM",
          "PixtralForConditionalGeneration",
          "GlmMoeDsaForCausalLM",
@@ -4256,10 +4362,10 @@ index 5f1b3cc3cc..8e5c6155d6 100644
      )
      if existing:
 diff --git a/python/sglang/srt/configs/model_config.py b/python/sglang/srt/configs/model_config.py
-index 32ea0fd3c9..13855a9103 100644
+index 1785a7c8de..ef4138c344 100644
 --- a/python/sglang/srt/configs/model_config.py
 +++ b/python/sglang/srt/configs/model_config.py
-@@ -129,6 +129,8 @@ def is_deepseek_dsa(config) -> bool:
+@@ -130,6 +130,8 @@ def is_deepseek_dsa(config) -> bool:
              "PixtralForConditionalGeneration",
              "GlmMoeDsaForCausalLM",
              "GlmMoeDsaForCausalLMNextN",
@@ -4268,7 +4374,7 @@ index 32ea0fd3c9..13855a9103 100644
              "LongcatFlashForCausalLM",
              "LongcatFlashForCausalLMNextN",
              "Dots3NoteForCausalLM",
-@@ -145,6 +147,31 @@ def is_kimi_k3(config) -> bool:
+@@ -146,6 +148,31 @@ def is_kimi_k3(config) -> bool:
      )
  
  
@@ -4300,7 +4406,7 @@ index 32ea0fd3c9..13855a9103 100644
  def is_dspark_draft(config) -> bool:
      return _hf_arch(config) == "DSparkDraftModel"
  
-@@ -257,6 +284,26 @@ def get_dsa_index_n_heads(config: PretrainedConfig) -> int:
+@@ -258,6 +285,26 @@ def get_dsa_index_n_heads(config: PretrainedConfig) -> int:
      return config.index_n_heads
  
  
@@ -4327,7 +4433,7 @@ index 32ea0fd3c9..13855a9103 100644
  REQUANTIZATION_METHODS = ["quark_mxfp4"]
  
  
-@@ -696,6 +743,15 @@ class ModelConfig:
+@@ -697,6 +744,15 @@ class ModelConfig:
          ):
              self.hf_config.architectures[0] = "Glm4MoeLiteForCausalLMNextN"
  
@@ -4343,7 +4449,7 @@ index 32ea0fd3c9..13855a9103 100644
          if is_draft_model and self.hf_config.architectures[0] in [
              "GlmOcrForConditionalGeneration",
          ]:
-@@ -929,6 +985,8 @@ class ModelConfig:
+@@ -930,6 +986,8 @@ class ModelConfig:
              or "Glm4MoeLiteForCausalLMNextN" in self.hf_config.architectures
              or "GlmMoeDsaForCausalLM" in self.hf_config.architectures
              or "GlmMoeDsaForCausalLMNextN" in self.hf_config.architectures
@@ -4352,7 +4458,7 @@ index 32ea0fd3c9..13855a9103 100644
              or "LongcatFlashForCausalLM" in self.hf_config.architectures
              or "LongcatFlashForCausalLMNextN" in self.hf_config.architectures
              or "DotsVLMForCausalLM" in self.hf_config.architectures
-@@ -1041,7 +1099,10 @@ class ModelConfig:
+@@ -1042,7 +1100,10 @@ class ModelConfig:
              self.v_head_dim = self.hf_config.v_head_dim
              self.qk_nope_head_dim = self.hf_config.qk_nope_head_dim
              self.scaling = 1 / math.sqrt(self.qk_nope_head_dim + self.qk_rope_head_dim)
@@ -4364,7 +4470,7 @@ index 32ea0fd3c9..13855a9103 100644
              self.head_dim = (
                  self.hf_config.qk_nope_head_dim + self.hf_config.qk_rope_head_dim
              )
-@@ -1094,12 +1155,21 @@ class ModelConfig:
+@@ -1095,12 +1156,21 @@ class ModelConfig:
              self.num_key_value_heads = self.num_attention_heads
          self.hidden_size = self.hf_text_config.hidden_size
          hc_mult = getattr(self.hf_text_config, "hc_mult", 1)
@@ -4390,7 +4496,7 @@ index 32ea0fd3c9..13855a9103 100644
          self.num_hidden_layers = self.hf_text_config.num_hidden_layers
          self.num_attention_layers = self.num_hidden_layers
          if "LongcatFlashForCausalLM" in self.hf_config.architectures:
-@@ -1894,6 +1964,7 @@ multimodal_model_archs = [
+@@ -1895,6 +1965,7 @@ multimodal_model_archs = [
      "Gemma4UnifiedForConditionalGeneration",
      "Glm4vForConditionalGeneration",
      "Glm4vMoeForConditionalGeneration",
@@ -4398,7 +4504,7 @@ index 32ea0fd3c9..13855a9103 100644
      "GlmOcrForConditionalGeneration",
      "GlmAsrForConditionalGeneration",
      "GlmImageForConditionalGeneration",
-@@ -1961,6 +2032,7 @@ piecewise_cuda_graph_disabled_model_archs = [
+@@ -1962,6 +2033,7 @@ piecewise_cuda_graph_disabled_model_archs = [
      "DeepseekV4ForCausalLMNextN",
      "DeepseekV4ForCausalLMDSpark",
      "Qwen3NextForCausalLM",
@@ -4433,7 +4539,7 @@ index 1dedb16ebe..a09daafebc 100644
      # DeepSeek-V4 unified_kv SWA ring: addressed per-row by ring slot
      # (req_pool_idx * ring_stride + pos % ring_stride), needs its own component.
 diff --git a/python/sglang/srt/disaggregation/decode.py b/python/sglang/srt/disaggregation/decode.py
-index ef200f82db..17d7ec3243 100644
+index 033726ddac..8135552b16 100644
 --- a/python/sglang/srt/disaggregation/decode.py
 +++ b/python/sglang/srt/disaggregation/decode.py
 @@ -53,6 +53,7 @@ from sglang.srt.disaggregation.utils import (
@@ -4530,7 +4636,7 @@ index ef200f82db..17d7ec3243 100644
                  StateType.SWA_RING: _swa_ring_payload,
                  StateType.C128_STATE: _c128_state_payload,
 diff --git a/python/sglang/srt/disaggregation/encoder/preprocessor.py b/python/sglang/srt/disaggregation/encoder/preprocessor.py
-index bd6d3f06e8..cd1308876c 100644
+index f05229d8b6..6fd7c7215e 100644
 --- a/python/sglang/srt/disaggregation/encoder/preprocessor.py
 +++ b/python/sglang/srt/disaggregation/encoder/preprocessor.py
 @@ -11,6 +11,7 @@ import concurrent.futures
@@ -4810,7 +4916,7 @@ index bd6d3f06e8..cd1308876c 100644
      async def _flatten_and_load_audios(self, mm_items):
          return await self._flatten_and_load_data_by_modality(mm_items, Modality.AUDIO)
 diff --git a/python/sglang/srt/disaggregation/encoder/receiver.py b/python/sglang/srt/disaggregation/encoder/receiver.py
-index 53bcff1fc0..93f500a7e8 100644
+index fd5a8564d0..36a62fb01f 100644
 --- a/python/sglang/srt/disaggregation/encoder/receiver.py
 +++ b/python/sglang/srt/disaggregation/encoder/receiver.py
 @@ -1888,6 +1888,7 @@ class MMReceiverBase(ABC):
@@ -4844,7 +4950,7 @@ index 53bcff1fc0..93f500a7e8 100644
      async def _recv_mm_data(self, req_id, recv_socket, mm_processor, prompt):
          """zmq_to_tokenizer receive: embedding parts arrive as 2-frame ZMQ
 diff --git a/python/sglang/srt/disaggregation/mooncake/conn.py b/python/sglang/srt/disaggregation/mooncake/conn.py
-index 202d014e24..00b671f979 100644
+index 9d93721dbb..b3756f6e75 100644
 --- a/python/sglang/srt/disaggregation/mooncake/conn.py
 +++ b/python/sglang/srt/disaggregation/mooncake/conn.py
 @@ -47,9 +47,12 @@ from sglang.srt.disaggregation.mooncake.utils import (
@@ -4860,7 +4966,7 @@ index 202d014e24..00b671f979 100644
  )
  from sglang.srt.distributed.parallel_state import get_mooncake_transfer_engine
  from sglang.srt.environ import envs
-@@ -1402,10 +1405,25 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
+@@ -1406,10 +1409,25 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
                          )
                          or rc
                      )
@@ -4886,7 +4992,7 @@ index 202d014e24..00b671f979 100644
                      and self.attn_tp_size
                      != target_rank_registration_info.dst_attn_tp_size
                  ):
-@@ -1487,6 +1505,43 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
+@@ -1491,6 +1509,43 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
                  )
          return rc
  
@@ -4930,7 +5036,7 @@ index 202d014e24..00b671f979 100644
      def _send_mamba_state(
          self,
          req: TransferInfo,
-@@ -1545,7 +1600,8 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
+@@ -1549,7 +1604,8 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
          attn_tp_size, we slice the state accordingly. GDN conv_state is the
          concatenation [query | key | value] with each sub-block head-sharded
          independently, so on the scatter path it is sliced per sub-block via
@@ -4940,7 +5046,7 @@ index 202d014e24..00b671f979 100644
          """
          logger.warning_once(
              "Using Mamba state slice transfer for different TP sizes between prefill and decode. "
-@@ -1917,12 +1973,20 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
+@@ -1921,12 +1977,20 @@ class MooncakeKVManager(StagingManagerMixin, CommonKVManager):
                                      )
                                      break
  
@@ -5887,10 +5993,10 @@ index 17ecfa782d..628b3d48d6 100644
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 196a203d11..cbae0a5e80 100644
+index 9231e8fd6c..6b6c025f90 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
-@@ -1263,6 +1263,11 @@ class Envs:
+@@ -1276,6 +1276,11 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -5902,7 +6008,7 @@ index 196a203d11..cbae0a5e80 100644
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1432,6 +1437,16 @@ class Envs:
+@@ -1445,6 +1450,16 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -5964,18 +6070,18 @@ index 7d8dcb6f4a..e06dc28219 100644
          chunk_size = self.cpu_offloading_chunk_size
          has_ik = self.index_head_dim is not None
 diff --git a/python/sglang/srt/layers/attention/attention_registry.py b/python/sglang/srt/layers/attention/attention_registry.py
-index a0615766df..faabeb63c7 100644
+index d60c4de0bb..62eec01555 100644
 --- a/python/sglang/srt/layers/attention/attention_registry.py
 +++ b/python/sglang/srt/layers/attention/attention_registry.py
-@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
- 
- from sglang.srt.arg_groups.overrides import resolved_view
+@@ -7,6 +7,7 @@ from sglang.srt.arg_groups.overrides import (
+     resolved_view,
+ )
  from sglang.srt.configs.hybrid_arch import (
 +    glm5_next_config,
      hybrid_gdn_config,
      hybrid_lightning_config,
      kimi_linear_config,
-@@ -502,6 +503,8 @@ def attn_backend_wrapper(runner: "ModelRunner", full_attn_backend: "AttentionBac
+@@ -504,6 +505,8 @@ def attn_backend_wrapper(runner: "ModelRunner", full_attn_backend: "AttentionBac
                  hybrid_backend_cls = AscendKDAHybridLinearAttnBackend
              else:
                  linear_attn_backend = KDAAttnBackend(runner)
@@ -6086,10 +6192,20 @@ index e4b90b7efe..5160df62e3 100644
              real_page_table=real_page_table,
              seqlens_expanded=seqlens_expanded,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
-index 4f630c1247..4225259982 100644
+index 4f630c1247..551be6aea5 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
-@@ -481,7 +481,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -39,6 +39,9 @@ from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph.context
+ from sglang.srt.model_executor.runner_backend_utils.tc_piecewise_cuda_graph import (
+     is_in_tc_piecewise_cuda_graph,
+ )
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    retain_full_cuda_graph_owner,
++)
+ from sglang.srt.runtime_context import (
+     get_device,
+     get_exec,
+@@ -481,7 +484,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                      dim=-1,
                  )
              with torch.cuda.stream(self.alt_stream):
@@ -6097,7 +6213,57 @@ index 4f630c1247..4225259982 100644
                  if self.use_dsa_indexer_fusion:
                      key, weights_raw = self._fused_k_weights(x)
                  else:
-@@ -871,10 +870,18 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -753,8 +755,19 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+         target_heads = 32
+         q_fp8 = torch.nn.functional.pad(q_fp8, (0, 0, 0, target_heads - num_heads))
+         weights = torch.nn.functional.pad(weights, (0, target_heads - num_heads))
++        Indexer._retain_padded_head_capture_owners(q_fp8, weights)
+         return q_fp8, weights, num_heads
+ 
++    @staticmethod
++    @torch.compiler.disable
++    def _retain_padded_head_capture_owners(
++        q_fp8: torch.Tensor, weights: torch.Tensor
++    ) -> None:
++        # The padded tensors, not their sources, are what the captured
++        # kernels record; no-op outside an active full-graph capture scope.
++        retain_full_cuda_graph_owner(q_fp8)
++        retain_full_cuda_graph_owner(weights)
++
+     def _mask_init_and_local_tokens(
+         self,
+         logits: torch.Tensor,
+@@ -789,6 +802,21 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+             logits.scatter_(dim=1, index=local_idxs, value=float("inf"))
+         return logits
+ 
++    @torch.compiler.disable
++    def _retain_full_graph_capture_owner(self, tensor: torch.Tensor) -> torch.Tensor:
++        """Retain a tensor whose address a full CUDA graph capture records.
++
++        CUDA graphs replay through raw device pointers, so every tensor a
++        captured kernel reads or writes must stay allocated for the graph's
++        lifetime. The retain call is a no-op outside an active full-graph
++        capture scope; during capture the backend stores the owner with the
++        captured shape and releases it on recapture or cleanup. The
++        ``torch.compiler.disable`` boundary keeps the Python side effect out
++        of any enclosing Dynamo graph, which would otherwise trace it away.
++        """
++        retain_full_cuda_graph_owner(tensor)
++        return tensor
++
+     def _get_topk_paged(
+         self,
+         forward_batch: ForwardBatch,
+@@ -800,6 +828,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+         if TYPE_CHECKING:
+             assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
+ 
++        weights = self._retain_full_graph_capture_owner(weights)
+         page_size = get_token_to_kv_pool().page_size
+         # NOTE(dark): blocksize = 64 is hardcoded in deep_gemm
+         if _is_hip:
+@@ -871,10 +900,18 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
  
          if use_dg_native:
              seqlens_32_2d = ctx_2d
@@ -6118,7 +6284,7 @@ index 4f630c1247..4225259982 100644
          if _is_cuda:
              if schedule_metadata is None:
                  schedule_metadata = deep_gemm.get_paged_mqa_logits_metadata(
-@@ -891,6 +898,54 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -891,6 +928,54 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          assert len(weights.shape) == 3
          weights = weights.squeeze(2)
  
@@ -6173,7 +6339,7 @@ index 4f630c1247..4225259982 100644
          if self.paged_mqa_logits_backend.is_aiter():
              logits = aiter_paged_mqa_logits(
                  q_fp8,
-@@ -923,7 +978,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -923,7 +1008,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              )
          elif use_dg_native:
              logits = deepgemm_paged_mqa_logits_native(
@@ -6182,7 +6348,7 @@ index 4f630c1247..4225259982 100644
                  q_fp8,
                  kv_cache_fp8,
                  weights,
-@@ -937,7 +992,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -937,7 +1022,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              )
          else:
              logits = deepgemm_paged_mqa_logits_split(
@@ -6191,6 +6357,70 @@ index 4f630c1247..4225259982 100644
                  q_fp8,
                  kv_cache_fp8,
                  weights,
+@@ -948,6 +1033,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+                 q_offset=q_offset,
+             )
+ 
++        logits = self._retain_full_graph_capture_owner(logits)
+         # NOTE(dark): logits should be cleaned in topk_transform
+         self._mask_init_and_local_tokens(logits, seqlens_32)
+         topk_result = metadata.topk_transform(logits, self.index_topk)
+@@ -1029,6 +1115,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+         if TYPE_CHECKING:
+             assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
+ 
++        weights = self._retain_full_graph_capture_owner(weights)
+         assert forward_batch.forward_mode.is_extend_without_speculative()
+ 
+         page_size = get_token_to_kv_pool().page_size
+@@ -1138,6 +1225,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+             assert logits.shape[0] == len(seq_lens_expanded)
+             assert logits.shape[1] == k_offset
+ 
++            logits = self._retain_full_graph_capture_owner(logits)
+             self._mask_init_and_local_tokens(logits, seq_lens_expanded, ks)
+             raw_topk_result = metadata.topk_transform(logits, self.index_topk, ks=ks)
+             topk_result[:q_offset] = raw_topk_result
+@@ -1207,6 +1295,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+                 cu_seqlens_q_chunk = cu_seqlens_q_full[start:end]
+                 batch_idx_chunk = token_to_batch_idx[start:end]
+ 
++            logits_chunk = self._retain_full_graph_capture_owner(logits_chunk)
+             raw_topk_chunk = metadata.topk_transform(
+                 logits_chunk,
+                 self.index_topk,
+@@ -1298,6 +1387,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+             dtype=torch.float32,
+             device=x_meta.device,
+         )
++        dummy_logits = self._retain_full_graph_capture_owner(dummy_logits)
+         raw_topk_result = metadata.topk_transform(dummy_logits, self.index_topk)
+         if topk_result is not None:
+             # PCG/BCG: fill the valid prefix of the padded static buffer and
+@@ -1321,6 +1411,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+             "DSA context parallel (_get_topk_ragged_with_cp) not supported under "
+             "piecewise/breakable CUDA graph"
+         )
++        weights = self._retain_full_graph_capture_owner(weights)
+         if TYPE_CHECKING:
+             assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
+ 
+@@ -1401,6 +1492,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+                     ke,
+                     clean_logits=False,
+                 )
++            logits = self._retain_full_graph_capture_owner(logits)
+             topk_result = metadata.topk_transform(
+                 logits,
+                 self.index_topk,
+@@ -1451,6 +1543,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+             actual_seq_q = torch.tensor([actual_seq_q], dtype=torch.int32).to(
+                 device="cuda", non_blocking=True
+             )
++            logits = self._retain_full_graph_capture_owner(logits)
+             topk_result = metadata.topk_transform(
+                 logits,
+                 self.index_topk,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
 index 0000000000..39f4c0a4af
@@ -11183,7 +11413,7 @@ index e469a61162..1b95e753fd 100644
      return torch.pow(2.0, torch.ceil(torch.log2(x.abs())))
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 8f9929a954..e545086cf6 100644
+index 9369ad2896..9af140747d 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -1,9 +1,10 @@
@@ -11198,22 +11428,7 @@ index 8f9929a954..e545086cf6 100644
      Dict,
      List,
      Literal,
-@@ -14,14 +15,6 @@ from typing import (
- 
- import torch
- 
--from sglang.srt.configs.model_config import get_dsa_index_topk, is_deepseek_dsa
--from sglang.srt.runtime_context import (
--    get_exec,
--    get_parallel,
--    get_spec,
--)
--
--logger = logging.getLogger(__name__)
- from sglang.kernels.ops.attention.dsa.dequant_k_cache import (
-     concat_cast_kv_fp8_pad,
-     dequantize_k_cache_paged,
-@@ -29,16 +22,28 @@ from sglang.kernels.ops.attention.dsa.dequant_k_cache import (
+@@ -31,16 +32,28 @@ from sglang.kernels.ops.attention.dsa.dequant_k_cache import (
  )
  from sglang.kernels.ops.attention.dsa.quant_k_cache import quantize_k_cache
  from sglang.kernels.ops.attention.dsa.transform_index import (
@@ -11242,7 +11457,7 @@ index 8f9929a954..e545086cf6 100644
  from sglang.srt.environ import envs
  from sglang.srt.layers.attention.base_attn_backend import AttentionBackend
  from sglang.srt.layers.attention.dsa.dsa_backend_mtp_precompute import (
-@@ -51,9 +56,21 @@ from sglang.srt.layers.attention.dsa.dsa_topk_backend import (
+@@ -53,9 +66,21 @@ from sglang.srt.layers.attention.dsa.dsa_topk_backend import (
      DSATopKBackend,
      TopkTransformMethod,
  )
@@ -11264,16 +11479,7 @@ index 8f9929a954..e545086cf6 100644
      dsa_cp_round_robin_split_data,
      dsa_cp_round_robin_split_q_seqs,
      dsa_use_prefill_cp,
-@@ -73,7 +90,7 @@ from sglang.srt.layers.utils.cp_utils import (
-     cp_split_and_rebuild_position,
- )
- from sglang.srt.model_executor.forward_batch_info import ForwardBatch, ForwardMode
--from sglang.srt.runtime_context import get_buffer
-+from sglang.srt.runtime_context import get_buffer, get_exec, get_parallel, get_spec
- from sglang.srt.utils import (
-     get_bool_env_var,
-     is_cuda,
-@@ -83,6 +100,8 @@ from sglang.srt.utils import (
+@@ -83,6 +108,8 @@ from sglang.srt.utils import (
      print_warning_once,
  )
  
@@ -11282,7 +11488,7 @@ index 8f9929a954..e545086cf6 100644
  # Opt-in (default off): route the fp8 sparse-MLA prefill path through the Triton
  # per-query flash kernel instead of TileLang. Validated on gfx950 (GLM-5.1 @
  # TP4: 16 heads, d_v=512, tail=64). Reads q_nope/q_rope directly (skips the
-@@ -117,6 +136,19 @@ def _all_gather_dsa_trtllm_fp8_kv(
+@@ -117,6 +144,19 @@ def _all_gather_dsa_trtllm_fp8_kv(
      return kv.split((kv_lora_rank, qk_rope_head_dim), dim=-1)
  
  
@@ -11302,7 +11508,7 @@ index 8f9929a954..e545086cf6 100644
  def materialize_full_kv_cp(
      attn_mla,
      forward_batch: ForwardBatch,
-@@ -171,6 +203,36 @@ def _to_2d_context_lens(seqlens_32: torch.Tensor, batch_size: int) -> torch.Tens
+@@ -171,6 +211,36 @@ def _to_2d_context_lens(seqlens_32: torch.Tensor, batch_size: int) -> torch.Tens
      return seqlens_32.contiguous().view(-1, 1)
  
  
@@ -11339,7 +11545,7 @@ index 8f9929a954..e545086cf6 100644
  @dataclass(frozen=True)
  class DSAFlashMLAMetadata:
      """Metadata only needed by FlashMLA"""
-@@ -253,6 +315,20 @@ class DSAMetadata:
+@@ -253,6 +323,20 @@ class DSAMetadata:
      # batch index for each token.
      token_to_batch_idx: Optional[torch.Tensor] = None
  
@@ -11360,7 +11566,7 @@ index 8f9929a954..e545086cf6 100644
  
  @torch.compile
  def _compiled_cat(tensors: list[torch.Tensor], dim: int = -1) -> torch.Tensor:
-@@ -275,6 +351,72 @@ def _cat(tensors: list[torch.Tensor], dim: int = -1) -> torch.Tensor:
+@@ -275,6 +359,72 @@ def _cat(tensors: list[torch.Tensor], dim: int = -1) -> torch.Tensor:
      return _compiled_cat([qk_nope, qk_rope], dim=dim)
  
  
@@ -11433,7 +11639,7 @@ index 8f9929a954..e545086cf6 100644
  _DSA_IMPL_T: TypeAlias = Literal[
      "flashmla_sparse",
      "flashmla_sparse_q8",
-@@ -315,12 +457,65 @@ class DeepseekSparseAttnBackend(
+@@ -315,12 +465,65 @@ class DeepseekSparseAttnBackend(
          self.num_splits = (
              1 if get_exec().deterministic.enable_deterministic_inference else 0
          )
@@ -11501,7 +11707,7 @@ index 8f9929a954..e545086cf6 100644
          self.max_context_len = model_runner.model_config.context_len
          self.num_q_heads = (
              model_runner.model_config.num_attention_heads // get_parallel().attn_tp_size
-@@ -340,6 +535,16 @@ class DeepseekSparseAttnBackend(
+@@ -340,6 +543,16 @@ class DeepseekSparseAttnBackend(
          self.supports_mha_one_shot: bool = True
          self.dsa_prefill_impl: _DSA_IMPL_T = get_exec().kernel.dsa_prefill_backend
          self.dsa_decode_impl: _DSA_IMPL_T = get_exec().kernel.dsa_decode_backend
@@ -11518,7 +11724,7 @@ index 8f9929a954..e545086cf6 100644
          self.dsa_topk_backend: DSATopKBackend = DSATopKBackend.resolve(model_runner)
          if self.num_q_heads <= 64:
              self.flashmla_kv_num_q_heads = 64
-@@ -350,6 +555,23 @@ class DeepseekSparseAttnBackend(
+@@ -350,6 +563,23 @@ class DeepseekSparseAttnBackend(
              self.flashmla_kv_num_q_heads = self.num_q_heads
          self.enable_auto_select_prefill_impl = self.dsa_prefill_impl == "flashmla_auto"
  
@@ -11542,7 +11748,7 @@ index 8f9929a954..e545086cf6 100644
          self._arange_buf = torch.arange(16384, device=self.device, dtype=torch.int32)
  
          if _is_hip:
-@@ -494,6 +716,22 @@ class DeepseekSparseAttnBackend(
+@@ -494,6 +724,22 @@ class DeepseekSparseAttnBackend(
                      device=model_runner.device,
                  ),
              )
@@ -11565,7 +11771,7 @@ index 8f9929a954..e545086cf6 100644
          # Allocate global workspace buffer for TRT-LLM kernels (ragged attention on SM100/B200, or trtllm decode)
          elif self.device_sm_major >= 10 or self.dsa_decode_impl == "trtllm":
              self.workspace_buffer = get_buffer(
-@@ -654,6 +892,57 @@ class DeepseekSparseAttnBackend(
+@@ -654,6 +900,57 @@ class DeepseekSparseAttnBackend(
              "num_kv_splits": self.aiter_dsa_max_split_per_batch,
          }
  
@@ -11623,7 +11829,7 @@ index 8f9929a954..e545086cf6 100644
      def _build_paged_mqa_schedule_2d_ctx_lens(
          self,
          forward_mode: ForwardMode,
-@@ -715,9 +1004,10 @@ class DeepseekSparseAttnBackend(
+@@ -715,9 +1012,10 @@ class DeepseekSparseAttnBackend(
          # nothing to refresh.
          if metadata.topk_v2_plan is None:
              return
@@ -11637,7 +11843,7 @@ index 8f9929a954..e545086cf6 100644
  
      def _get_fused_topk_page_table(self, topk_indices: torch.Tensor) -> torch.Tensor:
          if (
-@@ -737,6 +1027,9 @@ class DeepseekSparseAttnBackend(
+@@ -737,6 +1035,9 @@ class DeepseekSparseAttnBackend(
              )
          return self._arange_buf[:length]
  
@@ -11647,7 +11853,7 @@ index 8f9929a954..e545086cf6 100644
      def _graph_page_table_width(self, metadata: DSAMetadata) -> int:
          """Column count to scan req_to_token during graph replay. Reads the wide
          page_table_1 width when present, else req_to_token's width (the wide table
-@@ -755,6 +1048,245 @@ class DeepseekSparseAttnBackend(
+@@ -755,6 +1056,245 @@ class DeepseekSparseAttnBackend(
          )
          return page_table[:, strided_indices] // page_size
  
@@ -11893,7 +12099,7 @@ index 8f9929a954..e545086cf6 100644
      def init_forward_metadata_out_graph(
          self,
          forward_batch: ForwardBatch,
-@@ -826,6 +1358,17 @@ class DeepseekSparseAttnBackend(
+@@ -826,6 +1366,17 @@ class DeepseekSparseAttnBackend(
          # seq_len_cpu of selected sequences
          indexer_seq_lens_cpu = forward_batch.seq_lens_cpu
          indexer_seq_lens = forward_batch.seq_lens
@@ -11911,7 +12117,7 @@ index 8f9929a954..e545086cf6 100644
  
          if forward_batch.forward_mode.is_decode_or_idle():
              extend_seq_lens_cpu = [1] * batch_size
-@@ -925,6 +1468,11 @@ class DeepseekSparseAttnBackend(
+@@ -925,6 +1476,11 @@ class DeepseekSparseAttnBackend(
                      )
                  ]
              )
@@ -11923,7 +12129,7 @@ index 8f9929a954..e545086cf6 100644
  
              if can_dsa_prefill_cp_round_robin_split(forward_batch):
                  if is_cp_v2_active(forward_batch):
-@@ -950,8 +1498,127 @@ class DeepseekSparseAttnBackend(
+@@ -950,8 +1506,127 @@ class DeepseekSparseAttnBackend(
                      else 0
                  )
                  page_table = page_table[bs_idx, :max_seqlen_k]
@@ -11937,7 +12143,8 @@ index 8f9929a954..e545086cf6 100644
 +                        local_seq_lens_cpu=indexer_seq_lens_cpu.tolist(),
 +                        local_req_pool_indices=forward_batch.req_pool_indices[bs_idx],
 +                    )
-+
+ 
+-            if any(forward_batch.extend_prefix_lens_cpu) or bs_idx_cpu is not None:
 +            elif dsa_use_prefill_cp(
 +                forward_batch
 +            ) and not can_dsa_prefill_cp_round_robin_split(forward_batch):
@@ -11981,8 +12188,7 @@ index 8f9929a954..e545086cf6 100644
 +                local_extend_seq_lens_cpu = [int(x) for x in prev_q_lens] + [
 +                    int(x) for x in next_q_lens
 +                ]
- 
--            if any(forward_batch.extend_prefix_lens_cpu) or bs_idx_cpu is not None:
++
 +                local_seqlens = []
 +                for q_len, kv_len in zip(
 +                    local_extend_seq_lens_cpu, local_seq_lens_cpu, strict=True
@@ -12052,7 +12258,7 @@ index 8f9929a954..e545086cf6 100644
                  max_seqlen_q = (
                      max(extend_seq_lens_cpu) if len(extend_seq_lens_cpu) != 0 else 1
                  )
-@@ -1011,10 +1678,18 @@ class DeepseekSparseAttnBackend(
+@@ -1011,10 +1686,18 @@ class DeepseekSparseAttnBackend(
          dsa_cache_seqlens_int32 = compute_dsa_seqlens(
              original_seq_lens=seqlens_expanded,
              dsa_index_topk=self.dsa_index_topk,
@@ -12071,7 +12277,7 @@ index 8f9929a954..e545086cf6 100644
          dsa_cu_seqlens_k = compute_cu_seqlens(dsa_cache_seqlens_int32)
          dsa_cu_seqlens_q = self.get_device_int32_arange(len(dsa_cu_seqlens_k))
  
-@@ -1072,6 +1747,12 @@ class DeepseekSparseAttnBackend(
+@@ -1072,6 +1755,12 @@ class DeepseekSparseAttnBackend(
              token_to_batch_idx=token_to_batch_idx,
              topk_v2_plan=self._build_topk_v2_plan(seqlens_expanded),
          )
@@ -12084,7 +12290,7 @@ index 8f9929a954..e545086cf6 100644
          self.forward_metadata = metadata
  
      def _cal_indexer_k_start_end(
-@@ -1183,6 +1864,8 @@ class DeepseekSparseAttnBackend(
+@@ -1183,6 +1872,8 @@ class DeepseekSparseAttnBackend(
              and self.real_page_size > 1
              and self.hisparse_coordinator is None
              and not self.speculative_num_draft_tokens
@@ -12093,7 +12299,7 @@ index 8f9929a954..e545086cf6 100644
              and self.use_fused_topk
              and self.dsa_topk_backend.should_use_topk_v2()
              and self.dsa_index_topk is not None
-@@ -1275,7 +1958,9 @@ class DeepseekSparseAttnBackend(
+@@ -1275,7 +1966,9 @@ class DeepseekSparseAttnBackend(
              # NOTE(dark): this is always arange, since we are decoding
              cu_seqlens_q = self.decode_cuda_graph_metadata["cu_seqlens_q"][: bs + 1]
              dsa_cache_seqlens_int32 = compute_dsa_seqlens(
@@ -12104,7 +12310,7 @@ index 8f9929a954..e545086cf6 100644
              )
  
              seqlens_expanded = cache_seqlens_int32
-@@ -1338,7 +2023,9 @@ class DeepseekSparseAttnBackend(
+@@ -1338,7 +2031,9 @@ class DeepseekSparseAttnBackend(
                  ]
              )
              dsa_cache_seqlens_int32 = compute_dsa_seqlens(
@@ -12115,7 +12321,7 @@ index 8f9929a954..e545086cf6 100644
              )
              dsa_extend_seq_lens_list = [1] * bs * self.speculative_num_draft_tokens
  
-@@ -1400,6 +2087,7 @@ class DeepseekSparseAttnBackend(
+@@ -1400,6 +2095,7 @@ class DeepseekSparseAttnBackend(
              dsa_extend_seq_lens_list=dsa_extend_seq_lens_list,
              topk_v2_plan=self._build_topk_v2_plan(seqlens_expanded),
          )
@@ -12123,7 +12329,7 @@ index 8f9929a954..e545086cf6 100644
          self.decode_cuda_graph_metadata[bs] = metadata
          self.forward_metadata = metadata
  
-@@ -1434,24 +2122,65 @@ class DeepseekSparseAttnBackend(
+@@ -1434,24 +2130,65 @@ class DeepseekSparseAttnBackend(
              )
              return
  
@@ -12194,7 +12400,7 @@ index 8f9929a954..e545086cf6 100644
                  fused_dsa_decode_metadata(
                      seq_lens=seq_lens,
                      req_pool_indices=req_pool_indices,
-@@ -1466,6 +2195,7 @@ class DeepseekSparseAttnBackend(
+@@ -1466,6 +2203,7 @@ class DeepseekSparseAttnBackend(
                      max_len=max_len,
                      dsa_index_topk=self.dsa_index_topk,
                      real_page_size=self.real_page_size,
@@ -12202,7 +12408,7 @@ index 8f9929a954..e545086cf6 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  dsa_cache_seqlens = metadata.dsa_cache_seqlens_int32
-@@ -1482,18 +2212,22 @@ class DeepseekSparseAttnBackend(
+@@ -1482,18 +2220,22 @@ class DeepseekSparseAttnBackend(
                  page_indices = self.req_to_token[req_pool_indices, :max_len]
                  metadata.page_table_1[:, :max_len].copy_(page_indices)
                  dsa_cache_seqlens = compute_dsa_seqlens(
@@ -12230,7 +12436,7 @@ index 8f9929a954..e545086cf6 100644
                  paged_mqa_ctx_lens_2d = None
                  if (
                      self.speculative_num_draft_tokens >= 2
-@@ -1523,6 +2257,7 @@ class DeepseekSparseAttnBackend(
+@@ -1523,6 +2265,7 @@ class DeepseekSparseAttnBackend(
                      real_page_size=self.real_page_size,
                      next_n=self.speculative_num_draft_tokens,
                      paged_mqa_ctx_lens_2d=paged_mqa_ctx_lens_2d,
@@ -12238,7 +12444,7 @@ index 8f9929a954..e545086cf6 100644
                  )
                  target_verify_ctx_lens_written = paged_mqa_ctx_lens_2d is not None
                  cache_seqlens = metadata.cache_seqlens_int32
-@@ -1565,7 +2300,9 @@ class DeepseekSparseAttnBackend(
+@@ -1565,7 +2308,9 @@ class DeepseekSparseAttnBackend(
                  )
                  metadata.dsa_seqlens_expanded.copy_(seqlens_expanded)
                  dsa_cache_seqlens = compute_dsa_seqlens(
@@ -12249,7 +12455,7 @@ index 8f9929a954..e545086cf6 100644
                  )
                  metadata.dsa_cache_seqlens_int32.copy_(dsa_cache_seqlens)
          elif forward_mode.is_draft_extend_v2():
-@@ -1587,11 +2324,13 @@ class DeepseekSparseAttnBackend(
+@@ -1587,11 +2332,13 @@ class DeepseekSparseAttnBackend(
                  device=self.device,
              )
  
@@ -12267,7 +12473,7 @@ index 8f9929a954..e545086cf6 100644
                  fused_dsa_draft_extend_metadata(
                      seq_lens=seq_lens,
                      extend_seq_lens=extend_seq_lens,
-@@ -1612,6 +2351,7 @@ class DeepseekSparseAttnBackend(
+@@ -1612,6 +2359,7 @@ class DeepseekSparseAttnBackend(
                      max_extend_len=self.speculative_num_draft_tokens,
                      max_total_len=bs * self.speculative_num_draft_tokens,
                      static_extend_len=True,
@@ -12275,7 +12481,7 @@ index 8f9929a954..e545086cf6 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  seqlens_expanded = metadata.dsa_seqlens_expanded[:total_extend_len]
-@@ -1642,7 +2382,9 @@ class DeepseekSparseAttnBackend(
+@@ -1642,7 +2390,9 @@ class DeepseekSparseAttnBackend(
                      seqlens_expanded
                  )
                  dsa_cache_seqlens = compute_dsa_seqlens(
@@ -12286,7 +12492,7 @@ index 8f9929a954..e545086cf6 100644
                  )
                  metadata.dsa_cache_seqlens_int32.copy_(dsa_cache_seqlens)
  
-@@ -1696,6 +2438,19 @@ class DeepseekSparseAttnBackend(
+@@ -1696,6 +2446,19 @@ class DeepseekSparseAttnBackend(
          else:
              assert metadata.real_page_table is metadata.page_table_1
  
@@ -12306,7 +12512,7 @@ index 8f9929a954..e545086cf6 100644
          if self.dsa_decode_impl == "flashmla_kv":
              flashmla_metadata = metadata.flashmla_metadata.slice(
                  slice(0, seqlens_expanded_size + 1)
-@@ -1709,6 +2464,290 @@ class DeepseekSparseAttnBackend(
+@@ -1709,6 +2472,290 @@ class DeepseekSparseAttnBackend(
  
          self.forward_metadata = metadata
  
@@ -12597,7 +12803,7 @@ index 8f9929a954..e545086cf6 100644
      def init_forward_metadata_replay_cuda_graph_from_precomputed(
          self,
          bs: int,
-@@ -1728,6 +2767,45 @@ class DeepseekSparseAttnBackend(
+@@ -1728,6 +2775,45 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.decode_cuda_graph_metadata[bs]
  
@@ -12643,7 +12849,7 @@ index 8f9929a954..e545086cf6 100644
          # Track whether fused kernel succeeded
          fused_kernel_succeeded = False
  
-@@ -1848,27 +2926,143 @@ class DeepseekSparseAttnBackend(
+@@ -1848,27 +2934,143 @@ class DeepseekSparseAttnBackend(
                  flashmla_metadata = metadata.flashmla_metadata.slice(slice(0, size + 1))
                  flashmla_metadata.copy_(precomputed.flashmla_metadata)
  
@@ -12801,7 +13007,7 @@ index 8f9929a954..e545086cf6 100644
          self.forward_metadata = metadata
  
      def forward_extend(
-@@ -1901,6 +3095,17 @@ class DeepseekSparseAttnBackend(
+@@ -1901,6 +3103,17 @@ class DeepseekSparseAttnBackend(
              else self.dsa_prefill_impl
          )
  
@@ -12819,7 +13025,7 @@ index 8f9929a954..e545086cf6 100644
          if dsa_impl == "trtllm" and not self.use_mha:
              return self._forward_trtllm(
                  q,
-@@ -1957,7 +3162,9 @@ class DeepseekSparseAttnBackend(
+@@ -1957,7 +3170,9 @@ class DeepseekSparseAttnBackend(
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
@@ -12830,7 +13036,7 @@ index 8f9929a954..e545086cf6 100644
              )
          else:
              q_all = q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim)
-@@ -2046,6 +3253,10 @@ class DeepseekSparseAttnBackend(
+@@ -2046,6 +3261,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -12841,7 +13047,7 @@ index 8f9929a954..e545086cf6 100644
              )
          elif dsa_impl in ("flashmla_sparse", "flashmla_sparse_q8"):
              if topk_transform_method == TopkTransformMethod.RAGGED:
-@@ -2153,16 +3364,35 @@ class DeepseekSparseAttnBackend(
+@@ -2153,16 +3372,35 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
              )
          elif dsa_impl == "fa3":
@@ -12882,7 +13088,7 @@ index 8f9929a954..e545086cf6 100644
                  sm_scale=layer.scaling,
                  logit_cap=layer.logit_cap,
                  page_size=1,
-@@ -2202,7 +3432,10 @@ class DeepseekSparseAttnBackend(
+@@ -2202,7 +3440,10 @@ class DeepseekSparseAttnBackend(
          metadata = self.forward_metadata
          assert causal, "DSA is causal only"
  
@@ -12894,7 +13100,7 @@ index 8f9929a954..e545086cf6 100644
              return self._forward_trtllm(
                  q,
                  k,
-@@ -2239,7 +3472,9 @@ class DeepseekSparseAttnBackend(
+@@ -2239,7 +3480,9 @@ class DeepseekSparseAttnBackend(
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
@@ -12905,7 +13111,7 @@ index 8f9929a954..e545086cf6 100644
              )
              # Caller passed split q_nope / q_rope; we'll need to concat below if
              # the chosen impl wants q_all.
-@@ -2272,7 +3507,7 @@ class DeepseekSparseAttnBackend(
+@@ -2272,7 +3515,7 @@ class DeepseekSparseAttnBackend(
                  page_size=1,
              )
  
@@ -12914,7 +13120,7 @@ index 8f9929a954..e545086cf6 100644
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashmla_sparse(
-@@ -2283,7 +3518,7 @@ class DeepseekSparseAttnBackend(
+@@ -2283,7 +3526,7 @@ class DeepseekSparseAttnBackend(
                  v_head_dim=layer.v_head_dim,
                  topk_length=metadata.dsa_cache_seqlens_int32,
              )
@@ -12923,7 +13129,7 @@ index 8f9929a954..e545086cf6 100644
              if q_all is None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashinfer_sparse_mla(
-@@ -2294,7 +3529,7 @@ class DeepseekSparseAttnBackend(
+@@ -2294,7 +3537,7 @@ class DeepseekSparseAttnBackend(
                  sm_scale=layer.scaling,
                  skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              )
@@ -12932,7 +13138,7 @@ index 8f9929a954..e545086cf6 100644
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashmla_kv(
-@@ -2307,7 +3542,7 @@ class DeepseekSparseAttnBackend(
+@@ -2307,7 +3550,7 @@ class DeepseekSparseAttnBackend(
                  metadata=metadata,
                  page_table_1=page_table_1,
              )
@@ -12941,7 +13147,7 @@ index 8f9929a954..e545086cf6 100644
              # Cat-skip (HIP-only): when caller passes q_rope=None on HIP, q_all
              # has already been set to a zero-copy view of q in the else branch
              # above and we can reuse it directly. The `not _is_hip` clause keeps
-@@ -2320,8 +3555,12 @@ class DeepseekSparseAttnBackend(
+@@ -2320,8 +3563,12 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -12955,7 +13161,7 @@ index 8f9929a954..e545086cf6 100644
              return self._forward_fa3(
                  q_rope=q_rope,
                  kv_cache=kv_cache,
-@@ -2336,7 +3575,7 @@ class DeepseekSparseAttnBackend(
+@@ -2336,7 +3583,7 @@ class DeepseekSparseAttnBackend(
                  logit_cap=layer.logit_cap,
                  page_size=1,
              )
@@ -12964,7 +13170,7 @@ index 8f9929a954..e545086cf6 100644
              if q_all is None or not _is_hip:
                  q_all = torch.cat([q_nope, q_rope], dim=-1)
              return self._forward_aiter(
-@@ -2349,7 +3588,7 @@ class DeepseekSparseAttnBackend(
+@@ -2349,7 +3596,7 @@ class DeepseekSparseAttnBackend(
              )
  
          else:
@@ -12973,7 +13179,7 @@ index 8f9929a954..e545086cf6 100644
  
      def _forward_fa3(
          self,
-@@ -2369,13 +3608,21 @@ class DeepseekSparseAttnBackend(
+@@ -2369,13 +3616,21 @@ class DeepseekSparseAttnBackend(
          k_rope_cache = kv_cache[:, :, v_head_dim:]
          c_kv_cache = kv_cache[:, :, :v_head_dim]
          qk_rope_dim = k_rope_cache.shape[-1]
@@ -12998,7 +13204,7 @@ index 8f9929a954..e545086cf6 100644
              page_table=page_table,
              cache_seqlens=cache_seqlens,
              cu_seqlens_q=cu_seqlens_q,
-@@ -2783,6 +4030,7 @@ class DeepseekSparseAttnBackend(
+@@ -2783,6 +4038,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -13006,7 +13212,7 @@ index 8f9929a954..e545086cf6 100644
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -2927,9 +4175,34 @@ class DeepseekSparseAttnBackend(
+@@ -2927,9 +4183,34 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -13041,7 +13247,7 @@ index 8f9929a954..e545086cf6 100644
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3129,39 +4402,50 @@ class DeepseekSparseAttnBackend(
+@@ -3129,39 +4410,50 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.forward_metadata
  
@@ -13119,7 +13325,7 @@ index 8f9929a954..e545086cf6 100644
                  if is_cp_v2_active(forward_batch):
                      k, k_rope = get_cp_strategy().all_gather_dsa_trtllm_fp8_kv(
                          forward_batch, k, k_rope
-@@ -3219,6 +4503,12 @@ class DeepseekSparseAttnBackend(
+@@ -3219,6 +4511,12 @@ class DeepseekSparseAttnBackend(
                  topk_indices=topk_indices,
                  page_size=1,
              )
@@ -13132,7 +13338,7 @@ index 8f9929a954..e545086cf6 100644
  
          q_scale = 1.0
          k_scale = (
-@@ -3264,11 +4554,16 @@ class DeepseekSparseAttnBackend(
+@@ -3264,11 +4562,16 @@ class DeepseekSparseAttnBackend(
              block_tables=block_tables,
              seq_lens=seq_lens,
              max_seq_len=metadata.max_seq_len_k,
@@ -13150,7 +13356,7 @@ index 8f9929a954..e545086cf6 100644
          )
  
          return out
-@@ -3302,13 +4597,11 @@ class DeepseekSparseAttnBackend(
+@@ -3302,13 +4605,11 @@ class DeepseekSparseAttnBackend(
          """
          Decide all attention prefill dispatch strategies for this batch.
          """
@@ -13169,7 +13375,7 @@ index 8f9929a954..e545086cf6 100644
  
          # Decide MHA vs MLA
          if is_in_tc_piecewise_cuda_graph() or is_in_breakable_cuda_graph():
-@@ -3455,6 +4748,19 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3455,6 +4756,19 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -13189,7 +13395,7 @@ index 8f9929a954..e545086cf6 100644
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3588,6 +4894,16 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3588,6 +4902,16 @@ class DeepseekSparseAttnMultiStepBackend:
                      precomputed.seqlens_expanded_size,
                  )
  
@@ -13206,7 +13412,7 @@ index 8f9929a954..e545086cf6 100644
                  # Copy remaining backends one by one (if > 3 backends)
                  for i in range(3, self.speculative_num_steps - 1):
                      self.attn_backends[
-@@ -3616,15 +4932,36 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3616,15 +4940,36 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:
@@ -13507,10 +13713,10 @@ index 04280dff4d..096bf1f4e9 100644
                  o, _ = merge_state_v2(
                      o,
 diff --git a/python/sglang/srt/layers/attention/flashinfer_mla_backend.py b/python/sglang/srt/layers/attention/flashinfer_mla_backend.py
-index 49cf04220e..b30092e874 100644
+index eed97d760c..d04400cd05 100644
 --- a/python/sglang/srt/layers/attention/flashinfer_mla_backend.py
 +++ b/python/sglang/srt/layers/attention/flashinfer_mla_backend.py
-@@ -18,10 +18,11 @@ More details can be found in https://docs.flashinfer.ai/api/mla.html
+@@ -20,10 +20,11 @@ More details can be found in https://docs.flashinfer.ai/api/mla.html
  
  from dataclasses import dataclass
  from functools import partial
@@ -13523,15 +13729,16 @@ index 49cf04220e..b30092e874 100644
  from sglang.kernels.ops.attention.utils import assert_buffer_fits
  from sglang.srt.environ import envs
  from sglang.srt.layers.attention.base_attn_backend import AttentionBackend
-@@ -50,6 +51,7 @@ from sglang.srt.speculative.spec_utils import (
+@@ -51,6 +52,8 @@ from sglang.srt.speculative.spec_utils import (
  )
  from sglang.srt.utils import (
      is_flashinfer_available,
 +    is_sm90_supported,
-     is_sm100_supported,
++    is_sm100_supported,
      next_power_of_2,
  )
-@@ -75,6 +77,64 @@ if is_flashinfer_available():
+ 
+@@ -75,6 +78,64 @@ if is_flashinfer_available():
      )
  
  
@@ -13596,7 +13803,7 @@ index 49cf04220e..b30092e874 100644
  @dataclass
  class DecodeMetadata:
      decode_wrapper: BatchMLAPagedAttentionWrapper
-@@ -245,6 +305,24 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -245,6 +306,24 @@ class FlashInferMLAAttnBackend(AttentionBackend):
              and not get_exec().kernel.flashinfer_mla_disable_ragged
          )
          self.page_size = model_runner.page_size
@@ -13621,7 +13828,7 @@ index 49cf04220e..b30092e874 100644
  
          # Allocate buffers
          # different from flashinfer zero_init_global_workspace_buffer
-@@ -286,6 +364,10 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -286,6 +365,10 @@ class FlashInferMLAAttnBackend(AttentionBackend):
              self.workspace_buffer, "NHD", backend=self.fmha_backend
          )
  
@@ -13632,7 +13839,7 @@ index 49cf04220e..b30092e874 100644
          if not self.skip_prefill:
              self.prefill_wrapper_paged = BatchMLAPagedAttentionWrapper(
                  self.workspace_buffer,
-@@ -433,13 +515,19 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -433,13 +516,19 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                  prefill_wrapper_paged=self.prefill_wrapper_verify,
                  use_ragged=False,
                  spec_info=forward_batch.spec_info,
@@ -13652,7 +13859,7 @@ index 49cf04220e..b30092e874 100644
                  and extend_no_prefix
                  # Captured prefill (tc_piecewise or breakable) must use paged
                  # prefill: it stays compatible with prefix cache, and the ragged
-@@ -481,6 +569,8 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -481,6 +570,8 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                  qo_indptr_cpu=qo_indptr_cpu,
                  kv_indptr_cpu=kv_indptr_cpu,
                  kv_len_arr_cpu=kv_len_arr_cpu,
@@ -13661,7 +13868,7 @@ index 49cf04220e..b30092e874 100644
              )
              self.forward_metadata = PrefillMetadata(
                  self.prefill_wrapper_paged, use_ragged
-@@ -613,7 +703,12 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -613,7 +704,12 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                      if use_generic_fast_plan
                      else None
                  ),
@@ -13674,7 +13881,7 @@ index 49cf04220e..b30092e874 100644
          else:
              raise ValueError(f"Invalid forward mode: {forward_mode=}")
  
-@@ -714,6 +809,8 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -714,6 +810,8 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                      self.token_to_kv_pool.set_mla_kv_buffer(layer, cache_loc, k, k_rope)
                  else:
                      self.token_to_kv_pool.set_kv_buffer(layer, cache_loc, k, v)
@@ -13683,7 +13890,7 @@ index 49cf04220e..b30092e874 100644
          if q_rope is not None:
              q = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
-@@ -741,9 +838,9 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -741,9 +839,9 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                  forward_batch.attn_dcp_metadata is not None
                  and forward_batch.attn_dcp_metadata.dcp_kv_buffer is not None
              ):
@@ -13695,7 +13902,7 @@ index 49cf04220e..b30092e874 100644
              if q_rope is None:
                  qall = q.view(-1, layer.tp_q_head_num, layer.head_dim)
                  q, q_rope = (
-@@ -751,16 +848,88 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -751,16 +849,88 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                      qall[:, :, layer.v_head_dim :],
                  )
              o = q.new_empty(q.shape)
@@ -13784,7 +13991,7 @@ index 49cf04220e..b30092e874 100644
      def forward_decode(
          self,
          q: torch.Tensor,
-@@ -795,6 +964,8 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -795,6 +965,8 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                      )
  
          # Reshape inputs
@@ -13793,7 +14000,7 @@ index 49cf04220e..b30092e874 100644
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
-@@ -805,7 +976,22 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -805,7 +977,22 @@ class FlashInferMLAAttnBackend(AttentionBackend):
              q_nope = reshaped_q[:, :, : layer.v_head_dim]
              q_rope = reshaped_q[:, :, layer.v_head_dim :]
  
@@ -13817,7 +14024,7 @@ index 49cf04220e..b30092e874 100644
  
          o = q_nope.new_empty(q_nope.shape)
          # for decode and dcp_world_size > 1, lse should be returned to compute final attn_out
-@@ -820,6 +1006,7 @@ class FlashInferMLAAttnBackend(AttentionBackend):
+@@ -820,6 +1007,7 @@ class FlashInferMLAAttnBackend(AttentionBackend):
              return_lse=(
                  forward_batch.forward_mode.is_decode() and get_parallel().dcp_enabled
              ),
@@ -13825,7 +14032,7 @@ index 49cf04220e..b30092e874 100644
          )
          if isinstance(o, tuple):
              out, lse = o
-@@ -841,6 +1028,11 @@ class FlashInferMLAIndicesUpdaterDecode:
+@@ -841,6 +1029,11 @@ class FlashInferMLAIndicesUpdaterDecode:
          self.qk_rope_head_dim = model_runner.model_config.qk_rope_head_dim
          self.scaling = model_runner.model_config.scaling
          self.data_type = model_runner.dtype
@@ -13837,7 +14044,7 @@ index 49cf04220e..b30092e874 100644
          self.attn_backend = attn_backend
  
          # Buffers and wrappers
-@@ -936,6 +1128,11 @@ class FlashInferMLAIndicesUpdaterDecode:
+@@ -936,6 +1129,11 @@ class FlashInferMLAIndicesUpdaterDecode:
          else:
              kv_indptr, kv_indices = spec_info.kv_indptr, spec_info.kv_indices
  
@@ -13849,7 +14056,7 @@ index 49cf04220e..b30092e874 100644
          if not init_metadata_replay:
              wrapper.plan(
                  q_indptr,
-@@ -949,7 +1146,7 @@ class FlashInferMLAIndicesUpdaterDecode:
+@@ -949,7 +1147,7 @@ class FlashInferMLAIndicesUpdaterDecode:
                  False,
                  sm_scale,
                  self.data_type,
@@ -13858,7 +14065,7 @@ index 49cf04220e..b30092e874 100644
              )
          else:
              wrapper.plan(
-@@ -964,7 +1161,7 @@ class FlashInferMLAIndicesUpdaterDecode:
+@@ -964,7 +1162,7 @@ class FlashInferMLAIndicesUpdaterDecode:
                  False,
                  sm_scale,
                  self.data_type,
@@ -13867,7 +14074,7 @@ index 49cf04220e..b30092e874 100644
              )
  
  
-@@ -981,6 +1178,11 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -981,6 +1179,11 @@ class FlashInferMLAIndicesUpdaterPrefill:
          self.scaling = model_runner.model_config.scaling
          self.data_type = model_runner.dtype
          self.q_data_type = model_runner.dtype
@@ -13879,7 +14086,7 @@ index 49cf04220e..b30092e874 100644
          self.attn_backend = attn_backend
  
          # Buffers and wrappers
-@@ -1009,6 +1211,9 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -1009,6 +1212,9 @@ class FlashInferMLAIndicesUpdaterPrefill:
          qo_indptr_cpu: Optional[torch.Tensor] = None,
          kv_indptr_cpu: Optional[torch.Tensor] = None,
          kv_len_arr_cpu: Optional[torch.Tensor] = None,
@@ -13889,7 +14096,7 @@ index 49cf04220e..b30092e874 100644
      ):
          if use_ragged:
              paged_kernel_lens = prefix_lens
-@@ -1034,6 +1239,9 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -1034,6 +1240,9 @@ class FlashInferMLAIndicesUpdaterPrefill:
              qo_indptr_cpu=qo_indptr_cpu,
              kv_indptr_cpu=kv_indptr_cpu,
              kv_len_arr_cpu=kv_len_arr_cpu,
@@ -13899,7 +14106,7 @@ index 49cf04220e..b30092e874 100644
          )
  
      def call_begin_forward(
-@@ -1054,6 +1262,9 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -1054,6 +1263,9 @@ class FlashInferMLAIndicesUpdaterPrefill:
          qo_indptr_cpu: Optional[torch.Tensor] = None,
          kv_indptr_cpu: Optional[torch.Tensor] = None,
          kv_len_arr_cpu: Optional[torch.Tensor] = None,
@@ -13909,7 +14116,7 @@ index 49cf04220e..b30092e874 100644
      ):
          bs = len(seq_lens)
          sm_scale = self.scaling
-@@ -1107,6 +1318,7 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -1107,6 +1319,7 @@ class FlashInferMLAIndicesUpdaterPrefill:
                  )
              )
  
@@ -13917,7 +14124,7 @@ index 49cf04220e..b30092e874 100644
          if use_ragged:
              # ragged prefill
              wrapper_ragged.begin_forward(
-@@ -1146,14 +1358,38 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -1146,14 +1359,38 @@ class FlashInferMLAIndicesUpdaterPrefill:
                  # built from full seq_lens and don't match, so fall back to GPU.
                  qo_indptr_cpu = kv_indptr_cpu = kv_len_arr_cpu = None
  
@@ -13963,7 +14170,7 @@ index 49cf04220e..b30092e874 100644
              wrapper_paged.plan(
                  plan_qo_indptr,
                  plan_kv_indptr,
-@@ -1166,7 +1402,7 @@ class FlashInferMLAIndicesUpdaterPrefill:
+@@ -1166,7 +1403,7 @@ class FlashInferMLAIndicesUpdaterPrefill:
                  True,
                  sm_scale,
                  self.q_data_type,
@@ -14660,10 +14867,10 @@ index 400a5303c7..09d94280b3 100644
              output_intermediate_states=return_intermediate_states,
          )
 diff --git a/python/sglang/srt/layers/attention/vision.py b/python/sglang/srt/layers/attention/vision.py
-index 20e87619dc..69babe5b1b 100644
+index 4661fbd890..591ea5c996 100644
 --- a/python/sglang/srt/layers/attention/vision.py
 +++ b/python/sglang/srt/layers/attention/vision.py
-@@ -494,8 +494,7 @@ class VisionTritonAttention(nn.Module):
+@@ -499,8 +499,7 @@ class VisionTritonAttention(nn.Module):
              seq_lens = kwargs.get("sequence_lengths")
              if seq_lens is None:
                  seq_lens = cu_seqlens_gpu[1:] - cu_seqlens_gpu[:-1]
@@ -14674,10 +14881,10 @@ index 20e87619dc..69babe5b1b 100644
                  cu_seqlens_gpu, kwargs.get("max_seqlen")
              )
 diff --git a/python/sglang/srt/layers/communicator.py b/python/sglang/srt/layers/communicator.py
-index e92806fd42..f8b0233081 100644
+index 0c1dd372f5..2bc778e7c6 100644
 --- a/python/sglang/srt/layers/communicator.py
 +++ b/python/sglang/srt/layers/communicator.py
-@@ -224,12 +224,17 @@ class AttentionInputs:
+@@ -228,12 +228,17 @@ class AttentionInputs:
          hidden_states: torch.Tensor,
          forward_batch: ForwardBatch,
          qkv_latent_func: Callable,
@@ -14695,7 +14902,7 @@ index e92806fd42..f8b0233081 100644
  
      def tp_all_gather_hidden_states(self, hidden_states, forward_batch):
          total_tokens = forward_batch.input_ids.shape[0]
-@@ -244,7 +249,7 @@ class AttentionInputs:
+@@ -248,7 +253,7 @@ class AttentionInputs:
          self.qkv_latent_ = self.qkv_latent_func(
              self.hidden_states_local, self.forward_batch
          )
@@ -14704,7 +14911,7 @@ index e92806fd42..f8b0233081 100644
              self.qkv_latent_ = self.tp_all_gather_hidden_states(
                  self.qkv_latent_, self.forward_batch
              )
-@@ -254,7 +259,7 @@ class AttentionInputs:
+@@ -258,7 +263,7 @@ class AttentionInputs:
          if self.hidden_states_ is not None:
              return self.hidden_states_
          self.hidden_states_ = self.hidden_states_local
@@ -14713,7 +14920,7 @@ index e92806fd42..f8b0233081 100644
              self.hidden_states_ = self.tp_all_gather_hidden_states(
                  self.hidden_states_, self.forward_batch
              )
-@@ -266,13 +271,16 @@ class AttnTpContext:
+@@ -270,13 +275,16 @@ class AttnTpContext:
          self.allow_input_scattered = False
          self.is_dsa = False
  
@@ -14732,7 +14939,7 @@ index e92806fd42..f8b0233081 100644
              and get_parallel().tp_size > 1
              and not is_dp_attention_enabled()
              and get_moe_a2a_backend().is_none()
-@@ -304,6 +312,11 @@ class AttnTpContext:
+@@ -308,6 +316,11 @@ class AttnTpContext:
      def set_attn_inputs(self, attn_inputs: AttentionInputs):
          get_forward().set("attn_inputs", attn_inputs)
  
@@ -14744,7 +14951,7 @@ index e92806fd42..f8b0233081 100644
      def fetch_qkv_latent(self):
          attn_inputs = get_forward().attn_inputs
          assert attn_inputs is not None
-@@ -445,6 +458,27 @@ def enable_dwdp():
+@@ -449,6 +462,27 @@ def enable_dwdp():
      return get_parallel().dwdp_size > 1
  
  
@@ -14772,7 +14979,7 @@ index e92806fd42..f8b0233081 100644
  class LayerCommunicator:
      def __init__(
          self,
-@@ -742,19 +776,7 @@ class LayerCommunicator:
+@@ -746,19 +780,7 @@ class LayerCommunicator:
          hidden_states: torch.Tensor,
          residual: torch.Tensor,
      ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -14793,7 +15000,7 @@ index e92806fd42..f8b0233081 100644
  
      def prepare_mlp(
          self,
-@@ -774,6 +796,13 @@ class LayerCommunicator:
+@@ -778,6 +800,13 @@ class LayerCommunicator:
              context=self._context,
          )
  
@@ -14807,7 +15014,7 @@ index e92806fd42..f8b0233081 100644
      def postprocess_layer(
          self,
          hidden_states: torch.Tensor,
-@@ -1262,7 +1291,9 @@ class CommunicateWithAllReduceAndLayerNormFn:
+@@ -1266,7 +1295,9 @@ class CommunicateWithAllReduceAndLayerNormFn:
          if (
              moe_cp_size > 1
              and hidden_states.shape[0] > 0
@@ -14818,7 +15025,7 @@ index e92806fd42..f8b0233081 100644
              and forward_batch.attn_cp_metadata is not None
          ):
              # Zigzag split can produce unequal token counts across CP ranks
-@@ -1443,7 +1474,9 @@ class CommunicateSummableTensorPairFn:
+@@ -1447,7 +1478,9 @@ class CommunicateSummableTensorPairFn:
          moe_cp_size = get_moe_cp_size()
          if (
              moe_cp_size > 1
@@ -15699,7 +15906,7 @@ index 915a29b7ac..a89bb2a3f2 100644
      if not parallel.dcp_enabled:
          return torch.cat([prefix_kv_a, prefix_k_pe], dim=-1)
 diff --git a/python/sglang/srt/layers/dp_attention.py b/python/sglang/srt/layers/dp_attention.py
-index 618550e6b5..66c9eddc97 100644
+index 87117547a0..e71baf74a7 100644
 --- a/python/sglang/srt/layers/dp_attention.py
 +++ b/python/sglang/srt/layers/dp_attention.py
 @@ -214,6 +214,21 @@ class _DpGatheredBufferWrapper:
@@ -15724,7 +15931,7 @@ index 618550e6b5..66c9eddc97 100644
      @classmethod
      def get_global_dp_buffer_len(cls) -> int:
          return cls._global_dp_buffer_len
-@@ -281,6 +296,10 @@ def get_local_dp_buffer(group: GroupCoordinator) -> torch.Tensor:
+@@ -278,6 +293,10 @@ def get_local_dp_buffer(group: GroupCoordinator) -> torch.Tensor:
      return _DpGatheredBufferWrapper.get_local_dp_buffer(group=group)
  
  
@@ -15876,7 +16083,7 @@ index 10fff8245c..c570bdfce0 100644
  
      topk_output = dispatch_output.topk_output
 diff --git a/python/sglang/srt/layers/quantization/modelopt_quant.py b/python/sglang/srt/layers/quantization/modelopt_quant.py
-index 38508638d8..cb2fd5f502 100755
+index f8120da41c..aa14a3e271 100755
 --- a/python/sglang/srt/layers/quantization/modelopt_quant.py
 +++ b/python/sglang/srt/layers/quantization/modelopt_quant.py
 @@ -5,6 +5,7 @@ from __future__ import annotations
@@ -15887,7 +16094,7 @@ index 38508638d8..cb2fd5f502 100755
  from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
  
  import regex as re
-@@ -164,6 +165,76 @@ if is_cuda() and (not is_sm120_supported()) and (fp4_quantize is not None):
+@@ -163,6 +164,76 @@ if is_cuda() and (not get_platform().is_sm120) and (fp4_quantize is not None):
  FP4_GEMM_ALIGNMENT = 32
  
  
@@ -15964,7 +16171,7 @@ index 38508638d8..cb2fd5f502 100755
  def round_up_to_multiple(x: int, m: int) -> int:
      """Round up x to the nearest multiple of m."""
      return (x + m - 1) // m * m
-@@ -2215,6 +2286,15 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2214,6 +2285,15 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          """Access the global enable_flashinfer_cutlass_moe setting."""
          return get_moe_runner_backend().is_flashinfer_cutlass()
  
@@ -15980,7 +16187,7 @@ index 38508638d8..cb2fd5f502 100755
      @property
      def enable_flashinfer_cutedsl_moe(self) -> bool:
          """Access the global enable_flashinfer_cutedsl_moe setting."""
-@@ -2328,7 +2408,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2327,7 +2407,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          # TRTLLM replaces blockscale_swizzled with an alias to weight_scale
          # during process_weights_after_loading, so skip the expensive
          # swizzle+allocate here to avoid GPU memory fragmentation
@@ -15989,7 +16196,7 @@ index 38508638d8..cb2fd5f502 100755
              layer.w13_blockscale_swizzled = None
          else:
              layer.w13_blockscale_swizzled = Parameter(
-@@ -2348,7 +2428,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2347,7 +2427,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          )
          layer.register_parameter("w2_weight_scale", w2_weight_scale)
  
@@ -15998,7 +16205,7 @@ index 38508638d8..cb2fd5f502 100755
              layer.w2_blockscale_swizzled = None
          else:
              layer.w2_blockscale_swizzled = Parameter(
-@@ -2424,7 +2504,10 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2423,7 +2503,10 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          if getattr(layer, "inference_moe_w13_interleaved", False) and not getattr(
              layer, "_w13_deinterleaved", False
          ):
@@ -16010,7 +16217,7 @@ index 38508638d8..cb2fd5f502 100755
              layer.w13_weight.data = deinterleave_w13(
                  layer.w13_weight.data, up_first=up_first
              )
-@@ -2567,8 +2650,13 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2566,8 +2649,13 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
                  copy_or_rebind_param(layer, "gemm1_beta", gemm1_beta)
  
          # TODO: for flashinfer always do MOE_NVFP4_DISPATCH
@@ -16026,7 +16233,7 @@ index 38508638d8..cb2fd5f502 100755
          )
  
          layer.dispatcher.set_quant_config(
-@@ -2607,7 +2695,30 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2606,7 +2694,30 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
              ), f"{name} Weight Blockscale must be represented as FP8-E4M3"
  
          # Weight processing based on strategy
@@ -16058,7 +16265,7 @@ index 38508638d8..cb2fd5f502 100755
              self.enable_flashinfer_trtllm_moe
              and reorder_rows_for_gated_act_gemm is not None
              and shuffle_matrix_sf_a is not None
-@@ -2932,23 +3043,41 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2931,23 +3042,41 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
                  not moe_runner_config.apply_router_weight_on_input
              ), "apply_router_weight_on_input is not supported for Flashinfer"
              quant_info = FlashInferCutlassMoeQuantInfo(
@@ -16143,10 +16350,10 @@ index 3433f6c986..543d3a5fc7 100644
          if self.need_topk:
              hidden_states_buf = (
 diff --git a/python/sglang/srt/managers/schedule_batch.py b/python/sglang/srt/managers/schedule_batch.py
-index f3b9e0fd1c..5484f16299 100755
+index 7f4733887a..d7362ab522 100755
 --- a/python/sglang/srt/managers/schedule_batch.py
 +++ b/python/sglang/srt/managers/schedule_batch.py
-@@ -1778,7 +1778,9 @@ class Req(ReqDllmMixin):
+@@ -1781,7 +1781,9 @@ class Req(ReqDllmMixin):
          )
          self.retraction_backup = RetractionBackup(
              cpu_tensors=token_to_kv_pool_allocator.get_cpu_copy(
@@ -16157,7 +16364,7 @@ index f3b9e0fd1c..5484f16299 100755
              ),
              mamba_cpu=(
                  mamba_pool.get_cpu_copy(self.mamba_pool_idx.unsqueeze(0))
-@@ -1802,6 +1804,7 @@ class Req(ReqDllmMixin):
+@@ -1805,6 +1807,7 @@ class Req(ReqDllmMixin):
              self.retraction_backup.cpu_tensors,
              token_indices,
              mamba_indices=self.mamba_pool_idx,
@@ -16166,10 +16373,10 @@ index f3b9e0fd1c..5484f16299 100755
          self.retraction_backup = None
  
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index 2d4a497fce..daa4c5a553 100644
+index a1ffb4f555..043fe008b1 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
-@@ -838,6 +838,11 @@ class PrefillAdder:
+@@ -840,6 +840,11 @@ class PrefillAdder:
      def ceil_paged_tokens(self, tokens: int) -> int:
          return -(-tokens // self.page_size) * self.page_size
  
@@ -16182,7 +16389,7 @@ index 2d4a497fce..daa4c5a553 100644
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index e83d6e4ac0..4fd4902d87 100644
+index 8dc2f21b9f..dea3195129 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -16193,7 +16400,7 @@ index e83d6e4ac0..4fd4902d87 100644
  import os
  import signal
  import sys
-@@ -329,6 +330,7 @@ from sglang.srt.utils.hf_transformers_utils import (
+@@ -330,6 +331,7 @@ from sglang.srt.utils.hf_transformers_utils import (
      get_tokenizer_from_processor,
      resolve_image_processor_backend,
  )
@@ -16201,7 +16408,7 @@ index e83d6e4ac0..4fd4902d87 100644
  from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
  from sglang.srt.utils.numa_utils import get_numa_node_if_available, numa_bind_to_node
  from sglang.srt.utils.nvtx_utils import scheduler_nvtx_method
-@@ -650,6 +652,7 @@ class Scheduler(
+@@ -651,6 +653,7 @@ class Scheduler(
  
          # Init prefill kv split size when deterministic inference is enabled with various attention backends
          self.init_deterministic_inference_config()
@@ -16209,7 +16416,7 @@ index e83d6e4ac0..4fd4902d87 100644
  
          self.init_weight_updater()
  
-@@ -1565,12 +1568,6 @@ class Scheduler(
+@@ -1566,12 +1569,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -16222,7 +16429,7 @@ index e83d6e4ac0..4fd4902d87 100644
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1600,6 +1597,29 @@ class Scheduler(
+@@ -1601,6 +1598,29 @@ class Scheduler(
              get_int_env_var(env_var, default_size) if env_var else None
          )
  
@@ -16252,7 +16459,7 @@ index e83d6e4ac0..4fd4902d87 100644
      def init_request_dispatcher(self):
          self._request_dispatcher = TypeBasedDispatcher(
              [
-@@ -1752,6 +1772,10 @@ class Scheduler(
+@@ -1753,6 +1773,10 @@ class Scheduler(
          triton_load_watch.install()
          triton_load_watch.mark_serving_started()
  
@@ -16263,7 +16470,7 @@ index e83d6e4ac0..4fd4902d87 100644
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
              # not PyTorch MPS streams.
-@@ -3121,10 +3145,13 @@ class Scheduler(
+@@ -3122,10 +3146,13 @@ class Scheduler(
          if req is None:
              return
          if self.chunked_req is not req:
@@ -16279,7 +16486,7 @@ index e83d6e4ac0..4fd4902d87 100644
              return
  
          prepare_abort(req, "Aborted")
-@@ -3278,6 +3305,7 @@ class Scheduler(
+@@ -3279,6 +3306,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -16287,7 +16494,7 @@ index e83d6e4ac0..4fd4902d87 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3504,6 +3532,9 @@ class Scheduler(
+@@ -3505,6 +3533,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -16297,7 +16504,7 @@ index e83d6e4ac0..4fd4902d87 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3799,20 +3830,27 @@ class Scheduler(
+@@ -3800,20 +3831,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -16339,7 +16546,7 @@ index e83d6e4ac0..4fd4902d87 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -3825,12 +3863,11 @@ class Scheduler(
+@@ -3826,12 +3864,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -16357,7 +16564,7 @@ index e83d6e4ac0..4fd4902d87 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -3845,12 +3882,11 @@ class Scheduler(
+@@ -3846,12 +3883,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -16373,7 +16580,7 @@ index e83d6e4ac0..4fd4902d87 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -3906,7 +3942,7 @@ class Scheduler(
+@@ -3907,7 +3943,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -16382,7 +16589,7 @@ index e83d6e4ac0..4fd4902d87 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -3932,13 +3968,12 @@ class Scheduler(
+@@ -3933,13 +3969,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -16402,7 +16609,7 @@ index e83d6e4ac0..4fd4902d87 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4060,7 +4095,11 @@ class Scheduler(
+@@ -4061,7 +4096,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -16415,7 +16622,7 @@ index e83d6e4ac0..4fd4902d87 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4072,7 +4111,11 @@ class Scheduler(
+@@ -4073,7 +4112,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -16427,7 +16634,7 @@ index e83d6e4ac0..4fd4902d87 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4195,9 +4238,11 @@ class Scheduler(
+@@ -4196,9 +4239,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -16442,7 +16649,7 @@ index e83d6e4ac0..4fd4902d87 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4220,31 +4265,42 @@ class Scheduler(
+@@ -4221,31 +4266,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -16506,7 +16713,7 @@ index e83d6e4ac0..4fd4902d87 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4279,7 +4335,7 @@ class Scheduler(
+@@ -4280,7 +4336,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -17276,10 +17483,10 @@ index 1bf865ca22..ad45ce76a1 100644
 +    ):
          raise NotImplementedError("HiSparseDevicePool does not support load_cpu_copy")
 diff --git a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-index a3cddf5975..93343d3221 100644
+index cef0ef92b7..2932603493 100644
 --- a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 +++ b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-@@ -700,8 +700,12 @@ def build_hybrid_mamba_stack(
+@@ -724,8 +724,12 @@ def build_hybrid_mamba_stack(
  ) -> tuple[HostPoolGroup, HybridCacheController]:
      transfer_layer_num = len(full_layer_mapping | mamba_layer_mapping)
      mamba_allocator = params.req_to_token_pool.mamba_allocator
@@ -17353,7 +17560,7 @@ index 18acefeb83..93ecf7c96a 100644
      # Decode-side radix cache supports SWA only through the unified tree, whose
      # component pools preserve the full-attention prefix while transferring the
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index bdcd7821c1..bbf25beb74 100644
+index dfbbd2ada2..1631b78e61 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,13 +12,14 @@ import torch
@@ -17676,10 +17883,10 @@ index bdcd7821c1..bbf25beb74 100644
      rope_storage_dtype = DSATokenToKVPool.rope_storage_dtype
      # Calculate override_kv_cache_dim for FP8 storage in backends that use scaled KV layout
 diff --git a/python/sglang/srt/mem_cache/mamba_radix_cache.py b/python/sglang/srt/mem_cache/mamba_radix_cache.py
-index a5afb89d41..1ec4b486f9 100644
+index 125a9847b7..4efd0e409a 100644
 --- a/python/sglang/srt/mem_cache/mamba_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/mamba_radix_cache.py
-@@ -984,6 +984,29 @@ class MambaRadixCache(BasePrefixCache):
+@@ -983,6 +983,29 @@ class MambaRadixCache(BasePrefixCache):
              return
          self.full_lru_list.sanity_check(self)
          self.mamba_lru_list.sanity_check(self)
@@ -17709,7 +17916,7 @@ index a5afb89d41..1ec4b486f9 100644
  
      def evictable_size(self) -> Tuple[int, int]:
          # Note: use full_evictable_size() and mamba_evictable_size() instead.
-@@ -1207,6 +1230,17 @@ class MambaRadixCache(BasePrefixCache):
+@@ -1206,6 +1229,17 @@ class MambaRadixCache(BasePrefixCache):
          )
  
      def _split_node(self, key: RadixKey, child: TreeNode, split_len: int) -> TreeNode:
@@ -17727,7 +17934,7 @@ index a5afb89d41..1ec4b486f9 100644
          # new_node -> child
          new_node = TreeNode()
          new_node.children = {key[split_len:].child_key(self.page_size): child}
-@@ -1227,7 +1261,12 @@ class MambaRadixCache(BasePrefixCache):
+@@ -1226,7 +1260,12 @@ class MambaRadixCache(BasePrefixCache):
          child.parent = new_node
          child.key = child.key[split_len:]
          child.value = child.value[split_len:].clone()
@@ -17742,7 +17949,7 @@ index a5afb89d41..1ec4b486f9 100644
              child.hash_value, split_len, self.page_size
          )
 diff --git a/python/sglang/srt/mem_cache/memory_pool.py b/python/sglang/srt/mem_cache/memory_pool.py
-index d22929db46..81f8aa1b76 100644
+index 5191304aa6..e0c40bbc2a 100644
 --- a/python/sglang/srt/mem_cache/memory_pool.py
 +++ b/python/sglang/srt/mem_cache/memory_pool.py
 @@ -1429,6 +1429,19 @@ class HybridReqToTokenPool(ReqToTokenPool):
@@ -18541,7 +18748,7 @@ index d22929db46..81f8aa1b76 100644
      def get_state_buf_infos(self):
          return self.index_key_cache.state_buf_infos()
 diff --git a/python/sglang/srt/mem_cache/radix_cache.py b/python/sglang/srt/mem_cache/radix_cache.py
-index 60ec95137e..e2e14c0b79 100644
+index 6552854e03..08e63f6544 100644
 --- a/python/sglang/srt/mem_cache/radix_cache.py
 +++ b/python/sglang/srt/mem_cache/radix_cache.py
 @@ -180,10 +180,22 @@ class RadixKey:
@@ -18665,18 +18872,18 @@ index e934baf6da..373e353722 100644
          # Load SWA KV cache if it exists
          if swa_kv_cpu is not None and self.full_to_swa_index_mapping is not None:
 diff --git a/python/sglang/srt/mem_cache/unified_cache/components/full_component.py b/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
-index b927e0b0fc..65f9306620 100644
+index c9102411d4..3ab80b4b77 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
-@@ -24,6 +24,7 @@ from sglang.srt.mem_cache.unified_cache.components.tree_component import (
-     EvictLayer,
+@@ -27,6 +27,7 @@ from sglang.srt.mem_cache.unified_cache.components.tree_component import (
+     LinkerTransferPhase,
      TreeComponent,
  )
 +from sglang.srt.utils.async_probe import maybe_detect_oob, maybe_sync_detect_oob
  
  if TYPE_CHECKING:
-     from sglang.srt.mem_cache.unified_cache.cache_action import (
-@@ -145,8 +146,44 @@ class FullComponent(TreeComponent):
+     from sglang.srt.managers.schedule_batch import Req
+@@ -149,8 +150,44 @@ class FullComponent(TreeComponent):
          assert new_parent.component_data[ct].session_ids is None
          split_len = len(new_parent.key)
          if child_cd.value is not None:
@@ -18721,7 +18928,7 @@ index b927e0b0fc..65f9306620 100644
          if child_cd.host_value is not None:
              new_parent.component_data[ct].host_value = child_cd.host_value[
                  :split_len
-@@ -166,6 +203,18 @@ class FullComponent(TreeComponent):
+@@ -170,6 +207,18 @@ class FullComponent(TreeComponent):
  
          # Device layer
          if EvictLayer.DEVICE in target and cd.value is not None:
@@ -18741,7 +18948,7 @@ index b927e0b0fc..65f9306620 100644
              freed = len(cd.value)
              self.tree_core.component_evictable_size_[self.component_type] -= freed
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
-index 3055924db6..1af861c33c 100644
+index 8187912772..c7e5025110 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
 @@ -79,6 +79,7 @@ from sglang.srt.mem_cache.utils import (
@@ -18752,7 +18959,7 @@ index 3055924db6..1af861c33c 100644
  
  if TYPE_CHECKING:
      from sglang.srt.managers.schedule_batch import Req
-@@ -678,7 +679,8 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+@@ -680,7 +681,8 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
          # nodes can also match, so we separately track the best device-resident
          # match for scheduler prefix indices and locking.
          node = self.root_node
@@ -18762,7 +18969,7 @@ index 3055924db6..1af861c33c 100644
          value: list[torch.Tensor] = []
          best_match_node = node
          best_match_device_node = node
-@@ -719,14 +721,14 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+@@ -721,14 +723,14 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
                  best_match_device_value_len = len(value)
                  best_match_device_node = node
  
@@ -18779,7 +18986,7 @@ index 3055924db6..1af861c33c 100644
              full_kv_hit_length += prefix_len
              if prefix_len < len(child.key):
                  node, action = self._split_node(child.key, child, prefix_len)
-@@ -739,9 +741,9 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+@@ -741,9 +743,9 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
                  value.append(child.component_data[BASE_COMPONENT_TYPE].value)
              node = child
              _update_best_if_valid(node)
@@ -18792,7 +18999,7 @@ index 3055924db6..1af861c33c 100644
  
          return (
              value,
-@@ -1139,6 +1141,15 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+@@ -1163,6 +1165,15 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
          new_node.parent = parent
          new_node.key = key
          new_node.component_data[BASE_COMPONENT_TYPE].value = value.clone()
@@ -18807,8 +19014,8 @@ index 3055924db6..1af861c33c 100644
 +        )
          parent.children[key.child_key(self.page_size)] = new_node
          self.component_evictable_size_[BASE_COMPONENT_TYPE] += len(value)
-         if self.enable_storage:
-@@ -1159,6 +1170,15 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+         if self.enable_storage or self.enable_external_cache_linker:
+@@ -1183,6 +1194,15 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
          assert cd.value is None
          n = len(fresh_value)
          cd.value = fresh_value.clone()
@@ -18824,7 +19031,7 @@ index 3055924db6..1af861c33c 100644
          self.component_evictable_size_[ct] += n
          self._update_evictable_leaf_sets(node)
          # A backuped node restored from fresh KV is a duplicate right away.
-@@ -2550,6 +2570,28 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+@@ -2574,6 +2594,28 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
              return torch.cat(values)
          return torch.tensor([], dtype=torch.int64, device=self.device)
  
@@ -18913,18 +19120,18 @@ index 194a8a91d7..c46bb7065e 100644
              assert self._swa_allocator is not None
              swa_phys = self._virt_tokens_to_phys_tokens(indices, self._swa_allocator)
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 8c26a8b249..e851af37e1 100644
+index f4371bb41b..b5942a5f20 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
-@@ -84,6 +84,7 @@ from sglang.srt.observability.metrics_collector import (
+@@ -88,6 +88,7 @@ from sglang.srt.runtime_context import (
+     get_observability,
  )
- from sglang.srt.runtime_context import get_memory, get_observability
  from sglang.srt.session.streaming_session import StreamingSession
 +from sglang.srt.utils.async_probe import maybe_detect_oob, maybe_sync_detect_oob
  from sglang.srt.utils.common import ceil_align
  
  if TYPE_CHECKING:
-@@ -146,6 +147,19 @@ class _OngoingPrefetch(NamedTuple):
+@@ -150,6 +151,19 @@ class _OngoingPrefetch(NamedTuple):
      comp_xfers: dict[ComponentType, list[PoolTransfer]]
  
  
@@ -18944,7 +19151,7 @@ index 8c26a8b249..e851af37e1 100644
  class UnifiedRadixCache(BasePrefixCache):
      def __init__(
          self,
-@@ -506,12 +520,26 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -510,12 +524,26 @@ class UnifiedRadixCache(BasePrefixCache):
              return result
          if self.disable:
              return self.tree_core.empty_match_result
@@ -18971,7 +19178,7 @@ index 8c26a8b249..e851af37e1 100644
          # Finalizers must not emit actions; the walk's were applied above.
          assert not result.cache_actions
          return result
-@@ -526,12 +554,22 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -530,12 +558,22 @@ class UnifiedRadixCache(BasePrefixCache):
          assert not self.tree_core.has_ongoing_insert(), "re-entrant insert"
          # Pump the resumable insert, applying each step's actions at its barrier.
          try:
@@ -18994,7 +19201,7 @@ index 8c26a8b249..e851af37e1 100644
                      return step.result
                  step = self.tree_core.resume_insert()
          finally:
-@@ -872,6 +910,32 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -876,6 +914,32 @@ class UnifiedRadixCache(BasePrefixCache):
              page_aligned_len = len(radix_key)
              values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -19027,7 +19234,7 @@ index 8c26a8b249..e851af37e1 100644
              insert_params.key = radix_key
              insert_params.value = values
              result = self.insert(insert_params)
-@@ -970,6 +1034,30 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -974,6 +1038,30 @@ class UnifiedRadixCache(BasePrefixCache):
          page_aligned_len = len(radix_key)
          values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -19058,7 +19265,7 @@ index 8c26a8b249..e851af37e1 100644
          insert_params.key = radix_key
          insert_params.value = values
          result = self.insert(insert_params)
-@@ -1040,10 +1128,155 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1044,10 +1132,155 @@ class UnifiedRadixCache(BasePrefixCache):
          actions.reverse()
          try:
              while actions:
@@ -19255,7 +19462,7 @@ index 7c504656fd..a051fefa09 100644
                  bs = bs * self.spec_info.num_tokens_per_req
                  if logits_output.next_token_logits is not None:
 diff --git a/python/sglang/srt/model_executor/model_runner.py b/python/sglang/srt/model_executor/model_runner.py
-index 0288f44db9..b804681821 100644
+index b878d07cff..72f1e5b7dc 100644
 --- a/python/sglang/srt/model_executor/model_runner.py
 +++ b/python/sglang/srt/model_executor/model_runner.py
 @@ -224,6 +224,7 @@ from sglang.srt.utils import (
@@ -19401,7 +19608,7 @@ index eb1028a415..e2771a0ddf 100644
  
  def _resolve_dflash_aux_hidden_state(
 diff --git a/python/sglang/srt/model_executor/pool_configurator.py b/python/sglang/srt/model_executor/pool_configurator.py
-index 534148026a..69193334e0 100644
+index 4f6dc72ae9..be91cf4fda 100644
 --- a/python/sglang/srt/model_executor/pool_configurator.py
 +++ b/python/sglang/srt/model_executor/pool_configurator.py
 @@ -102,6 +102,55 @@ def _dflash_draft_cell_size(kvc: KVCacheConfigurator) -> int:
@@ -19606,7 +19813,7 @@ index d7787a4c16..5100dd3f70 100644
      def _prepare_forward_metadata_for_replay(
          self,
 diff --git a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
-index aa5b9f3db4..baca919ea3 100644
+index aa5b9f3db4..b83f7eeabd 100644
 --- a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
 +++ b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
 @@ -30,6 +30,9 @@ from sglang.srt.distributed.device_communicators.pynccl_allocator import (
@@ -19635,15 +19842,17 @@ index aa5b9f3db4..baca919ea3 100644
              graph_pool_capture_scope(),
              graph_ctx(cuda_graph=graph, pool=self._pool, stream=self._capture_stream),
          ):
-@@ -138,6 +143,7 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
+@@ -138,6 +143,9 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
  
          self._graphs[shape_key] = graph
          self._outputs[shape_key] = out
++        if capture_inputs is not None:
++            capture_owners.append(capture_inputs)
 +        self._capture_owners[shape_key] = tuple(capture_owners)
  
      def can_run(self, forward_batch: ForwardBatch, shape_key: ShapeKey) -> bool:
          return shape_key in self._graphs
-@@ -159,4 +165,5 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
+@@ -159,4 +167,5 @@ class FullCudaGraphBackend(BaseCudaGraphBackend):
      def cleanup(self) -> None:
          self._graphs.clear()
          self._outputs.clear()
@@ -19679,16 +19888,15 @@ index 59f4a2e6b4..19ae1cf5d6 100644
          return weak_ref_tensors(x)
 diff --git a/python/sglang/srt/model_executor/runner_utils/capture_owner.py b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
 new file mode 100644
-index 0000000000..b0fb64062d
+index 0000000000..74c0ab7420
 --- /dev/null
 +++ b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,31 @@
 +from __future__ import annotations
 +
 +from contextlib import contextmanager
 +from contextvars import ContextVar
 +from typing import Any, Iterator, Optional
-+
 +
 +_full_cuda_graph_owners: ContextVar[Optional[list[Any]]] = ContextVar(
 +    "full_cuda_graph_owners", default=None
@@ -19716,10 +19924,10 @@ index 0000000000..b0fb64062d
 +    owners.append(owner)
 +    return True
 diff --git a/python/sglang/srt/model_loader/loader.py b/python/sglang/srt/model_loader/loader.py
-index dee6486b78..63b4e5c1d6 100644
+index 9b784d6d50..94082d465c 100644
 --- a/python/sglang/srt/model_loader/loader.py
 +++ b/python/sglang/srt/model_loader/loader.py
-@@ -260,7 +260,11 @@ def _get_quantization_config(
+@@ -259,7 +259,11 @@ def _get_quantization_config(
                  f"method {model_config.quantization}. Supported dtypes: "
                  f"{supported_dtypes}"
              )
@@ -19758,10 +19966,10 @@ index 965123fcc6..561f045e94 100644
          shard_size = param.data.shape[shard_axis]
          start_idx = tp_rank * shard_size
 diff --git a/python/sglang/srt/models/deepseek_common/attention_backend_handler.py b/python/sglang/srt/models/deepseek_common/attention_backend_handler.py
-index 9a2a601209..eaae9997c7 100644
+index b720b0d7f2..297e21d508 100644
 --- a/python/sglang/srt/models/deepseek_common/attention_backend_handler.py
 +++ b/python/sglang/srt/models/deepseek_common/attention_backend_handler.py
-@@ -110,9 +110,9 @@ def _handle_attention_backend(attn, forward_batch, backend_name):
+@@ -113,9 +113,9 @@ def _handle_attention_backend(attn, forward_batch, backend_name):
          return _dispatch_mla_subtype(attn, forward_batch)
  
      sum_extend_prefix_lens = _get_sum_extend_prefix_lens(forward_batch)
@@ -20019,7 +20227,7 @@ index bb03b82a62..8bb1072b80 100644
          self.lm_head = ParallelLMHead(
              config.vocab_size,
 diff --git a/python/sglang/srt/models/deepseek_v2.py b/python/sglang/srt/models/deepseek_v2.py
-index 4202299e57..0c544ce0b9 100644
+index 0e128090ea..9bf0b5256c 100644
 --- a/python/sglang/srt/models/deepseek_v2.py
 +++ b/python/sglang/srt/models/deepseek_v2.py
 @@ -45,6 +45,7 @@ from sglang.srt.configs.model_config import (
@@ -22263,10 +22471,10 @@ index d7548ba201..91526c425b 100644
 +        pieces.append(gathered[start : start + output_length])
 +    return torch.cat(pieces, dim=0)
 diff --git a/python/sglang/srt/multimodal/processors/base_processor.py b/python/sglang/srt/multimodal/processors/base_processor.py
-index 00283fedeb..9d5f9f179f 100644
+index db147375d0..a416b82231 100644
 --- a/python/sglang/srt/multimodal/processors/base_processor.py
 +++ b/python/sglang/srt/multimodal/processors/base_processor.py
-@@ -52,6 +52,7 @@ from sglang.srt.utils import (
+@@ -56,6 +56,7 @@ from sglang.srt.utils import (
      load_image,
      load_video,
      logger,
@@ -22274,7 +22482,7 @@ index 00283fedeb..9d5f9f179f 100644
  )
  
  _is_cpu = is_cpu()
-@@ -205,6 +206,7 @@ def _tokenizer_of(processor):
+@@ -209,6 +210,7 @@ def _tokenizer_of(processor):
  class BaseMultimodalProcessor(ABC):
      models = []
      gpu_image_decode = True  # Enable GPU decoding by default
@@ -22282,7 +22490,7 @@ index 00283fedeb..9d5f9f179f 100644
      prefer_tokenized_input = False
      precompute_hash_before_cpu_transfer = False
      # Set by processors that already build input_ids from the request's own
-@@ -774,6 +776,14 @@ class BaseMultimodalProcessor(ABC):
+@@ -810,6 +812,14 @@ class BaseMultimodalProcessor(ABC):
              if processor_device is not None:
                  kwargs["device"] = processor_device
  
@@ -22297,20 +22505,23 @@ index 00283fedeb..9d5f9f179f 100644
          # Avoid double BOS when the chat template already wrote one.
          if self._tokenizer_auto_adds_specials and isinstance(input_text, str):
              bos = getattr(tokenizer, "bos_token", None)
-@@ -860,8 +870,11 @@ class BaseMultimodalProcessor(ABC):
+@@ -894,8 +904,14 @@ class BaseMultimodalProcessor(ABC):
+                 img, _ = load_image(data, cls.gpu_image_decode)
+                 if isinstance(img, torch.Tensor):
                      return img  # JPEG already decoded on GPU by nvJPEG
-                 # PIL decodes lazily; do it here in the io worker so the decode
-                 # doesn't run later on the event-loop thread.
 -                if discard_alpha_channel and img.mode != "RGB":
 -                    return img.convert("RGB")
++                # PIL decodes lazily; do it here in the io worker so the decode
++                # doesn't run later on the event-loop thread.
 +                if discard_alpha_channel:
 +                    if cls.smart_rgb_conversion:
 +                        return smart_to_rgb(img)
 +                    if img.mode != "RGB":
 +                        return img.convert("RGB")
-                 img.load()
++                img.load()
                  return img
              elif modality == Modality.VIDEO:
+                 return load_video(data, frame_count_limit)
 diff --git a/python/sglang/srt/multimodal/processors/glm4v.py b/python/sglang/srt/multimodal/processors/glm4v.py
 index c4d363f47f..b35d233654 100644
 --- a/python/sglang/srt/multimodal/processors/glm4v.py
@@ -22783,7 +22994,7 @@ index c4d363f47f..b35d233654 100644
          )
  
 diff --git a/python/sglang/srt/observability/metrics_collector.py b/python/sglang/srt/observability/metrics_collector.py
-index a50af6e671..9c1d02c8e9 100644
+index 6daebdfec0..59c0c251f5 100644
 --- a/python/sglang/srt/observability/metrics_collector.py
 +++ b/python/sglang/srt/observability/metrics_collector.py
 @@ -539,6 +539,11 @@ class SchedulerMetricsCollector(_StatLoggerDIMixin):
@@ -23702,7 +23913,7 @@ index abe25cd9a0..b4042c105c 100644
      indices: Optional[torch.Tensor], page_size: int, msg: str
  ):
 diff --git a/python/sglang/srt/utils/common.py b/python/sglang/srt/utils/common.py
-index 3ac8ace65b..c33c4a81d8 100644
+index d552dd7005..85fc001d12 100644
 --- a/python/sglang/srt/utils/common.py
 +++ b/python/sglang/srt/utils/common.py
 @@ -87,7 +87,7 @@ import torch
@@ -23714,7 +23925,7 @@ index 3ac8ace65b..c33c4a81d8 100644
  from starlette.routing import Mount
  from torch import nn
  from torch.library import Library
-@@ -1788,6 +1788,14 @@ class ImageData:
+@@ -1791,6 +1791,14 @@ class ImageData:
      content_hash: Optional[str] = None
  
  
@@ -23729,7 +23940,7 @@ index 3ac8ace65b..c33c4a81d8 100644
  @dataclass
  class VideoData:
      url: str
-@@ -1798,6 +1806,45 @@ image_extension_names = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+@@ -1801,6 +1809,45 @@ image_extension_names = (".png", ".jpg", ".jpeg", ".webp", ".gif")
  GPUImageDecodeMode = Union[bool, Literal["nvjpeg_fancy"]]
  
  
@@ -23775,7 +23986,7 @@ index 3ac8ace65b..c33c4a81d8 100644
  def is_jpeg_with_cuda(
      image_bytes: bytes = b"", gpu_image_decode: GPUImageDecodeMode = True
  ) -> bool:
-@@ -1894,6 +1941,8 @@ def load_image(
+@@ -1910,6 +1957,8 @@ def load_image(
          image = _load_image(image_file=image_file, gpu_image_decode=gpu_image_decode)
      else:
          raise ValueError(f"Invalid image: {image_file}")
@@ -23808,10 +24019,10 @@ index 5ffa8530c4..77fd3675c3 100644
          FalconH1Config,
 diff --git a/python/sglang/srt/utils/mem_forensics.py b/python/sglang/srt/utils/mem_forensics.py
 new file mode 100644
-index 0000000000..1fba00a356
+index 0000000000..df84fbcc1b
 --- /dev/null
 +++ b/python/sglang/srt/utils/mem_forensics.py
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,139 @@
 +# Copyright 2023-2026 SGLang Team
 +# Licensed under the Apache License, Version 2.0 (the "License");
 +# you may not use this file except in compliance with the License.
@@ -23827,20 +24038,22 @@ index 0000000000..1fba00a356
 +# ==============================================================================
 +"""Allocator-history forensics for CUDA-graph buffer lifetime debugging.
 +
-+When ``SGLANG_MEM_FORENSICS_DIR`` names a directory, the process records
-+CUDA caching-allocator history (with Python allocation stacks) from early
-+model-runner initialization onward, and writes ``torch.cuda.memory._snapshot``
-+pickles at two boundaries:
++When ``SGLANG_MEM_FORENSICS_DIR`` names a directory, the model runner starts
++CUDA caching-allocator history recording (with Python allocation stacks)
++during initialization, and each scheduler writes one
++``torch.cuda.memory._snapshot`` pickle tagged ``ready`` when it reaches its
++event loop, after every CUDA graph capture has completed. Failure handlers
++may call :func:`maybe_dump_memory_forensics` with their own tag for a second
++snapshot. Mapping a corrupted tensor's ``data_ptr`` onto the ``ready``
++snapshot names the allocation site of a block a captured graph recorded.
 +
-+- ``ready``: after every CUDA graph capture (target, draft, adaptive tiers)
-+  has completed, while capture-era blocks are still alive with their
-+  allocation stacks attached; and
-+- ``corruption``: from an allocator-corruption diagnostic, before it raises.
-+
-+Mapping a damaged tensor's ``data_ptr`` onto the ``ready`` snapshot names the
-+allocation site of the block a captured graph still writes through. Recording
-+and dumping are diagnostic-only: failures here are logged and never raised, so
-+the original assertion path is preserved even on a faulted CUDA context.
++Recording is started once per process and left active. Other features that
++call ``torch.cuda.memory._record_memory_history`` themselves (memory
++profilers) can reconfigure or stop it; a dump whose snapshot carries no
++history entries logs that condition. Both entry points return without
++touching ``torch.cuda`` unless the directory variable is set, and dump
++failures are logged and never raised, so the original failure path of a
++caller is preserved even on a faulted CUDA context.
 +"""
 +
 +from __future__ import annotations
@@ -23872,7 +24085,7 @@ index 0000000000..1fba00a356
 +            return str(torch.distributed.get_rank())
 +    except Exception:
 +        pass
-+    return f"pid{os.getpid()}"
++    return "na"
 +
 +
 +def maybe_start_memory_forensics() -> None:
@@ -23904,26 +24117,51 @@ index 0000000000..1fba00a356
 +
 +
 +def maybe_dump_memory_forensics(tag: str) -> None:
-+    """Write one snapshot pickle per (process, tag); recording stays active."""
++    """Write one snapshot pickle per (process, tag).
++
++    The snapshot is written to a temporary file and moved into place
++    atomically; the tag is consumed only after a successful write, so a
++    transient failure does not suppress a later retry. File names embed the
++    distributed rank, the PID, and a nanosecond timestamp, so concurrent
++    data-parallel replicas, restarts, and multiple servers sharing the
++    directory cannot collide.
++    """
 +    if not _started:
 +        return
 +    with _lock:
 +        if tag in _dumped_tags:
 +            return
-+        _dumped_tags.add(tag)
-+    try:
 +        out_dir = envs.SGLANG_MEM_FORENSICS_DIR.get()
-+        os.makedirs(out_dir, exist_ok=True)
 +        path = os.path.join(
 +            out_dir,
-+            f"mem-forensics-{tag}-rank{_rank_label()}-{int(time.time())}.pickle",
++            f"mem-forensics-{tag}-rank{_rank_label()}"
++            f"-pid{os.getpid()}-{time.time_ns()}.pickle",
 +        )
-+        snapshot = torch.cuda.memory._snapshot()
-+        with open(path, "wb") as file:
-+            pickle.dump(snapshot, file)
++        try:
++            os.makedirs(out_dir, exist_ok=True)
++            snapshot = torch.cuda.memory._snapshot()
++            if not any(snapshot.get("device_traces") or []):
++                logger.info(
++                    "Memory forensics snapshot %r has no history entries; "
++                    "another memory profiler may have stopped recording.",
++                    tag,
++                )
++            tmp_path = path + ".tmp"
++            try:
++                with open(tmp_path, "wb") as file:
++                    pickle.dump(snapshot, file)
++                os.replace(tmp_path, path)
++            except BaseException:
++                try:
++                    os.remove(tmp_path)
++                except OSError:
++                    pass
++                raise
++        except Exception:
++            logger.exception("Memory forensics dump failed for tag %r", tag)
++            return
++        _dumped_tags.add(tag)
 +        logger.info("Memory forensics snapshot written: %s", path)
-+    except Exception:
-+        logger.exception("Memory forensics dump failed for tag %r", tag)
 diff --git a/python/sglang/srt/utils/video_decoder.py b/python/sglang/srt/utils/video_decoder.py
 index 0dfec642f0..48277187fd 100644
 --- a/python/sglang/srt/utils/video_decoder.py
@@ -24341,7 +24579,7 @@ index 0000000000..6e81fa7173
 +if __name__ == "__main__":
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
-index 7e9a5a65cd..b92d264cdd 100644
+index 7e9a5a65cd..eaa4a93920 100644
 --- a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 +++ b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 @@ -5,6 +5,9 @@ import torch
@@ -24410,22 +24648,98 @@ index 7e9a5a65cd..b92d264cdd 100644
          assert residual_out.shape == residual.shape
          assert post_out.shape == (0, hc_mult, 1)
          assert comb_out.shape == (0, hc_mult, hc_mult)
-@@ -107,6 +117,15 @@ def test_mhc_fused_post_pre_matches_unfused(
+@@ -107,6 +117,25 @@ def test_mhc_fused_post_pre_matches_unfused(
          assert layer_out.dtype == torch.bfloat16
          return
  
 +    assert len(capture_owners) == 2
 +    gemm_out_mul_owner, gemm_out_sqrsum_owner = capture_owners
 +    assert gemm_out_mul_owner.dtype == torch.float32
-+    assert gemm_out_mul_owner.ndim == 3
-+    assert gemm_out_mul_owner.shape[1:] == (num_tokens, hc_mult3)
 +    assert gemm_out_sqrsum_owner.dtype == torch.float32
-+    assert gemm_out_sqrsum_owner.ndim == 2
-+    assert gemm_out_sqrsum_owner.shape == gemm_out_mul_owner.shape[:2]
++    if num_tokens <= 32:
++        # Small-batch path: the split-K pair is the kernel operand set.
++        assert gemm_out_mul_owner.ndim == 3
++        assert gemm_out_mul_owner.shape[1:] == (num_tokens, hc_mult3)
++        assert gemm_out_sqrsum_owner.ndim == 2
++        assert gemm_out_sqrsum_owner.shape == gemm_out_mul_owner.shape[:2]
++    else:
++        # Large-batch TileLang fallback (DeepGEMM prenorm disabled): the
++        # reallocated 2-D/1-D pair is the real kernel operand set and must
++        # be the retained owners, not the discarded split-K allocations.
++        assert gemm_out_mul_owner.ndim == 2
++        assert gemm_out_mul_owner.shape == (num_tokens, hc_mult3)
++        assert gemm_out_sqrsum_owner.ndim == 1
++        assert gemm_out_sqrsum_owner.shape == (num_tokens,)
 +
      assert residual_ref is not None
      assert post_ref is not None
      assert comb_ref is not None
+@@ -124,6 +153,65 @@ def test_mhc_fused_post_pre_matches_unfused(
+     torch.testing.assert_close(layer_out, layer_ref, atol=layer_atol, rtol=layer_rtol)
+ 
+ 
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
++def test_fused_norm_weight_conversion_copy_is_retained(monkeypatch):
++    monkeypatch.setenv("SGLANG_OPT_DEEPGEMM_HC_PRENORM", "0")
++    monkeypatch.setattr(mhc, "is_dsa_prefill_cp_round_robin_split", lambda: False)
++    monkeypatch.setattr(mhc, "use_symmetric_memory", lambda *a, **kw: nullcontext())
++    monkeypatch.setattr(mhc, "is_allocation_symmetric", lambda: False)
++    monkeypatch.setattr(mhc, "get_tp_group", lambda: None)
++    torch.manual_seed(20260830)
++    device = torch.device("cuda")
++    hc_mult, hidden_size, num_tokens = 4, 4096, 8
++    hc_mult3 = hc_mult * 2 + hc_mult * hc_mult
++    hc_hidden_size = hc_mult * hidden_size
++
++    x = torch.randn(num_tokens, hidden_size, device=device, dtype=torch.bfloat16) * 0.1
++    residual = (
++        torch.randn(
++            num_tokens, hc_mult, hidden_size, device=device, dtype=torch.bfloat16
++        )
++        * 0.1
++    )
++    post_prev = torch.rand(num_tokens, hc_mult, 1, device=device, dtype=torch.float32)
++    comb_prev = (
++        torch.rand(num_tokens, hc_mult, hc_mult, device=device, dtype=torch.float32)
++        * 0.25
++    )
++    fn = (
++        torch.randn(hc_mult3, hc_hidden_size, device=device, dtype=torch.float32) * 0.01
++    )
++    hc_scale = torch.tensor([0.5, 0.25, 0.25], device=device, dtype=torch.float32)
++    hc_base = torch.zeros(hc_mult3, device=device, dtype=torch.float32)
++    # A float32 norm weight forces the bf16 conversion copy inside the kernel.
++    norm_weight = torch.ones(hidden_size, device=device, dtype=torch.float32)
++
++    with collect_full_cuda_graph_owners() as capture_owners:
++        mhc_fused_post_pre(
++            x,
++            residual,
++            post_prev,
++            comb_prev,
++            fn,
++            hc_scale,
++            hc_base,
++            1e-6,
++            1e-4,
++            1e-4,
++            2.0,
++            2,
++            norm_weight=norm_weight,
++            norm_eps=1e-6,
++        )
++    torch.cuda.synchronize()
++
++    assert len(capture_owners) == 3
++    converted = capture_owners[-1]
++    assert converted.dtype == torch.bfloat16
++    assert converted.shape == (hidden_size,)
++    assert converted is not norm_weight
++
++
+ if __name__ == "__main__":
+     import sys
+ 
 diff --git a/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py b/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py
 index 7007fd9897..f7cde67b84 100644
 --- a/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py
@@ -24863,6 +25177,212 @@ index 81e0b08b0b..a168c4253f 100644
 +
  if __name__ == "__main__":
      sys.exit(pytest.main([__file__]))
+diff --git a/test/registered/layers/attention/test_dsa_capture_owner_cuda.py b/test/registered/layers/attention/test_dsa_capture_owner_cuda.py
+new file mode 100644
+index 0000000000..3cb26c3eaa
+--- /dev/null
++++ b/test/registered/layers/attention/test_dsa_capture_owner_cuda.py
+@@ -0,0 +1,200 @@
++import pytest
++import torch
++
++from sglang.srt.layers.attention.dsa.dsa_indexer import Indexer
++from sglang.srt.layers.attention.dsa.utils import fp8_mqa_logits_make_fused_kv
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    collect_full_cuda_graph_owners,
++)
++from sglang.test.ci.ci_register import register_cuda_ci
++
++register_cuda_ci(est_time=120, stage="base-b", runner_config="1-gpu-small")
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
++def test_outer_torch_compile_preserves_capture_owner():
++    torch.manual_seed(48)
++    indexer = object.__new__(Indexer)
++    values = torch.randn(16, 32, device="cuda")
++
++    def outer(value):
++        produced = value.float().square()
++        produced = indexer._retain_full_graph_capture_owner(produced)
++        return produced.to(torch.int32)
++
++    compiled_outer = torch.compile(
++        outer, mode="max-autotune-no-cudagraphs", dynamic=False
++    )
++    compiled_outer(values)
++    torch.cuda.synchronize()
++
++    with collect_full_cuda_graph_owners() as owners:
++        output = compiled_outer(values)
++    torch.cuda.synchronize()
++
++    assert output.dtype == torch.int32
++    assert len(owners) == 1
++    assert owners[0].dtype == torch.float32
++    expected_replay = values.float().square()
++    torch.testing.assert_close(owners[0], expected_replay)
++
++    capture_stream = torch.cuda.Stream()
++    capture_stream.wait_stream(torch.cuda.current_stream())
++    with torch.cuda.stream(capture_stream):
++        compiled_outer(values)
++        compiled_outer(values)
++    torch.cuda.current_stream().wait_stream(capture_stream)
++
++    graph = torch.cuda.CUDAGraph()
++    with collect_full_cuda_graph_owners() as capture_owners:
++        with torch.cuda.graph(graph, stream=capture_stream):
++            captured_output = compiled_outer(values)
++
++    del captured_output
++    graph.replay()
++    torch.cuda.synchronize()
++
++    assert len(capture_owners) == 1
++    torch.testing.assert_close(capture_owners[0], expected_replay)
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
++def test_deepgemm_paged_logits_owner_survives_shared_pool_capture():
++    if torch.cuda.get_device_capability()[0] < 9:
++        pytest.skip("DeepGEMM paged MQA requires SM90 or newer")
++    deep_gemm = pytest.importorskip("deep_gemm")
++
++    torch.manual_seed(52)
++    torch._dynamo.reset()
++    batch_size = 24
++    max_context_len = 2240
++    block_size = 64
++    num_heads = 32
++    head_dim = 128
++    num_blocks = max_context_len // block_size
++
++    q_fp8 = torch.randn(batch_size, 1, num_heads, head_dim, device="cuda").to(
++        torch.float8_e4m3fn
++    )
++    kv_fp8 = torch.randn(num_blocks, block_size, head_dim, device="cuda").to(
++        torch.float8_e4m3fn
++    )
++    kv_scales = torch.ones(num_blocks, block_size, device="cuda")
++    kv_fused = fp8_mqa_logits_make_fused_kv(kv_fp8, kv_scales, block_size, head_dim)
++    weights = torch.randn(batch_size, num_heads, device="cuda")
++    context_lens = torch.full(
++        (batch_size, 1), max_context_len, dtype=torch.int32, device="cuda"
++    )
++    block_table = torch.arange(num_blocks, dtype=torch.int32, device="cuda").repeat(
++        batch_size, 1
++    )
++    schedule = deep_gemm.get_paged_mqa_logits_metadata(
++        context_lens, block_size, deep_gemm.get_num_sms()
++    )
++    indexer = object.__new__(Indexer)
++
++    def outer(query):
++        logits = deep_gemm.fp8_paged_mqa_logits(
++            query,
++            kv_fused,
++            weights,
++            context_lens,
++            block_table,
++            schedule,
++            max_context_len,
++            clean_logits=False,
++        )
++        logits = indexer._retain_full_graph_capture_owner(logits)
++        return logits[:, :1]
++
++    compiled_outer = torch.compile(
++        outer, mode="max-autotune-no-cudagraphs", dynamic=False
++    )
++    expected = compiled_outer(q_fp8).detach().clone()
++    torch.cuda.synchronize()
++
++    capture_stream = torch.cuda.Stream()
++    capture_stream.wait_stream(torch.cuda.current_stream())
++    with torch.cuda.stream(capture_stream):
++        compiled_outer(q_fp8)
++        compiled_outer(q_fp8)
++    torch.cuda.current_stream().wait_stream(capture_stream)
++
++    pool = torch.cuda.graph_pool_handle()
++    graph = torch.cuda.CUDAGraph()
++    with collect_full_cuda_graph_owners() as capture_owners:
++        with torch.cuda.graph(graph, pool=pool, stream=capture_stream):
++            captured_output = compiled_outer(q_fp8)
++
++    assert len(capture_owners) == 1
++    owner = capture_owners[0]
++    assert owner.shape == (batch_size, max_context_len)
++    assert owner.dtype == torch.float32
++    assert (
++        owner.untyped_storage().data_ptr()
++        == captured_output.untyped_storage().data_ptr()
++    )
++
++    graph.replay()
++    torch.cuda.synchronize()
++    torch.testing.assert_close(owner[:, :1], expected)
++    del captured_output
++    expected_owner = owner.detach().clone()
++
++    # A second capture sharing the pool must not receive the retained
++    # owner's storage; without retention the freed block is reusable and
++    # replaying the first graph would overwrite the second graph's tensor.
++    other_graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(other_graph, pool=pool, stream=capture_stream):
++        other = torch.empty_like(owner)
++        other.fill_(17.0)
++    owner_start = owner.untyped_storage().data_ptr()
++    owner_end = owner_start + owner.untyped_storage().nbytes()
++    other_start = other.untyped_storage().data_ptr()
++    other_end = other_start + other.untyped_storage().nbytes()
++    assert owner_end <= other_start or other_end <= owner_start
++    del other
++
++    other_graph.replay()
++    torch.cuda.synchronize()
++    torch.testing.assert_close(owner, expected_owner)
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
++def test_backend_stores_helper_retained_owner_with_the_shape():
++    from unittest import mock
++
++    from sglang.srt.model_executor.runner_backend.full_cuda_graph_backend import (
++        FullCudaGraphBackend,
++    )
++
++    indexer = object.__new__(Indexer)
++    runner = mock.Mock()
++    runner.device_module = torch.cuda
++    runner.model_runner.tp_group.barrier = lambda: None
++    runner.enable_profile_cuda_graph = False
++    backend = FullCudaGraphBackend(runner)
++
++    values = torch.randn(8, device="cuda")
++    produced = {}
++
++    def forward_fn():
++        tensor = values.float().square()
++        produced["tensor"] = indexer._retain_full_graph_capture_owner(tensor)
++        return object()
++
++    stream = torch.cuda.Stream()
++    stream.wait_stream(torch.cuda.current_stream())
++    with backend.capture_session(stream):
++        backend.capture_one("shape", forward_fn)
++    torch.cuda.current_stream().wait_stream(stream)
++
++    assert produced["tensor"] in backend._capture_owners["shape"]
++    backend.cleanup()
++    assert backend._capture_owners == {}
++
++
++if __name__ == "__main__":
++    import sys
++
++    sys.exit(pytest.main([__file__, "-q"]))
 diff --git a/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
 new file mode 100644
 index 0000000000..f8c88e7ee6
@@ -25603,6 +26123,144 @@ index 2500f0c9c4..ff0f05440d 100644
      def test_parsers_follow_the_control_plane_overlay(self):
          """Template detection records the parsers through `override`, so they
          answer from the bags; `ServerArgs` keeps the launcher's seed."""
+diff --git a/test/registered/unit/layers/attention/test_dsa_capture_owner.py b/test/registered/unit/layers/attention/test_dsa_capture_owner.py
+new file mode 100644
+index 0000000000..50ef1e1858
+--- /dev/null
++++ b/test/registered/unit/layers/attention/test_dsa_capture_owner.py
+@@ -0,0 +1,132 @@
++import unittest
++from unittest import mock
++
++import torch
++
++from sglang.srt.layers.attention.dsa import dsa_indexer as indexer_module
++from sglang.srt.layers.attention.dsa.dsa_indexer import Indexer
++from sglang.srt.model_executor.runner_utils.capture_owner import (
++    collect_full_cuda_graph_owners,
++)
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=2, suite="base-a-test-cpu")
++
++
++class TestRetainFullGraphCaptureOwner(unittest.TestCase):
++    def test_noop_outside_capture_scope(self):
++        indexer = object.__new__(Indexer)
++        tensor = torch.empty(4)
++        result = indexer._retain_full_graph_capture_owner(tensor)
++        self.assertIs(result, tensor)
++
++    def test_records_owner_inside_capture_scope(self):
++        indexer = object.__new__(Indexer)
++        tensor = torch.empty(4)
++        with collect_full_cuda_graph_owners() as owners:
++            result = indexer._retain_full_graph_capture_owner(tensor)
++        self.assertIs(result, tensor)
++        self.assertEqual(owners, [tensor])
++
++    def test_retention_survives_enclosing_torch_compile(self):
++        # Dynamo traces away plain Python side effects; the helper's
++        # torch.compiler.disable boundary must force it to execute.
++        indexer = object.__new__(Indexer)
++
++        def outer(value):
++            produced = value.float().square()
++            produced = indexer._retain_full_graph_capture_owner(produced)
++            return produced.to(torch.int32)
++
++        compiled_outer = torch.compile(outer, dynamic=False)
++        values = torch.randn(8)
++        compiled_outer(values)
++
++        with collect_full_cuda_graph_owners() as owners:
++            output = compiled_outer(values)
++
++        self.assertEqual(output.dtype, torch.int32)
++        self.assertEqual(len(owners), 1)
++        self.assertEqual(owners[0].dtype, torch.float32)
++        torch.testing.assert_close(owners[0], values.float().square())
++
++    def test_paged_path_retains_weights_and_logits_before_consumers(self):
++        indexer = object.__new__(Indexer)
++        indexer.sm_count = 1
++        indexer.index_topk = 2048
++        indexer.paged_mqa_logits_backend = mock.Mock()
++        indexer.paged_mqa_logits_backend.is_cutedsl.return_value = False
++        indexer.paged_mqa_logits_backend.is_aiter.return_value = False
++        indexer._get_index_k_read_buffer = mock.Mock(
++            return_value=torch.empty(1, 64 * 132)
++        )
++        indexer._mask_init_and_local_tokens = mock.Mock(
++            side_effect=lambda logits, seqlens: events.append(("mask", logits))
++        )
++
++        q_fp8 = torch.empty(24, 32, 128)
++        weights = torch.empty(24, 32, 1)
++        seqlens = torch.full((24,), 2240, dtype=torch.int32)
++        block_tables = torch.zeros(24, 35, dtype=torch.int32)
++        logits = torch.empty(24, 2240)
++        topk = torch.empty(24, 2051, dtype=torch.int32)
++        events = []
++
++        forward_batch = mock.Mock()
++        forward_batch.forward_mode.is_target_verify.return_value = True
++        forward_batch.forward_mode.is_draft_extend_v2.return_value = False
++        metadata = mock.Mock()
++        metadata.get_page_table_64.return_value = block_tables
++        metadata.get_seqlens_expanded.return_value = seqlens
++        metadata.get_seqlens_int32.return_value = seqlens
++        metadata.get_dsa_extend_len_cpu.return_value = [1] * 24
++        metadata.paged_mqa_schedule_metadata = torch.empty(1, dtype=torch.int32)
++
++        def topk_transform(candidate, topk_count):
++            events.append(("topk", candidate))
++            return topk
++
++        metadata.topk_transform.side_effect = topk_transform
++
++        def retain(candidate):
++            events.append(("retain", candidate))
++            return candidate
++
++        def produce_logits(*args, **kwargs):
++            events.append(("produce", args[3]))
++            return logits
++
++        indexer._retain_full_graph_capture_owner = retain
++        pool = mock.Mock(page_size=64)
++        with (
++            mock.patch.object(
++                indexer_module, "get_token_to_kv_pool", return_value=pool
++            ),
++            mock.patch.object(indexer_module, "_is_hip", False),
++            mock.patch.object(indexer_module, "_is_cuda", True),
++            mock.patch.object(indexer_module, "deep_gemm", mock.Mock(), create=True),
++            mock.patch.object(
++                indexer_module,
++                "deepgemm_paged_mqa_logits_split",
++                side_effect=produce_logits,
++            ),
++        ):
++            result = indexer._get_topk_paged(forward_batch, 0, q_fp8, weights, metadata)
++
++        self.assertIs(result, topk)
++        kinds = [kind for kind, _ in events]
++        self.assertEqual(kinds, ["retain", "produce", "retain", "mask", "topk"])
++        self.assertIs(events[0][1], weights)
++        # The producer receives the squeezed view of the retained owner.
++        self.assertEqual(events[1][1].shape, (24, 32))
++        self.assertEqual(
++            events[1][1].untyped_storage().data_ptr(),
++            weights.untyped_storage().data_ptr(),
++        )
++        self.assertIs(events[2][1], logits)
++        self.assertIs(events[3][1], logits)
++        self.assertIs(events[4][1], logits)
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_graph_buffer_lifetime.py b/test/registered/unit/layers/attention/test_dsa_graph_buffer_lifetime.py
 new file mode 100644
 index 0000000000..3b0e8ffd5f
@@ -27095,10 +27753,10 @@ index 7b678f35ac..093f609954 100644
  
  
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index 6be4253923..712325ee50 100644
+index 834dd2e811..6476a51216 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-@@ -7133,6 +7133,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
+@@ -7143,6 +7143,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
              [mock.call(first), mock.call(second)]
          )
  
@@ -27318,7 +27976,7 @@ index 0000000000..414623fc5c
 +    model_runner.attn_backend.init_forward_metadata.assert_called_once_with(batch)
 +    runner._execute_extend_cp_v2.assert_called_once()
 diff --git a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
-index 4987bce1f5..b0dffd27e4 100644
+index 4987bce1f5..8530deff66 100644
 --- a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 +++ b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 @@ -20,7 +20,9 @@ profiler stepping) is pure-Python and runs on CPU.
@@ -27349,7 +28007,7 @@ index 4987bce1f5..b0dffd27e4 100644
      backend._pool = None
      backend._capture_stream = None
      backend._memory_saver_adapter = None
-@@ -104,6 +110,42 @@ class TestCaptureOneNoProfiling(CustomTestCase):
+@@ -104,6 +110,57 @@ class TestCaptureOneNoProfiling(CustomTestCase):
          self.assertEqual(backend._graphs[shape_key], "GRAPH")
          self.assertIs(backend._outputs[shape_key], sentinel_out)
  
@@ -27387,6 +28045,21 @@ index 4987bce1f5..b0dffd27e4 100644
 +        backend.cleanup()
 +        gc.collect()
 +        self.assertIsNone(captured_refs[1]())
++        self.assertEqual(backend._capture_owners, {})
++
++    def test_capture_inputs_are_retained_with_the_shape(self):
++        runner = _make_runner(enable_profile=False, profiler=None)
++        backend = _make_backend(runner)
++        shape_key = ShapeKey(size=2)
++        capture_inputs = object()
++
++        with mock.patch("torch.cuda.CUDAGraph", return_value="GRAPH"):
++            backend.capture_one(
++                shape_key, lambda: object(), capture_inputs=capture_inputs
++            )
++
++        self.assertIn(capture_inputs, backend._capture_owners[shape_key])
++        backend.cleanup()
 +        self.assertEqual(backend._capture_owners, {})
 +
      def test_enable_flag_set_but_no_profiler_attr_does_not_step(self):
@@ -28177,10 +28850,10 @@ index 0000000000..e9bb5fb271
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/server_args/test_server_args.py b/test/registered/unit/server_args/test_server_args.py
-index dd60a4ff96..166ecb60db 100644
+index 30361e6c54..eaef512557 100644
 --- a/test/registered/unit/server_args/test_server_args.py
 +++ b/test/registered/unit/server_args/test_server_args.py
-@@ -1983,6 +1983,50 @@ class TestPrefillCudaGraphLoRACompatibility(CustomTestCase):
+@@ -1979,6 +1979,50 @@ class TestPrefillCudaGraphLoRACompatibility(CustomTestCase):
          )
  
  
@@ -28692,11 +29365,11 @@ index d9817d6065..1491836fac 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_model_overrides.py b/test/registered/unit/test_model_overrides.py
-index 16068f9919..803f9ba77c 100644
+index 3659a24442..9293a659c2 100644
 --- a/test/registered/unit/test_model_overrides.py
 +++ b/test/registered/unit/test_model_overrides.py
-@@ -1763,13 +1763,18 @@ class TestGoldenModelOverrides(_IsolatedPublish):
-             patch.object(overrides_module, "is_hip", return_value=False),
+@@ -1767,13 +1767,18 @@ class TestGoldenModelOverrides(_IsolatedPublish):
+             override_platform(is_hip=False),
              patch("torch.cuda.get_device_capability", return_value=(12, 0)),
          ):
 -            self.assertEqual(
@@ -28720,13 +29393,13 @@ index 16068f9919..803f9ba77c 100644
 +                    )
          with (
              patch("sglang.srt.configs.model_config.is_deepseek_dsa", return_value=True),
-             patch.object(overrides_module, "is_npu", return_value=False),
+             override_platform(is_npu=False),
 diff --git a/test/registered/unit/utils/test_mem_forensics.py b/test/registered/unit/utils/test_mem_forensics.py
 new file mode 100644
-index 0000000000..bfe5c6ed8c
+index 0000000000..6ab49e5440
 --- /dev/null
 +++ b/test/registered/unit/utils/test_mem_forensics.py
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,123 @@
 +"""Unit tests for allocator-history forensics gating and dump lifecycle."""
 +
 +import os
@@ -28739,6 +29412,9 @@ index 0000000000..bfe5c6ed8c
 +
 +from sglang.srt.environ import envs
 +from sglang.srt.utils import mem_forensics
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=2, suite="base-a-test-cpu")
 +
 +
 +class MemForensicsTest(unittest.TestCase):
@@ -28755,19 +29431,37 @@ index 0000000000..bfe5c6ed8c
 +        self.assertFalse(record.called)
 +        self.assertFalse(mem_forensics._started)
 +
-+    def test_start_records_once_per_process(self):
++    def test_start_records_once_with_configured_parameters(self):
++        with envs.SGLANG_MEM_FORENSICS_DIR.override("/tmp/forensics"):
++            with envs.SGLANG_MEM_FORENSICS_MAX_ENTRIES.override(1234):
++                with mock.patch.object(
++                    torch.cuda, "is_available", return_value=True
++                ), mock.patch.object(
++                    torch.cuda.memory, "_record_memory_history"
++                ) as record:
++                    mem_forensics.maybe_start_memory_forensics()
++                    mem_forensics.maybe_start_memory_forensics()
++        self.assertEqual(record.call_count, 1)
++        self.assertEqual(record.call_args.kwargs["enabled"], "all")
++        self.assertEqual(record.call_args.kwargs["context"], "all")
++        self.assertEqual(record.call_args.kwargs["stacks"], "python")
++        self.assertEqual(record.call_args.kwargs["max_entries"], 1234)
++        self.assertTrue(mem_forensics._started)
++
++    def test_start_failure_is_contained_and_not_marked_started(self):
 +        with envs.SGLANG_MEM_FORENSICS_DIR.override("/tmp/forensics"):
 +            with mock.patch.object(
 +                torch.cuda, "is_available", return_value=True
-+            ), mock.patch.object(torch.cuda.memory, "_record_memory_history") as record:
++            ), mock.patch.object(
++                torch.cuda.memory,
++                "_record_memory_history",
++                side_effect=RuntimeError("driver"),
++            ):
 +                mem_forensics.maybe_start_memory_forensics()
-+                mem_forensics.maybe_start_memory_forensics()
-+        self.assertEqual(record.call_count, 1)
-+        self.assertEqual(record.call_args.kwargs["stacks"], "python")
-+        self.assertTrue(mem_forensics._started)
++        self.assertFalse(mem_forensics._started)
 +
 +    def test_dump_writes_one_snapshot_per_tag(self):
-+        snapshot = {"segments": [], "device_traces": []}
++        snapshot = {"segments": [], "device_traces": [[{"action": "alloc"}]]}
 +        with tempfile.TemporaryDirectory() as out_dir:
 +            with envs.SGLANG_MEM_FORENSICS_DIR.override(out_dir):
 +                mem_forensics._started = True
@@ -28783,6 +29477,9 @@ index 0000000000..bfe5c6ed8c
 +                sorted(name.split("-")[2] for name in names),
 +                ["corruption", "ready"],
 +            )
++            for name in names:
++                self.assertIn(f"pid{os.getpid()}", name)
++                self.assertTrue(name.endswith(".pickle"))
 +            with open(os.path.join(out_dir, names[0]), "rb") as file:
 +                self.assertEqual(pickle.load(file), snapshot)
 +
@@ -28792,7 +29489,8 @@ index 0000000000..bfe5c6ed8c
 +                mem_forensics.maybe_dump_memory_forensics("ready")
 +            self.assertEqual(os.listdir(out_dir), [])
 +
-+    def test_dump_failure_never_raises(self):
++    def test_failed_dump_never_raises_and_allows_retry(self):
++        snapshot = {"segments": [], "device_traces": []}
 +        with tempfile.TemporaryDirectory() as out_dir:
 +            with envs.SGLANG_MEM_FORENSICS_DIR.override(out_dir):
 +                mem_forensics._started = True
@@ -28802,7 +29500,25 @@ index 0000000000..bfe5c6ed8c
 +                    side_effect=RuntimeError("faulted context"),
 +                ):
 +                    mem_forensics.maybe_dump_memory_forensics("corruption")
++                self.assertEqual(os.listdir(out_dir), [])
++                with mock.patch.object(
++                    torch.cuda.memory, "_snapshot", return_value=snapshot
++                ):
++                    mem_forensics.maybe_dump_memory_forensics("corruption")
++            names = os.listdir(out_dir)
++            self.assertEqual(len(names), 1)
++
++    def test_failed_write_leaves_no_partial_file(self):
++        snapshot = {"segments": [], "device_traces": []}
++        with tempfile.TemporaryDirectory() as out_dir:
++            with envs.SGLANG_MEM_FORENSICS_DIR.override(out_dir):
++                mem_forensics._started = True
++                with mock.patch.object(
++                    torch.cuda.memory, "_snapshot", return_value=snapshot
++                ), mock.patch.object(pickle, "dump", side_effect=OSError("disk full")):
++                    mem_forensics.maybe_dump_memory_forensics("ready")
 +            self.assertEqual(os.listdir(out_dir), [])
++            self.assertNotIn("ready", mem_forensics._dumped_tags)
 +
 +
 +if __name__ == "__main__":

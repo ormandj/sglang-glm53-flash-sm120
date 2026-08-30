@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.0-rc.57 (current-main rebase with upstream PR revisions, not yet built or qualified)
+
+- Rebases both integration trees onto current official upstream mains:
+  SGLang base `5ab97c4f441462f3d2adb1ffa954cc92518beece` and FlashInfer base
+  `231f70828dfe93f5bbba7f0360a64435a7a846be`. New working branches
+  `integration/glm53-main-20260830` on both internal repositories.
+- Records the v0.1.0-rc.56 result: workspace pinning passed the exact-image
+  GPU gate, two 48-wave distinct-prefix C4 gates (384/384 requests, zero
+  restarts), five long-context capacity ladders up to a 502,784-token
+  prompt, and the n=5 C1 decode baseline with the cold-prefill panel; the corruption class did not
+  recur in any run.
+- Adopts the reviewed upstream-PR revisions of the three fixes prepared for
+  submission: FlashInfer graph-referenced workspace pinning (module lock,
+  exported release API, marker clearing), SGLang full-graph capture-owner
+  retention (all MHC producing branches including the large-token fallback
+  and norm-weight conversion copies; DSA paged, ragged, chunked,
+  context-parallel, dummy-logits, and padded-head sites; capture_inputs),
+  and the hardened allocator-history forensics (atomic collision-free
+  dumps, retry-safe tags).
+- 55 registered unit/CUDA tests for the merged tree pass in the rc56 image
+  environment, and the GLM model modules import cleanly against the
+  refactored upstream configuration layer.
+- Uses fresh cache schema `v44`. This candidate remains unqualified pending
+  the exact-image GPU gate, sustained C4 serving, and matched baselines.
+
 ## v0.1.0-rc.56 (graph-referenced MoE workspace pinning fix, not yet built or qualified)
 
 - Advances the internal FlashInfer integration working head to
