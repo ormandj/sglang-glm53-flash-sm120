@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 57,
-    "candidate_tag": "v0.1.0-rc.57",
+    "candidate": 58,
+    "candidate_tag": "v0.1.0-rc.58",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v44"
+    "cache_schema": "v45"
   },
   "image": {
-    "tag": "v0.1.0-rc.57",
+    "tag": "v0.1.0-rc.58",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -44,8 +44,8 @@
   },
   "pins": [
     {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "57"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v44"},
+    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "58"},
+    {"arg": "GLM53_CACHE_SCHEMA", "value": "v45"},
     {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
     {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
     {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
@@ -147,6 +147,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.0-rc.57 is not built or qualified"
+    "claims": "v0.1.0-rc.58 is not built or qualified"
   }
 }

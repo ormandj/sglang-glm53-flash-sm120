@@ -1,6 +1,13 @@
 # Changelog
 
-## v0.1.0-rc.57 (current-main rebase with upstream PR revisions, not yet built or qualified)
+## v0.1.0-rc.58 (current-main rebase with upstream PR revisions, not yet built or qualified)
+
+- Supersedes the unpublished v0.1.0-rc.57, whose image build failed at the
+  in-image source assertion layer: the fused-MHC ownership assert still
+  counted direct `retain_full_cuda_graph_owner` calls, while the PR revision
+  routes all MHC retention through `_retain_mhc_capture_owners`. The asserts
+  now count the helper in both `mhc_pre` and `mhc_fused_post_pre` and check
+  its compiler-disable boundary.
 
 - Rebases both integration trees onto current official upstream mains:
   SGLang base `5ab97c4f441462f3d2adb1ffa954cc92518beece` and FlashInfer base
@@ -22,7 +29,7 @@
 - 55 registered unit/CUDA tests for the merged tree pass in the rc56 image
   environment, and the GLM model modules import cleanly against the
   refactored upstream configuration layer.
-- Uses fresh cache schema `v44`. This candidate remains unqualified pending
+- Uses fresh cache schema `v45`. This candidate remains unqualified pending
   the exact-image GPU gate, sustained C4 serving, and matched baselines.
 
 ## v0.1.0-rc.56 (graph-referenced MoE workspace pinning fix, not yet built or qualified)

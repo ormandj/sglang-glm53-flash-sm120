@@ -6,8 +6,8 @@
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=57
-ARG GLM53_CACHE_SCHEMA=v44
+ARG GLM53_RELEASE_CANDIDATE=58
+ARG GLM53_CACHE_SCHEMA=v45
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
@@ -203,7 +203,9 @@ assert eagle_pool_init.index('self.draft_worker.alloc_memory_pool') < eagle_pool
 assert '_embed_and_head_shared' not in inspect.getsource(EagleDraftWorker.init_lm_head); \
 model_hook.is_sm120_supported=lambda:True; model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration'); \
 assert envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get() is False; \
-assert inspect.getsource(mhc.mhc_fused_post_pre).count('retain_full_cuda_graph_owner(') == 2; \
+assert inspect.getsource(mhc.mhc_fused_post_pre).count('_retain_mhc_capture_owners(') == 4; \
+assert inspect.getsource(mhc.mhc_pre).count('_retain_mhc_capture_owners(') == 4; \
+assert '@torch.compiler.disable' in inspect.getsource(mhc._retain_mhc_capture_owners); \
 assert 'reuse_input_storage=True' in inspect.getsource(modelopt_quant._prepare_flashinfer_b12x_w4a16_inplace); \
 assert '_prepared_weights=quant_info.prepared_weights' in inspect.getsource(flashinfer_cutlass._run_flashinfer_b12x_w4a16); \
 assert callable(kda.precompile_kda_prefill_kernels); \
