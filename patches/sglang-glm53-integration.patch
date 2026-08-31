@@ -11440,7 +11440,7 @@ index e469a61162..1b95e753fd 100644
      return torch.pow(2.0, torch.ceil(torch.log2(x.abs())))
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 9369ad2896..23e3631c54 100644
+index 9369ad2896..5ee9c20c99 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -1,9 +1,10 @@
@@ -11790,7 +11790,7 @@ index 9369ad2896..23e3631c54 100644
 +                int(getattr(model_runner.server_args, "chunked_prefill_size", 0) or 0),
 +                int(getattr(model_runner.server_args, "max_prefill_tokens", 0) or 0),
 +                model_runner.max_running_requests
-+                * max(1, self.speculative_num_draft_tokens),
++                * max(1, self.speculative_num_draft_tokens or 1),
 +            )
 +            self.flashinfer_sparse_mla_runner = SparseMLASm120Wrapper(
 +                max_num_tokens=max_runner_tokens,
@@ -16420,7 +16420,7 @@ index a1ffb4f555..043fe008b1 100644
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 8dc2f21b9f..dea3195129 100644
+index 8dc2f21b9f..235b48d1ed 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -16490,7 +16490,17 @@ index 8dc2f21b9f..dea3195129 100644
      def init_request_dispatcher(self):
          self._request_dispatcher = TypeBasedDispatcher(
              [
-@@ -1753,6 +1773,10 @@ class Scheduler(
+@@ -1750,9 +1770,20 @@ class Scheduler(
+         """
+         # Engine init (graph capture, warmups) is done; from here on any
+         # Triton kernel device-load is a lazy first-use at serving time.
++        # Load the scheduler's own allocator/speculative kernels first so
++        # their cubins land while init headroom is still available.
++        from sglang.srt.utils.scheduler_kernel_prewarm import (
++            prewarm_scheduler_triton_kernels,
++        )
++
++        prewarm_scheduler_triton_kernels(self)
          triton_load_watch.install()
          triton_load_watch.mark_serving_started()
  
@@ -16501,7 +16511,7 @@ index 8dc2f21b9f..dea3195129 100644
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
              # not PyTorch MPS streams.
-@@ -3122,10 +3146,13 @@ class Scheduler(
+@@ -3122,10 +3153,13 @@ class Scheduler(
          if req is None:
              return
          if self.chunked_req is not req:
@@ -16517,7 +16527,7 @@ index 8dc2f21b9f..dea3195129 100644
              return
  
          prepare_abort(req, "Aborted")
-@@ -3279,6 +3306,7 @@ class Scheduler(
+@@ -3279,6 +3313,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -16525,7 +16535,7 @@ index 8dc2f21b9f..dea3195129 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3505,6 +3533,9 @@ class Scheduler(
+@@ -3505,6 +3540,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -16535,7 +16545,7 @@ index 8dc2f21b9f..dea3195129 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3800,20 +3831,27 @@ class Scheduler(
+@@ -3800,20 +3838,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -16577,7 +16587,7 @@ index 8dc2f21b9f..dea3195129 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -3826,12 +3864,11 @@ class Scheduler(
+@@ -3826,12 +3871,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -16595,7 +16605,7 @@ index 8dc2f21b9f..dea3195129 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -3846,12 +3883,11 @@ class Scheduler(
+@@ -3846,12 +3890,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -16611,7 +16621,7 @@ index 8dc2f21b9f..dea3195129 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -3907,7 +3943,7 @@ class Scheduler(
+@@ -3907,7 +3950,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -16620,7 +16630,7 @@ index 8dc2f21b9f..dea3195129 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -3933,13 +3969,12 @@ class Scheduler(
+@@ -3933,13 +3976,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -16640,7 +16650,7 @@ index 8dc2f21b9f..dea3195129 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4061,7 +4096,11 @@ class Scheduler(
+@@ -4061,7 +4103,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -16653,7 +16663,7 @@ index 8dc2f21b9f..dea3195129 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4073,7 +4112,11 @@ class Scheduler(
+@@ -4073,7 +4119,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -16665,7 +16675,7 @@ index 8dc2f21b9f..dea3195129 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4196,9 +4239,11 @@ class Scheduler(
+@@ -4196,9 +4246,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -16680,7 +16690,7 @@ index 8dc2f21b9f..dea3195129 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4221,31 +4266,42 @@ class Scheduler(
+@@ -4221,31 +4273,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -16744,7 +16754,7 @@ index 8dc2f21b9f..dea3195129 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4280,7 +4336,7 @@ class Scheduler(
+@@ -4280,7 +4343,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -24193,6 +24203,177 @@ index 0000000000..df84fbcc1b
 +            return
 +        _dumped_tags.add(tag)
 +        logger.info("Memory forensics snapshot written: %s", path)
+diff --git a/python/sglang/srt/utils/scheduler_kernel_prewarm.py b/python/sglang/srt/utils/scheduler_kernel_prewarm.py
+new file mode 100644
+index 0000000000..338efce299
+--- /dev/null
++++ b/python/sglang/srt/utils/scheduler_kernel_prewarm.py
+@@ -0,0 +1,165 @@
++"""Pre-load scheduler-side Triton kernels before serving starts.
++
++``triton_load_watch`` documents the failure mode: Triton loads a kernel
++specialization's cubin at first launch, outside the torch caching allocator,
++and a first use minutes into serving can OOM when pools have consumed nearly
++all device memory. Model-side kernels are covered by
++``precompile_kernels_after_loading``; the kernels launched by the scheduler
++process itself (allocator extend/last-loc, request-to-pool assignment, and
++the speculative gather/cache-loc helpers) are not tied to a model forward
++and historically device-loaded on the first request.
++
++Every launch here uses the serving configuration's constexpr values (page
++size, request-to-token pool row length, speculative topk/steps) and the same
++tensor dtypes as the runtime call sites, so the loaded specializations are
++the ones serving will use. Zero-length copy ranges keep the real
++request-to-token pool unmodified. Each group is independently best-effort:
++a prewarm failure logs and never blocks serving.
++"""
++
++from __future__ import annotations
++
++import logging
++
++import torch
++
++from sglang.srt.utils.common import next_power_of_2
++
++logger = logging.getLogger(__name__)
++
++
++def _bs_buckets(max_running_requests: int) -> list[int]:
++    """Distinct next_power_of_2 batch buckets serving can launch with."""
++    limit = max(1, min(int(max_running_requests or 1), 64))
++    return sorted({next_power_of_2(bs) for bs in range(1, limit + 1)})
++
++
++def _prewarm_get_last_loc(req_to_token: torch.Tensor, device) -> None:
++    from sglang.srt.mem_cache.allocation import get_last_loc
++
++    idx = torch.zeros((1,), dtype=torch.int64, device=device)
++    prefix = torch.zeros((1,), dtype=torch.int64, device=device)
++    get_last_loc(req_to_token, idx, prefix)
++
++
++def _prewarm_alloc_extend(page_size: int, buckets: list[int], device) -> None:
++    from sglang.kernels.ops.memory.allocator import alloc_extend_kernel
++
++    for bs_upper in buckets:
++        bs = bs_upper
++        pre = torch.zeros((bs,), dtype=torch.int64, device=device)
++        seq = torch.ones((bs,), dtype=torch.int64, device=device)
++        last = torch.full((bs,), -1, dtype=torch.int64, device=device)
++        free_pages = torch.arange(1, bs * 2 + 1, dtype=torch.int64, device=device)
++        out = torch.empty((bs * page_size,), dtype=torch.int64, device=device)
++        alloc_extend_kernel[(bs,)](pre, seq, last, free_pages, out, bs_upper, page_size)
++
++
++def _prewarm_assign_req_to_token_pool(
++    req_to_token: torch.Tensor, buckets: list[int], device
++) -> None:
++    from sglang.srt.mem_cache.allocation import assign_req_to_token_pool_func
++
++    for bs in buckets:
++        idx = torch.zeros((bs,), dtype=torch.int64, device=device)
++        zero = torch.zeros((bs,), dtype=torch.int64, device=device)
++        out = torch.empty((1,), dtype=torch.int64, device=device)
++        # start == end: the kernel's copy loop body never stores.
++        assign_req_to_token_pool_func(idx, req_to_token, zero, zero, out, bs)
++
++
++def _prewarm_draft_cache_locs(
++    req_to_token: torch.Tensor,
++    topk: int,
++    num_steps: int,
++    device,
++) -> None:
++    from sglang.kernels.ops.speculative.cache_locs import (
++        assign_draft_cache_locs_contiguous,
++    )
++
++    idx = torch.zeros((1,), dtype=torch.int64, device=device)
++    seq_lens = torch.zeros((1,), dtype=torch.int64, device=device)
++    out = torch.empty((topk * num_steps,), dtype=torch.int64, device=device)
++    assign_draft_cache_locs_contiguous[(1,)](
++        idx,
++        req_to_token,
++        seq_lens,
++        out,
++        req_to_token.shape[1],
++        topk,
++        num_steps,
++    )
++
++
++def _prewarm_gather_spec_extras(topk: int, hidden_size: int, device) -> None:
++    from sglang.kernels.ops.speculative.gather_spec_extras import (
++        gather_spec_extras,
++    )
++
++    indices = torch.zeros((1,), dtype=torch.int64, device=device)
++    topk_p = torch.zeros((1, topk), dtype=torch.float32, device=device)
++    topk_index = torch.zeros((1, topk), dtype=torch.int64, device=device)
++    output_tokens = torch.zeros((1,), dtype=torch.int64, device=device)
++    hidden = torch.zeros(
++        (1, max(hidden_size, 1024)), dtype=torch.bfloat16, device=device
++    )
++    # Both runtime variants: hidden-states capture on and off select
++    # different BLOCK constexprs and pointer signatures.
++    gather_spec_extras(indices, topk_p, topk_index, output_tokens, hidden)
++    gather_spec_extras(indices, topk_p, topk_index, output_tokens, None)
++
++
++def prewarm_scheduler_triton_kernels(scheduler) -> None:
++    """Best-effort load of the scheduler's own Triton kernels at init.
++
++    Called before ``triton_load_watch.mark_serving_started()`` so first-use
++    device loads happen while init headroom is still available and the
++    late-load diagnostics stay quiet in steady state.
++    """
++    req_to_token_pool = getattr(scheduler, "req_to_token_pool", None)
++    req_to_token = getattr(req_to_token_pool, "req_to_token", None)
++    if req_to_token is None or not req_to_token.is_cuda:
++        return
++    device = req_to_token.device
++    server_args = scheduler.server_args
++    buckets = _bs_buckets(getattr(scheduler, "max_running_requests", 1))
++
++    groups = {
++        "get_last_loc": lambda: _prewarm_get_last_loc(req_to_token, device),
++        "alloc_extend": lambda: _prewarm_alloc_extend(
++            max(int(getattr(scheduler, "page_size", 1)), 1), buckets, device
++        ),
++        "assign_req_to_token_pool": lambda: _prewarm_assign_req_to_token_pool(
++            req_to_token, buckets, device
++        ),
++    }
++    spec_algo = getattr(server_args, "speculative_algorithm", None)
++    if spec_algo:
++        topk = int(getattr(server_args, "speculative_eagle_topk", 1) or 1)
++        num_steps = int(getattr(server_args, "speculative_num_steps", 1) or 1)
++        hidden_size = int(
++            getattr(getattr(scheduler, "model_config", None), "hidden_size", 1024)
++            or 1024
++        )
++        groups["assign_draft_cache_locs"] = lambda: _prewarm_draft_cache_locs(
++            req_to_token, topk, num_steps, device
++        )
++        groups["gather_spec_extras"] = lambda: _prewarm_gather_spec_extras(
++            topk, hidden_size, device
++        )
++
++    warmed, failed = [], []
++    for name, fn in groups.items():
++        try:
++            fn()
++            warmed.append(name)
++        except Exception:
++            logger.exception("scheduler kernel prewarm failed: %s", name)
++            failed.append(name)
++    if warmed:
++        logger.info(
++            "Prewarmed scheduler Triton kernels before serving: %s%s",
++            ", ".join(warmed),
++            f" (failed: {', '.join(failed)})" if failed else "",
++        )
 diff --git a/python/sglang/srt/utils/video_decoder.py b/python/sglang/srt/utils/video_decoder.py
 index 0dfec642f0..48277187fd 100644
 --- a/python/sglang/srt/utils/video_decoder.py

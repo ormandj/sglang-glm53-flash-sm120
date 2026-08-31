@@ -1,6 +1,25 @@
 # Changelog
 
-## v0.1.0-rc.61 (current-main rebase, kv_committed_len reader fix, not yet built or qualified)
+## v0.1.0-rc.62 (spec-off sizing fix and scheduler kernel prewarm, not yet built or qualified)
+
+- Fixes the first speculation-disabled boot of this stack: the carried
+  SM120 sparse-MLA runner sizing read `self.speculative_num_draft_tokens`
+  unconditionally and crashed scheduler init with
+  `TypeError: '>' not supported between instances of 'NoneType' and 'int'`
+  when no speculative algorithm is configured. The expression is now
+  None-safe (`or 1`).
+- Prewarms the scheduler's own Triton kernels (get_last_loc, alloc_extend,
+  assign_req_to_token_pool, spec gather/cache-locs) at scheduler init with
+  serving-exact constexpr values, before `mark_serving_started()`. The
+  triton_load_watch probe had flagged all five device-loading on the first
+  request with 0.28 GiB free.
+- Cache schema bumped to v49. Built to run the MTP-on/MTP-off GSM8K
+  diagnostic A/B: the rc.61 MTP-on partial run graded 155/236 (65.7%) at
+  temperature 0 with accept lengths 4.1-4.3, and speculation-off is the
+  control that separates speculative-decoding correctness from artifact
+  quality.
+
+## v0.1.0-rc.61 (current-main rebase, kv_committed_len reader fix, requalified: gate + 48-wave stress passed)
 
 - Supersedes v0.1.0-rc.60, whose first chunked prefill crashed with
   `AttributeError: 'Req' object has no attribute 'kv_committed_len'` in
