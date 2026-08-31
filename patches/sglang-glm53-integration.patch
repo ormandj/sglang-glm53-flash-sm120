@@ -23570,6 +23570,54 @@ index 96997c1ffb..6d33534996 100644
          "up_hysteresis": 0.0,
          "down_hysteresis": -0.25,
          "ceiling_coeff": 0,
+diff --git a/python/sglang/srt/speculative/base_spec_worker.py b/python/sglang/srt/speculative/base_spec_worker.py
+index 7f6edb3362..ef2139c8a0 100644
+--- a/python/sglang/srt/speculative/base_spec_worker.py
++++ b/python/sglang/srt/speculative/base_spec_worker.py
+@@ -137,15 +137,34 @@ class EagleDraftWorkerBase(ABC):
+             get_schedule().max_running_requests or 0,
+             1,
+         )
+-        # A single-step chain has no parent entries (slow path drops the last
+-        # step). repeat (not expand): the kernel reads these as contiguous.
+-        parent_width = num_steps if num_steps > 1 else 0
+-        self._topk1_parents_prealloc = torch.arange(
+-            -1, parent_width - 1, dtype=torch.long, device=self.device
+-        ).repeat(max_bs, 1)
+-        self._topk1_score_indices_prealloc = torch.arange(
+-            num_steps, dtype=torch.long, device=self.device
+-        ).repeat(max_bs, 1)
++        # Captured CUDA graphs hold raw device pointers into these tensors, so
++        # an adaptive tier switch must restore the exact allocation each
++        # tier's graphs were captured against. Reallocating on switch frees
++        # pages a previously captured graph still reads; under
++        # expandable_segments the freed segment can unmap and the next replay
++        # of that tier faults with an illegal memory access. Cache per
++        # (num_steps, max_bs) for the process lifetime (a few KB per tier).
++        cache = getattr(self, "_topk1_chain_buffer_cache", None)
++        if cache is None:
++            cache = {}
++            self._topk1_chain_buffer_cache = cache
++        key = (num_steps, max_bs)
++        cached = cache.get(key)
++        if cached is None:
++            # A single-step chain has no parent entries (slow path drops the
++            # last step). repeat (not expand): the kernel reads these as
++            # contiguous.
++            parent_width = num_steps if num_steps > 1 else 0
++            cached = (
++                torch.arange(
++                    -1, parent_width - 1, dtype=torch.long, device=self.device
++                ).repeat(max_bs, 1),
++                torch.arange(
++                    num_steps, dtype=torch.long, device=self.device
++                ).repeat(max_bs, 1),
++            )
++            cache[key] = cached
++        self._topk1_parents_prealloc, self._topk1_score_indices_prealloc = cached
+ 
+ 
+ class BaseSpecWorker(ABC):
 diff --git a/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py b/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py
 index 1ca19cbf6f..0afb522d92 100644
 --- a/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py

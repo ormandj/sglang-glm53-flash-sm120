@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-rc.67 (adaptive-switch graph buffer lifetime fix, not yet built or qualified)
+
+- Pins the topk1 chain prealloc buffers per (steps, max_bs) for the
+  process lifetime. Captured draft graphs record these allocations
+  (capture runs draft_forward), and the target verify graph consumes
+  spec info built on them; reallocating on every adaptive tier switch
+  freed pages the other tier's graphs still read, and under
+  expandable_segments the next replay of that tier hit a CUDA illegal
+  memory access. Reproduced three times under twin-stream GSM8K load
+  (tier thrash 3<->5 preceding every crash; fault localized inside the
+  EAGLE target-verify decode graph replay under CUDA_LAUNCH_BLOCKING).
+  Cache schema v52.
+
 ## v0.1.0-rc.66 (kpool ragged MQA-logits Q-row chunking, not yet built or qualified)
 
 - Bounds the DSA kpool ragged-prefill logits transient: the single
