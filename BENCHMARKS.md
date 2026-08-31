@@ -20,28 +20,16 @@ in [`evidence/`](evidence/); the harness that produced them is in
 | Post-capture device headroom | 2.73 GB per GPU; zero OOMs across the whole sweep |
 | HiCache host tier | 13,499,968 KV tokens (82.9 GB) + mamba tier (page-first) |
 
-## Decode (n=5, coding corpus, 4,096 output tokens, temperature 0)
-
-Same-seed content-matched ladder, all on this artifact and image lineage:
-
-| Configuration | Repetitions (tok/s) | Mean |
-|---|---|---:|
-| Static MTP 5/1/6 | 120.3 / 126.0 / 129.2 / 150.7 / 165.1 | 138.3 |
-| Adaptive MTP [3,5] | 138.0 / 164.5 / 138.1 / 138.6 / 140.3 | 143.9 |
-| **Adaptive + PCIe IPC allreduce (shipped)** | 144.7 / 170.7 / 142.7 / 160.7 / 148.5 | **153.5** |
-| NCCL P2P disabled (rejected) | — | 130.5 |
-| DFlash-2 block-diffusion drafter (rejected) | 124.9 / 157.0 / 140.6 / 125.2 / 126.4 | 134.8 |
-
-### Concurrency scaling (shipped configuration)
+## Decode (shipped configuration)
 
 Decode is the OLS rate of the server's decode-token counter inside the
-analyzer's plateau window — prefill-free by construction, shapes warmed.
-C1/C2 are pure equal-context plateaus (zero analyzer flags). C4 uses
+analyzer's plateau window — prefill-free by construction, shapes warmed
+before any timed cell (coding corpus, 4,096 output tokens, temperature 0,
+n=5). C1/C2 are pure equal-context plateaus (zero analyzer flags). C4 uses
 refill cells (requests = 3x concurrency): a 4-request cell's
 exact-occupancy overlap is structurally shorter than the analyzer minimum
-on a long-prefill model, so the sustained window instead carries four
-disclosed flags (interleaved refill prefill, ~95% occupancy, context
-wander).
+on a long-prefill model, so the sustained window carries four disclosed
+flags (interleaved refill prefill, ~95% occupancy, context wander).
 
 | Cell | Repetitions (OLS tok/s) | Mean | Forwards/s | Accepted tok/fwd/req |
 |---|---|---:|---:|---:|
@@ -50,19 +38,16 @@ wander).
 | C4 sustained | 340.3 / 343.1 / 344.9 / 349.7 / 357.2 | 347.0 | 29.5 | 3.0 |
 
 C1-to-C4 scaling is 2.04x, matching the DeepSeek-V4-Flash publication's
-2.02x on the same hardware. An earlier revision of this file published
-client full-duration throughput (prefill in the denominator) with a
-warm/cold split; those numbers are superseded by this table
-(`evidence/v0.1.0-rc.64-decode-plateaus-corrected-20260831.txt`).
+2.02x on the same hardware.
 
 MTP acceptance is ~2.5 accepted length on general content and 5.8–6.0 on
-math, where the server sustains 257–267 tok/s at C1. The adaptive ladder
-wins where acceptance is low (typical agentic content) at a measured tier
-cost of 0.39 GB; the IPC allreduce also lifts cold 200k prefill from 4,599
-to 5,153 tok/s. DFlash-2 reached 3.1–4.4 acceptance but its per-step cost
-outweighed it. The BF16-attention predecessor artifact measured 121.7 on
-the same prompts (content-matched), so the FP8 tier carries no decode
-cost.
+math, where the server sustains 257–267 tok/s at C1. The shipped
+configuration uses the adaptive speculative ladder (candidate steps [3,5],
+measured tier cost 0.39 GB), which wins on low-acceptance agentic content,
+plus PCIe IPC allreduce, which also lifts cold 200k prefill from 4,599 to
+5,153 tok/s. Alternatives measured and not shipped (NCCL P2P disabled,
+DFlash-2 block-diffusion drafting, static speculation) have receipts under
+[`evidence/`](evidence/).
 
 ## Prefill
 

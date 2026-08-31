@@ -23,12 +23,10 @@ ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65
   recomputing (350k warm-prefix prefill measured at 10.6k tok/s, 502k at
   13.4k, against 4.6–5.0k cold).
 - **Adaptive EAGLE/NextN MTP speculative decoding** (candidate steps [3,5],
-  acceptance-driven) plus PCIe IPC allreduce for TP2 small reduces: C1
-  decode n=5 mean **153.5 tok/s** on coding content (vs 138.3 static
-  baseline), 257–267 tok/s on math where acceptance reaches ~6 tokens.
-  Cold 200k prefill 5,153 tok/s with the IPC path (+12%). A stock
-  DFlash-2 block-diffusion drafter was evaluated and rejected at −12%
-  (receipt in `evidence/`).
+  acceptance-driven) plus PCIe IPC allreduce for TP2 small reduces:
+  decode plateaus of 169.7 tok/s at C1, 235.7 at C2, and 347.0 sustained
+  at C4; 257–267 tok/s at C1 on math where acceptance reaches ~6 tokens.
+  Cold 200k prefill 5,153 tok/s.
 - **Vision intact**, exercised through the OpenAI-compatible image input.
 - **GSM8K 97.2%** (1,282/1,319, zero-shot, temperature 0, position-based
   answer extraction; 89.5% under the raw last-number grader) — identical to
