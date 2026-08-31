@@ -38,6 +38,35 @@ ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65
   quantization producers (`quantization/`), the benchmark harness
   (`bench/`), and raw receipts (`evidence/`).
 
+### Performance and capacity at a glance
+
+Decode is the same-seed, content-matched n=5 ladder (coding corpus, 4,096
+output tokens, temperature 0); the shipped configuration is bold.
+
+| Speculative / transport configuration | C1 decode mean |
+|---|---:|
+| Static MTP 5/1/6 | 138.3 tok/s |
+| Adaptive MTP [3,5] | 143.9 tok/s |
+| **Adaptive MTP + PCIe IPC allreduce (shipped)** | **153.5 tok/s** |
+| NCCL P2P disabled (rejected) | 130.5 tok/s |
+| DFlash-2 block-diffusion drafter (rejected) | 134.8 tok/s |
+
+| Prefill (prompt tokens / TTFT) | Rate |
+|---|---:|
+| 200k cold, C1 | 5,153 tok/s |
+| 4 x 120k concurrent (aggregate, cold) | 4,985 tok/s |
+| 350k warm prefix via HiCache | 10,617 tok/s |
+| 502,784 warm prefix via HiCache | 13,413 tok/s |
+
+| Capacity and quality | Result |
+|---|---|
+| KV pool / context limit | 507,904 tokens, C4 |
+| Largest single cold prefill served | 502,784 tokens |
+| HiCache host tier | 13.5M KV tokens (82.9 GB) + mamba tier |
+| GSM8K (1,319q, temp 0, zero-shot) | 97.2% regraded / 89.5% pinned grader |
+| MTP acceptance | ~2.5 general content, ~6.0 math (257–267 tok/s C1) |
+| Sustained C4 + capacity ladder | zero restarts, zero OOMs |
+
 Full tables and method notes: [`BENCHMARKS.md`](BENCHMARKS.md).
 
 ## The quantization
