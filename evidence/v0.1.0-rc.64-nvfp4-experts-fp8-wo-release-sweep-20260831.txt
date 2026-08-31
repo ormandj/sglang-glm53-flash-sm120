@@ -1,5 +1,5 @@
-FP8-mix V2 release-candidate sweep - 2026-08-31 (overnight run)
-image: v0.1.0-rc.64@sha256:b08e6e07...; artifact: /scratch/out/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2 (165.77 GiB)
+GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO release-candidate sweep - 2026-08-31 (overnight run)
+image: v0.1.0-rc.64@sha256:b08e6e07...; artifact: /scratch/out/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO (165.77 GiB)
 profile: C4 TP2, pool 507904, context 507904, chunk 2048, fp8 e4m3 KV, mamba 20, MTP EAGLE 5/1/6, exact decode graphs bs 1-4, hicache 128 GB, --quantization modelopt_mixed
 
 artifact recipe: audited W4A16-K32-MSE experts (aggregate rel-L2 0.0851, byte-identical recipe) + FP8 E4M3 [128,128]-block weight-only on 317 attention/KDA/MLA and shared-expert projections in layers 0-44 (aggregate rel-L2 0.0225, min cosine 0.9996); layer 45 (MTP draft), DSA indexer, vision, embeddings, LM head, routers BF16.

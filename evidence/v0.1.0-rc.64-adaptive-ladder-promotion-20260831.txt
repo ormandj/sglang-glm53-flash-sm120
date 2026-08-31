@@ -1,7 +1,7 @@
 Adaptive speculative ladder promotion - 2026-08-31
-config: --speculative-adaptive with candidate_steps [3,5] at BS 1 and 4 (glm53-adaptive-ab-config), production fp8mix profile, pool 507904, chunk 2048
+config: --speculative-adaptive with candidate_steps [3,5] at BS 1 and 4 (glm53-adaptive-ab-config), production GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO profile, pool 507904, chunk 2048
 
-content-matched C1 n=5 (same aiperf seed, MIX-V2 artifact, glm-c1 mode):
+content-matched C1 n=5 (same aiperf seed, GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO checkpoint, glm-c1 mode):
   static 5/1/6:   120.3 126.0 129.2 150.7 165.1 -> mean 138.3
   adaptive [3,5]: 138.0 164.5 138.1 138.6 140.3 -> mean 143.9 (+4.0%)
   per-rep: +15% +31% +7% -8% -15% (wins where acceptance is low = typical agentic content; loses where content drafts at accept ~4+)

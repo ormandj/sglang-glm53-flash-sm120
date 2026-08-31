@@ -1,4 +1,4 @@
-Transport A/B receipts - 2026-08-31 (production fp8mix profile, adaptive [3,5], content-matched glm-c1 n=5 + cold 200k probe)
+Transport A/B receipts - 2026-08-31 (production GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO profile, adaptive [3,5], content-matched glm-c1 n=5 + cold 200k probe)
 
 arm 0 baseline (NCCL default):        decode mean 143.9 (138.0 164.5 138.1 138.6 140.3), cold 200k 4599 tok/s
 arm 1 NCCL_P2P_DISABLE=1 (REJECTED):  decode mean 130.5 (-9%), cold 200k 3485 tok/s (-24%) - peer path is strictly better on this root complex, opposite of the aa-glm53 vLLM board finding
