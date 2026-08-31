@@ -40,16 +40,14 @@ ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65
 
 ### Performance and capacity at a glance
 
-Decode is the same-seed, content-matched n=5 ladder (coding corpus, 4,096
-output tokens, temperature 0); the shipped configuration is bold.
+All rows are the shipped configuration (adaptive MTP [3,5] + PCIe IPC
+allreduce), measured with the vendored harness; decode is the n=5 coding
+corpus at 4,096 output tokens, temperature 0.
 
-| Speculative / transport configuration | C1 decode mean |
+| Decode | Rate |
 |---|---:|
-| Static MTP 5/1/6 | 138.3 tok/s |
-| Adaptive MTP [3,5] | 143.9 tok/s |
-| **Adaptive MTP + PCIe IPC allreduce (shipped)** | **153.5 tok/s** |
-| NCCL P2P disabled (rejected) | 130.5 tok/s |
-| DFlash-2 block-diffusion drafter (rejected) | 134.8 tok/s |
+| C1 (n=5 mean; reps 142.7–170.7) | 153.5 tok/s |
+| C1 on math-class content (acceptance ~6) | 257–267 tok/s |
 
 | Prefill (prompt tokens / TTFT) | Rate |
 |---|---:|
