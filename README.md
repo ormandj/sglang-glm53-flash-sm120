@@ -1,146 +1,166 @@
-# GLM-5.3-Flash SM120 container
+# SGLang for GLM-5.3-Flash on SM120
 
-This repository builds the immutable runtime used by the primary
-`sglang-glm53-flash-sm120` qualification repository.
+A reproducible Linux x86_64 image and quantization recipe for serving
+[`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash)
+(320B-A18B, hybrid KDA + DeepSeek sparse attention, vision) on two NVIDIA RTX
+PRO 6000 Blackwell (96 GB, SM120) GPUs with SGLang, TP2, no NVLink required.
 
-Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.64`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.64`.
+Current release: `v0.1.0-rc.64` with the W4A16-K32 + FP8-attention
+MIXED_PRECISION artifact. Qualified image (internal build name
+`sglang-glm53-flash-sm120:v0.1.0-rc.64`):
 
-**v0.1.0-rc.64 is a source candidate, not a qualified release.** Performance,
-quality, context, vision, and MTP results belong in the primary repository with
-exact-candidate evidence.
+```text
+ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.64
+```
 
-The vendor base is pinned by its linux/amd64 OCI manifest and supplies the known
-CUDA/PyTorch environment only. Its unverifiable SGLang tarball is shadowed by
-the exact SGLang integration tree recorded in `stack.lock.json`. The build
-fetches exact official SGLang and FlashInfer commits, applies checksummed
-project patches stored in this internal repository, and verifies the resulting
-complete trees. ModelOpt is installed from its exact official commit and tag.
+## What you get
 
-This candidate makes native FlashInfer the qualification path. It fixes the
-GLM adapter's geometry check so the model's configured 256-wide pre-absorption
-NoPE dimension cannot suppress the required 2,051-to-2,176 temporary index
-padding for the actual 512-wide absorbed query.
+- **C4 serving with a 507,904-token KV pool and context limit** — four
+  concurrent agentic requests sharing a full ~500k-token budget, with a
+  502,784-token single-request cold prefill demonstrated.
+- **HiCache host tier**: 13.5M KV tokens (82.9 GB host memory) plus a mamba
+  state tier, so evicted long prefixes resume from RAM instead of
+  recomputing (350k warm-prefix prefill measured at 10.6k tok/s, 502k at
+  13.4k, against 4.6–5.0k cold).
+- **Native EAGLE/NextN MTP speculative decoding** (5 steps, 6 draft tokens):
+  C1 decode 120–165 tok/s on coding content (n=5 mean 138.3), 257–267 tok/s
+  on math where acceptance reaches ~6 tokens.
+- **Vision intact**, exercised through the OpenAI-compatible image input.
+- **GSM8K 97.2%** (1,282/1,319, zero-shot, temperature 0, position-based
+  answer extraction; 89.5% under the raw last-number grader) — identical to
+  the BF16-attention control, so the FP8 tier is measured-lossless here.
+- **Reproducible end to end**: exact upstream SGLang/FlashInfer commits plus
+  checksummed patches (`stack.lock.json`, `scripts/verify-patches.sh`), the
+  quantization producers (`quantization/`), the benchmark harness
+  (`bench/`), and raw receipts (`evidence/`).
 
-The preceding draft embedding and output-head serving alias remains in its
-upstream lifecycle position. An earlier attempt to move it before pool sizing
-did not change the measured steady-state footprint and is intentionally absent.
-The candidate recognizes GLM's KDA cache contract as ReplaySSM-capable and
-includes the upstream fused KDA verify ring-write path. ReplaySSM remains an
-explicit qualification A/B rather than a launcher default.
+Full tables and method notes: [`BENCHMARKS.md`](BENCHMARKS.md).
 
-The candidate compiles the supported SM120 BF16 KDA short- and long-prefill
-specializations, FP8 DSA index-prefix gather, and W4A16 route-pack regimes from
-256 through 8,192 prefill tokens before runtime memory pools are sized. The
-candidate preserves one compression-gate CUDA stream per DSA indexer layer. A
-shared-stream experiment saved allocator memory but failed the exact C4 test
-with an illegal memory access and is explicitly reverted. Instead, this
-candidate tests PyTorch's pre-Blackwell `:4096:2:16:8` cuBLAS workspace profile
-while retaining private stream identity. That profile is not a free-memory
-claim until exact C1-through-C4 performance and correctness evidence exists.
-Static KDA tactics are keyed by capability,
-dtype, tensor geometry, and semantic flags rather than a GLM model name;
-unrecognized shapes retain ordinary autotuning. This prevents the first large
-request from loading compiler candidates after KV, recurrent-state, and CUDA
-graph allocations have consumed the memory envelope.
+## The quantization
 
-The image also integrates FlashInfer's native SM120 sparse-MLA kernel for
-GLM-5.3's no-RoPE attention geometry. SGLang pads the model's 2,051 candidates
-to the kernel's 2,176-entry physical contract and stores exactly 528
-scaled-FP8 bytes per token (512 latent values plus four FP32 scales), with no
-reserved RoPE suffix. Decode uses a persistent
-FlashInfer runner and reuses SGLang's existing workspace for small-batch
-scratch. No model tensor values or quantization choices change.
+The served artifact is produced locally from the BF16 checkpoint by
+[`quantization/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py`](quantization/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py)
+(~17 minutes on one SM120 GPU, atomic publish, fail-closed validation):
 
-The preceding load-time ownership of FlashInfer's prepared W4A16 layout remains
-included. FP4 weights are tiled into their byte-identical checkpoint allocation,
-prepared K32 scales replace equally sized source buffers, and dispatch retains
-prepared views instead of a second process-lifetime weight cache.
+| Component | Precision |
+|---|---|
+| Routed experts, layers 3–45 incl. the MTP layer's expert bank | NVFP4 W4A16, K=32 group scales, MSE-swept (aggregate rel-L2 0.085) |
+| Attention / KDA / MLA projections + shared experts, layers 0–44 | FP8 E4M3 weight-only, [128,128] block scales (aggregate rel-L2 0.022) |
+| MTP draft layer (45) attention, DSA indexer, vision tower, embeddings, LM head, routers, norms | BF16 |
 
-The preceding GLM NextN correction remains included. The
-inherited DeepSeek draft constructor normally clears ModelOpt FP4 because its
-native draft is BF16, while GLM may serialize the layer-45 routed experts as
-FP4. The config is now preserved only for that GLM case; a checkpoint-declared
-whole-layer ignore still selects BF16. Cache schema `v47` prevents reuse of
-graphs and JIT objects built against the preceding SGLang, FlashInfer, and
-late-compilation behavior.
+Two hard-won rules are baked into the producer: the DSA indexer projections
+stay BF16 (the head-gate reads raw weights), and **the MTP draft layer's
+attention stays BF16** — quantizing it loads through the draft's remapped
+namespace where mixed-precision resolution silently fails, collapsing
+speculative acceptance to exactly zero while outputs remain correct.
 
-The preceding capture-ownership change remains: every full CUDA graph shape
-owns the optimized MHC split-K scratch tensors captured by the standalone
-prenorm and fused post/pre paths. v0.1.0-rc.64 retains the same bounded
-ownership for the compiled DSA head-gate output and the FP32 paged-MQA logits
-consumed by captured top-k kernels even when SGLang encloses the model in
-`torch.compile`. The paged-logits handoff now returns the real DeepGEMM view
-before fused top-k consumes it, forcing that allocation across the disabled
-Dynamo boundary. Only the Python owner handoffs are kept outside Dynamo; gate,
-paged-MQA, and top-k math remain unchanged.
-Recapturing a shape replaces its prior owners, backend cleanup releases them,
-and target and MTP draft backends keep separate owner sets. Calls outside a
-full-graph owner scope do not retain state or change supported breakable-backend
-behavior.
+The artifact totals 165.8 GiB (vs 172.2 for the BF16-attention W4A16
+predecessor); the ~2.6 GB/GPU reclaimed funds the 507,904-token pool at
+chunked-prefill 2,048.
 
-v0.1.0-rc.55's forensics run reproduced the corruption at wave 5 and
-attributed it exactly: the damaged free_pages tensor occupied the
-virtual-address range of a freed 393,216-byte FlashInfer SM120 W4A16 MoE
-dispatch workspace. That workspace was cached during capture warmup, recorded
-by the decode graphs, then replaced and freed by the first serving prefill
-whose routed_rows exceeded its capacity; every later replay wrote activations
-through the stale pointers. This candidate fixes that root cause: workspaces
-handed out during an active CUDA graph capture are marked graph-referenced
-and parked for the process lifetime on cache replacement or clear, never
-freed. The SGLang tree and every serving path are otherwise unchanged.
+## Quickstart
 
-When `SGLANG_MEM_FORENSICS_DIR` is set, the runtime records CUDA
-caching-allocator history with Python allocation stacks from model-runner
-initialization, snapshots it once when the scheduler reaches its event loop
-(every graph capture complete, capture-era blocks still alive), and snapshots
-again when a paged-allocator corruption diagnostic fires. Mapping the damaged
-`data_ptr` onto the readiness snapshot names the exact allocation site of the
-block a captured CUDA graph still writes through. Recording is inert unless
-the directory variable is set, and dump failures never mask the original
-assertion.
+You need Linux x86_64, a CUDA 13-compatible driver, Docker with the NVIDIA
+Container Toolkit, two visible SM120 GPUs, ~600 GB scratch for the BF16
+source plus ~170 GB for the artifact, and 128+ GB of host RAM at the
+qualified HiCache size (reduce `--hicache-size` otherwise).
 
-This replaces v0.1.0-rc.48's incomplete direct-call ownership wrapper. That
-image passed the focused direct GPU gate, then failed in sustained C4 wave 10
-with all 527 allocator entries overwritten. A separate exact-image diagnostic
-reported one retained owner for the direct call and zero through the enclosing
-compile path. The disabled ownership boundary fixes that concrete gap without
-changing model values, quantization, vision, MTP, KV format, or graph shapes.
+### 1. Produce the artifact
 
-The candidate also carries debug-gated allocator and unified-radix probes. The
-exact v0.1.0-rc.36 diagnostic first observed the bad whole-tree state
-synchronously when a finished-request insert completed: eight consecutive
-int64 slots contained the paired-int32 pattern `(96, 96)`, while the fresh
-insert values and the new-node, unevict, and split boundaries were clean. This
-candidate synchronizes around every insert action, maps every reachable Full
-value to its node, parent, key length, storage pointer and offset, preserves an
-exact snapshot across each action, and rejects any allocator free whose byte
-range overlaps a reachable Full value. The checks are inactive in ordinary
-serving and remain diagnostic; bounded ownership of the captured MHC scratch
-compiled DSA gate output, and paged-MQA logits are the v0.1.0-rc.64 runtime
-candidate.
+```bash
+export SRC=/srv/models/GLM-5.3-Flash-BF16
+uvx --from huggingface-hub hf download zai-org/GLM-5.3-Flash \
+  --revision f12e0fe1f6b2ea274c11a569582edfd99d993c5e --local-dir "$SRC"
+printf 'f12e0fe1f6b2ea274c11a569582edfd99d993c5e\n' > "$SRC/.source-revision"
+touch "$SRC/.download-complete"
 
-The preceding v0.1.0-rc.42 change closes a diagnostic-ordering gap exposed by
-the v0.1.0-rc.41
-full-speed control: the first paged-allocator range failure now appends the
-captured DSA graph-buffer overlap or nearest-range context before the scheduler
-exits. That change affects only debug-gated failure reporting; it does not change a
-serving kernel, tensor lifetime, model value, or synchronization policy. The
-same probe now includes MHC and KDA labels despite the legacy diagnostic field
-name `dsa_graph_buffers`.
+docker run --rm --gpus device=0 \
+  -v /srv/models:/scratch \
+  -v "$PWD/quantization:/opt/q:ro" \
+  --entrypoint /opt/sglang/bin/python \
+  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.64 \
+  /opt/q/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py \
+  --source /scratch/GLM-5.3-Flash-BF16 \
+  --output /scratch/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
+```
 
-The exact v0.1.0-rc.19 FlashInfer TC-decode replay fix remains pinned. Its
-auto-selected constrained `K=32/N=512` FC2 tile is accepted by the same exact
-predicate during custom-op replay.
+### 2. Serve the qualified TP2 configuration
 
-This build intentionally contains none of the v0.1.0-rc.16-and-earlier MXFP4,
-vendor-byte, sentinel, or CPU-offload patch stack. Native NoPE support derives
-from FlashInfer pull request 4802 and its SGLang adapter is isolated in exact,
-verifiable integration deltas. Editable branch history remains in the internal
-`homelab/sglang` and `homelab/flashinfer` repositories pending exact-hardware
-validation and focused upstream submissions. The E4M3-K32 W4A16 serving
-contract remains isolated in those same pinned source trees.
+```bash
+export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v51
+mkdir -p "$CACHE_DIR"
+
+docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
+  --shm-size 64g --ulimit memlock=-1 --publish 8000:8000 \
+  --volume "$MODEL_DIR:/models/glm53:ro" \
+  --volume "$CACHE_DIR:/root/.cache" \
+  --env CUDA_VISIBLE_DEVICES=0,1 \
+  --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  --env CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8 \
+  --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
+  --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
+  --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
+  --env TRITON_CACHE_DIR=/root/.cache/triton \
+  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.64 \
+  serve /models/glm53 \
+  --served-model-name glm-5.3-flash --host 0.0.0.0 --port 8000 \
+  --tp 2 --quantization modelopt_mixed \
+  --enable-multimodal --image-processor-backend pil \
+  --moe-runner-backend flashinfer_cutlass --disable-shared-experts-fusion \
+  --disable-custom-all-reduce \
+  --attention-backend dsa --linear-attn-backend triton \
+  --dsa-prefill-backend flashinfer_sparse_mla \
+  --dsa-decode-backend flashinfer_sparse_mla \
+  --kv-cache-dtype fp8_e4m3 --mamba-ssm-dtype bfloat16 \
+  --context-length 507904 --max-total-tokens 507904 \
+  --mem-fraction-static 0.99 --chunked-prefill-size 2048 \
+  --max-running-requests 4 --max-mamba-cache-size 20 \
+  --enable-hierarchical-cache --hicache-size 128 \
+  --cuda-graph-backend-prefill disabled --cuda-graph-backend-decode full \
+  --cuda-graph-bs-decode 1 2 3 4 \
+  --speculative-algorithm EAGLE --speculative-num-steps 5 \
+  --speculative-eagle-topk 1 --speculative-num-draft-tokens 6 \
+  --reasoning-parser glm45 --tool-call-parser glm47 \
+  --enable-metrics --enable-cache-report
+```
+
+First boot compiles kernels into `$CACHE_DIR` (roughly 15–20 minutes); later
+boots take about 8. Do not reuse a cache directory across image versions or
+cache schemas. `examples/serve-glm53-flash.sh` wraps the same configuration.
+
+Two configuration rules matter more than they look:
+
+1. **`--cuda-graph-bs-decode` must enumerate every batch size up to
+   `--max-running-requests`.** On this hybrid KDA model, decode batches that
+   replay through a padded larger graph corrupt real requests' outputs
+   (measured: GSM8K 68% vs 90% at temperature 0 with graphs captured only at
+   bs 1 and 4). Exact graphs avoid the padding path entirely.
+2. `--max-mamba-cache-size` is five recurrent-state slots per concurrent
+   request (state plus MTP intermediates), so C4 needs 20.
+
+## Reproducibility
+
+`stack.lock.json` pins the official SGLang and FlashInfer base commits, the
+checksummed integration patches in [`patches/`](patches/), the exact ModelOpt
+commit and release tag, and the vendor base image digests.
+`scripts/verify-patches.sh` re-fetches the official trees, applies the
+patches, and asserts the exact resulting tree hashes. The carried patches
+include the SM120 enablement and the CUDA-graph lifetime fixes submitted
+upstream as
+[flashinfer-ai/flashinfer#4827](https://github.com/flashinfer-ai/flashinfer/pull/4827),
+[sgl-project/sglang#37168](https://github.com/sgl-project/sglang/pull/37168),
+and
+[sgl-project/sglang#37169](https://github.com/sgl-project/sglang/pull/37169),
+plus three fixes to SGLang's `modelopt_mixed` loading path found while
+qualifying this artifact (see `CHANGELOG.md`).
+
+The full failure-and-fix narrative — the CUDA-graph workspace use-after-free
+hunt, the padded-replay corruption, and the zero-acceptance MTP regression —
+is preserved in [`CHANGELOG.md`](CHANGELOG.md) and the receipts under
+[`evidence/`](evidence/).
+
+## Build from source
 
 Verify before pushing:
 
@@ -155,10 +175,14 @@ Build locally:
 ```bash
 podman build \
   --target runtime \
-  --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
+  --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
   -t sglang-glm53-flash-sm120:v0.1.0-rc.64 .
 ```
 
-The Forgejo release workflow refuses to overwrite an existing SemVer candidate
-tag. A successful image build makes this candidate built, not qualified.
+The release workflow refuses to overwrite an existing SemVer candidate tag.
+
+## License
+
+See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md). Upstream SGLang,
+FlashInfer, ModelOpt, and GLM-5.3-Flash retain their own licenses.
