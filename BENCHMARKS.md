@@ -56,10 +56,14 @@ requests (ladder receipts).
 
 | Shape | Rate |
 |---|---|
-| 200k cold C1 | 4,599 tok/s |
-| 4 x 120k concurrent (aggregate) | 4,985 tok/s |
-| 350k with warm prefix (HiCache) | 10,617 tok/s |
-| 502,784 with warm prefix (HiCache) | 13,413 tok/s |
+| 200k cold C1 (shipped configuration, IPC allreduce) | 5,153 tok/s |
+| 200k cold C1 (pre-IPC ladder) | 4,599 tok/s |
+| 4 x 120k concurrent cold (aggregate, pre-IPC ladder) | 4,985 tok/s |
+
+Warm-prefix TTFTs from the capacity ladder are not reported as throughput:
+the cached fraction was an artifact of rung ordering, not a controlled
+variable. HiCache's resume behavior is a latency property, not a prefill
+rate.
 
 ## Quality
 

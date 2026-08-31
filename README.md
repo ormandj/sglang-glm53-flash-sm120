@@ -20,8 +20,7 @@ ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65
   502,784-token single-request cold prefill demonstrated.
 - **HiCache host tier**: 13.5M KV tokens (82.9 GB host memory) plus a mamba
   state tier, so evicted long prefixes resume from RAM instead of
-  recomputing (350k warm-prefix prefill measured at 10.6k tok/s, 502k at
-  13.4k, against 4.6–5.0k cold).
+  recomputing.
 - **Adaptive EAGLE/NextN MTP speculative decoding** (candidate steps [3,5],
   acceptance-driven) plus PCIe IPC allreduce for TP2 small reduces:
   decode plateaus of 169.7 tok/s at C1, 235.7 at C2, and 347.0 sustained
@@ -49,12 +48,10 @@ corpus at 4,096 output tokens, temperature 0.
 | C4 (sustained with request refill) | 347.0 tok/s |
 | C1 on math-class content (acceptance ~6) | 257–267 tok/s |
 
-| Prefill (prompt tokens / TTFT) | Rate |
+| Cold prefill (prompt tokens / TTFT) | Rate |
 |---|---:|
-| 200k cold, C1 | 5,153 tok/s |
-| 4 x 120k concurrent (aggregate, cold) | 4,985 tok/s |
-| 350k warm prefix via HiCache | 10,617 tok/s |
-| 502,784 warm prefix via HiCache | 13,413 tok/s |
+| 200k, C1 | 5,153 tok/s |
+| 4 x 120k concurrent (aggregate) | 4,985 tok/s |
 
 | Capacity and quality | Result |
 |---|---|
