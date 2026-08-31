@@ -22,9 +22,13 @@ ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65
   state tier, so evicted long prefixes resume from RAM instead of
   recomputing (350k warm-prefix prefill measured at 10.6k tok/s, 502k at
   13.4k, against 4.6–5.0k cold).
-- **Native EAGLE/NextN MTP speculative decoding** (5 steps, 6 draft tokens):
-  C1 decode 120–165 tok/s on coding content (n=5 mean 138.3), 257–267 tok/s
-  on math where acceptance reaches ~6 tokens.
+- **Adaptive EAGLE/NextN MTP speculative decoding** (candidate steps [3,5],
+  acceptance-driven) plus PCIe IPC allreduce for TP2 small reduces: C1
+  decode n=5 mean **153.5 tok/s** on coding content (vs 138.3 static
+  baseline), 257–267 tok/s on math where acceptance reaches ~6 tokens.
+  Cold 200k prefill 5,153 tok/s with the IPC path (+12%). A stock
+  DFlash-2 block-diffusion drafter was evaluated and rejected at −12%
+  (receipt in `evidence/`).
 - **Vision intact**, exercised through the OpenAI-compatible image input.
 - **GSM8K 97.2%** (1,282/1,319, zero-shot, temperature 0, position-based
   answer extraction; 89.5% under the raw last-number grader) — identical to
@@ -90,15 +94,24 @@ docker run --rm --gpus device=0 \
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v52
 mkdir -p "$CACHE_DIR"
+cat > adaptive.json <<'JSON'
+{
+  "1": {"candidate_steps": [3, 5], "up_hysteresis": 0.0, "down_hysteresis": -0.25, "ceiling_coeff": 0},
+  "4": {"candidate_steps": [3, 5], "up_hysteresis": 0.0, "down_hysteresis": -0.25, "ceiling_coeff": 0}
+}
+JSON
 
 docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --shm-size 64g --ulimit memlock=-1 --publish 8000:8000 \
   --volume "$MODEL_DIR:/models/glm53:ro" \
   --volume "$CACHE_DIR:/root/.cache" \
+  --volume "$PWD/adaptive.json:/etc/glm53-adaptive/adaptive.json:ro" \
   --env CUDA_VISIBLE_DEVICES=0,1 \
   --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   --env CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8 \
   --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
+  --env SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1 \
+  --env SGLANG_PCIE_IPC_MAX_NUMEL=786432 \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
@@ -121,6 +134,8 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --cuda-graph-bs-decode 1 2 3 4 \
   --speculative-algorithm EAGLE --speculative-num-steps 5 \
   --speculative-eagle-topk 1 --speculative-num-draft-tokens 6 \
+  --speculative-adaptive \
+  --speculative-adaptive-config /etc/glm53-adaptive/adaptive.json \
   --reasoning-parser glm45 --tool-call-parser glm47 \
   --enable-metrics --enable-cache-report
 ```

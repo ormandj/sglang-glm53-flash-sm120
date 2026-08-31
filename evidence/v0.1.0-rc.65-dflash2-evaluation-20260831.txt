@@ -1,0 +1,7 @@
+DFlash-2 drafter evaluation - 2026-08-31 (rc65, MIX-V2 target, IPC allreduce, seeded glm-c1 n=5)
+
+boot: three blockers fixed to first serve on SM120: accelerate dep for the ModelOpt draft loader (rc65), --speculative-draft-model-quantization unquant (draft inherits target modelopt_mixed otherwise), hicache host-tier budget (the draft allocates its own 63.3 GB host pool at hicache 128; experiment ran at 48). Draft attention on flashinfer (fa4 excluded on SM120). Pool capped 393216 for the experiment.
+
+acceptance: 3.1-4.4 accepted length on coding content (vs MTP ~2.5) - the block-diffusion drafting claim holds.
+throughput: 124.9 157.0 140.6 125.2 126.4 -> mean 134.8 tok/s vs adaptive-MTP+IPC 153.5 (-12%).
+conclusion: higher acceptance does not overcome the pipeline's per-step cost (5-layer drafter forward + selector + depth-8 verify) on this corpus; stock DFlash-2 is REJECTED for production. It would need sustained acceptance >=5 to win, which our MTP already achieves on math-like content at lower cost. A license-clean from-scratch drafter distilled on our workload remains the only route past the current 153.5, and this receipt sets its bar.

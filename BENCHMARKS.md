@@ -22,15 +22,24 @@ in [`evidence/`](evidence/); the harness that produced them is in
 
 ## Decode (n=5, coding corpus, 4,096 output tokens, temperature 0)
 
-| Cell | Result |
-|---|---|
-| C1 repetitions | 120.3 / 126.0 / 129.2 / 150.7 / 165.1 tok/s |
-| C1 mean | 138.3 tok/s (client-observed, includes speculative acceptance) |
-| MTP acceptance | ~2.5 accepted length on general content; 5.8–6.0 on math, where the server sustains 257–267 tok/s at C1 |
+Same-seed content-matched ladder, all on this artifact and image lineage:
 
-Speculative acceptance is strongly content-dependent; the C1 spread above is
-acceptance variance, not run noise. The BF16-attention predecessor artifact
-measured a 148.0 mean on a different night with the same method.
+| Configuration | Repetitions (tok/s) | Mean |
+|---|---|---:|
+| Static MTP 5/1/6 | 120.3 / 126.0 / 129.2 / 150.7 / 165.1 | 138.3 |
+| Adaptive MTP [3,5] | 138.0 / 164.5 / 138.1 / 138.6 / 140.3 | 143.9 |
+| **Adaptive + PCIe IPC allreduce (shipped)** | 144.7 / 170.7 / 142.7 / 160.7 / 148.5 | **153.5** |
+| NCCL P2P disabled (rejected) | — | 130.5 |
+| DFlash-2 block-diffusion drafter (rejected) | 124.9 / 157.0 / 140.6 / 125.2 / 126.4 | 134.8 |
+
+MTP acceptance is ~2.5 accepted length on general content and 5.8–6.0 on
+math, where the server sustains 257–267 tok/s at C1. The adaptive ladder
+wins where acceptance is low (typical agentic content) at a measured tier
+cost of 0.39 GB; the IPC allreduce also lifts cold 200k prefill from 4,599
+to 5,153 tok/s. DFlash-2 reached 3.1–4.4 acceptance but its per-step cost
+outweighed it. The BF16-attention predecessor artifact measured 121.7 on
+the same prompts (content-matched), so the FP8 tier carries no decode
+cost.
 
 ## Prefill
 

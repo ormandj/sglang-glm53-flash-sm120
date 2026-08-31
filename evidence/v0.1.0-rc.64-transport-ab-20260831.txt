@@ -1,0 +1,9 @@
+Transport A/B receipts - 2026-08-31 (production fp8mix profile, adaptive [3,5], content-matched glm-c1 n=5 + cold 200k probe)
+
+arm 0 baseline (NCCL default):        decode mean 143.9 (138.0 164.5 138.1 138.6 140.3), cold 200k 4599 tok/s
+arm 1 NCCL_P2P_DISABLE=1 (REJECTED):  decode mean 130.5 (-9%), cold 200k 3485 tok/s (-24%) - peer path is strictly better on this root complex, opposite of the aa-glm53 vLLM board finding
+arm 2 SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1, MAX_NUMEL 786432 (PROMOTED):
+  decode mean 153.5 (+6.7%): 144.7 170.7 142.7 160.7 148.5 - wins every rep
+  cold 200k prefill 5153 tok/s (+12%)
+
+cumulative decode improvement today: static/default 138.3 -> adaptive+IPC 153.5 (+11%), zero capacity or quality cost.

@@ -1,0 +1,7 @@
+Content-matched C1 decode A/B: FP8-mix V2 vs BF16-attention artifact - 2026-08-31
+method: aiperf glm-c1 (seed-fixed 5 coding prompts, 16k isl, 4096 osl, temp 0), same rc62/64-lineage stack, same MTP 5/1/6 and graph config; only the artifact differs (drafts numerically identical: both keep layer-45 attention BF16 and share the expert recipe)
+
+old W4A16-E4M3-K32-MSE (BF16 attention): 120.6 131.2 120.1 114.7 121.7 -> mean 121.7
+new W4A16-K32 + FP8-attention MIX-V2:   120.3 126.0 129.2 150.7 165.1 -> mean 138.3
+
+conclusion: no FP8 decode cost (r01-r03 parity; r04/r05 divergence is acceptance-trajectory content drift after target outputs diverge). The historical 148.0 was a different-night configuration; C1 decode variance is acceptance-dominated. Decode optimization effort therefore targets acceptance (adaptive spec ladder, drafter work) and transport, not the FP8 linear kernels.

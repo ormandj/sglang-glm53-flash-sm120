@@ -1,0 +1,28 @@
+FP8-mix V2 release-candidate sweep - 2026-08-31 (overnight run)
+image: v0.1.0-rc.64@sha256:b08e6e07...; artifact: /scratch/out/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2 (165.77 GiB)
+profile: C4 TP2, pool 507904, context 507904, chunk 2048, fp8 e4m3 KV, mamba 20, MTP EAGLE 5/1/6, exact decode graphs bs 1-4, hicache 128 GB, --quantization modelopt_mixed
+
+artifact recipe: audited W4A16-K32-MSE experts (aggregate rel-L2 0.0851, byte-identical recipe) + FP8 E4M3 [128,128]-block weight-only on 317 attention/KDA/MLA and shared-expert projections in layers 0-44 (aggregate rel-L2 0.0225, min cosine 0.9996); layer 45 (MTP draft), DSA indexer, vision, embeddings, LM head, routers BF16.
+
+== capacity (ladder receipts) ==
+  c1-200k pass ttft=44.5s (cold prefill 4599 tok/s)
+  c1-350k pass ttft=33.8s (10617 tok/s, warm prefix via hicache)
+  c1-500k (502,784 tokens) pass ttft=37.5s (13413 tok/s warm prefix)
+  c4-120k-fill pass (4985 tok/s aggregate); 8/8 sustained C4 waves; zero restarts
+
+== decode n=5 (glm-c1 mode, coding corpus, 4096 osl, temp 0) ==
+  C1 reps: 120.3 126.0 129.2 150.7 165.1 tok/s -> mean 138.3 (baseline artifact: 148.0; spread is acceptance content-variance)
+  server-side on math content: accept len 5.8-6.0, 257-267 tok/s C1
+  V1-artifact control (MTP-quantized draft): accept 1.00/rate 0.00, 43 tok/s -> layer-45 exclusion is required
+
+== quality (GSM8K full 1319, zero-shot, temp 0, pinned aiperf grader + regrader) ==
+  pinned:   1180/1319 = 89.5%   (old artifact: 89.0%)
+  regraded: 1282/1319 = 97.2%   (old artifact: 97.0%)  zero downward flips
+
+== vision ==
+  generated ground-truth bar chart read exactly: title + alpha 17 / beta 42 / gamma 8 / delta 29
+
+== memory ==
+  post-capture headroom 2.73 GB; steady serving 95456/97887 MiB per GPU; zero OOM lines, zero pod restarts across ladder+gsm8k+sweep+vision (77 min uptime at snapshot)
+
+known gaps: glm-qualification C4 decode cell rejected by the strict equal-context analyzer (window pollution; C2 cells passed); prefill-quick harness wedged after its 8k cell (harness bug, cells replaced by ladder receipts); summarize_engine_gate.py lacks the glm-c1 mode name.
