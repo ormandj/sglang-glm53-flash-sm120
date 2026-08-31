@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.1.0-rc.63 (mixed-precision loader fix for the FP8-mix artifact, not yet built or qualified)
+## v0.1.0-rc.64 (mixed-precision W4A16 expert routing fix, not yet built or qualified)
+
+- Sets `is_w4a16` on the mixed-precision config's W4A16_NVFP4 sub-config:
+  `ModelOptMixedPrecisionConfig.from_config` builds it directly (bypassing
+  `ModelOptFp4Config.from_config`, which derives the flag from the
+  checkpoint quant_algo), so K32 experts routed to the A4 cutlass path and
+  failed its group-16 block-scale shape check during autotune warmup.
+  Cache schema v51.
+
+## v0.1.0-rc.63 (mixed-precision loader fix for the FP8-mix artifact, superseded before qualification)
 
 - Exposes `linear_fp8_config` on `ModelOptMixedPrecisionConfig`: MLA
   absorption in `deepseek_weight_loader.post_load_weights` selects its
