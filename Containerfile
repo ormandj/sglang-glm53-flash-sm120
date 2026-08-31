@@ -6,8 +6,8 @@
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=64
-ARG GLM53_CACHE_SCHEMA=v51
+ARG GLM53_RELEASE_CANDIDATE=65
+ARG GLM53_CACHE_SCHEMA=v52
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6
@@ -154,6 +154,12 @@ RUN set -eux; \
     uv pip install --python /opt/sglang/bin/python --reinstall --no-deps .; \
     cd /; \
     rm -rf /tmp/modelopt-source
+
+# The ModelOpt HF base-model loader imports accelerate; the vendor tree omits
+# it, which crashed the first draft-model load under a modelopt_mixed target
+# (DFLASH drafter, 2026-08-31). Pinned, no-deps: every dependency it needs is
+# already present.
+RUN uv pip install --python /opt/sglang/bin/python --no-deps accelerate==1.12.0
 
 # Fail the image build if any part of the intended contract is shadowed by the
 # vendor tree or omitted from the installed packages.

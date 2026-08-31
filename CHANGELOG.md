@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0-rc.65 (accelerate for the ModelOpt draft loader, not yet built or qualified)
+
+- Adds pinned `accelerate` (no-deps): the ModelOpt HF base-model loader
+  imports it, and the first DFLASH draft-model load under a modelopt_mixed
+  target crashed with `ImportError: accelerate is required`. Upstream note:
+  an unquantized draft model arguably should not route through the
+  quantized loader at all. Cache schema v52.
+
 ## v0.1.0-rc.64 (mixed-precision W4A16 expert routing fix, not yet built or qualified)
 
 - Sets `is_w4a16` on the mixed-precision config's W4A16_NVFP4 sub-config:

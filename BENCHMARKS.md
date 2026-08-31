@@ -1,4 +1,4 @@
-# Measured results — v0.1.0-rc.64 + MIX-V2 artifact
+# Measured results — v0.1.0-rc.65 + MIX-V2 artifact
 
 All numbers below were measured on 2026-08-31 on one host: 2x NVIDIA RTX PRO
 6000 Blackwell Max-Q Workstation Edition (96 GB, SM120), TP2, PCIe, no NVLink,

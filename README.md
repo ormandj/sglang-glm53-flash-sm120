@@ -5,12 +5,12 @@ A reproducible Linux x86_64 image and quantization recipe for serving
 (320B-A18B, hybrid KDA + DeepSeek sparse attention, vision) on two NVIDIA RTX
 PRO 6000 Blackwell (96 GB, SM120) GPUs with SGLang, TP2, no NVLink required.
 
-Current release: `v0.1.0-rc.64` with the W4A16-K32 + FP8-attention
+Current release: `v0.1.0-rc.65` with the W4A16-K32 + FP8-attention
 MIXED_PRECISION artifact. Qualified image (internal build name
-`sglang-glm53-flash-sm120:v0.1.0-rc.64`):
+`sglang-glm53-flash-sm120:v0.1.0-rc.65`):
 
 ```text
-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.64
+ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65
 ```
 
 ## What you get
@@ -78,7 +78,7 @@ docker run --rm --gpus device=0 \
   -v /srv/models:/scratch \
   -v "$PWD/quantization:/opt/q:ro" \
   --entrypoint /opt/sglang/bin/python \
-  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.64 \
+  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65 \
   /opt/q/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py \
   --source /scratch/GLM-5.3-Flash-BF16 \
   --output /scratch/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
@@ -88,7 +88,7 @@ docker run --rm --gpus device=0 \
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v51
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v52
 mkdir -p "$CACHE_DIR"
 
 docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
@@ -102,7 +102,7 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
-  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.64 \
+  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.65 \
   serve /models/glm53 \
   --served-model-name glm-5.3-flash --host 0.0.0.0 --port 8000 \
   --tp 2 --quantization modelopt_mixed \
@@ -177,7 +177,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.64 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.65 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.
