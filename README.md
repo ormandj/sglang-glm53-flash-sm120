@@ -4,10 +4,10 @@ This repository builds the immutable runtime used by the primary
 `sglang-glm53-flash-sm120` qualification repository.
 
 Current candidate:
-`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.62`.
-Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.62`.
+`git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.1.0-rc.63`.
+Local build name: `sglang-glm53-flash-sm120:v0.1.0-rc.63`.
 
-**v0.1.0-rc.62 is a source candidate, not a qualified release.** Performance,
+**v0.1.0-rc.63 is a source candidate, not a qualified release.** Performance,
 quality, context, vision, and MTP results belong in the primary repository with
 exact-candidate evidence.
 
@@ -68,7 +68,7 @@ late-compilation behavior.
 
 The preceding capture-ownership change remains: every full CUDA graph shape
 owns the optimized MHC split-K scratch tensors captured by the standalone
-prenorm and fused post/pre paths. v0.1.0-rc.62 retains the same bounded
+prenorm and fused post/pre paths. v0.1.0-rc.63 retains the same bounded
 ownership for the compiled DSA head-gate output and the FP32 paged-MQA logits
 consumed by captured top-k kernels even when SGLang encloses the model in
 `torch.compile`. The paged-logits handoff now returns the real DeepGEMM view
@@ -118,7 +118,7 @@ value to its node, parent, key length, storage pointer and offset, preserves an
 exact snapshot across each action, and rejects any allocator free whose byte
 range overlaps a reachable Full value. The checks are inactive in ordinary
 serving and remain diagnostic; bounded ownership of the captured MHC scratch
-compiled DSA gate output, and paged-MQA logits are the v0.1.0-rc.62 runtime
+compiled DSA gate output, and paged-MQA logits are the v0.1.0-rc.63 runtime
 candidate.
 
 The preceding v0.1.0-rc.42 change closes a diagnostic-ordering gap exposed by
@@ -157,7 +157,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.62 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.63 .
 ```
 
 The Forgejo release workflow refuses to overwrite an existing SemVer candidate

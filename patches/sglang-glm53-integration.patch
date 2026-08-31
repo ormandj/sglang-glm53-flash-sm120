@@ -16114,7 +16114,7 @@ index 10fff8245c..c570bdfce0 100644
  
      topk_output = dispatch_output.topk_output
 diff --git a/python/sglang/srt/layers/quantization/modelopt_quant.py b/python/sglang/srt/layers/quantization/modelopt_quant.py
-index f8120da41c..aa14a3e271 100755
+index f8120da41c..d06ee33422 100755
 --- a/python/sglang/srt/layers/quantization/modelopt_quant.py
 +++ b/python/sglang/srt/layers/quantization/modelopt_quant.py
 @@ -5,6 +5,7 @@ from __future__ import annotations
@@ -16202,7 +16202,27 @@ index f8120da41c..aa14a3e271 100755
  def round_up_to_multiple(x: int, m: int) -> int:
      """Round up x to the nearest multiple of m."""
      return (x + m - 1) // m * m
-@@ -2214,6 +2285,15 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -788,6 +859,19 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfig):
+         self.nvfp4_config = nvfp4_config
+         self.nvfp4a16_config = nvfp4a16_config
+ 
++    @property
++    def linear_fp8_config(self):
++        """Block-FP8 config for loaders that requantize mixed checkpoints.
++
++        deepseek_weight_loader.post_load_weights dequantizes kv_b_proj for
++        MLA absorption and selects its branch from
++        quant_config.linear_fp8_config (falling back to quant_config); a
++        MIXED_PRECISION checkpoint with FP8_PB_WO attention otherwise
++        resolves weight_block_size None and crashes reading weight_scale on
++        a block-quantized layer.
++        """
++        return self.fp8_pb_wo_config
++
+     @classmethod
+     def override_quantization_method(cls, hf_quant_config, user_quant):
+         if hf_quant_config is None:
+@@ -2214,6 +2298,15 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          """Access the global enable_flashinfer_cutlass_moe setting."""
          return get_moe_runner_backend().is_flashinfer_cutlass()
  
@@ -16218,7 +16238,7 @@ index f8120da41c..aa14a3e271 100755
      @property
      def enable_flashinfer_cutedsl_moe(self) -> bool:
          """Access the global enable_flashinfer_cutedsl_moe setting."""
-@@ -2327,7 +2407,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2327,7 +2420,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          # TRTLLM replaces blockscale_swizzled with an alias to weight_scale
          # during process_weights_after_loading, so skip the expensive
          # swizzle+allocate here to avoid GPU memory fragmentation
@@ -16227,7 +16247,7 @@ index f8120da41c..aa14a3e271 100755
              layer.w13_blockscale_swizzled = None
          else:
              layer.w13_blockscale_swizzled = Parameter(
-@@ -2347,7 +2427,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2347,7 +2440,7 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          )
          layer.register_parameter("w2_weight_scale", w2_weight_scale)
  
@@ -16236,19 +16256,18 @@ index f8120da41c..aa14a3e271 100755
              layer.w2_blockscale_swizzled = None
          else:
              layer.w2_blockscale_swizzled = Parameter(
-@@ -2423,7 +2503,10 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2423,7 +2516,9 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
          if getattr(layer, "inference_moe_w13_interleaved", False) and not getattr(
              layer, "_w13_deinterleaved", False
          ):
 -            up_first = self.enable_flashinfer_trtllm_moe
 +            up_first = (
-+                self.enable_flashinfer_trtllm_moe
-+                or self._use_flashinfer_b12x_w4a16
++                self.enable_flashinfer_trtllm_moe or self._use_flashinfer_b12x_w4a16
 +            )
              layer.w13_weight.data = deinterleave_w13(
                  layer.w13_weight.data, up_first=up_first
              )
-@@ -2566,8 +2649,13 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2566,8 +2661,12 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
                  copy_or_rebind_param(layer, "gemm1_beta", gemm1_beta)
  
          # TODO: for flashinfer always do MOE_NVFP4_DISPATCH
@@ -16258,13 +16277,12 @@ index f8120da41c..aa14a3e271 100755
 +            not self._use_flashinfer_b12x_w4a16
 +            and not self.quant_config.use_per_token_activation
 +            and (
-+                MOE_NVFP4_DISPATCH
-+                or should_use_flashinfer_cutlass_moe_fp4_allgather()
++                MOE_NVFP4_DISPATCH or should_use_flashinfer_cutlass_moe_fp4_allgather()
 +            )
          )
  
          layer.dispatcher.set_quant_config(
-@@ -2606,7 +2694,30 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2606,7 +2705,30 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
              ), f"{name} Weight Blockscale must be represented as FP8-E4M3"
  
          # Weight processing based on strategy
@@ -16296,15 +16314,13 @@ index f8120da41c..aa14a3e271 100755
              self.enable_flashinfer_trtllm_moe
              and reorder_rows_for_gated_act_gemm is not None
              and shuffle_matrix_sf_a is not None
-@@ -2931,23 +3042,41 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
+@@ -2931,23 +3053,39 @@ class ModelOptNvFp4FusedMoEMethod(FusedMoEMethodBase):
                  not moe_runner_config.apply_router_weight_on_input
              ), "apply_router_weight_on_input is not supported for Flashinfer"
              quant_info = FlashInferCutlassMoeQuantInfo(
 -                quant_type="fp4",
 +                quant_type=(
-+                    "w4a16_e4m3_k32"
-+                    if self._use_flashinfer_b12x_w4a16
-+                    else "fp4"
++                    "w4a16_e4m3_k32" if self._use_flashinfer_b12x_w4a16 else "fp4"
 +                ),
                  w13_weight=layer.w13_weight,
                  w2_weight=layer.w2_weight,

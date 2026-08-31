@@ -1,6 +1,18 @@
 # Changelog
 
-## v0.1.0-rc.62 (spec-off sizing fix and scheduler kernel prewarm, not yet built or qualified)
+## v0.1.0-rc.63 (mixed-precision loader fix for the FP8-mix artifact, not yet built or qualified)
+
+- Exposes `linear_fp8_config` on `ModelOptMixedPrecisionConfig`: MLA
+  absorption in `deepseek_weight_loader.post_load_weights` selects its
+  `kv_b_proj` dequant branch from that hook, and the first boot of the
+  MIXED_PRECISION artifact (W4A16-K32 experts + FP8 [128,128]-block
+  weight-only attention/shared experts, 165.64 GiB, expert aggregate
+  relative-L2 0.0851, FP8 aggregate 0.0225) crashed reading
+  `weight_scale` on a block-quantized `ColumnParallelLinear`. The hook
+  returns the FP8_PB_WO config so the [128,128] block branch dequantizes
+  through `weight_scale_inv`. Cache schema v50.
+
+## v0.1.0-rc.62 (spec-off sizing fix and scheduler kernel prewarm, gsm8k-baselined in serving)
 
 - Fixes the first speculation-disabled boot of this stack: the carried
   SM120 sparse-MLA runner sizing read `self.speculative_num_draft_tokens`
