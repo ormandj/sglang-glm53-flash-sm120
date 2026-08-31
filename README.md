@@ -5,6 +5,9 @@ A reproducible Linux x86_64 image for serving the published
 checkpoint on two NVIDIA RTX PRO 6000 Blackwell (96 GB, SM120) GPUs with
 SGLang, TP2, no NVLink required.
 
+**Hugging Face model:**
+[`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
+
 Current release: `v0.1.0-rc.67` for the W4A16 NVFP4 K32 experts + FP8
 weight-only checkpoint. Qualified image (internal build name
 `sglang-glm53-flash-sm120:v0.1.0-rc.67`):
