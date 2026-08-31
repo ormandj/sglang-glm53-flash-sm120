@@ -6,7 +6,7 @@ if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   exit 2
 fi
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c8|qualification|publication" >&2
+  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|publication" >&2
   exit 2
 fi
 
@@ -19,7 +19,7 @@ for value in "$campaign" "$build_id"; do
   esac
 done
 case "$mode" in
-  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c8|qualification|glm-qualification|glm-c1|publication) ;;
+  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|publication) ;;
   *) echo "error: unsupported engine-gate mode: $mode" >&2; exit 2 ;;
 esac
 
@@ -103,6 +103,11 @@ run_decode() {
     export SAMPLING_SEED="$seed"
     export AIPERF_ARTIFACT_ROOT="$gate_root/decode/c$concurrency"
     export DECODE_CONCURRENCY="$concurrency"
+    # Sustain the exact-occupancy plateau: with requests == concurrency the
+    # equal-context window only spans the initial overlap, which on
+    # long-prefill models is shorter than the analyzer minimum. Refill
+    # requests keep occupancy pinned while the plateau is measured.
+    export DECODE_REQUESTS="${DECODE_REQUESTS_OVERRIDE:-$(( concurrency * 3 ))}"
     export DECODE_ISL=16384
     export DECODE_OSL="$output_length"
     "$script_dir/run-in-pod.sh" "$config_dir/decode-engine.yaml" "$run_id"
@@ -117,7 +122,8 @@ run_decode() {
         --average-context-upper 20480 \
         --minimum-window-seconds "$decode_minimum_window_seconds" \
         --minimum-samples 20 \
-        --output "$cell/decode-analysis.json"
+        --output "$cell/decode-analysis.json" \
+        || touch "$cell/analyzer-rejected"
     else
       "$uv_bin" run --no-project --python "$aiperf_python" \
         "$script_dir/analyze_server_metrics.py" \
@@ -128,7 +134,8 @@ run_decode() {
         --average-context-upper 20480 \
         --minimum-window-seconds "$decode_minimum_window_seconds" \
         --minimum-samples 20 \
-        --output "$cell/decode-analysis.json"
+        --output "$cell/decode-analysis.json" \
+        || touch "$cell/analyzer-rejected"
     fi
     repetition=$((repetition + 1))
   done
@@ -185,6 +192,10 @@ case "$mode" in
     ;;
   repeat-c2-c4)
     decode_shapes='2:5:4096 4:5:4096'
+    prefill_shapes=''
+    ;;
+  repeat-c4)
+    decode_shapes='4:5:4096'
     prefill_shapes=''
     ;;
   repeat-c8)
