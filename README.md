@@ -44,12 +44,11 @@ All rows are the shipped configuration (adaptive MTP [3,5] + PCIe IPC
 allreduce), measured with the vendored harness; decode is the n=5 coding
 corpus at 4,096 output tokens, temperature 0.
 
-| Decode (n=5 means, cold-inclusive client metric) | Rate |
+| Decode (n=5 mean OLS plateau over server decode counters) | Rate |
 |---|---:|
-| C1 | 153.5 tok/s |
-| C2 | 195.4 tok/s |
-| C4 | 210.8 tok/s |
-| C4 with warm prefixes (HiCache hit; decode-phase dominated) | 342.1 tok/s |
+| C1 (pure equal-context plateau) | 169.7 tok/s |
+| C2 (pure equal-context plateau) | 235.7 tok/s |
+| C4 (sustained with request refill) | 347.0 tok/s |
 | C1 on math-class content (acceptance ~6) | 257–267 tok/s |
 
 | Prefill (prompt tokens / TTFT) | Rate |

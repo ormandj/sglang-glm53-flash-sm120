@@ -1,0 +1,10 @@
+Harness-grade decode plateaus, shipped configuration - 2026-08-31 (erratum + correction)
+method: engine-gate cells, OLS over sglang decode-token counters within the analyzer plateau (prefill-free by construction, shapes warmed). C1/C2 are pure equal-context plateaus (zero analyzer flags). C4 uses the new refill methodology (requests = 3x concurrency) because a 4-request cell's exact-occupancy overlap (~18 s fragmented) is structurally shorter than the 40 s minimum on this long-prefill model; its sustained window carries four disclosed flags (interleaved refill prefill, ~95% occupancy, context wander).
+
+C1: 157.7 162.5 164.9 173.5 189.8 -> mean 169.7 tok/s (51-57 fwd/s, accept 2.8-3.8)
+C2: 220.7 230.3 240.7 243.1 243.9 -> mean 235.7 tok/s (40.4 fwd/s, accept 2.99)
+C4 sustained: 340.3 343.1 344.9 349.7 357.2 -> mean 347.0 tok/s (29.5 fwd/s, accept 3.01)
+
+scaling C1->C4 = 2.04x (dsv4-flash: 2.02x). ERRATUM: the previously published decode numbers (C1 153.5 / C2 195.4 / C4 210.8 cold, 342.1 warm) used the client full-duration metric, which includes prefill in the denominator; comparisons between arms remain valid (identical metric both sides) but absolute values and the warm/cold split are superseded by this receipt.
+
+harness fixes landed tonight: repeat-c4 mode; refill plateaus (DECODE_REQUESTS = 3x concurrency, override available); per-cell analyzer rejection no longer aborts campaigns. Remaining harness bugs tracked: aiperf C4 client profile-export writes an empty summary (NaN fwd_occupancy scrape suspected); summarize_engine_gate.py lacks the glm mode names.

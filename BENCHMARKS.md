@@ -34,19 +34,26 @@ Same-seed content-matched ladder, all on this artifact and image lineage:
 
 ### Concurrency scaling (shipped configuration)
 
-| Cell | Repetitions (tok/s) | Mean |
-|---|---|---:|
-| C1 | 142.7 / 144.7 / 148.5 / 160.7 / 170.7 | 153.5 |
-| C2 | 189.6 / 191.8 / 195.7 / 197.9 / 202.2 | 195.4 |
-| C4, cold (cache flushed per rep) | 201.3 / 207.4 / 208.7 / 216.6 / 219.9 | 210.8 |
-| C4, warm prefixes (HiCache hit) | 332.8 / 335.3 / 345.5 / 346.5 / 350.6 | 342.1 |
+Decode is the OLS rate of the server's decode-token counter inside the
+analyzer's plateau window — prefill-free by construction, shapes warmed.
+C1/C2 are pure equal-context plateaus (zero analyzer flags). C4 uses
+refill cells (requests = 3x concurrency): a 4-request cell's
+exact-occupancy overlap is structurally shorter than the analyzer minimum
+on a long-prefill model, so the sustained window instead carries four
+disclosed flags (interleaved refill prefill, ~95% occupancy, context
+wander).
 
-The client metric divides completion tokens by full request duration, so the
-cold rows carry the shared 4 x 16k prefill (~13 s); the warm row shows the
-decode-phase rate (~2.2x C1). Speculation shifts batching economics: each C1
-verify already carries ~6 draft tokens, and MoE top-8-of-288 routing limits
-expert-weight reuse across concurrent tokens, so cold-aggregate scaling is
-concave by construction.
+| Cell | Repetitions (OLS tok/s) | Mean | Forwards/s | Accepted tok/fwd/req |
+|---|---|---:|---:|---:|
+| C1 | 157.7 / 162.5 / 164.9 / 173.5 / 189.8 | 169.7 | 54.0 | 3.2 |
+| C2 | 220.7 / 230.3 / 240.7 / 243.1 / 243.9 | 235.7 | 40.4 | 3.0 |
+| C4 sustained | 340.3 / 343.1 / 344.9 / 349.7 / 357.2 | 347.0 | 29.5 | 3.0 |
+
+C1-to-C4 scaling is 2.04x, matching the DeepSeek-V4-Flash publication's
+2.02x on the same hardware. An earlier revision of this file published
+client full-duration throughput (prefill in the denominator) with a
+warm/cold split; those numbers are superseded by this table
+(`evidence/v0.1.0-rc.64-decode-plateaus-corrected-20260831.txt`).
 
 MTP acceptance is ~2.5 accepted length on general content and 5.8–6.0 on
 math, where the server sustains 257–267 tok/s at C1. The adaptive ladder
