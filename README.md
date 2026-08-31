@@ -44,9 +44,12 @@ All rows are the shipped configuration (adaptive MTP [3,5] + PCIe IPC
 allreduce), measured with the vendored harness; decode is the n=5 coding
 corpus at 4,096 output tokens, temperature 0.
 
-| Decode | Rate |
+| Decode (n=5 means, cold-inclusive client metric) | Rate |
 |---|---:|
-| C1 (n=5 mean; reps 142.7–170.7) | 153.5 tok/s |
+| C1 | 153.5 tok/s |
+| C2 | 195.4 tok/s |
+| C4 | 210.8 tok/s |
+| C4 with warm prefixes (HiCache hit; decode-phase dominated) | 342.1 tok/s |
 | C1 on math-class content (acceptance ~6) | 257–267 tok/s |
 
 | Prefill (prompt tokens / TTFT) | Rate |

@@ -32,6 +32,22 @@ Same-seed content-matched ladder, all on this artifact and image lineage:
 | NCCL P2P disabled (rejected) | — | 130.5 |
 | DFlash-2 block-diffusion drafter (rejected) | 124.9 / 157.0 / 140.6 / 125.2 / 126.4 | 134.8 |
 
+### Concurrency scaling (shipped configuration)
+
+| Cell | Repetitions (tok/s) | Mean |
+|---|---|---:|
+| C1 | 142.7 / 144.7 / 148.5 / 160.7 / 170.7 | 153.5 |
+| C2 | 189.6 / 191.8 / 195.7 / 197.9 / 202.2 | 195.4 |
+| C4, cold (cache flushed per rep) | 201.3 / 207.4 / 208.7 / 216.6 / 219.9 | 210.8 |
+| C4, warm prefixes (HiCache hit) | 332.8 / 335.3 / 345.5 / 346.5 / 350.6 | 342.1 |
+
+The client metric divides completion tokens by full request duration, so the
+cold rows carry the shared 4 x 16k prefill (~13 s); the warm row shows the
+decode-phase rate (~2.2x C1). Speculation shifts batching economics: each C1
+verify already carries ~6 draft tokens, and MoE top-8-of-288 routing limits
+expert-weight reuse across concurrent tokens, so cold-aggregate scaling is
+concave by construction.
+
 MTP acceptance is ~2.5 accepted length on general content and 5.8–6.0 on
 math, where the server sustains 257–267 tok/s at C1. The adaptive ladder
 wins where acceptance is low (typical agentic content) at a measured tier

@@ -1,0 +1,8 @@
+C2/C4 decode cells on the shipped configuration - 2026-08-31
+method: aiperf decode-engine cells (coding corpus, 16k isl / 4096 osl, temp 0, seed 2026081201), production pod (adaptive [3,5] + PCIe IPC allreduce, pool 507904, chunk 2048, hicache 128)
+
+C2 (gate cells):        195.7 197.9 189.6 202.2 191.8 -> mean 195.4
+C4 cold (flush/rep):    207.4 208.7 219.9 216.6 201.3 -> mean 210.8   (client metric includes the 4x16k cold prefill ~13s)
+C4 warm-prefix:         350.6 345.5 332.8 335.3 346.5 -> mean 342.1   (radix/hicache hit; decode-phase dominated)
+
+notes: the cold-inclusive metric matches the C1 (153.5) and C2 methodology. Decode-phase scaling C1->C4 is ~2.2x (warm view); the cold view's concavity is largely shared-prefill amortization. The repeat-c2-c4 gate's per-rep equal-context analyzer aborts at C4 under hicache write-back (no samples matched the average-context window) - direct aiperf cells bypass it; harness fix tracked in TODO.
