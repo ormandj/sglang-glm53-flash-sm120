@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.0-rc.66 (kpool ragged MQA-logits Q-row chunking, not yet built or qualified)
+
+- Bounds the DSA kpool ragged-prefill logits transient: the single
+  `fp8_mqa_logits` call materialized a float32 `[rows x pooled_kv]` buffer
+  (about 4.1 GB per layer at 8192 extend tokens over 507k context), the
+  sole blocker for chunked-prefill sizes above 2048 at the 507,904-token
+  pool. Reuses the upstream `Indexer` budget policy (hoisted into a shared
+  mixin) and loops query rows in budget-sized chunks with the K axis whole,
+  so each row's top-k inputs are unchanged. Engages only past the 8M-element
+  static skip and never under graph capture. Ground-truth unit test passed
+  on quasar (10/10, 3 repeat runs). Cache schema v52.
+
 ## v0.1.0-rc.65 (accelerate for the ModelOpt draft loader, not yet built or qualified)
 
 - Adds pinned `accelerate` (no-deps): the ModelOpt HF base-model loader

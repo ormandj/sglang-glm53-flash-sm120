@@ -6219,7 +6219,7 @@ index e4b90b7efe..5160df62e3 100644
              real_page_table=real_page_table,
              seqlens_expanded=seqlens_expanded,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
-index 4f630c1247..551be6aea5 100644
+index 4f630c1247..0d3c197703 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 @@ -39,6 +39,9 @@ from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph.context
@@ -6232,7 +6232,85 @@ index 4f630c1247..551be6aea5 100644
  from sglang.srt.runtime_context import (
      get_device,
      get_exec,
-@@ -481,7 +484,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -199,7 +202,14 @@ def rotate_activation(x: torch.Tensor) -> torch.Tensor:
+     return hadamard_transform(x, scale=hidden_size**-0.5)
+ 
+ 
+-class Indexer(DSANPUIndexerMixin, BaseFusedOp):
++class MQALogitsChunkPolicyMixin:
++    """Budget policy for chunking the ragged fp8_mqa_logits transient.
++
++    Shared by Indexer and IndexerKPool. The per-device budget cache is
++    process-global across both consumers; the budget is device-scoped, so
++    this is correct for single-model workers.
++    """
++
+     _MQA_LOGITS_BYTES_PER_ELEM = 4
+     _MQA_LOGITS_STATIC_SKIP_ELEMS = 8_000_000
+     _MQA_LOGITS_TOTAL_MEM_FRACTION = 0.3
+@@ -209,6 +219,61 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+     def _mqa_logits_free_mem_fraction() -> float:
+         return envs.SGLANG_DSA_MQA_LOGITS_FREE_MEM_FRACTION.get()
+ 
++    def _get_mqa_logits_budget_bytes(self, device_index: int) -> int:
++        free_mem_fraction = self._mqa_logits_free_mem_fraction()
++        cached_budget = self._mqa_logits_budget_bytes.get(device_index)
++        if cached_budget is not None:
++            return cached_budget
++
++        total_mem = torch.cuda.get_device_properties(device_index).total_memory
++
++        total_mem_budget = int(total_mem * self._MQA_LOGITS_TOTAL_MEM_FRACTION)
++        mem_fraction_static = get_schedule().mem_fraction_static
++        if mem_fraction_static is None:
++            static_budget = total_mem_budget
++        else:
++            static_free_mem = int(total_mem * max(0.0, 1.0 - mem_fraction_static))
++            static_budget = min(
++                int(static_free_mem * free_mem_fraction),
++                total_mem_budget,
++            )
++        static_budget = max(1, static_budget)
++
++        # Keep the static serving-memory guard during CUDA graph capture without
++        # caching it. The first non-capture prefill path will cache the real
++        # free-memory budget below.
++        if get_is_capture_mode():
++            return static_budget
++
++        # Match the original free-memory guard: logits_bytes * 2 > free_mem.
++        # torch.cuda.mem_get_info synchronizes the host, so cache the result,
++        # capped by the workload-independent serving-memory headroom.
++        free_mem, _ = torch.cuda.mem_get_info(device_index)
++        budget_bytes = min(int(free_mem * free_mem_fraction), static_budget)
++
++        budget_bytes = max(1, budget_bytes)
++        self._mqa_logits_budget_bytes[device_index] = budget_bytes
++        return budget_bytes
++
++    def _should_chunk_mqa_logits(
++        self, num_q: int, num_k: int, device_index: int
++    ) -> Tuple[bool, int]:
++        """
++        Detect whether we need to chunk the MQA logits computation to avoid OOM
++        Return: (need_chunk, logits_budget_bytes)
++        """
++        # Quick static check for normal batches
++        if num_q * num_k < self._MQA_LOGITS_STATIC_SKIP_ELEMS:
++            return False, 0
++
++        logits_bytes = num_q * num_k * self._MQA_LOGITS_BYTES_PER_ELEM
++        logits_budget_bytes = self._get_mqa_logits_budget_bytes(device_index)
++
++        need_chunk = logits_bytes > logits_budget_bytes
++        return need_chunk, logits_budget_bytes
++
++
++class Indexer(DSANPUIndexerMixin, MQALogitsChunkPolicyMixin, BaseFusedOp):
+     def __init__(
+         self,
+         hidden_size: int,
+@@ -481,7 +546,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                      dim=-1,
                  )
              with torch.cuda.stream(self.alt_stream):
@@ -6240,7 +6318,7 @@ index 4f630c1247..551be6aea5 100644
                  if self.use_dsa_indexer_fusion:
                      key, weights_raw = self._fused_k_weights(x)
                  else:
-@@ -753,8 +755,19 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -753,8 +817,19 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          target_heads = 32
          q_fp8 = torch.nn.functional.pad(q_fp8, (0, 0, 0, target_heads - num_heads))
          weights = torch.nn.functional.pad(weights, (0, target_heads - num_heads))
@@ -6260,7 +6338,7 @@ index 4f630c1247..551be6aea5 100644
      def _mask_init_and_local_tokens(
          self,
          logits: torch.Tensor,
-@@ -789,6 +802,21 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -789,6 +864,21 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              logits.scatter_(dim=1, index=local_idxs, value=float("inf"))
          return logits
  
@@ -6282,7 +6360,7 @@ index 4f630c1247..551be6aea5 100644
      def _get_topk_paged(
          self,
          forward_batch: ForwardBatch,
-@@ -800,6 +828,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -800,6 +890,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          if TYPE_CHECKING:
              assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
  
@@ -6290,7 +6368,7 @@ index 4f630c1247..551be6aea5 100644
          page_size = get_token_to_kv_pool().page_size
          # NOTE(dark): blocksize = 64 is hardcoded in deep_gemm
          if _is_hip:
-@@ -871,10 +900,18 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -871,10 +962,18 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
  
          if use_dg_native:
              seqlens_32_2d = ctx_2d
@@ -6311,7 +6389,7 @@ index 4f630c1247..551be6aea5 100644
          if _is_cuda:
              if schedule_metadata is None:
                  schedule_metadata = deep_gemm.get_paged_mqa_logits_metadata(
-@@ -891,6 +928,54 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -891,6 +990,54 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          assert len(weights.shape) == 3
          weights = weights.squeeze(2)
  
@@ -6366,7 +6444,7 @@ index 4f630c1247..551be6aea5 100644
          if self.paged_mqa_logits_backend.is_aiter():
              logits = aiter_paged_mqa_logits(
                  q_fp8,
-@@ -923,7 +1008,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -923,7 +1070,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              )
          elif use_dg_native:
              logits = deepgemm_paged_mqa_logits_native(
@@ -6375,7 +6453,7 @@ index 4f630c1247..551be6aea5 100644
                  q_fp8,
                  kv_cache_fp8,
                  weights,
-@@ -937,7 +1022,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -937,7 +1084,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              )
          else:
              logits = deepgemm_paged_mqa_logits_split(
@@ -6384,7 +6462,7 @@ index 4f630c1247..551be6aea5 100644
                  q_fp8,
                  kv_cache_fp8,
                  weights,
-@@ -948,6 +1033,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -948,6 +1095,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                  q_offset=q_offset,
              )
  
@@ -6392,7 +6470,67 @@ index 4f630c1247..551be6aea5 100644
          # NOTE(dark): logits should be cleaned in topk_transform
          self._mask_init_and_local_tokens(logits, seqlens_32)
          topk_result = metadata.topk_transform(logits, self.index_topk)
-@@ -1029,6 +1115,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -963,59 +1111,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+             topk_result = torch.cat([topk_result, padding], dim=0)
+         return topk_result
+ 
+-    def _get_mqa_logits_budget_bytes(self, device_index: int) -> int:
+-        free_mem_fraction = self._mqa_logits_free_mem_fraction()
+-        cached_budget = self._mqa_logits_budget_bytes.get(device_index)
+-        if cached_budget is not None:
+-            return cached_budget
+-
+-        total_mem = torch.cuda.get_device_properties(device_index).total_memory
+-
+-        total_mem_budget = int(total_mem * self._MQA_LOGITS_TOTAL_MEM_FRACTION)
+-        mem_fraction_static = get_schedule().mem_fraction_static
+-        if mem_fraction_static is None:
+-            static_budget = total_mem_budget
+-        else:
+-            static_free_mem = int(total_mem * max(0.0, 1.0 - mem_fraction_static))
+-            static_budget = min(
+-                int(static_free_mem * free_mem_fraction),
+-                total_mem_budget,
+-            )
+-        static_budget = max(1, static_budget)
+-
+-        # Keep the static serving-memory guard during CUDA graph capture without
+-        # caching it. The first non-capture prefill path will cache the real
+-        # free-memory budget below.
+-        if get_is_capture_mode():
+-            return static_budget
+-
+-        # Match the original free-memory guard: logits_bytes * 2 > free_mem.
+-        # torch.cuda.mem_get_info synchronizes the host, so cache the result,
+-        # capped by the workload-independent serving-memory headroom.
+-        free_mem, _ = torch.cuda.mem_get_info(device_index)
+-        budget_bytes = min(int(free_mem * free_mem_fraction), static_budget)
+-
+-        budget_bytes = max(1, budget_bytes)
+-        self._mqa_logits_budget_bytes[device_index] = budget_bytes
+-        return budget_bytes
+-
+-    def _should_chunk_mqa_logits(
+-        self, num_q: int, num_k: int, device_index: int
+-    ) -> Tuple[bool, int]:
+-        """
+-        Detect whether we need to chunk the MQA logits computation to avoid OOM
+-        Return: (need_chunk, logits_budget_bytes)
+-        """
+-        # Quick static check for normal batches
+-        if num_q * num_k < self._MQA_LOGITS_STATIC_SKIP_ELEMS:
+-            return False, 0
+-
+-        logits_bytes = num_q * num_k * self._MQA_LOGITS_BYTES_PER_ELEM
+-        logits_budget_bytes = self._get_mqa_logits_budget_bytes(device_index)
+-
+-        need_chunk = logits_bytes > logits_budget_bytes
+-        return need_chunk, logits_budget_bytes
+-
+     def _get_topk_ragged(
+         self,
+         enable_dual_stream: bool,
+@@ -1029,6 +1124,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          if TYPE_CHECKING:
              assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
  
@@ -6400,7 +6538,7 @@ index 4f630c1247..551be6aea5 100644
          assert forward_batch.forward_mode.is_extend_without_speculative()
  
          page_size = get_token_to_kv_pool().page_size
-@@ -1138,6 +1225,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1138,6 +1234,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              assert logits.shape[0] == len(seq_lens_expanded)
              assert logits.shape[1] == k_offset
  
@@ -6408,7 +6546,7 @@ index 4f630c1247..551be6aea5 100644
              self._mask_init_and_local_tokens(logits, seq_lens_expanded, ks)
              raw_topk_result = metadata.topk_transform(logits, self.index_topk, ks=ks)
              topk_result[:q_offset] = raw_topk_result
-@@ -1207,6 +1295,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1207,6 +1304,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                  cu_seqlens_q_chunk = cu_seqlens_q_full[start:end]
                  batch_idx_chunk = token_to_batch_idx[start:end]
  
@@ -6416,7 +6554,7 @@ index 4f630c1247..551be6aea5 100644
              raw_topk_chunk = metadata.topk_transform(
                  logits_chunk,
                  self.index_topk,
-@@ -1298,6 +1387,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1298,6 +1396,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              dtype=torch.float32,
              device=x_meta.device,
          )
@@ -6424,7 +6562,7 @@ index 4f630c1247..551be6aea5 100644
          raw_topk_result = metadata.topk_transform(dummy_logits, self.index_topk)
          if topk_result is not None:
              # PCG/BCG: fill the valid prefix of the padded static buffer and
-@@ -1321,6 +1411,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1321,6 +1420,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              "DSA context parallel (_get_topk_ragged_with_cp) not supported under "
              "piecewise/breakable CUDA graph"
          )
@@ -6432,7 +6570,7 @@ index 4f630c1247..551be6aea5 100644
          if TYPE_CHECKING:
              assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
  
-@@ -1401,6 +1492,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1401,6 +1501,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                      ke,
                      clean_logits=False,
                  )
@@ -6440,7 +6578,7 @@ index 4f630c1247..551be6aea5 100644
              topk_result = metadata.topk_transform(
                  logits,
                  self.index_topk,
-@@ -1451,6 +1543,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1451,6 +1552,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              actual_seq_q = torch.tensor([actual_seq_q], dtype=torch.int32).to(
                  device="cuda", non_blocking=True
              )
@@ -6450,10 +6588,10 @@ index 4f630c1247..551be6aea5 100644
                  self.index_topk,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000000..39f4c0a4af
+index 0000000000..56f2a6efaa
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-@@ -0,0 +1,1811 @@
+@@ -0,0 +1,1955 @@
 +from __future__ import annotations
 +
 +from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -6467,6 +6605,7 @@ index 0000000000..39f4c0a4af
 +from sglang.srt.layers.attention.dsa.dsa_indexer import (
 +    DUAL_STREAM_TOKEN_THRESHOLD,
 +    BaseIndexerMetadata,
++    MQALogitsChunkPolicyMixin,
 +    rotate_activation,
 +)
 +from sglang.srt.layers.attention.dsa.dsa_topk_backend import TopkTransformMethod
@@ -6508,13 +6647,19 @@ index 0000000000..39f4c0a4af
 +    get_token_to_kv_pool,
 +)
 +from sglang.srt.model_executor.runner import get_is_capture_mode
++from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph.context import (
++    is_in_breakable_cuda_graph,
++)
++from sglang.srt.model_executor.runner_backend_utils.tc_piecewise_cuda_graph import (
++    is_in_tc_piecewise_cuda_graph,
++)
 +from sglang.srt.runtime_context import get_parallel, get_server_args
 +
 +if TYPE_CHECKING:
 +    from sglang.srt.mem_cache.memory_pool import DSATokenToKVPool
 +
 +
-+class IndexerKPool(MultiPlatformOp):
++class IndexerKPool(MQALogitsChunkPolicyMixin, MultiPlatformOp):
 +    def __init__(
 +        self,
 +        hidden_size: int,
@@ -7429,24 +7574,86 @@ index 0000000000..39f4c0a4af
 +        register_graph_buffer(topk_result, f"kpool-topk-layer-{layer_id}")
 +        return topk_result
 +
-+    def _should_chunk_mqa_logits(
-+        self, num_q: int, num_k: int, device: torch.device
-+    ) -> Tuple[bool, int]:
-+        """
-+        Detect whether we need to chunk the MQA logits computation to avoid OOM
-+        Return: (need_chunk, free_mem)
-+        """
-+        # Quick static check for normal batches
-+        if num_q * num_k < 8_000_000:  # 8M elements ≈ 32MB logits
-+            return False, 0
++    @staticmethod
++    def _mqa_logits_chunking_allowed() -> bool:
++        # The chunk loop allocates and frees a logits buffer per chunk; under
++        # any graph capture a later capture could reuse those freed blocks and
++        # corrupt earlier replays, so fall back to the single-shot call there.
++        return not (
++            get_is_capture_mode()
++            or torch.cuda.is_current_stream_capturing()
++            or is_in_tc_piecewise_cuda_graph()
++            or is_in_breakable_cuda_graph()
++        )
 +
-+        free_mem, total_mem = torch.cuda.mem_get_info(device)
-+        bytes_per_elem = 4  # float32
-+        logits_bytes = num_q * num_k * bytes_per_elem
-+
-+        # Logits should not exceed 50% of free memory or 30% of total memory
-+        need_chunk = (logits_bytes * 2 > free_mem) or (logits_bytes > total_mem * 0.3)
-+        return need_chunk, free_mem
++    def _chunked_kpool_logits_topk(
++        self,
++        *,
++        q_fp8: torch.Tensor,
++        kv_fp8: Tuple[torch.Tensor, torch.Tensor],
++        weights: torch.Tensor,
++        ks: torch.Tensor,
++        ke: torch.Tensor,
++        topk_row_starts: Optional[torch.Tensor],
++        pool_lens: torch.Tensor,
++        seq_lens: torch.Tensor,
++        page_table: Optional[torch.Tensor],
++        topk_offsets: Optional[torch.Tensor],
++        page_table_row_index: Optional[torch.Tensor],
++        out: torch.Tensor,
++        out_start: int,
++        max_rows: int,
++    ) -> None:
++        # Bound the [rows x total_k] float32 logits transient by looping query
++        # rows; the K axis stays whole per chunk, so each row's logits and
++        # top-k selection are computed from the same inputs as the single-shot
++        # call. ks/ke are the GEMM bounds; topk_row_starts is passed through to
++        # the top-k separately because the call sites differ (the plan path
++        # passes ks_per_q, the legacy loop passes None).
++        n_rows = q_fp8.shape[0]
++        if n_rows == 0:
++            return
++        assert max_rows >= 1, f"max_rows must be positive, got {max_rows}"
++        start = 0
++        while start < n_rows:
++            end = min(start + max_rows, n_rows)
++            logits_chunk = deep_gemm.fp8_mqa_logits(
++                q_fp8[start:end].contiguous(),
++                kv_fp8,
++                weights[start:end].contiguous(),
++                ks[start:end],
++                ke[start:end],
++                clean_logits=True,
++            )
++            if page_table_row_index is not None:
++                # Shared req_to_token table, indexed per row: pass it whole and
++                # slice only the row index.
++                page_table_chunk = page_table
++                page_table_row_index_chunk = page_table_row_index[start:end]
++            elif page_table is not None:
++                # Per-row table (possibly a zero-stride expanded view): slice
++                # rows without materializing.
++                page_table_chunk = page_table[start:end]
++                page_table_row_index_chunk = None
++            else:
++                page_table_chunk = None
++                page_table_row_index_chunk = None
++            out[out_start + start : out_start + end] = self._topk_from_kpool_logits(
++                logits_chunk,
++                pool_lens[start:end],
++                seq_lens=seq_lens[start:end],
++                page_table=page_table_chunk,
++                topk_offsets=(
++                    topk_offsets[start:end] if topk_offsets is not None else None
++                ),
++                row_starts=(
++                    topk_row_starts[start:end]
++                    if topk_row_starts is not None
++                    else None
++                ),
++                page_table_row_index=page_table_row_index_chunk,
++            )
++            start = end
 +
 +    def _get_topk_ragged_kpool_plan(
 +        self,
@@ -7487,31 +7694,6 @@ index 0000000000..39f4c0a4af
 +            n_real <= total_q
 +        ), f"plan has more real rows ({n_real}) than q_fp8 ({total_q})"
 +
-+        if total_k_rows > 0:
-+            k_u8 = plan.ragged_k_u8
-+            k_scale = plan.ragged_k_scale
-+            assert k_u8 is not None and k_scale is not None
-+            pool = get_token_to_kv_pool()
-+            gather_index_k_scale_prefix_into(
-+                pool=pool,
-+                buf=self._get_index_k_read_buffer(pool, layer_id),
-+                page_indices=plan.ragged_concat_page_table,
-+                seq_len=total_k_rows,
-+                k_out=k_u8,
-+                scale_out=k_scale,
-+            )
-+            k_fp8 = k_u8.view(torch.float8_e4m3fn)
-+            logits = deep_gemm.fp8_mqa_logits(
-+                q_fp8[:n_real].contiguous(),
-+                (k_fp8.contiguous(), k_scale.contiguous()),
-+                weights[:n_real].contiguous(),
-+                ks_per_q,
-+                ke_per_q,
-+                clean_logits=True,
-+            )
-+        else:
-+            logits = torch.empty((n_real, 0), dtype=torch.float32, device=device)
-+
 +        topk_method = metadata.topk_transform_method
 +        attn_metadata = metadata.attn_metadata
 +        page_table_all = None
@@ -7531,6 +7713,69 @@ index 0000000000..39f4c0a4af
 +                topk_offsets_all = attn_metadata.topk_indices_offset
 +                if topk_offsets_all is not None and row_select is not None:
 +                    topk_offsets_all = topk_offsets_all.index_select(0, row_select)
++
++        if total_k_rows > 0:
++            k_u8 = plan.ragged_k_u8
++            k_scale = plan.ragged_k_scale
++            assert k_u8 is not None and k_scale is not None
++            pool = get_token_to_kv_pool()
++            gather_index_k_scale_prefix_into(
++                pool=pool,
++                buf=self._get_index_k_read_buffer(pool, layer_id),
++                page_indices=plan.ragged_concat_page_table,
++                seq_len=total_k_rows,
++                k_out=k_u8,
++                scale_out=k_scale,
++            )
++            k_fp8 = k_u8.view(torch.float8_e4m3fn)
++            kv_fp8 = (k_fp8.contiguous(), k_scale.contiguous())
++
++            need_chunk, logits_budget_bytes = self._should_chunk_mqa_logits(
++                n_real, total_k_rows, device.index
++            )
++            if need_chunk and self._mqa_logits_chunking_allowed():
++                max_rows = min(
++                    n_real,
++                    max(
++                        1,
++                        logits_budget_bytes
++                        // (total_k_rows * self._MQA_LOGITS_BYTES_PER_ELEM),
++                    ),
++                )
++                topk_result = torch.full(
++                    (total_q, self.index_topk + self.index_kpool - 1),
++                    -1,
++                    dtype=torch.int32,
++                    device=device,
++                )
++                self._chunked_kpool_logits_topk(
++                    q_fp8=q_fp8[:n_real],
++                    kv_fp8=kv_fp8,
++                    weights=weights[:n_real],
++                    ks=ks_per_q,
++                    ke=ke_per_q,
++                    topk_row_starts=ks_per_q,
++                    pool_lens=pool_lens,
++                    seq_lens=seq_lens_expanded,
++                    page_table=page_table_all,
++                    topk_offsets=topk_offsets_all,
++                    page_table_row_index=page_table_row_index_all,
++                    out=topk_result,
++                    out_start=0,
++                    max_rows=max_rows,
++                )
++                return topk_result
++
++            logits = deep_gemm.fp8_mqa_logits(
++                q_fp8[:n_real].contiguous(),
++                kv_fp8,
++                weights[:n_real].contiguous(),
++                ks_per_q,
++                ke_per_q,
++                clean_logits=True,
++            )
++        else:
++            logits = torch.empty((n_real, 0), dtype=torch.float32, device=device)
 +
 +        return self._topk_from_kpool_logits(
 +            logits,
@@ -7615,6 +7860,8 @@ index 0000000000..39f4c0a4af
 +            ke = torch.div(tail_tokens, pool_size, rounding_mode="floor").to(
 +                torch.int32
 +            )
++            # Unbounded [rows x k] transient; bs=1 prefill-CP only. Follow-up:
++            # route through _chunked_kpool_logits_topk like the plan path.
 +            logits = deep_gemm.fp8_mqa_logits(
 +                q_work,
 +                (k_fp8.contiguous(), k_scale.contiguous()),
@@ -7849,18 +8096,6 @@ index 0000000000..39f4c0a4af
 +                    and zero_starts_by_batch[i] is not None
 +                    else torch.zeros((q_len,), dtype=torch.int32, device=q_fp8.device)
 +                )
-+                local_logits = deep_gemm.fp8_mqa_logits(
-+                    q_fp8[q_slice].contiguous(),
-+                    (k_fp8.contiguous(), k_scale.contiguous()),
-+                    weights[q_slice].contiguous(),
-+                    row_starts,
-+                    local_pool_lens,
-+                    clean_logits=True,
-+                )
-+            else:
-+                local_logits = torch.empty(
-+                    (q_len, 0), dtype=torch.float32, device=q_fp8.device
-+                )
 +
 +            page_table_local = None
 +            topk_offsets_local = None
@@ -7881,15 +8116,62 @@ index 0000000000..39f4c0a4af
 +            ):
 +                topk_offsets_local = topk_offsets[q_slice]
 +
-+            local_topk = self._topk_from_kpool_logits(
-+                local_logits,
-+                local_pool_lens,
-+                seq_lens=local_seqlens,
-+                page_table=page_table_local,
-+                topk_offsets=topk_offsets_local,
-+            )
++            chunked_done = False
++            if pool_seq_len > 0:
++                kv_fp8_local = (k_fp8.contiguous(), k_scale.contiguous())
++                need_chunk, logits_budget_bytes = self._should_chunk_mqa_logits(
++                    q_len, pool_seq_len, q_fp8.device.index
++                )
++                if need_chunk and self._mqa_logits_chunking_allowed():
++                    max_rows = min(
++                        q_len,
++                        max(
++                            1,
++                            logits_budget_bytes
++                            // (pool_seq_len * self._MQA_LOGITS_BYTES_PER_ELEM),
++                        ),
++                    )
++                    self._chunked_kpool_logits_topk(
++                        q_fp8=q_fp8[q_slice],
++                        kv_fp8=kv_fp8_local,
++                        weights=weights[q_slice],
++                        ks=row_starts,
++                        ke=local_pool_lens,
++                        topk_row_starts=None,
++                        pool_lens=local_pool_lens,
++                        seq_lens=local_seqlens,
++                        page_table=page_table_local,
++                        topk_offsets=topk_offsets_local,
++                        page_table_row_index=None,
++                        out=topk_result,
++                        out_start=q_offset,
++                        max_rows=max_rows,
++                    )
++                    chunked_done = True
++                else:
++                    local_logits = deep_gemm.fp8_mqa_logits(
++                        q_fp8[q_slice].contiguous(),
++                        kv_fp8_local,
++                        weights[q_slice].contiguous(),
++                        row_starts,
++                        local_pool_lens,
++                        clean_logits=True,
++                    )
++            else:
++                local_logits = torch.empty(
++                    (q_len, 0), dtype=torch.float32, device=q_fp8.device
++                )
 +
-+            topk_result[q_slice] = local_topk
++            if not chunked_done:
++                local_topk = self._topk_from_kpool_logits(
++                    local_logits,
++                    local_pool_lens,
++                    seq_lens=local_seqlens,
++                    page_table=page_table_local,
++                    topk_offsets=topk_offsets_local,
++                )
++
++                topk_result[q_slice] = local_topk
 +            if pool_seq_len > 0 and deferred_cache_write is not None:
 +                write_locs, curr_k_fp8, curr_k_scale = deferred_cache_write
 +                self._write_returned_compressed_pooled_index_cache(
@@ -25036,6 +25318,425 @@ index 7007fd9897..f7cde67b84 100644
  @pytest.mark.parametrize(
      "num_assignments,num_experts,expected",
      [
+diff --git a/test/registered/kernels/test_dsa_kpool_chunked_logits.py b/test/registered/kernels/test_dsa_kpool_chunked_logits.py
+new file mode 100644
+index 0000000000..c580051b6c
+--- /dev/null
++++ b/test/registered/kernels/test_dsa_kpool_chunked_logits.py
+@@ -0,0 +1,413 @@
++"""Chunked kpool ragged MQA logits select a correct top-k.
++
++Exercises IndexerKPool._chunked_kpool_logits_topk (and the single-shot
++fp8_mqa_logits + _topk_from_kpool_logits path it must match) on synthetic
++concat-slab layouts mirroring the kpool extend plan.
++
++The fused top-k kernel resolves boundary ties with atomics, so two runs on
++identical inputs may legitimately swap equal-scored boundary candidates;
++bitwise result comparison is not this kernel's contract. Instead every
++result (single-shot and chunked) is verified against a torch recompute of
++the DeepGEMM reference semantics (logits[i, j] = sum_h relu(q_ih . k_j) *
++w_ih, K scale folded in): exact tail tokens, exactly group_topk full
++groups, and the selected groups' ground-truth score multiset must equal
++the true top-k score multiset.
++"""
++
++import unittest
++
++import torch
++
++from sglang.srt.layers.attention.dsa.dsa_indexer import Indexer
++from sglang.srt.layers.attention.dsa.dsa_indexer_kpool import IndexerKPool
++from sglang.test.ci.ci_register import register_cuda_ci
++from sglang.test.test_utils import CustomTestCase
++
++register_cuda_ci(est_time=60, stage="base-b-kernel-unit", runner_config="1-gpu-large")
++
++POOL_SIZE = 4
++INDEX_TOPK = 2048
++GROUP_TOPK = INDEX_TOPK // POOL_SIZE
++NUM_HEADS = 64
++HEAD_DIM = 128
++SLOTS_PER_PAGE = 64
++TOPK_WIDTH = INDEX_TOPK + POOL_SIZE - 1
++
++
++def _has_deep_gemm() -> bool:
++    try:
++        import deep_gemm  # noqa: F401
++
++        return True
++    except ImportError:
++        return False
++
++
++requires_deep_gemm_sm90 = unittest.skipUnless(
++    torch.cuda.is_available()
++    and torch.cuda.get_device_capability()[0] >= 9
++    and _has_deep_gemm(),
++    "requires CUDA SM90+ and deep_gemm",
++)
++
++
++def _fake_indexer() -> IndexerKPool:
++    indexer = object.__new__(IndexerKPool)
++    indexer.index_kpool = POOL_SIZE
++    indexer.index_topk = INDEX_TOPK
++    return indexer
++
++
++def _build_layout(seed: int, req_specs, permute: bool = False):
++    """Synthetic kpool extend-plan layout.
++
++    req_specs: list of (final_pool_len, q_len). Each request gets a
++    page-aligned slab in the shared concat-K buffer; its q rows have causally
++    growing pooled lengths ending at final_pool_len, with a rotating raw-token
++    tail. Every pooled length stays above GROUP_TOPK so real selection runs.
++    """
++    torch.manual_seed(seed)
++    device = "cuda"
++    ks_rows = []
++    ke_rows = []
++    pool_len_rows = []
++    seq_len_rows = []
++    req_of_row = []
++    slab_start = 0
++    for req_idx, (final_pool_len, q_len) in enumerate(req_specs):
++        assert final_pool_len - q_len + 1 > GROUP_TOPK
++        for j in range(q_len):
++            pool_len = final_pool_len - q_len + 1 + j
++            tail = (slab_start + j) % POOL_SIZE
++            ks_rows.append(slab_start)
++            ke_rows.append(slab_start + pool_len)
++            pool_len_rows.append(pool_len)
++            seq_len_rows.append(pool_len * POOL_SIZE + tail)
++            req_of_row.append(req_idx)
++        pages = (final_pool_len + SLOTS_PER_PAGE - 1) // SLOTS_PER_PAGE
++        slab_start += pages * SLOTS_PER_PAGE
++    total_k = slab_start
++    n_rows = len(ks_rows)
++
++    order = torch.arange(n_rows, device=device)
++    if permute:
++        order = torch.randperm(n_rows, device=device)
++
++    def _rows(values, dtype):
++        return torch.tensor(values, dtype=dtype, device=device)[order].contiguous()
++
++    q_fp8 = (
++        torch.randn(n_rows, NUM_HEADS, HEAD_DIM, device=device)[order]
++        .contiguous()
++        .to(torch.float8_e4m3fn)
++    )
++    weights = torch.rand(n_rows, NUM_HEADS, device=device)[order].contiguous()
++    k_fp8 = torch.randn(total_k, HEAD_DIM, device=device).to(torch.float8_e4m3fn)
++    k_scale = torch.rand(total_k, device=device) + 0.5
++    return dict(
++        q_fp8=q_fp8,
++        weights=weights,
++        kv_fp8=(k_fp8, k_scale),
++        ks=_rows(ks_rows, torch.int32),
++        ke=_rows(ke_rows, torch.int32),
++        pool_lens=_rows(pool_len_rows, torch.int32),
++        seq_lens=_rows(seq_len_rows, torch.int32),
++        req_of_row=_rows(req_of_row, torch.int32),
++        seq_len_rows=seq_len_rows,
++        n_rows=n_rows,
++        n_reqs=len(req_specs),
++        total_k=total_k,
++    )
++
++
++def _ground_truth_logits(layout) -> torch.Tensor:
++    """DeepGEMM reference semantics in torch fp32 (K scale folded in)."""
++    q = layout["q_fp8"].float()
++    k_fp8, k_scale = layout["kv_fp8"]
++    k = k_fp8.float() * k_scale[:, None]
++    per_head = torch.einsum("mhd,nd->mhn", q, k).relu()
++    return torch.einsum("mhn,mh->mn", per_head, layout["weights"])
++
++
++@requires_deep_gemm_sm90
++class TestDsaKpoolChunkedLogits(CustomTestCase):
++    REQ_SPECS = [(1400, 96), (2500, 160), (700, 61)]
++
++    def setUp(self):
++        # The budget cache is process-global and shared across both indexer
++        # classes; keep tests independent of each other and of prior imports.
++        IndexerKPool._mqa_logits_budget_bytes.clear()
++
++    def _single_shot(self, layout, page_table, topk_offsets, row_index, out_rows):
++        import deep_gemm
++
++        indexer = _fake_indexer()
++        logits = deep_gemm.fp8_mqa_logits(
++            layout["q_fp8"].contiguous(),
++            layout["kv_fp8"],
++            layout["weights"].contiguous(),
++            layout["ks"],
++            layout["ke"],
++            clean_logits=True,
++        )
++        return indexer._topk_from_kpool_logits(
++            logits,
++            layout["pool_lens"],
++            seq_lens=layout["seq_lens"],
++            page_table=page_table,
++            topk_offsets=topk_offsets,
++            row_starts=layout["ks"],
++            out_rows=out_rows,
++            page_table_row_index=row_index,
++        )
++
++    def _chunked(
++        self, layout, page_table, topk_offsets, row_index, out_rows, max_rows
++    ):
++        indexer = _fake_indexer()
++        out = torch.full(
++            (out_rows, TOPK_WIDTH), -1, dtype=torch.int32, device="cuda"
++        )
++        indexer._chunked_kpool_logits_topk(
++            q_fp8=layout["q_fp8"],
++            kv_fp8=layout["kv_fp8"],
++            weights=layout["weights"],
++            ks=layout["ks"],
++            ke=layout["ke"],
++            topk_row_starts=layout["ks"],
++            pool_lens=layout["pool_lens"],
++            seq_lens=layout["seq_lens"],
++            page_table=page_table,
++            topk_offsets=topk_offsets,
++            page_table_row_index=row_index,
++            out=out,
++            out_start=0,
++            max_rows=max_rows,
++        )
++        return out
++
++    def _verify_selection(self, sel, layout, gt_logits, inverse_fn, label):
++        n_rows = layout["n_rows"]
++        for r in range(n_rows):
++            ks = int(layout["ks"][r])
++            ke = int(layout["ke"][r])
++            pool_len = ke - ks
++            tail_count = int(layout["seq_lens"][r]) % POOL_SIZE
++            row = sel[r]
++            valid = row[row >= 0]
++            self.assertEqual(
++                valid.numel(),
++                GROUP_TOPK * POOL_SIZE + tail_count,
++                f"{label}: row {r} selected count",
++            )
++            raw = inverse_fn(r, valid)
++            tails = raw[raw >= pool_len * POOL_SIZE]
++            expected_tails = torch.arange(
++                pool_len * POOL_SIZE,
++                pool_len * POOL_SIZE + tail_count,
++                dtype=raw.dtype,
++                device=raw.device,
++            )
++            self.assertTrue(
++                torch.equal(torch.sort(tails).values, expected_tails),
++                f"{label}: row {r} tail tokens",
++            )
++            hist = raw[raw < pool_len * POOL_SIZE]
++            self.assertTrue(bool((hist >= 0).all()), f"{label}: row {r} range")
++            groups, counts = torch.unique(hist // POOL_SIZE, return_counts=True)
++            self.assertEqual(groups.numel(), GROUP_TOPK, f"{label}: row {r} groups")
++            self.assertTrue(
++                bool((counts == POOL_SIZE).all()),
++                f"{label}: row {r} partial group expansion",
++            )
++            scores = gt_logits[r, ks:ke]
++            sel_scores = torch.sort(scores[groups.long()]).values
++            top_scores = torch.sort(torch.topk(scores, GROUP_TOPK).values).values
++            torch.testing.assert_close(
++                sel_scores,
++                top_scores,
++                rtol=1e-5,
++                atol=1e-3,
++                msg=f"{label}: row {r} selection is not a true top-k",
++            )
++
++    def _run_case(self, page_table_kind, permute=False, out_rows_extra=0, seed=7):
++        layout = _build_layout(seed, self.REQ_SPECS, permute=permute)
++        n_rows = layout["n_rows"]
++        out_rows = n_rows + out_rows_extra
++        gt_logits = _ground_truth_logits(layout)
++        page_table = None
++        topk_offsets = None
++        row_index = None
++        if page_table_kind == "ragged":
++            base = torch.cumsum(layout["seq_lens"].to(torch.int64), dim=0)
++            topk_offsets = torch.cat(
++                [
++                    torch.zeros(1, dtype=torch.int64, device="cuda"),
++                    base[:-1],
++                ]
++            ).to(torch.int32)
++
++            def inverse_fn(r, tokens):
++                return tokens - topk_offsets[r]
++
++        elif page_table_kind == "paged":
++            max_seq = max(layout["seq_len_rows"]) + POOL_SIZE
++            flat = torch.randperm(
++                layout["n_reqs"] * max_seq, dtype=torch.int32, device="cuda"
++            )
++            page_table = flat.reshape(layout["n_reqs"], max_seq)
++            row_index = layout["req_of_row"]
++            inverse = torch.empty_like(flat)
++            inverse[flat.long()] = torch.arange(
++                flat.numel(), dtype=torch.int32, device="cuda"
++            )
++
++            def inverse_fn(r, tokens):
++                pos = inverse[tokens.long()]
++                req = int(layout["req_of_row"][r])
++                self.assertTrue(
++                    bool((pos // max_seq == req).all()),
++                    f"row {r} maps into another request's page table row",
++                )
++                return pos % max_seq
++
++        else:
++
++            def inverse_fn(r, tokens):
++                return tokens
++
++        ref = self._single_shot(layout, page_table, topk_offsets, row_index, out_rows)
++        self._verify_selection(ref, layout, gt_logits, inverse_fn, "single-shot")
++        for max_rows in (37, n_rows, 1 + n_rows // 2):
++            got = self._chunked(
++                layout, page_table, topk_offsets, row_index, out_rows, max_rows
++            )
++            self._verify_selection(
++                got, layout, gt_logits, inverse_fn, f"chunked[{max_rows}]"
++            )
++            if out_rows_extra:
++                self.assertTrue(torch.all(got[n_rows:] == -1))
++        if out_rows_extra:
++            self.assertTrue(torch.all(ref[n_rows:] == -1))
++
++    def test_raw_indices(self):
++        self._run_case(None)
++
++    def test_ragged_offsets(self):
++        self._run_case("ragged")
++
++    def test_paged_shared_table_with_row_index(self):
++        self._run_case("paged")
++
++    def test_permuted_rows_like_cp_row_select(self):
++        self._run_case("ragged", permute=True, seed=11)
++
++    def test_pad_rows_stay_negative_one(self):
++        self._run_case("ragged", out_rows_extra=5)
++
++    def test_single_row_chunks(self):
++        layout = _build_layout(13, [(600, 9)])
++        gt_logits = _ground_truth_logits(layout)
++        got = self._chunked(layout, None, None, None, layout["n_rows"], max_rows=1)
++        self._verify_selection(
++            got, layout, gt_logits, lambda r, t: t, "chunked[1]"
++        )
++
++    def test_legacy_style_out_start_and_row_sliced_page_table(self):
++        # Legacy loop shape: one request, ks == 0, per-row expanded page
++        # table (no row index), topk_row_starts=None, writes at an offset
++        # into a larger result buffer.
++        layout = _build_layout(17, [(900, 48)])
++        n_rows = layout["n_rows"]
++        gt_logits = _ground_truth_logits(layout)
++        max_seq = max(layout["seq_len_rows"]) + POOL_SIZE
++        flat = torch.randperm(max_seq, dtype=torch.int32, device="cuda")
++        page_table = flat.unsqueeze(0).expand(n_rows, -1)
++        inverse = torch.empty_like(flat)
++        inverse[flat.long()] = torch.arange(
++            flat.numel(), dtype=torch.int32, device="cuda"
++        )
++        indexer = _fake_indexer()
++        out_start = 5
++        out = torch.full(
++            (out_start + n_rows + 2, TOPK_WIDTH), -1, dtype=torch.int32, device="cuda"
++        )
++        indexer._chunked_kpool_logits_topk(
++            q_fp8=layout["q_fp8"],
++            kv_fp8=layout["kv_fp8"],
++            weights=layout["weights"],
++            ks=layout["ks"],
++            ke=layout["ke"],
++            topk_row_starts=None,
++            pool_lens=layout["pool_lens"],
++            seq_lens=layout["seq_lens"],
++            page_table=page_table,
++            topk_offsets=None,
++            page_table_row_index=None,
++            out=out,
++            out_start=out_start,
++            max_rows=19,
++        )
++        self._verify_selection(
++            out[out_start : out_start + n_rows],
++            layout,
++            gt_logits,
++            lambda r, t: inverse[t.long()],
++            "legacy-chunked",
++        )
++        self.assertTrue(torch.all(out[:out_start] == -1))
++        self.assertTrue(torch.all(out[out_start + n_rows :] == -1))
++
++    def test_zero_rows_is_a_noop(self):
++        indexer = _fake_indexer()
++        out = torch.full((3, TOPK_WIDTH), -1, dtype=torch.int32, device="cuda")
++        empty_i32 = torch.empty(0, dtype=torch.int32, device="cuda")
++        indexer._chunked_kpool_logits_topk(
++            q_fp8=torch.empty(
++                0, NUM_HEADS, HEAD_DIM, dtype=torch.float8_e4m3fn, device="cuda"
++            ),
++            kv_fp8=(
++                torch.empty(64, HEAD_DIM, dtype=torch.float8_e4m3fn, device="cuda"),
++                torch.ones(64, device="cuda"),
++            ),
++            weights=torch.empty(0, NUM_HEADS, device="cuda"),
++            ks=empty_i32,
++            ke=empty_i32,
++            topk_row_starts=empty_i32,
++            pool_lens=empty_i32,
++            seq_lens=empty_i32,
++            page_table=None,
++            topk_offsets=None,
++            page_table_row_index=None,
++            out=out,
++            out_start=0,
++            max_rows=8,
++        )
++        self.assertTrue(torch.all(out == -1))
++
++
++class TestChunkPolicySharing(CustomTestCase):
++    def test_below_static_skip_never_chunks(self):
++        indexer = _fake_indexer()
++        need_chunk, budget = indexer._should_chunk_mqa_logits(100, 1000, 0)
++        self.assertFalse(need_chunk)
++        self.assertEqual(budget, 0)
++
++    def test_policy_is_shared_with_indexer(self):
++        self.assertIs(
++            IndexerKPool._should_chunk_mqa_logits,
++            Indexer._should_chunk_mqa_logits,
++        )
++        self.assertIs(
++            IndexerKPool._get_mqa_logits_budget_bytes,
++            Indexer._get_mqa_logits_budget_bytes,
++        )
++        self.assertIs(
++            IndexerKPool._mqa_logits_budget_bytes,
++            Indexer._mqa_logits_budget_bytes,
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/kernels/test_dsa_kpool_multi_pool.py b/test/registered/kernels/test_dsa_kpool_multi_pool.py
 new file mode 100644
 index 0000000000..26ce445333
