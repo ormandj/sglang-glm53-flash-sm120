@@ -25233,7 +25233,7 @@ index ac37350b11..cc1efbc37d 100644
          self.dsa_extend_topk_buf = None
  
 diff --git a/python/sglang/srt/utils/async_probe.py b/python/sglang/srt/utils/async_probe.py
-index be514dc4e5..e13818670b 100644
+index be514dc4e5..5c391202a3 100644
 --- a/python/sglang/srt/utils/async_probe.py
 +++ b/python/sglang/srt/utils/async_probe.py
 @@ -131,10 +131,24 @@ def maybe_detect_oob(indices: Optional[torch.Tensor], low: int, high: int, msg:
@@ -25265,6 +25265,68 @@ index be514dc4e5..e13818670b 100644
      torch._assert_async(
          indices.max() < high,
          f"index >= {high} (out of range): {msg}",
+@@ -162,6 +176,61 @@ def maybe_detect_kernel_facing_loc(
+     )
+ 
+ 
++def maybe_sync_detect_oob(
++    indices: Optional[torch.Tensor], low: int, high: int, msg: str
++) -> None:
++    """Diagnostic-only synchronous index check with exact offending values.
++
++    This is intentionally gated by the same legacy async-assert switch and is
++    suitable only at low-frequency lifecycle boundaries. Unlike
++    :func:`maybe_detect_oob`, it names the exact boundary immediately instead
++    of surfacing at a later CUDA synchronization point.
++    """
++    if not envs.SGLANG_ENABLE_ASYNC_ASSERT.get():
++        return
++    if indices is None or indices.numel() == 0:
++        return
++
++    flat = indices.reshape(-1)
++    minimum = int(flat.min().item())
++    maximum = int(flat.max().item())
++    invalid = (flat < low) | (flat >= high)
++    if not bool(invalid.any().item()):
++        return
++
++    try:
++        all_positions = torch.nonzero(invalid, as_tuple=False).reshape(-1)
++        invalid_count = all_positions.numel()
++        positions = all_positions[:8]
++        tail_positions = all_positions[-8:] if invalid_count > 8 else None
++        positions_list = positions.detach().cpu().tolist()
++        values = flat[positions].detach().cpu().tolist()
++        tail_positions_list = (
++            tail_positions.detach().cpu().tolist()
++            if tail_positions is not None
++            else None
++        )
++        tail_values = (
++            flat[tail_positions].detach().cpu().tolist()
++            if tail_positions is not None
++            else None
++        )
++    except RuntimeError as error:
++        invalid_count = "unavailable"
++        positions_list = f"unavailable ({type(error).__name__})"
++        values = f"unavailable ({type(error).__name__})"
++        tail_positions_list = None
++        tail_values = None
++    raise AssertionError(
++        f"index outside [{low}, {high}) at {msg}: "
++        f"dtype={flat.dtype} numel={flat.numel()} min={minimum} max={maximum} "
++        f"invalid_count={invalid_count} "
++        f"positions={positions_list} values={values} "
++        f"tail_positions={tail_positions_list} "
++        f"tail_values={tail_values}"
++    )
++
++
+ def maybe_detect_page_aligned(
+     indices: Optional[torch.Tensor], page_size: int, msg: str
+ ):
 diff --git a/python/sglang/srt/utils/common.py b/python/sglang/srt/utils/common.py
 index 04b04eb9c0..3fa988331d 100644
 --- a/python/sglang/srt/utils/common.py

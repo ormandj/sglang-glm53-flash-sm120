@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "cc0064ee5be0a580bb61d00c0266d32fdcc43659"
+      "value": "edf1e683bd7fe7109e900df8554bc36cf77f86d6"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "626b2328ba48af3d8af4ef9e8646ea9858f7e16fdb9404371433e643e2227abf"
+      "value": "a7b201bfd8cd8e23a0b4aa191218470a65a7166cebcdc4cdceb71039d63a12ef"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,9 +149,9 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b",
       "upstream_tree": "3babfd36d877df796283b229eb96145e7846750f",
-      "tree": "cc0064ee5be0a580bb61d00c0266d32fdcc43659",
+      "tree": "edf1e683bd7fe7109e900df8554bc36cf77f86d6",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "626b2328ba48af3d8af4ef9e8646ea9858f7e16fdb9404371433e643e2227abf",
+      "patch_sha256": "a7b201bfd8cd8e23a0b4aa191218470a65a7166cebcdc4cdceb71039d63a12ef",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260830",
       "working_head": "40d0be2bfdf06b8cb4815b27c789d90c25bb6f5b",

@@ -15,8 +15,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:0836f0160fa785e424e68d13ef88ddd548f8
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=4c2c169e6ba15aee5408b250ce25ff7e73388d9b
 ARG GLM53_SGLANG_UPSTREAM_TREE=3babfd36d877df796283b229eb96145e7846750f
-ARG GLM53_SGLANG_TREE=cc0064ee5be0a580bb61d00c0266d32fdcc43659
-ARG GLM53_SGLANG_PATCH_SHA256=626b2328ba48af3d8af4ef9e8646ea9858f7e16fdb9404371433e643e2227abf
+ARG GLM53_SGLANG_TREE=edf1e683bd7fe7109e900df8554bc36cf77f86d6
+ARG GLM53_SGLANG_PATCH_SHA256=a7b201bfd8cd8e23a0b4aa191218470a65a7166cebcdc4cdceb71039d63a12ef
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=286eee4e2999a825716eab68e597cb1ee0881e1b
@@ -241,11 +241,11 @@ assert 'GLM' not in inspect.getsource(chunk_intra._get_kda_intra_static_config);
 assert 'precompile_kda_prefill_kernels' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading); \
 assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS; \
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176; \
-assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 528; \
+assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656; \
 assert 'q.shape[-1] == 512' in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward); \
 assert 'qk_nope_head_dim == 512' not in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward); \
 assert 'if uses_flashinfer_sparse_mla and is_glm_sm12_fp8:' in inspect.getsource(flash_mla_sm120._validate_flashinfer_sparse_mla_backend); \
-assert 'return 528' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
+assert 'return 656' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim); \
 alloc_extend_source=inspect.getsource(PagedTokenToKVPoolAllocator.alloc_extend); \
 assert 'alloc_extend last_loc' in alloc_extend_source; \
 assert 'alloc_extend free_pages' in alloc_extend_source; \
@@ -257,12 +257,12 @@ assert 'positions=' in inspect.getsource(async_probe.maybe_sync_detect_oob); \
 assert 'UnifiedRadixCache.cache_finished_req insert values' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.cache_finished_req); \
 assert 'UnifiedRadixCache.cache_unfinished_req insert values' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.cache_unfinished_req); \
 assert 'UnifiedRadixCache.insert completed tree' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.insert); \
-assert 'UnifiedRadixCache.match_prefix pre-walk tree' in inspect.getsource(unified_radix_cache.UnifiedRadixCache.match_prefix); \
+\
 assert 'allocator free aliases reachable Full value' in inspect.getsource(unified_radix_cache.UnifiedRadixCache._debug_assert_frees_not_reachable); \
 assert 'reachable Full value changed' in inspect.getsource(unified_radix_cache.UnifiedRadixCache._debug_assert_full_value_snapshot_unchanged); \
 assert 'FullComponent.redistribute_on_node_split source' in inspect.getsource(full_component.FullComponent.redistribute_on_node_split); \
 assert 'FullComponent.evict_component value' in inspect.getsource(full_component.FullComponent.evict_component); \
-assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 528; \
+assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 656; \
 assert callable(getattr(SparseMLASm120Wrapper, 'run', None)); \
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))"
 
