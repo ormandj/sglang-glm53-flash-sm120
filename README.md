@@ -8,12 +8,12 @@ SGLang, TP2, no NVLink required.
 **Hugging Face model:**
 [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
 
-Current release: `v0.1.0-rc.70` for the W4A16 NVFP4 K32 experts + FP8
+Current release: `v0.1.0-rc.71` for the W4A16 NVFP4 K32 experts + FP8
 weight-only checkpoint. Qualified image (internal build name
-`sglang-glm53-flash-sm120:v0.1.0-rc.70`):
+`sglang-glm53-flash-sm120:v0.1.0-rc.71`):
 
 ```text
-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.70
+ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.71
 ```
 
 ## What you get
@@ -110,7 +110,7 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
-  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.70 \
+  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.71 \
   serve /models/glm53 \
   --served-model-name glm-5.3-flash --host 0.0.0.0 --port 8000 \
   --tp 2 --quantization modelopt_mixed \
@@ -191,7 +191,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.0-rc.70 .
+  -t sglang-glm53-flash-sm120:v0.1.0-rc.71 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

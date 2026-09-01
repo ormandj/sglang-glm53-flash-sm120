@@ -6,7 +6,7 @@
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
 ARG GLM53_RELEASE_VERSION=0.1.0
-ARG GLM53_RELEASE_CANDIDATE=70
+ARG GLM53_RELEASE_CANDIDATE=71
 ARG GLM53_CACHE_SCHEMA=v54
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash

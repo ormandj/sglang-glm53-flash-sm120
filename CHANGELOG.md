@@ -1,6 +1,16 @@
 # Changelog
 
-## v0.1.0-rc.70 (full upstream refresh + hicache scale-byte fix, not yet built or qualified)
+## v0.1.0-rc.71 (rc.70 + boot fix, not yet qualified)
+
+- rc.70's published image failed at boot: the carried GLM commit predated
+  upstream's model_overrides package split, and after the rebase its
+  provider tail re-registered ~20 model families over the package
+  versions while calling removed ServerArgs helpers. The duplicated tail
+  is dropped; upstream's package already registers the DSA/GLM family
+  with a superset of the carried logic. Immutable tags forbid replacing
+  rc.70, hence the bump. Cache schema stays v54.
+
+## v0.1.0-rc.70 (full upstream refresh + hicache scale-byte fix, superseded by rc.71 before qualification)
 
 - Rebases the SGLang integration series onto current upstream main
   (4c2c169e6b; previously 5ab97c4f44) and rebuilds the FlashInfer series

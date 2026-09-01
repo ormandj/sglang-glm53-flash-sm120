@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 70,
-    "candidate_tag": "v0.1.0-rc.70",
+    "candidate": 71,
+    "candidate_tag": "v0.1.0-rc.71",
     "stable_tag": "v0.1.0",
     "cache_schema": "v54"
   },
   "image": {
-    "tag": "v0.1.0-rc.70",
+    "tag": "v0.1.0-rc.71",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,7 +49,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "70"
+      "value": "71"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
