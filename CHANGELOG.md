@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.0-rc.70 (full upstream refresh + hicache scale-byte fix, not yet built or qualified)
+
+- Rebases the SGLang integration series onto current upstream main
+  (4c2c169e6b; previously 5ab97c4f44) and rebuilds the FlashInfer series
+  on the current head of upstream PR #4802 plus PR #4827 and our three
+  W4A16 commits. Upstream had independently ported our shared-kernel
+  shape-limit fixes (#37317, from our open #36507), and PR #4802 moved
+  the GLM NoPE KV row from our native 528-byte packing to the 656-byte
+  fp8_ds_mla cache ABI; the SGLang side now sizes device rows at 656
+  bytes with the scaled FP8 writer filling the first 528. Hunt-era
+  debug-only diagnostic commits were dropped from the carried series.
+- ROOT CAUSE FIX for the twin-stream hicache crash: the hybrid
+  mamba-model cache assembly built the MLA host pool without
+  override_kv_cache_dim, so hierarchical-cache backups and restores
+  copied kv_lora_rank+rope bytes per token (512 for GLM no-PE) while
+  device rows carry inline FP32 dequant scales beyond that. The scales
+  were never saved or restored; restored prefixes dequantized with
+  recycled page garbage, and any query whose sparse top-k selected
+  those tokens produced a deterministic whole-row NaN (crashing as
+  sampler NaN asserts or illegal memory access in the next layer's
+  top-k transform). The host pool now receives the device pool's real
+  kv_cache_dim.
+- Hardens the same surface: the sparse-MLA wrapper passes the exact
+  per-row valid candidate count instead of raw seq_lens (over-long
+  lengths let masked -1 pad candidates' gathered rows reach the value
+  MMA, where 0 x NaN still poisons the row), and retains the rc.69
+  layer-load synchronization fixes (all-producer waits, host-side
+  record watermark failing closed, unconditional mamba-COW wait).
+  Cache schema v54.
+
 ## v0.1.0-rc.69 (hicache layer-load synchronization race fixes, not yet built or qualified)
 
 - Root-causes and fixes the remaining twin-stream crash (NaN sampler

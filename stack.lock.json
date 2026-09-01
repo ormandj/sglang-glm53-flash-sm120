@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 69,
-    "candidate_tag": "v0.1.0-rc.69",
+    "candidate": 70,
+    "candidate_tag": "v0.1.0-rc.70",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v53"
+    "cache_schema": "v54"
   },
   "image": {
-    "tag": "v0.1.0-rc.69",
+    "tag": "v0.1.0-rc.70",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,11 +49,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "69"
+      "value": "70"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v53"
+      "value": "v54"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -77,19 +77,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "5ab97c4f441462f3d2adb1ffa954cc92518beece"
+      "value": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "ed9070a3b150aaab5f9417b398817bacd823689a"
+      "value": "3babfd36d877df796283b229eb96145e7846750f"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "a77ef51eed7561b811c514974d353ab6e0e323f0"
+      "value": "cc0064ee5be0a580bb61d00c0266d32fdcc43659"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "a3f143566d5325e33646344ba922bac2e65e72f0389644042476937eec38a4e0"
+      "value": "626b2328ba48af3d8af4ef9e8646ea9858f7e16fdb9404371433e643e2227abf"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -101,19 +101,19 @@
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "231f70828dfe93f5bbba7f0360a64435a7a846be"
+      "value": "286eee4e2999a825716eab68e597cb1ee0881e1b"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "5bf33e0d8bedac8ab72cea7012326414a45ccd0a"
+      "value": "ff920cf35c77ffba88aabf19fc3fe815dd998d93"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "411d1cb5884621f74d96da6fee1b982b09d9d747"
+      "value": "bdc33c22f0e0c8e16321890ed3ebb2b82f4afdce"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "f5ebdf9ace91c6ac24b0efe94cce7252de1141214899b9c3e2fa83688f78d33f"
+      "value": "05f3b12ae578cb2bfec2951de94c3f63d2f8afc6eb7eed613ca5ebea80db97f6"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -147,11 +147,11 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "5ab97c4f441462f3d2adb1ffa954cc92518beece",
-      "upstream_tree": "ed9070a3b150aaab5f9417b398817bacd823689a",
-      "tree": "a77ef51eed7561b811c514974d353ab6e0e323f0",
+      "head": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b",
+      "upstream_tree": "3babfd36d877df796283b229eb96145e7846750f",
+      "tree": "cc0064ee5be0a580bb61d00c0266d32fdcc43659",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "a3f143566d5325e33646344ba922bac2e65e72f0389644042476937eec38a4e0",
+      "patch_sha256": "626b2328ba48af3d8af4ef9e8646ea9858f7e16fdb9404371433e643e2227abf",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260830",
       "working_head": "40d0be2bfdf06b8cb4815b27c789d90c25bb6f5b",
@@ -205,11 +205,11 @@
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
       "package_version": "0.6.18",
-      "head": "231f70828dfe93f5bbba7f0360a64435a7a846be",
-      "upstream_tree": "5bf33e0d8bedac8ab72cea7012326414a45ccd0a",
-      "tree": "411d1cb5884621f74d96da6fee1b982b09d9d747",
+      "head": "286eee4e2999a825716eab68e597cb1ee0881e1b",
+      "upstream_tree": "ff920cf35c77ffba88aabf19fc3fe815dd998d93",
+      "tree": "bdc33c22f0e0c8e16321890ed3ebb2b82f4afdce",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "f5ebdf9ace91c6ac24b0efe94cce7252de1141214899b9c3e2fa83688f78d33f",
+      "patch_sha256": "05f3b12ae578cb2bfec2951de94c3f63d2f8afc6eb7eed613ca5ebea80db97f6",
       "working_repository": "https://git.home.corenode.com/homelab/flashinfer.git",
       "working_branch": "integration/glm53-main-20260830",
       "working_head": "a41d12bfa2d6691184211c738aa0d56ef114aeaa",
