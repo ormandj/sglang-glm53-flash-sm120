@@ -11,6 +11,7 @@ on:
       - release.json
       - stack.lock.json
       - patches/**
+      - acceptance_check.py
 
 env:
   CONTAINER_REGISTRY: git.home.corenode.com
