@@ -5754,7 +5754,7 @@ index 9309b3b6a9..d56bf517e2 100644
      if is_npu() and isinstance(token_to_kv_pool, DSV4NPUTokenToKVPool):
          from sglang.srt.disaggregation.ascend.conn import AscendStateType
 diff --git a/python/sglang/srt/entrypoints/http_server.py b/python/sglang/srt/entrypoints/http_server.py
-index 872d1b1691..dcd2b27796 100644
+index 872d1b1691..90515aa7e3 100644
 --- a/python/sglang/srt/entrypoints/http_server.py
 +++ b/python/sglang/srt/entrypoints/http_server.py
 @@ -2371,16 +2371,26 @@ def _freeze_gc_after_server_warmup(server_args: ServerArgs):
@@ -5794,6 +5794,44 @@ index 872d1b1691..dcd2b27796 100644
  
  
  def _wait_and_warmup(
+@@ -2406,6 +2416,7 @@ def _wait_and_warmup(
+     else:
+         _global_state.tokenizer_manager.server_status = ServerStatus.Up
+ 
++    _signal_serving_started(server_args)
+     _freeze_gc_after_server_warmup(server_args)
+ 
+     # The server is ready for requests
+@@ -2421,6 +2432,29 @@ def _wait_and_warmup(
+         launch_callback()
+ 
+ 
++def _signal_serving_started(server_args: ServerArgs) -> None:
++    """Tell the schedulers every warmup is done.
++
++    Custom ``--warmups`` run in the app lifespan and the default warmup runs
++    here; both deliberately load Triton kernels. Only loads after this point
++    are lazy first-uses at serving time, so the schedulers start the
++    late-load diagnostics now rather than at engine init. Best-effort.
++    """
++    headers = {}
++    if server_args.api_key:
++        headers["Authorization"] = f"Bearer {server_args.api_key}"
++    try:
++        requests.post(
++            server_args.url() + "/set_internal_state",
++            json={"server_args": {"triton_serving_started": 1}},
++            headers=headers,
++            timeout=30,
++            verify=False,
++        )
++    except Exception as e:
++        logger.warning("Could not signal serving start to the schedulers: %s", e)
++
++
+ def _wait_weights_ready():
+     """Wait for weights to be ready within the specified timeout."""
+     timeout = WAIT_WEIGHTS_READY_TIMEOUT
 diff --git a/python/sglang/srt/entrypoints/openai/protocol.py b/python/sglang/srt/entrypoints/openai/protocol.py
 index 109542667f..82a384a096 100644
 --- a/python/sglang/srt/entrypoints/openai/protocol.py
@@ -5971,10 +6009,10 @@ index 17ecfa782d..628b3d48d6 100644
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
 diff --git a/python/sglang/srt/entrypoints/warmup.py b/python/sglang/srt/entrypoints/warmup.py
-index 2608621f6a..88a3400ad6 100644
+index 2608621f6a..f49ab109af 100644
 --- a/python/sglang/srt/entrypoints/warmup.py
 +++ b/python/sglang/srt/entrypoints/warmup.py
-@@ -127,6 +127,109 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
+@@ -127,6 +127,133 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
          await tokenizer_manager.generate_request(generate_req_input, None).__anext__()
  
  
@@ -6036,15 +6074,39 @@ index 2608621f6a..88a3400ad6 100644
 +    phases = []
 +
 +    async def _cohort():
++        # Staggered decode lengths so the batch drains through every size
++        # (bs = max_running ... 1); staggered prompt lengths straddle the
++        # chunk boundary so concurrent chunked prefills coexist with decode.
 +        await asyncio.gather(
-+            *(_run(_request(input_ids=_ids(1536 + 64 * i))) for i in range(max_running))
++            *(
++                _run(
++                    _request(
++                        input_ids=_ids(chunk // 2 + (chunk // max_running) * i + 64 * i),
++                        max_new_tokens=32 + 40 * i,
++                    )
++                )
++                for i in range(max_running)
++            )
 +        )
 +
 +    phases.append((f"cohort(bs={max_running})", _cohort))
 +
++    async def _cold_cohort():
++        # Every request longer than one chunk: the write-plan / route-packing
++        # kernels specialize on the number of concurrent extends and on
++        # exact-chunk token counts, which the mixed cohort above misses.
++        await asyncio.gather(
++            *(
++                _run(_request(input_ids=_ids(chunk + 256 * i), max_new_tokens=16 + 24 * i))
++                for i in range(max_running)
++            )
++        )
++
++    phases.append((f"cold-cohort(bs={max_running})", _cold_cohort))
++
 +    async def _multichunk():
-+        for chunks in (1, 2, 3):
-+            await _run(_request(input_ids=_ids(chunk * chunks + 64), max_new_tokens=4))
++        for tokens in (chunk, chunk + 64, 2 * chunk, 2 * chunk + 64, 3 * chunk + 64):
++            await _run(_request(input_ids=_ids(tokens), max_new_tokens=4))
 +
 +    phases.append(("multichunk-prefill", _multichunk))
 +
@@ -16832,7 +16894,7 @@ index ae9fa0dc95..4b9ff8d15c 100644
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index bccbf46ad9..39a9cb8cba 100644
+index bccbf46ad9..61e3d37e4e 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -16902,7 +16964,7 @@ index bccbf46ad9..39a9cb8cba 100644
      def init_request_dispatcher(self):
          self._request_dispatcher = TypeBasedDispatcher(
              [
-@@ -1761,9 +1781,20 @@ class Scheduler(
+@@ -1761,8 +1781,22 @@ class Scheduler(
          """
          # Engine init (graph capture, warmups) is done; from here on any
          # Triton kernel device-load is a lazy first-use at serving time.
@@ -16914,16 +16976,19 @@ index bccbf46ad9..39a9cb8cba 100644
 +
 +        prewarm_scheduler_triton_kernels(self)
          triton_load_watch.install()
-         triton_load_watch.mark_serving_started()
- 
+-        triton_load_watch.mark_serving_started()
++        # The serving-started mark arrives via set_internal_state
++        # (``triton_serving_started``) once the HTTP layer finishes its
++        # warmups, so kernels the warmup deliberately loads are not reported
++        # as late loads; loads after that point are.
++
 +        # Snapshot allocator state while every capture-era block is still
 +        # alive; damaged addresses at runtime resolve against this dump.
 +        maybe_dump_memory_forensics("ready")
-+
+ 
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-             # not PyTorch MPS streams.
-@@ -3267,6 +3298,11 @@ class Scheduler(
+@@ -3267,6 +3301,11 @@ class Scheduler(
              # it. Drop the marker once the request is actually gone.
              if req.finished() or not req.kv.holds_kv:
                  self._pending_chunked_abort_req = None
@@ -16935,7 +17000,7 @@ index bccbf46ad9..39a9cb8cba 100644
              return
  
          prepare_abort(req, "Aborted")
-@@ -3420,6 +3456,7 @@ class Scheduler(
+@@ -3420,6 +3459,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -16943,7 +17008,7 @@ index bccbf46ad9..39a9cb8cba 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3646,6 +3683,9 @@ class Scheduler(
+@@ -3646,6 +3686,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -16953,7 +17018,7 @@ index bccbf46ad9..39a9cb8cba 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3731,10 +3771,22 @@ class Scheduler(
+@@ -3731,10 +3774,22 @@ class Scheduler(
                      req.kv.mamba_cow_src_index = None
                      req.kv.mamba_needs_clear = False
                      if req.kv.holds_mamba and not getattr(req, "session", None):
@@ -16979,7 +17044,7 @@ index bccbf46ad9..39a9cb8cba 100644
                  break
  
          if mamba_allocator is not None:
-@@ -3950,20 +4002,27 @@ class Scheduler(
+@@ -3950,20 +4005,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -17021,7 +17086,7 @@ index bccbf46ad9..39a9cb8cba 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -3976,12 +4035,11 @@ class Scheduler(
+@@ -3976,12 +4038,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -17039,7 +17104,7 @@ index bccbf46ad9..39a9cb8cba 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -3996,12 +4054,11 @@ class Scheduler(
+@@ -3996,12 +4057,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -17055,7 +17120,7 @@ index bccbf46ad9..39a9cb8cba 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4057,7 +4114,7 @@ class Scheduler(
+@@ -4057,7 +4117,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -17064,7 +17129,7 @@ index bccbf46ad9..39a9cb8cba 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4083,13 +4140,12 @@ class Scheduler(
+@@ -4083,13 +4143,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -17084,7 +17149,7 @@ index bccbf46ad9..39a9cb8cba 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4211,7 +4267,11 @@ class Scheduler(
+@@ -4211,7 +4270,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -17097,7 +17162,7 @@ index bccbf46ad9..39a9cb8cba 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4223,7 +4283,11 @@ class Scheduler(
+@@ -4223,7 +4286,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -17109,7 +17174,7 @@ index bccbf46ad9..39a9cb8cba 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4346,9 +4410,11 @@ class Scheduler(
+@@ -4346,9 +4413,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -17124,7 +17189,7 @@ index bccbf46ad9..39a9cb8cba 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4371,31 +4437,42 @@ class Scheduler(
+@@ -4371,31 +4440,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -17188,7 +17253,7 @@ index bccbf46ad9..39a9cb8cba 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4430,7 +4507,7 @@ class Scheduler(
+@@ -4430,7 +4510,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -17197,6 +17262,24 @@ index bccbf46ad9..39a9cb8cba 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
+@@ -4828,11 +4908,17 @@ class Scheduler(
+                 "speculative_accept_threshold_acc",
+                 "dspark_force_budget_frac",
+                 "dspark_clear_info_records",
++                "triton_serving_started",
+             ]
+         )
+ 
+         if_success = True
+         for k, v in server_args_dict.items():
++            if k == "triton_serving_started":
++                if v:
++                    triton_load_watch.mark_serving_started()
++                    logger.info("Serving warmup complete; late Triton loads now diagnosed.")
++                continue
+             if k not in args_allow_update:
+                 logging.warning(f"Updating {k} is not supported.")
+                 if_success = False
 diff --git a/python/sglang/srt/managers/tokenizer_manager.py b/python/sglang/srt/managers/tokenizer_manager.py
 index 895484239d..6026d8661b 100644
 --- a/python/sglang/srt/managers/tokenizer_manager.py

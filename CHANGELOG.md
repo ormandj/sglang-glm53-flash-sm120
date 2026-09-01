@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.1-rc.4 (late-load diagnostics after warmup, wider warmup shapes; not yet built or qualified)
+
+- The scheduler's "Triton kernel device-loaded after serving started"
+  diagnostic now starts after the HTTP layer's warmups finish (a
+  `triton_serving_started` internal-state signal from `_wait_and_warmup`)
+  instead of at engine init, so the kernels the warmup deliberately loads
+  are no longer reported; rc.3 logged 60 such lines during its own warmup.
+- `serving_coverage` covers more of what real traffic specializes on: the
+  cohort now drains through every batch size (staggered decode lengths)
+  with prompts straddling the chunk boundary, a second cold cohort runs
+  every request longer than one chunk (write-plan and route-packing
+  variants keyed on concurrent extends), and the single-request prefills
+  hit exact chunk multiples as well as chunk+64. rc.3 still loaded 32
+  specializations under the first real traffic.
+- rc.3 acceptance on quasar: image request 1.8 s steady-state, then four
+  simultaneous cold 4k requests complete with no OOM; only the two rank
+  processes hold GPU memory.
+
 ## v0.1.1-rc.3 (real-path serving warmup; not yet built or qualified)
 
 - Adds the `serving_coverage` warmup (`--warmups serving_coverage`, now the
