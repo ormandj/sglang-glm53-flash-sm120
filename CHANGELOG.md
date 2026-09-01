@@ -1,5 +1,67 @@
 # Changelog
 
+## v0.1.1-rc.1 (DSA radix top-k correctness and crash fix, not yet built or qualified)
+
+- Fixes `kpool_topk_transform_kernel` (`kernels/jit/csrc/dsa/kpool_topk_transform.cuh`),
+  the DSA kpool indexer's radix top-k, with three defects that together
+  explain the recurring "illegal memory access in the DSA top-k
+  transform" crashes (Xid 31/Xid 13 Warp Out-of-range Address, both TP
+  ranks simultaneously, asynchronously reported at the next scheduler
+  sync; see issues #2 and #3):
+  - **Arrival-order clip (correctness).** A stage-1 radix bin larger
+    than the 4096-entry stash kept candidates by atomic arrival order
+    and silently dropped the rest regardless of value. On tight score
+    clusters (repetitive content, agentic tool-schema payloads,
+    whole-row NaN from any source) this discarded true top-K members:
+    286/512 wrong selections measured on a synthetic cluster row, 289
+    predicted from the clip ratio. Adds an overflow descent that narrows
+    the threshold bin across the remaining radix bytes (re-scanning the
+    row under the chosen byte path) until the bin fits; at full 32-bit
+    key equality any subset is a valid answer, so the terminal clip is
+    exact. Fast path unchanged.
+  - **Key-space mismatch (correctness).** Stage 1 partitioned on the
+    FP16-truncated key byte while every refine round used FP32
+    monotonic-key bytes. Stage 1 now uses the FP32 key's top byte so
+    the whole descent is one consistent radix tree. (Consequence: refine
+    round 0 is now always degenerate — every stash member shares byte
+    24 — and could start at byte 16 in a later change.)
+  - **Conditional state (crash).** Selection-structure shared state was
+    assigned only inside threshold-finder branches; in degenerate rounds
+    no thread satisfies the condition, the refine stash counter carries
+    the previous round's count, and since the compiler proves
+    `pos < SMEM_INPUT_SIZE` from exactly that reset (and eliminates the
+    source guard), the stash store walks off the shared window.
+    Coredump evidence: `STS` at shared offset 39,204 against a
+    39,184-byte window (pos = 4101 = cap + 5). All selection state
+    (`s_threshold_bin_id`, `s_counter`, `s_num_input[*]`,
+    `s_last_remain`) is now initialized unconditionally; a missing
+    finder degrades to a defined, bounded path; `index[pos]` writes are
+    bounded by K on both sides; selection slots are initialized to -1
+    and the expansion emits -1 pad columns (skipping page-table
+    arithmetic) for unfilled slots; `static_assert(K <
+    SMEM_INPUT_SIZE)` added.
+- Validation: differential oracle against torch.topk over 12,000+
+  randomized structured rows (discrete levels, tight clusters, exact
+  ties, uniform, ragged lengths to 65k) with exact value-set equality;
+  compute-sanitizer memcheck clean on the previously failing
+  distributions; system-level on the rc.71 image plus this kernel: the
+  issue-#3 crash workload (4x ~160k prefills forcing eviction, then a
+  173,504-token host-tier restore with concurrent decode) passes 3/3,
+  restore TTFT 20.4s -> 1.4s at 157k. Review hardening items and the
+  extended sanitizer matrix (all-tied 65k, per-byte-depth clusters,
+  length = K+1, +-0/subnormal/inf/NaN rows, page-table expansion) per
+  the PR #4 review.
+- Credit: root cause, patch, and validation by @bold84; review and
+  hardening list by @ormandj; crash signatures from @sousekd's #2 and
+  the coredump-instrumented repro in #3.
+- Cache schema v54 unchanged (the JIT cache key recompiles the kernel
+  from source; no cache-directory migration).
+- Working-fork note: the internal integration branch was unreachable
+  when this candidate was cut; the patch was regenerated from the
+  verified v0.1.0-rc.71 patch plus the kernel fix, and
+  `verify-patches.sh` reproduces the recorded trees from upstream
+  sources alone. `working_head` is stale until the fork is updated.
+
 ## v0.1.0 (stable)
 
 - Digest-identical promotion of `v0.1.0-rc.71`. Validation summary:
