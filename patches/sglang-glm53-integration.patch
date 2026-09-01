@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index 7c068cb..def305b 100644
+index 7c068cb49a..def305b5d4 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -282,3 +282,4 @@ artifacts/
@@ -9,7 +9,7 @@ index 7c068cb..def305b 100644
 +.trellis
 diff --git a/benchmark/kernels/bench_kda_verify_sweep.py b/benchmark/kernels/bench_kda_verify_sweep.py
 new file mode 100644
-index 0000000..2990acd
+index 0000000000..2990acd505
 --- /dev/null
 +++ b/benchmark/kernels/bench_kda_verify_sweep.py
 @@ -0,0 +1,285 @@
@@ -300,7 +300,7 @@ index 0000000..2990acd
 +    main()
 diff --git a/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh b/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh
 new file mode 100644
-index 0000000..32a2849
+index 0000000000..32a28493d9
 --- /dev/null
 +++ b/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh
 @@ -0,0 +1,626 @@
@@ -931,7 +931,7 @@ index 0000000..32a2849
 +
 +}  // namespace sglang
 diff --git a/python/sglang/kernels/ops/attention/__init__.py b/python/sglang/kernels/ops/attention/__init__.py
-index 674cbd5..b7516f9 100644
+index 674cbd50df..b7516f92db 100644
 --- a/python/sglang/kernels/ops/attention/__init__.py
 +++ b/python/sglang/kernels/ops/attention/__init__.py
 @@ -95,6 +95,7 @@ for _mod, _fn in [
@@ -943,7 +943,7 @@ index 674cbd5..b7516f9 100644
      ("dsv4.fp4_indexer", "quantize_fp4_indexer_tensor"),
      ("dsv4.fp4_indexer", "store_fp4_index_k_cache"),
 diff --git a/python/sglang/kernels/ops/attention/dsa/quant_k_cache.py b/python/sglang/kernels/ops/attention/dsa/quant_k_cache.py
-index adaa948..d7b1e5a 100644
+index adaa948e1e..d7b1e5a50c 100644
 --- a/python/sglang/kernels/ops/attention/dsa/quant_k_cache.py
 +++ b/python/sglang/kernels/ops/attention/dsa/quant_k_cache.py
 @@ -3,6 +3,57 @@ import triton
@@ -1060,7 +1060,7 @@ index adaa948..d7b1e5a 100644
      # Kernel launch parameters
      num_blocks_per_token = triton.cdiv(dim_nope + dim_rope, group_size)
 diff --git a/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py b/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py
-index d2dc851..d9f3417 100644
+index d2dc851325..d9f34172b4 100644
 --- a/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py
 +++ b/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py
 @@ -71,6 +71,24 @@ def fast_round_scale(amax, fp8_max_inv):
@@ -1369,7 +1369,7 @@ index d2dc851..d9f3417 100644
  
  
 diff --git a/python/sglang/kernels/ops/attention/dsa/transform_index.py b/python/sglang/kernels/ops/attention/dsa/transform_index.py
-index 2d7dd10..8fbfa19 100644
+index 2d7dd105e1..8fbfa190f5 100644
 --- a/python/sglang/kernels/ops/attention/dsa/transform_index.py
 +++ b/python/sglang/kernels/ops/attention/dsa/transform_index.py
 @@ -14,6 +14,58 @@ def transform_index_page_table_decode(**kwargs):
@@ -1432,7 +1432,7 @@ index 2d7dd10..8fbfa19 100644
      topk_indices: torch.Tensor,
      real_num_tokens: int,
 diff --git a/python/sglang/kernels/ops/attention/dsa_metadata.py b/python/sglang/kernels/ops/attention/dsa_metadata.py
-index 21a1fed..cc79645 100644
+index 21a1fedb44..cc79645d70 100644
 --- a/python/sglang/kernels/ops/attention/dsa_metadata.py
 +++ b/python/sglang/kernels/ops/attention/dsa_metadata.py
 @@ -4,12 +4,35 @@ import torch
@@ -2100,7 +2100,7 @@ index 21a1fed..cc79645 100644
          has_real_page_table,
          has_page_table_1,
 diff --git a/python/sglang/kernels/ops/attention/dsv4/topk.py b/python/sglang/kernels/ops/attention/dsv4/topk.py
-index f0a171d..b02ec59 100644
+index f0a171d4ce..b02ec59634 100644
 --- a/python/sglang/kernels/ops/attention/dsv4/topk.py
 +++ b/python/sglang/kernels/ops/attention/dsv4/topk.py
 @@ -75,7 +75,11 @@ def topk_transform_512(
@@ -2139,7 +2139,7 @@ index f0a171d..b02ec59 100644
  
  def topk_transform_ragged_v2(
 diff --git a/python/sglang/kernels/ops/attention/fla/chunk_intra.py b/python/sglang/kernels/ops/attention/fla/chunk_intra.py
-index 454eba0..ac6eec0 100644
+index 454eba022e..ac6eec0fcc 100644
 --- a/python/sglang/kernels/ops/attention/fla/chunk_intra.py
 +++ b/python/sglang/kernels/ops/attention/fla/chunk_intra.py
 @@ -24,27 +24,105 @@ else:
@@ -2516,7 +2516,7 @@ index 454eba0..ac6eec0 100644
 +    )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py b/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py
-index dfb5bc0..5d4a014 100644
+index dfb5bc0efc..5d4a0147ba 100644
 --- a/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py
 +++ b/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py
 @@ -16,6 +16,12 @@ kernels. Requires ``T >= kernel_width - 1`` (the rolled conv state is then
@@ -2678,7 +2678,7 @@ index dfb5bc0..5d4a014 100644
          # higher values must be re-validated for bit-exactness before use.
          num_warps=num_warps,
 diff --git a/python/sglang/kernels/ops/attention/fla/kda.py b/python/sglang/kernels/ops/attention/fla/kda.py
-index c5d2def..1accc2a 100644
+index c5d2defc1b..1accc2afb9 100644
 --- a/python/sglang/kernels/ops/attention/fla/kda.py
 +++ b/python/sglang/kernels/ops/attention/fla/kda.py
 @@ -13,7 +13,10 @@ import triton
@@ -2881,7 +2881,7 @@ index c5d2def..1accc2a 100644
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 6f39fa0..f422c10 100644
+index 6f39fa05b2..f422c100ba 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 @@ -28,8 +28,13 @@ _is_hip = is_hip()
@@ -3032,7 +3032,7 @@ index 6f39fa0..f422c10 100644
 -    return result.squeeze(1)
 +    return output
 diff --git a/python/sglang/kernels/ops/attention/utils.py b/python/sglang/kernels/ops/attention/utils.py
-index d70fe65..baa7dd2 100644
+index d70fe65a1a..baa7dd27a7 100644
 --- a/python/sglang/kernels/ops/attention/utils.py
 +++ b/python/sglang/kernels/ops/attention/utils.py
 @@ -180,6 +180,27 @@ def mla_quantize_and_rope_for_fp8(
@@ -3064,7 +3064,7 @@ index d70fe65..baa7dd2 100644
      q_nope: torch.Tensor,
      q_rope: torch.Tensor,
 diff --git a/python/sglang/kernels/ops/kvcache/mla_buffer.py b/python/sglang/kernels/ops/kvcache/mla_buffer.py
-index ba9b7a5..6ed36d5 100644
+index ba9b7a5c8c..6ed36d5e8a 100644
 --- a/python/sglang/kernels/ops/kvcache/mla_buffer.py
 +++ b/python/sglang/kernels/ops/kvcache/mla_buffer.py
 @@ -1,5 +1,7 @@
@@ -3239,7 +3239,7 @@ index ba9b7a5..6ed36d5 100644
          kv_buffer,
          cache_k_nope,
 diff --git a/python/sglang/kernels/ops/layernorm/mhc.py b/python/sglang/kernels/ops/layernorm/mhc.py
-index 35a62eb..c6ece3b 100644
+index 35a62ebe3a..c6ece3bc1a 100644
 --- a/python/sglang/kernels/ops/layernorm/mhc.py
 +++ b/python/sglang/kernels/ops/layernorm/mhc.py
 @@ -19,6 +19,21 @@ from sglang.srt.layers.attention.dsa.utils import is_dsa_prefill_cp_round_robin_
@@ -3564,7 +3564,7 @@ index 35a62eb..c6ece3b 100644
      hc_fn: torch.Tensor,
 diff --git a/python/sglang/kernels/ops/moe/kpool_topk_transform.py b/python/sglang/kernels/ops/moe/kpool_topk_transform.py
 new file mode 100644
-index 0000000..a3bfd04
+index 0000000000..a3bfd04fcc
 --- /dev/null
 +++ b/python/sglang/kernels/ops/moe/kpool_topk_transform.py
 @@ -0,0 +1,80 @@
@@ -3649,7 +3649,7 @@ index 0000000..a3bfd04
 +    )
 +    return dst_token_indices
 diff --git a/python/sglang/kernels/ops/speculative/eagle.py b/python/sglang/kernels/ops/speculative/eagle.py
-index 1034289..b8051a6 100644
+index 10342899ce..b8051a6f08 100644
 --- a/python/sglang/kernels/ops/speculative/eagle.py
 +++ b/python/sglang/kernels/ops/speculative/eagle.py
 @@ -89,3 +89,65 @@ def fill_accept_out_cache_loc_func(
@@ -3719,7 +3719,7 @@ index 1034289..b8051a6 100644
 +    )
 +    return last_correct, (steps_to_track if has_track else None)
 diff --git a/python/sglang/srt/arg_groups/model_hook.py b/python/sglang/srt/arg_groups/model_hook.py
-index 408a4c9..6848d21 100644
+index 408a4c9575..6848d2129e 100644
 --- a/python/sglang/srt/arg_groups/model_hook.py
 +++ b/python/sglang/srt/arg_groups/model_hook.py
 @@ -38,12 +38,28 @@ from sglang.srt.runtime_context import get_platform
@@ -3760,7 +3760,7 @@ index 408a4c9..6848d21 100644
      if model_arch == "InternS2MobiusForConditionalGeneration":
          unsupported = []
 diff --git a/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py b/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py
-index e50d65b..537f283 100644
+index e50d65be17..537f283f68 100644
 --- a/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py
 +++ b/python/sglang/srt/arg_groups/model_overrides/deepseek_v2.py
 @@ -1,6 +1,6 @@
@@ -3780,7 +3780,7 @@ index e50d65b..537f283 100644
      "LongcatFlashForCausalLMNextN",
      "Dots3NoteForCausalLM",
 diff --git a/python/sglang/srt/arg_groups/overrides.py b/python/sglang/srt/arg_groups/overrides.py
-index 9debcb6..641d36a 100644
+index 9debcb6d77..641d36aff6 100644
 --- a/python/sglang/srt/arg_groups/overrides.py
 +++ b/python/sglang/srt/arg_groups/overrides.py
 @@ -511,6 +511,7 @@ _MAMBA_RADIX_CACHE_ARCHS = frozenset(
@@ -3897,7 +3897,7 @@ index 9debcb6..641d36a 100644
          "LongcatFlashForCausalLMNextN",
          "Dots3NoteForCausalLM",
 diff --git a/python/sglang/srt/configs/__init__.py b/python/sglang/srt/configs/__init__.py
-index 4927609..be3c3fe 100644
+index 492760909b..be3c3fe863 100644
 --- a/python/sglang/srt/configs/__init__.py
 +++ b/python/sglang/srt/configs/__init__.py
 @@ -9,6 +9,7 @@ from sglang.srt.configs.dots_ocr import DotsOCRConfig
@@ -3919,7 +3919,7 @@ index 4927609..be3c3fe 100644
      "KimiK25Config",
 diff --git a/python/sglang/srt/configs/glm5_next.py b/python/sglang/srt/configs/glm5_next.py
 new file mode 100644
-index 0000000..ddeaf0e
+index 0000000000..ddeaf0efda
 --- /dev/null
 +++ b/python/sglang/srt/configs/glm5_next.py
 @@ -0,0 +1,349 @@
@@ -4273,7 +4273,7 @@ index 0000000..ddeaf0e
 +            if hasattr(self.text_config, key):
 +                setattr(self, key, getattr(self.text_config, key))
 diff --git a/python/sglang/srt/configs/hybrid_arch.py b/python/sglang/srt/configs/hybrid_arch.py
-index 5f1b3cc..8e5c615 100644
+index 5f1b3cc3cc..8e5c6155d6 100644
 --- a/python/sglang/srt/configs/hybrid_arch.py
 +++ b/python/sglang/srt/configs/hybrid_arch.py
 @@ -113,6 +113,13 @@ def kimi_linear_config(model_config: ModelConfig):
@@ -4299,7 +4299,7 @@ index 5f1b3cc..8e5c615 100644
      )
      if existing:
 diff --git a/python/sglang/srt/configs/model_config.py b/python/sglang/srt/configs/model_config.py
-index 1682879..583192b 100644
+index 1682879d36..583192b154 100644
 --- a/python/sglang/srt/configs/model_config.py
 +++ b/python/sglang/srt/configs/model_config.py
 @@ -130,6 +130,8 @@ def is_deepseek_dsa(config) -> bool:
@@ -4450,7 +4450,7 @@ index 1682879..583192b 100644
      "LLaDAModelLM",
  ]
 diff --git a/python/sglang/srt/configs/qwen3_asr.py b/python/sglang/srt/configs/qwen3_asr.py
-index cb3252b..bf2ce3a 100644
+index cb3252b3d4..bf2ce3a074 100644
 --- a/python/sglang/srt/configs/qwen3_asr.py
 +++ b/python/sglang/srt/configs/qwen3_asr.py
 @@ -164,5 +164,5 @@ class Qwen3ASRConfig(PretrainedConfig):
@@ -4462,7 +4462,7 @@ index cb3252b..bf2ce3a 100644
 +AutoConfig.register("qwen3_asr", Qwen3ASRConfig, exist_ok=True)
 +AutoConfig.register("qwen3_asr_thinker", Qwen3ASRThinkerConfig, exist_ok=True)
 diff --git a/python/sglang/srt/disaggregation/base/conn.py b/python/sglang/srt/disaggregation/base/conn.py
-index 1dedb16..a09daaf 100644
+index 1dedb16ebe..a09daafebc 100644
 --- a/python/sglang/srt/disaggregation/base/conn.py
 +++ b/python/sglang/srt/disaggregation/base/conn.py
 @@ -18,6 +18,9 @@ class StateType(str, enum.Enum):
@@ -4476,7 +4476,7 @@ index 1dedb16..a09daaf 100644
      # DeepSeek-V4 unified_kv SWA ring: addressed per-row by ring slot
      # (req_pool_idx * ring_stride + pos % ring_stride), needs its own component.
 diff --git a/python/sglang/srt/disaggregation/decode.py b/python/sglang/srt/disaggregation/decode.py
-index ed5f836..af6372f 100644
+index ed5f836e22..af6372fa7c 100644
 --- a/python/sglang/srt/disaggregation/decode.py
 +++ b/python/sglang/srt/disaggregation/decode.py
 @@ -53,6 +53,7 @@ from sglang.srt.disaggregation.utils import (
@@ -4573,7 +4573,7 @@ index ed5f836..af6372f 100644
                  StateType.SWA_RING: _swa_ring_payload,
                  StateType.C128_STATE: _c128_state_payload,
 diff --git a/python/sglang/srt/disaggregation/encoder/preprocessor.py b/python/sglang/srt/disaggregation/encoder/preprocessor.py
-index f05229d..6fd7c72 100644
+index f05229d8b6..6fd7c7215e 100644
 --- a/python/sglang/srt/disaggregation/encoder/preprocessor.py
 +++ b/python/sglang/srt/disaggregation/encoder/preprocessor.py
 @@ -11,6 +11,7 @@ import concurrent.futures
@@ -4853,7 +4853,7 @@ index f05229d..6fd7c72 100644
      async def _flatten_and_load_audios(self, mm_items):
          return await self._flatten_and_load_data_by_modality(mm_items, Modality.AUDIO)
 diff --git a/python/sglang/srt/disaggregation/encoder/receiver.py b/python/sglang/srt/disaggregation/encoder/receiver.py
-index fd5a856..36a62fb 100644
+index fd5a8564d0..36a62fb01f 100644
 --- a/python/sglang/srt/disaggregation/encoder/receiver.py
 +++ b/python/sglang/srt/disaggregation/encoder/receiver.py
 @@ -1888,6 +1888,7 @@ class MMReceiverBase(ABC):
@@ -4887,7 +4887,7 @@ index fd5a856..36a62fb 100644
      async def _recv_mm_data(self, req_id, recv_socket, mm_processor, prompt):
          """zmq_to_tokenizer receive: embedding parts arrive as 2-frame ZMQ
 diff --git a/python/sglang/srt/disaggregation/mooncake/conn.py b/python/sglang/srt/disaggregation/mooncake/conn.py
-index afcc0ac..f167cb1 100644
+index afcc0ac479..f167cb1648 100644
 --- a/python/sglang/srt/disaggregation/mooncake/conn.py
 +++ b/python/sglang/srt/disaggregation/mooncake/conn.py
 @@ -47,9 +47,12 @@ from sglang.srt.disaggregation.mooncake.utils import (
@@ -5011,7 +5011,7 @@ index afcc0ac..f167cb1 100644
                              dst_ranks_infos.append(
                                  (req.endpoint, req.dst_port, req.room)
 diff --git a/python/sglang/srt/disaggregation/nixl/conn.py b/python/sglang/srt/disaggregation/nixl/conn.py
-index f4f49c3..bbffeb4 100644
+index f4f49c3bad..bbffeb4a45 100644
 --- a/python/sglang/srt/disaggregation/nixl/conn.py
 +++ b/python/sglang/srt/disaggregation/nixl/conn.py
 @@ -41,9 +41,13 @@ from sglang.srt.disaggregation.common.utils import (
@@ -5322,7 +5322,7 @@ index f4f49c3..bbffeb4 100644
  
      def add_transfer_request(
 diff --git a/python/sglang/srt/disaggregation/prefill.py b/python/sglang/srt/disaggregation/prefill.py
-index 404a9d0..0420df6 100644
+index 404a9d07f5..0420df6828 100644
 --- a/python/sglang/srt/disaggregation/prefill.py
 +++ b/python/sglang/srt/disaggregation/prefill.py
 @@ -45,6 +45,7 @@ from sglang.srt.disaggregation.utils import (
@@ -5364,7 +5364,7 @@ index 404a9d0..0420df6 100644
                  StateType.SWA_RING: _swa_ring_payload,
                  StateType.C128_STATE: _c128_state_payload,
 diff --git a/python/sglang/srt/disaggregation/utils.py b/python/sglang/srt/disaggregation/utils.py
-index 9309b3b..d56bf51 100644
+index 9309b3b6a9..d56bf517e2 100644
 --- a/python/sglang/srt/disaggregation/utils.py
 +++ b/python/sglang/srt/disaggregation/utils.py
 @@ -19,7 +19,7 @@ import numpy as np
@@ -5754,7 +5754,7 @@ index 9309b3b..d56bf51 100644
      if is_npu() and isinstance(token_to_kv_pool, DSV4NPUTokenToKVPool):
          from sglang.srt.disaggregation.ascend.conn import AscendStateType
 diff --git a/python/sglang/srt/entrypoints/http_server.py b/python/sglang/srt/entrypoints/http_server.py
-index 872d1b1..dcd2b27 100644
+index 872d1b1691..dcd2b27796 100644
 --- a/python/sglang/srt/entrypoints/http_server.py
 +++ b/python/sglang/srt/entrypoints/http_server.py
 @@ -2371,16 +2371,26 @@ def _freeze_gc_after_server_warmup(server_args: ServerArgs):
@@ -5795,7 +5795,7 @@ index 872d1b1..dcd2b27 100644
  
  def _wait_and_warmup(
 diff --git a/python/sglang/srt/entrypoints/openai/protocol.py b/python/sglang/srt/entrypoints/openai/protocol.py
-index 1095426..82a384a 100644
+index 109542667f..82a384a096 100644
 --- a/python/sglang/srt/entrypoints/openai/protocol.py
 +++ b/python/sglang/srt/entrypoints/openai/protocol.py
 @@ -566,6 +566,10 @@ class ChatCompletionMessageContentVideoURL(BaseModel):
@@ -5810,7 +5810,7 @@ index 1095426..82a384a 100644
  
  class ChatCompletionMessageContentAudioURL(BaseModel):
 diff --git a/python/sglang/srt/entrypoints/openai/serving_chat.py b/python/sglang/srt/entrypoints/openai/serving_chat.py
-index 17ecfa7..628b3d4 100644
+index 17ecfa782d..628b3d48d6 100644
 --- a/python/sglang/srt/entrypoints/openai/serving_chat.py
 +++ b/python/sglang/srt/entrypoints/openai/serving_chat.py
 @@ -4,6 +4,7 @@ import copy
@@ -5971,7 +5971,7 @@ index 17ecfa7..628b3d4 100644
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 70b2af6..5105c45 100644
+index 70b2af61ed..5105c45a3d 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -1296,6 +1296,11 @@ class Envs:
@@ -6004,7 +6004,7 @@ index 70b2af6..5105c45 100644
      SGLANG_DSA_TOPK_FLASHINFER_TIE_BREAK = EnvStr(None)
      SGLANG_DSA_PREFILL_DENSE_ATTN_KV_LEN_THRESHOLD = EnvIntWithAlias(
 diff --git a/python/sglang/srt/hardware_backend/npu/memory_pool_npu.py b/python/sglang/srt/hardware_backend/npu/memory_pool_npu.py
-index 7d8dcb6..e06dc28 100644
+index 7d8dcb6f4a..e06dc28219 100644
 --- a/python/sglang/srt/hardware_backend/npu/memory_pool_npu.py
 +++ b/python/sglang/srt/hardware_backend/npu/memory_pool_npu.py
 @@ -356,7 +356,7 @@ class NPUMHATokenToKVPool(MHATokenToKVPool):
@@ -6048,7 +6048,7 @@ index 7d8dcb6..e06dc28 100644
          chunk_size = self.cpu_offloading_chunk_size
          has_ik = self.index_head_dim is not None
 diff --git a/python/sglang/srt/layers/attention/attention_registry.py b/python/sglang/srt/layers/attention/attention_registry.py
-index d60c4de..62eec01 100644
+index d60c4de0bb..62eec01555 100644
 --- a/python/sglang/srt/layers/attention/attention_registry.py
 +++ b/python/sglang/srt/layers/attention/attention_registry.py
 @@ -7,6 +7,7 @@ from sglang.srt.arg_groups.overrides import (
@@ -6069,7 +6069,7 @@ index d60c4de..62eec01 100644
              linear_attn_backend = LightningAttentionBackend(runner)
          else:
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_backend_mtp_precompute.py b/python/sglang/srt/layers/attention/dsa/dsa_backend_mtp_precompute.py
-index e4b90b7..5160df6 100644
+index e4b90b7efe..5160df62e3 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_backend_mtp_precompute.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_backend_mtp_precompute.py
 @@ -35,6 +35,7 @@ class PrecomputedMetadata:
@@ -6170,7 +6170,7 @@ index e4b90b7..5160df6 100644
              real_page_table=real_page_table,
              seqlens_expanded=seqlens_expanded,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
-index 4f630c1..0d3c197 100644
+index 4f630c1247..0d3c197703 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 @@ -39,6 +39,9 @@ from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph.context
@@ -6539,7 +6539,7 @@ index 4f630c1..0d3c197 100644
                  self.index_topk,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000..56f2a6e
+index 0000000000..56f2a6efaa
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 @@ -0,0 +1,1955 @@
@@ -8500,7 +8500,7 @@ index 0000000..56f2a6e
 +        return topk_result
 diff --git a/python/sglang/srt/layers/attention/dsa/graph_buffer_lifetime.py b/python/sglang/srt/layers/attention/dsa/graph_buffer_lifetime.py
 new file mode 100644
-index 0000000..08adcc7
+index 0000000000..08adcc7ae2
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/graph_buffer_lifetime.py
 @@ -0,0 +1,133 @@
@@ -8639,7 +8639,7 @@ index 0000000..08adcc7
 +    return list(_records), list(_owners)
 diff --git a/python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py b/python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py
 new file mode 100644
-index 0000000..88983ea
+index 0000000000..88983eab1e
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py
 @@ -0,0 +1,1738 @@
@@ -10383,7 +10383,7 @@ index 0000000..88983ea
 +    )
 diff --git a/python/sglang/srt/layers/attention/dsa/kpool_plan.py b/python/sglang/srt/layers/attention/dsa/kpool_plan.py
 new file mode 100644
-index 0000000..8ef618b
+index 0000000000..8ef618b2aa
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/kpool_plan.py
 @@ -0,0 +1,871 @@
@@ -11259,7 +11259,7 @@ index 0000000..8ef618b
 +    )
 +    return metadata
 diff --git a/python/sglang/srt/layers/attention/dsa/utils.py b/python/sglang/srt/layers/attention/dsa/utils.py
-index e469a61..1b95e75 100644
+index e469a61162..1b95e753fd 100644
 --- a/python/sglang/srt/layers/attention/dsa/utils.py
 +++ b/python/sglang/srt/layers/attention/dsa/utils.py
 @@ -2,10 +2,19 @@ from functools import lru_cache
@@ -11673,7 +11673,7 @@ index e469a61..1b95e75 100644
      return torch.pow(2.0, torch.ceil(torch.log2(x.abs())))
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 9369ad2..8bcd477 100644
+index 9369ad2896..8bcd477fa2 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -1,9 +1,10 @@
@@ -13722,7 +13722,7 @@ index 9369ad2..8bcd477 100644
      def init_forward_metadata_in_graph(self, forward_batch: ForwardBatch) -> None:
          for i in range(self.speculative_num_steps - 1):
 diff --git a/python/sglang/srt/layers/attention/flashattention_backend.py b/python/sglang/srt/layers/attention/flashattention_backend.py
-index 34cdbfa..9d64f80 100644
+index 34cdbfae0c..9d64f80f5e 100644
 --- a/python/sglang/srt/layers/attention/flashattention_backend.py
 +++ b/python/sglang/srt/layers/attention/flashattention_backend.py
 @@ -23,6 +23,7 @@ from sglang.srt.layers.cp.base import CPAttentionBackendKind, get_cp_strategy
@@ -13976,7 +13976,7 @@ index 34cdbfa..9d64f80 100644
                  o, _ = merge_state_v2(
                      o,
 diff --git a/python/sglang/srt/layers/attention/flashinfer_mla_backend.py b/python/sglang/srt/layers/attention/flashinfer_mla_backend.py
-index 39f8510..381ffac 100644
+index 39f8510f5f..381ffac203 100644
 --- a/python/sglang/srt/layers/attention/flashinfer_mla_backend.py
 +++ b/python/sglang/srt/layers/attention/flashinfer_mla_backend.py
 @@ -20,10 +20,11 @@ More details can be found in https://docs.flashinfer.ai/api/mla.html
@@ -14443,7 +14443,7 @@ index 39f8510..381ffac 100644
  
  
 diff --git a/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py b/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py
-index 126e48b..44e9f31 100644
+index 126e48bdd2..44e9f31172 100644
 --- a/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py
 +++ b/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py
 @@ -55,6 +55,9 @@ class MambaAttnBackendBase(AttentionBackend):
@@ -14580,7 +14580,7 @@ index 126e48b..44e9f31 100644
          for attn_backend in self.attn_backend_list:
              attn_backend.init_cuda_graph_state(max_bs, max_num_tokens)
 diff --git a/python/sglang/srt/layers/attention/linear/kda_backend.py b/python/sglang/srt/layers/attention/linear/kda_backend.py
-index 699971f..28867ac 100644
+index 699971f08b..28867ac5d3 100644
 --- a/python/sglang/srt/layers/attention/linear/kda_backend.py
 +++ b/python/sglang/srt/layers/attention/linear/kda_backend.py
 @@ -151,7 +151,7 @@ class KDAKernelDispatcher:
@@ -14999,7 +14999,7 @@ index 699971f..28867ac 100644
          self,
          *,
 diff --git a/python/sglang/srt/layers/attention/linear/kernels/kda_cutedsl.py b/python/sglang/srt/layers/attention/linear/kernels/kda_cutedsl.py
-index b06e0c5..b2ff364 100644
+index b06e0c5a29..b2ff3643d4 100644
 --- a/python/sglang/srt/layers/attention/linear/kernels/kda_cutedsl.py
 +++ b/python/sglang/srt/layers/attention/linear/kernels/kda_cutedsl.py
 @@ -138,6 +138,8 @@ class CuteDSLKDAKernel(LinearAttnKernelBase):
@@ -15012,7 +15012,7 @@ index b06e0c5..b2ff364 100644
  
          # Pool state I/O is fused into the h kernel's TMA load/store: pass the
 diff --git a/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py b/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py
-index 9872cf5..70b8b5a 100644
+index 9872cf5473..70b8b5af21 100644
 --- a/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py
 +++ b/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py
 @@ -39,6 +39,7 @@ def _triton_fallback(
@@ -15083,7 +15083,7 @@ index 9872cf5..70b8b5a 100644
          # flash_kda wants A_log [H] fp32 and dt_bias [H, K] fp32. The model
          # stores A_log as [1, 1, H, 1] and dt_bias as 1D [H*K], so reshape both.
 diff --git a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
-index 400a530..8ecbad1 100644
+index 400a5303c7..8ecbad1589 100644
 --- a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 +++ b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 @@ -171,7 +171,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
@@ -15111,7 +15111,7 @@ index 400a530..8ecbad1 100644
              output_intermediate_states=return_intermediate_states,
          )
 diff --git a/python/sglang/srt/layers/communicator.py b/python/sglang/srt/layers/communicator.py
-index c5c3501..a5fc895 100644
+index c5c35016a5..a5fc895d1e 100644
 --- a/python/sglang/srt/layers/communicator.py
 +++ b/python/sglang/srt/layers/communicator.py
 @@ -250,12 +250,17 @@ class AttentionInputs:
@@ -15267,7 +15267,7 @@ index c5c3501..a5fc895 100644
          ):
              moe_cp_rank = get_moe_cp_rank()
 diff --git a/python/sglang/srt/layers/communicator_dsa_cp.py b/python/sglang/srt/layers/communicator_dsa_cp.py
-index c55d64b..2d38931 100644
+index c55d64b3bd..2d3893178e 100644
 --- a/python/sglang/srt/layers/communicator_dsa_cp.py
 +++ b/python/sglang/srt/layers/communicator_dsa_cp.py
 @@ -55,15 +55,22 @@ def maybe_prefetch_next_full_attention_kv(
@@ -15316,7 +15316,7 @@ index c55d64b..2d38931 100644
      @staticmethod
 diff --git a/python/sglang/srt/layers/communicator_mhc.py b/python/sglang/srt/layers/communicator_mhc.py
 new file mode 100644
-index 0000000..b32952a
+index 0000000000..b32952ae10
 --- /dev/null
 +++ b/python/sglang/srt/layers/communicator_mhc.py
 @@ -0,0 +1,565 @@
@@ -15887,7 +15887,7 @@ index 0000000..b32952a
 +        return False
 diff --git a/python/sglang/srt/layers/communicator_mhc_hybrid_cp.py b/python/sglang/srt/layers/communicator_mhc_hybrid_cp.py
 new file mode 100644
-index 0000000..6a1d971
+index 0000000000..6a1d9717b6
 --- /dev/null
 +++ b/python/sglang/srt/layers/communicator_mhc_hybrid_cp.py
 @@ -0,0 +1,222 @@
@@ -16114,7 +16114,7 @@ index 0000000..6a1d971
 +        hidden_states = hc_contract(hidden_states, mhc.hc_mult)
 +        return hidden_states, None
 diff --git a/python/sglang/srt/layers/dcp/comm.py b/python/sglang/srt/layers/dcp/comm.py
-index 915a29b..a89bb2a 100644
+index 915a29b7ac..a89bb2a3f2 100644
 --- a/python/sglang/srt/layers/dcp/comm.py
 +++ b/python/sglang/srt/layers/dcp/comm.py
 @@ -305,13 +305,16 @@ def all_gather_kv_cache_for_mla_extend(
@@ -16136,7 +16136,7 @@ index 915a29b..a89bb2a 100644
      if not parallel.dcp_enabled:
          return torch.cat([prefix_kv_a, prefix_k_pe], dim=-1)
 diff --git a/python/sglang/srt/layers/dp_attention.py b/python/sglang/srt/layers/dp_attention.py
-index 8711754..e71baf7 100644
+index 87117547a0..e71baf74a7 100644
 --- a/python/sglang/srt/layers/dp_attention.py
 +++ b/python/sglang/srt/layers/dp_attention.py
 @@ -214,6 +214,21 @@ class _DpGatheredBufferWrapper:
@@ -16173,7 +16173,7 @@ index 8711754..e71baf7 100644
      return _DpGatheredBufferWrapper.get_global_dp_buffer_len()
  
 diff --git a/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py b/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
-index ac5d1c7..8d6f226 100644
+index ac5d1c78b8..8d6f226f0b 100644
 --- a/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 +++ b/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 @@ -9,7 +9,7 @@ Quantization methods prepare a small quant_info payload and route through
@@ -16313,7 +16313,7 @@ index ac5d1c7..8d6f226 100644
  
      topk_output = dispatch_output.topk_output
 diff --git a/python/sglang/srt/layers/quantization/modelopt_quant.py b/python/sglang/srt/layers/quantization/modelopt_quant.py
-index a4e7147..517a879 100755
+index a4e71476d6..517a8795af 100755
 --- a/python/sglang/srt/layers/quantization/modelopt_quant.py
 +++ b/python/sglang/srt/layers/quantization/modelopt_quant.py
 @@ -5,6 +5,7 @@ from __future__ import annotations
@@ -16569,7 +16569,7 @@ index a4e7147..517a879 100755
              return self.runner.run(dispatch_output, quant_info)
  
 diff --git a/python/sglang/srt/layers/utils/cp_utils.py b/python/sglang/srt/layers/utils/cp_utils.py
-index 2a692ee..acf2aa8 100644
+index 2a692eeb45..acf2aa8c9d 100644
 --- a/python/sglang/srt/layers/utils/cp_utils.py
 +++ b/python/sglang/srt/layers/utils/cp_utils.py
 @@ -83,7 +83,9 @@ def mla_use_prefill_cp(forward_batch, mla_enable_prefill_cp=None):
@@ -16584,7 +16584,7 @@ index 2a692ee..acf2aa8 100644
  
  
 diff --git a/python/sglang/srt/managers/cache_controller.py b/python/sglang/srt/managers/cache_controller.py
-index 556fb6c..14becac 100644
+index 556fb6cd2f..14becaccfa 100644
 --- a/python/sglang/srt/managers/cache_controller.py
 +++ b/python/sglang/srt/managers/cache_controller.py
 @@ -55,12 +55,43 @@ class LayerLoadingEvent:
@@ -16661,7 +16661,7 @@ index 556fb6c..14becac 100644
  
          if self.load_fence_stream is not None:
 diff --git a/python/sglang/srt/managers/overlap_utils.py b/python/sglang/srt/managers/overlap_utils.py
-index 9ac8f3d..fbdcaae 100644
+index 9ac8f3d02f..fbdcaae1ba 100644
 --- a/python/sglang/srt/managers/overlap_utils.py
 +++ b/python/sglang/srt/managers/overlap_utils.py
 @@ -423,8 +423,11 @@ class FutureMap:
@@ -16679,7 +16679,7 @@ index 9ac8f3d..fbdcaae 100644
          if self.need_topk:
              hidden_states_buf = (
 diff --git a/python/sglang/srt/managers/schedule_batch.py b/python/sglang/srt/managers/schedule_batch.py
-index 0552fbd..369790e 100755
+index 0552fbde28..369790e0e9 100755
 --- a/python/sglang/srt/managers/schedule_batch.py
 +++ b/python/sglang/srt/managers/schedule_batch.py
 @@ -1826,7 +1826,9 @@ class Req(ReqDllmMixin):
@@ -16702,7 +16702,7 @@ index 0552fbd..369790e 100755
          self.kv.retraction_backup = None
  
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index ae9fa0d..4b9ff8d 100644
+index ae9fa0dc95..4b9ff8d15c 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
 @@ -807,6 +807,11 @@ class PrefillAdder:
@@ -16718,7 +16718,7 @@ index ae9fa0d..4b9ff8d 100644
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index bccbf46..39a9cb8 100644
+index bccbf46ad9..39a9cb8cba 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -17084,7 +17084,7 @@ index bccbf46..39a9cb8 100644
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
 diff --git a/python/sglang/srt/managers/tokenizer_manager.py b/python/sglang/srt/managers/tokenizer_manager.py
-index 8954842..6026d86 100644
+index 895484239d..6026d8661b 100644
 --- a/python/sglang/srt/managers/tokenizer_manager.py
 +++ b/python/sglang/srt/managers/tokenizer_manager.py
 @@ -233,6 +233,9 @@ class ReqState:
@@ -17269,7 +17269,7 @@ index 8954842..6026d86 100644
      def _should_dispatch_to_encoder(
          self, obj: Union[GenerateReqInput, EmbeddingReqInput]
 diff --git a/python/sglang/srt/managers/utils.py b/python/sglang/srt/managers/utils.py
-index aece0c5..4629672 100644
+index aece0c5e27..462967260b 100644
 --- a/python/sglang/srt/managers/utils.py
 +++ b/python/sglang/srt/managers/utils.py
 @@ -4,7 +4,7 @@ import dataclasses
@@ -17395,7 +17395,7 @@ index aece0c5..4629672 100644
              if isinstance(self.pooled_hidden_states, list):
                  self.pooled_hidden_states = [
 diff --git a/python/sglang/srt/mem_cache/allocator/base.py b/python/sglang/srt/mem_cache/allocator/base.py
-index c9fb67c..9126020 100644
+index c9fb67c42f..9126020a96 100644
 --- a/python/sglang/srt/mem_cache/allocator/base.py
 +++ b/python/sglang/srt/mem_cache/allocator/base.py
 @@ -124,11 +124,13 @@ class BaseTokenToKVPoolAllocator(abc.ABC):
@@ -17415,7 +17415,7 @@ index c9fb67c..9126020 100644
          raise NotImplementedError()
  
 diff --git a/python/sglang/srt/mem_cache/allocator/paged.py b/python/sglang/srt/mem_cache/allocator/paged.py
-index f21c077..256e7d2 100755
+index f21c077f62..256e7d222c 100755
 --- a/python/sglang/srt/mem_cache/allocator/paged.py
 +++ b/python/sglang/srt/mem_cache/allocator/paged.py
 @@ -28,6 +28,7 @@ from sglang.kernels.ops.memory.allocator import (
@@ -17689,7 +17689,7 @@ index f21c077..256e7d2 100755
 +            req_pool_index=req_pool_index,
          )
 diff --git a/python/sglang/srt/mem_cache/allocator/swa.py b/python/sglang/srt/mem_cache/allocator/swa.py
-index 568e77a..6cc2390 100644
+index 568e77ab62..6cc2390821 100644
 --- a/python/sglang/srt/mem_cache/allocator/swa.py
 +++ b/python/sglang/srt/mem_cache/allocator/swa.py
 @@ -436,12 +436,21 @@ class SWATokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
@@ -17719,7 +17719,7 @@ index 568e77a..6cc2390 100644
  
  
 diff --git a/python/sglang/srt/mem_cache/allocator/token.py b/python/sglang/srt/mem_cache/allocator/token.py
-index fd0f326..60aa4af 100644
+index fd0f326829..60aa4af5df 100644
 --- a/python/sglang/srt/mem_cache/allocator/token.py
 +++ b/python/sglang/srt/mem_cache/allocator/token.py
 @@ -74,10 +74,19 @@ class TokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
@@ -17747,7 +17747,7 @@ index fd0f326..60aa4af 100644
 +            req_pool_index=req_pool_index,
          )
 diff --git a/python/sglang/srt/mem_cache/common.py b/python/sglang/srt/mem_cache/common.py
-index b1497c6..829b461 100644
+index b1497c6f5c..829b461d0c 100644
 --- a/python/sglang/srt/mem_cache/common.py
 +++ b/python/sglang/srt/mem_cache/common.py
 @@ -251,6 +251,41 @@ def retraction_discard(req: Req, tree_cache: BasePrefixCache, backend: str) -> N
@@ -17813,7 +17813,7 @@ index b1497c6..829b461 100644
  
      effective_kv_committed_len = req.effective_kv_committed_len()
 diff --git a/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py b/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py
-index 54eabcb..29c56cd 100644
+index 54eabcb7e8..29c56cd012 100644
 --- a/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py
 +++ b/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py
 @@ -250,10 +250,12 @@ class HiSparseC4DevicePool(DeepSeekV4SingleKVPool):
@@ -17832,7 +17832,7 @@ index 54eabcb..29c56cd 100644
  
  
 diff --git a/python/sglang/srt/mem_cache/dsa_cache_layer_split.py b/python/sglang/srt/mem_cache/dsa_cache_layer_split.py
-index ba1cd1e..de83e56 100644
+index ba1cd1e521..de83e56413 100644
 --- a/python/sglang/srt/mem_cache/dsa_cache_layer_split.py
 +++ b/python/sglang/srt/mem_cache/dsa_cache_layer_split.py
 @@ -234,6 +234,11 @@ class LayerSplitDSATokenToKVPool(DSATokenToKVPool):
@@ -17893,7 +17893,7 @@ index ba1cd1e..de83e56 100644
 +        )
 +        torch.cuda.synchronize()
 diff --git a/python/sglang/srt/mem_cache/hisparse_memory_pool.py b/python/sglang/srt/mem_cache/hisparse_memory_pool.py
-index 1bf865c..ad45ce7 100644
+index 1bf865ca22..ad45ce76a1 100644
 --- a/python/sglang/srt/mem_cache/hisparse_memory_pool.py
 +++ b/python/sglang/srt/mem_cache/hisparse_memory_pool.py
 @@ -115,8 +115,10 @@ class HiSparseDSATokenToKVPool(DSATokenToKVPool):
@@ -17910,7 +17910,7 @@ index 1bf865c..ad45ce7 100644
 +    ):
          raise NotImplementedError("HiSparseDevicePool does not support load_cpu_copy")
 diff --git a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-index cef0ef9..0f52ac2 100644
+index cef0ef92b7..0f52ac24d9 100644
 --- a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 +++ b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 @@ -724,8 +724,12 @@ def build_hybrid_mamba_stack(
@@ -17941,7 +17941,7 @@ index cef0ef9..0f52ac2 100644
          mtp_draft_device_pools=mtp_draft_device_pools,
      )
 diff --git a/python/sglang/srt/mem_cache/kv_cache_builder.py b/python/sglang/srt/mem_cache/kv_cache_builder.py
-index 18acefe..93ecf7c 100644
+index 18acefeb83..93ecf7c96a 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_builder.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_builder.py
 @@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
@@ -18000,7 +18000,7 @@ index 18acefe..93ecf7c 100644
      # Decode-side radix cache supports SWA only through the unified tree, whose
      # component pools preserve the full-attention prefix while transferring the
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index 98634cc..c592490 100644
+index 98634cc8d2..c592490b68 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,13 +12,14 @@ import torch
@@ -18324,7 +18324,7 @@ index 98634cc..c592490 100644
      rope_storage_dtype = DSATokenToKVPool.rope_storage_dtype
      # Calculate override_kv_cache_dim for FP8 storage in backends that use scaled KV layout
 diff --git a/python/sglang/srt/mem_cache/mamba_radix_cache.py b/python/sglang/srt/mem_cache/mamba_radix_cache.py
-index 3a9d46a..e89cfd2 100644
+index 3a9d46a856..e89cfd2822 100644
 --- a/python/sglang/srt/mem_cache/mamba_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/mamba_radix_cache.py
 @@ -983,6 +983,29 @@ class MambaRadixCache(BasePrefixCache):
@@ -18390,7 +18390,7 @@ index 3a9d46a..e89cfd2 100644
              child.hash_value, split_len, self.page_size
          )
 diff --git a/python/sglang/srt/mem_cache/memory_pool.py b/python/sglang/srt/mem_cache/memory_pool.py
-index f11b985..2bcc7d4 100644
+index f11b9856d9..2bcc7d4445 100644
 --- a/python/sglang/srt/mem_cache/memory_pool.py
 +++ b/python/sglang/srt/mem_cache/memory_pool.py
 @@ -1424,6 +1424,20 @@ class HybridReqToTokenPool(ReqToTokenPool):
@@ -19190,7 +19190,7 @@ index f11b985..2bcc7d4 100644
      def get_state_buf_infos(self):
          return self.index_key_cache.state_buf_infos()
 diff --git a/python/sglang/srt/mem_cache/radix_cache.py b/python/sglang/srt/mem_cache/radix_cache.py
-index 8cebee6..6943651 100644
+index 8cebee66af..6943651453 100644
 --- a/python/sglang/srt/mem_cache/radix_cache.py
 +++ b/python/sglang/srt/mem_cache/radix_cache.py
 @@ -180,10 +180,22 @@ class RadixKey:
@@ -19274,7 +19274,7 @@ index 8cebee6..6943651 100644
              return ((self.extra_key, self.cache_salt), plain)
          return plain if self.extra_key is None else (self.extra_key, plain)
 diff --git a/python/sglang/srt/mem_cache/swa_memory_pool.py b/python/sglang/srt/mem_cache/swa_memory_pool.py
-index fb05c77..1206168 100644
+index fb05c77cd8..1206168478 100644
 --- a/python/sglang/srt/mem_cache/swa_memory_pool.py
 +++ b/python/sglang/srt/mem_cache/swa_memory_pool.py
 @@ -366,10 +366,12 @@ class SWAKVPool(BaseSWAKVPool):
@@ -19314,7 +19314,7 @@ index fb05c77..1206168 100644
          # Load SWA KV cache if it exists
          if swa_kv_cpu is not None and self.full_to_swa_index_mapping is not None:
 diff --git a/python/sglang/srt/mem_cache/unified_cache/components/full_component.py b/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
-index c910241..6b3583e 100644
+index c9102411d4..6b3583ebee 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
 @@ -27,6 +27,7 @@ from sglang.srt.mem_cache.unified_cache.components.tree_component import (
@@ -19366,7 +19366,7 @@ index c910241..6b3583e 100644
              freed = len(cd.value)
              self.tree_core.component_evictable_size_[self.component_type] -= freed
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
-index 5d3a02c..8e4fe1b 100644
+index 5d3a02cd3f..8e4fe1bf0c 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
 @@ -735,7 +735,8 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
@@ -19439,7 +19439,7 @@ index 5d3a02c..8e4fe1b 100644
          self, component_type: ComponentType
      ) -> torch.Tensor:
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
-index a497f34..c78efec 100644
+index a497f34c7d..c78efecf3c 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
 @@ -356,6 +356,16 @@ class UnifiedTreeCoreInterface(ABC):
@@ -19460,7 +19460,7 @@ index a497f34..c78efec 100644
      def walk_for_kv_canary(
          self, unlocked_only: bool, swa_resident_only: bool
 diff --git a/python/sglang/srt/mem_cache/unified_memory_pool.py b/python/sglang/srt/mem_cache/unified_memory_pool.py
-index f674ba8..9d9dec1 100644
+index f674ba81b1..9d9dec101c 100644
 --- a/python/sglang/srt/mem_cache/unified_memory_pool.py
 +++ b/python/sglang/srt/mem_cache/unified_memory_pool.py
 @@ -1617,23 +1617,29 @@ class UnifiedSWAKVPool(SWAKVPool):
@@ -19498,7 +19498,7 @@ index f674ba8..9d9dec1 100644
              assert self._swa_allocator is not None
              swa_phys = self._virt_tokens_to_phys_tokens(indices, self._swa_allocator)
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 5cb53fa..72d7b14 100644
+index 5cb53fac7f..72d7b1473e 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -92,6 +92,7 @@ from sglang.srt.runtime_context import (
@@ -19777,7 +19777,7 @@ index 5cb53fa..72d7b14 100644
              node_id,
              self.inc_lock_ref(node_id).to_dec_params(),
 diff --git a/python/sglang/srt/model_executor/forward_batch_info.py b/python/sglang/srt/model_executor/forward_batch_info.py
-index 3926aa5..afdd0e3 100644
+index 3926aa58c3..afdd0e3e68 100644
 --- a/python/sglang/srt/model_executor/forward_batch_info.py
 +++ b/python/sglang/srt/model_executor/forward_batch_info.py
 @@ -56,6 +56,7 @@ from sglang.srt.runtime_context import (
@@ -19816,7 +19816,7 @@ index 3926aa5..afdd0e3 100644
                  bs = bs * self.spec_info.num_tokens_per_req
                  if logits_output.next_token_logits is not None:
 diff --git a/python/sglang/srt/model_executor/model_runner.py b/python/sglang/srt/model_executor/model_runner.py
-index 9f66e95..1e23b7c 100644
+index 9f66e95ab4..1e23b7c001 100644
 --- a/python/sglang/srt/model_executor/model_runner.py
 +++ b/python/sglang/srt/model_executor/model_runner.py
 @@ -225,6 +225,7 @@ from sglang.srt.utils import (
@@ -19861,7 +19861,7 @@ index 9f66e95..1e23b7c 100644
          return observer_state
  
 diff --git a/python/sglang/srt/model_executor/model_runner_components/spec_aux_hidden_state.py b/python/sglang/srt/model_executor/model_runner_components/spec_aux_hidden_state.py
-index eb1028a..e2771a0 100644
+index eb1028a415..e2771a0ddf 100644
 --- a/python/sglang/srt/model_executor/model_runner_components/spec_aux_hidden_state.py
 +++ b/python/sglang/srt/model_executor/model_runner_components/spec_aux_hidden_state.py
 @@ -57,6 +57,7 @@ def resolve_spec_aux_hidden_state_config(
@@ -19962,7 +19962,7 @@ index eb1028a..e2771a0 100644
  
  def _resolve_dflash_aux_hidden_state(
 diff --git a/python/sglang/srt/model_executor/pool_configurator.py b/python/sglang/srt/model_executor/pool_configurator.py
-index 38b7fcc..cb115f7 100644
+index 38b7fccd42..cb115f7752 100644
 --- a/python/sglang/srt/model_executor/pool_configurator.py
 +++ b/python/sglang/srt/model_executor/pool_configurator.py
 @@ -109,6 +109,55 @@ def _dflash_draft_cell_size(kvc: KVCacheConfigurator) -> int:
@@ -20118,7 +20118,7 @@ index 38b7fcc..cb115f7 100644
          self._draft_cell_size = _dflash_draft_cell_size(kvc)
  
 diff --git a/python/sglang/srt/model_executor/runner/eager_runner.py b/python/sglang/srt/model_executor/runner/eager_runner.py
-index 1e6a37c..ecc3c92 100644
+index 1e6a37c07f..ecc3c92692 100644
 --- a/python/sglang/srt/model_executor/runner/eager_runner.py
 +++ b/python/sglang/srt/model_executor/runner/eager_runner.py
 @@ -295,8 +295,12 @@ class EagerRunner(BaseRunner):
@@ -20137,7 +20137,7 @@ index 1e6a37c..ecc3c92 100644
                  # prepare kv cache buffer for dcp to gather kv cache
                  forward_batch.attn_dcp_metadata = (
 diff --git a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
-index c6b06b5..5faf146 100644
+index c6b06b535b..5faf146218 100644
 --- a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
 +++ b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
 @@ -1067,14 +1067,17 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
@@ -20167,7 +20167,7 @@ index c6b06b5..5faf146 100644
      def _prepare_forward_metadata_for_replay(
          self,
 diff --git a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
-index aa5b9f3..b83f7ee 100644
+index aa5b9f3db4..b83f7eeabd 100644
 --- a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
 +++ b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
 @@ -30,6 +30,9 @@ from sglang.srt.distributed.device_communicators.pynccl_allocator import (
@@ -20213,7 +20213,7 @@ index aa5b9f3..b83f7ee 100644
 +        self._capture_owners.clear()
          self._pool = None
 diff --git a/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py b/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
-index 59f4a2e..19ae1cf 100644
+index 59f4a2e6b4..19ae1cf5d6 100644
 --- a/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
 +++ b/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
 @@ -153,16 +153,18 @@ def _uninstall_wait_stream_hook():
@@ -20242,7 +20242,7 @@ index 59f4a2e..19ae1cf 100644
          return weak_ref_tensors(x)
 diff --git a/python/sglang/srt/model_executor/runner_utils/capture_owner.py b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
 new file mode 100644
-index 0000000..74c0ab7
+index 0000000000..74c0ab7420
 --- /dev/null
 +++ b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
 @@ -0,0 +1,31 @@
@@ -20278,7 +20278,7 @@ index 0000000..74c0ab7
 +    owners.append(owner)
 +    return True
 diff --git a/python/sglang/srt/model_loader/loader.py b/python/sglang/srt/model_loader/loader.py
-index 3211f0c..a10236d 100644
+index 3211f0c41c..a10236dd27 100644
 --- a/python/sglang/srt/model_loader/loader.py
 +++ b/python/sglang/srt/model_loader/loader.py
 @@ -259,7 +259,11 @@ def _get_quantization_config(
@@ -20295,7 +20295,7 @@ index 3211f0c..a10236d 100644
          if hf_to_sglang_mapper is not None and quant_config is not None:
              quant_config.apply_weight_name_mapper(hf_to_sglang_mapper)
 diff --git a/python/sglang/srt/model_loader/weight_utils.py b/python/sglang/srt/model_loader/weight_utils.py
-index 965123f..561f045 100644
+index 965123fcc6..561f045e94 100644
 --- a/python/sglang/srt/model_loader/weight_utils.py
 +++ b/python/sglang/srt/model_loader/weight_utils.py
 @@ -1523,11 +1523,18 @@ def row_parallel_weight_loader(
@@ -20320,7 +20320,7 @@ index 965123f..561f045 100644
          shard_size = param.data.shape[shard_axis]
          start_idx = tp_rank * shard_size
 diff --git a/python/sglang/srt/models/deepseek_common/attention_backend_handler.py b/python/sglang/srt/models/deepseek_common/attention_backend_handler.py
-index b720b0d..297e21d 100644
+index b720b0d7f2..297e21d508 100644
 --- a/python/sglang/srt/models/deepseek_common/attention_backend_handler.py
 +++ b/python/sglang/srt/models/deepseek_common/attention_backend_handler.py
 @@ -113,9 +113,9 @@ def _handle_attention_backend(attn, forward_batch, backend_name):
@@ -20337,7 +20337,7 @@ index b720b0d..297e21d 100644
      if (
          not disable_ragged
 diff --git a/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mha.py b/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mha.py
-index 119f73a..8a3261d 100644
+index 119f73a8c7..8a3261d11a 100644
 --- a/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mha.py
 +++ b/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mha.py
 @@ -7,13 +7,16 @@ import torch
@@ -20420,7 +20420,7 @@ index 119f73a..8a3261d 100644
          k_shape = (k_nope.shape[0], self.num_local_heads, self.qk_head_dim)
          if (
 diff --git a/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mla.py b/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mla.py
-index 6af4b0c..8c0eca9 100644
+index 6af4b0c2bc..8c0eca98ec 100644
 --- a/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mla.py
 +++ b/python/sglang/srt/models/deepseek_common/attention_forward_methods/forward_mla.py
 @@ -930,6 +930,8 @@ class DeepseekMLAForwardMixin:
@@ -20433,7 +20433,7 @@ index 6af4b0c..8c0eca9 100644
              return (
                  get_exec().kernel.dsa_decode_backend == "trtllm"
 diff --git a/python/sglang/srt/models/deepseek_common/deepseek_weight_loader.py b/python/sglang/srt/models/deepseek_common/deepseek_weight_loader.py
-index 4d17d45..3ad60db 100644
+index 4d17d45e9f..3ad60dbfcc 100644
 --- a/python/sglang/srt/models/deepseek_common/deepseek_weight_loader.py
 +++ b/python/sglang/srt/models/deepseek_common/deepseek_weight_loader.py
 @@ -529,7 +529,7 @@ class DeepseekV2WeightLoaderMixin:
@@ -20456,7 +20456,7 @@ index 4d17d45..3ad60db 100644
                  # awq compatible, dequantize the weight if supported
                  awq_dequantize_f = awq_dequantize_func()
 diff --git a/python/sglang/srt/models/deepseek_nextn.py b/python/sglang/srt/models/deepseek_nextn.py
-index bb03b82..8bb1072 100644
+index bb03b82a62..8bb1072b80 100644
 --- a/python/sglang/srt/models/deepseek_nextn.py
 +++ b/python/sglang/srt/models/deepseek_nextn.py
 @@ -47,7 +47,7 @@ from sglang.srt.layers.utils.cp_utils import (
@@ -20581,7 +20581,7 @@ index bb03b82..8bb1072 100644
          self.lm_head = ParallelLMHead(
              config.vocab_size,
 diff --git a/python/sglang/srt/models/deepseek_v2.py b/python/sglang/srt/models/deepseek_v2.py
-index f3ed43e..ea4871c 100644
+index f3ed43efeb..ea4871cecf 100644
 --- a/python/sglang/srt/models/deepseek_v2.py
 +++ b/python/sglang/srt/models/deepseek_v2.py
 @@ -45,6 +45,7 @@ from sglang.srt.configs.model_config import (
@@ -20668,10 +20668,10 @@ index f3ed43e..ea4871c 100644
              ),
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
 new file mode 100644
-index 0000000..0c2c5d9
+index 0000000000..5f5175192d
 --- /dev/null
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -0,0 +1,1930 @@
+@@ -0,0 +1,1968 @@
 +import logging
 +from contextlib import nullcontext
 +from functools import partial
@@ -22008,6 +22008,44 @@ index 0000000..0c2c5d9
 +        if self.encoder_only or self.model is None:
 +            return
 +
++        if self.visual is not None:
++            # The vision tower's Triton attention (context_attention_fwd's
++            # _fwd_kernel) otherwise device-loads on the FIRST image request,
++            # which can be hours into serving with pools holding nearly all
++            # device memory. Launch one tiny call with the tower's exact
++            # specialization inputs (head_dim constexprs, bf16 pointers,
++            # kv_group 1, is_causal=False) so the cubin loads now.
++            try:
++                from sglang.kernels.ops.attention.prefill_attention import (
++                    context_attention_fwd,
++                )
++
++                head_dim = self.visual.hidden_size // self.visual.num_heads
++                vis_device = next(self.visual.parameters()).device
++                vis_dtype = self.visual.dtype
++                dummy = torch.zeros(
++                    (1, 1, head_dim), dtype=vis_dtype, device=vis_device
++                )
++                start_loc = torch.zeros((1,), dtype=torch.int32, device=vis_device)
++                seq_len = torch.ones((1,), dtype=torch.int32, device=vis_device)
++                context_attention_fwd(
++                    dummy,
++                    dummy,
++                    dummy,
++                    torch.empty_like(dummy),
++                    start_loc,
++                    seq_len,
++                    1,
++                    is_causal=False,
++                )
++                log_info_on_rank0(
++                    logger,
++                    "Precompiled the vision-tower Triton attention kernel "
++                    "before memory-pool allocation.",
++                )
++            except Exception:
++                logger.exception("vision attention precompile failed")
++
 +        linear_attn = next(
 +            (
 +                layer.self_attn
@@ -22604,7 +22642,7 @@ index 0000000..0c2c5d9
 +EntryClass = [Glm5NextForConditionalGeneration]
 diff --git a/python/sglang/srt/models/glm5_next_nextn.py b/python/sglang/srt/models/glm5_next_nextn.py
 new file mode 100644
-index 0000000..b96b8db
+index 0000000000..b96b8db944
 --- /dev/null
 +++ b/python/sglang/srt/models/glm5_next_nextn.py
 @@ -0,0 +1,94 @@
@@ -22703,7 +22741,7 @@ index 0000000..b96b8db
 +
 +EntryClass = [Glm5NextForConditionalGenerationNextN]
 diff --git a/python/sglang/srt/models/glm_ocr.py b/python/sglang/srt/models/glm_ocr.py
-index dfd00f3..15fb7d6 100644
+index dfd00f31bd..15fb7d6c99 100644
 --- a/python/sglang/srt/models/glm_ocr.py
 +++ b/python/sglang/srt/models/glm_ocr.py
 @@ -26,7 +26,6 @@ import torch.nn as nn
@@ -22749,7 +22787,7 @@ index dfd00f3..15fb7d6 100644
              prefix=add_prefix("visual", prefix),
              use_data_parallel=self.use_data_parallel,
 diff --git a/python/sglang/srt/multimodal/mm_utils.py b/python/sglang/srt/multimodal/mm_utils.py
-index d7548ba..91526c4 100644
+index d7548ba201..91526c425b 100644
 --- a/python/sglang/srt/multimodal/mm_utils.py
 +++ b/python/sglang/srt/multimodal/mm_utils.py
 @@ -822,3 +822,71 @@ def run_dp_sharded_mrope_vision_model(
@@ -22825,7 +22863,7 @@ index d7548ba..91526c4 100644
 +        pieces.append(gathered[start : start + output_length])
 +    return torch.cat(pieces, dim=0)
 diff --git a/python/sglang/srt/multimodal/processors/base_processor.py b/python/sglang/srt/multimodal/processors/base_processor.py
-index 919bd1b..e2448fa 100644
+index 919bd1b3ca..e2448facbf 100644
 --- a/python/sglang/srt/multimodal/processors/base_processor.py
 +++ b/python/sglang/srt/multimodal/processors/base_processor.py
 @@ -57,6 +57,7 @@ from sglang.srt.utils import (
@@ -22877,7 +22915,7 @@ index 919bd1b..e2448fa 100644
              elif modality == Modality.VIDEO:
                  return load_video(data, frame_count_limit)
 diff --git a/python/sglang/srt/multimodal/processors/glm4v.py b/python/sglang/srt/multimodal/processors/glm4v.py
-index c4d363f..b35d233 100644
+index c4d363f47f..b35d233654 100644
 --- a/python/sglang/srt/multimodal/processors/glm4v.py
 +++ b/python/sglang/srt/multimodal/processors/glm4v.py
 @@ -1,5 +1,11 @@
@@ -23348,7 +23386,7 @@ index c4d363f..b35d233 100644
          )
  
 diff --git a/python/sglang/srt/observability/metrics_collector.py b/python/sglang/srt/observability/metrics_collector.py
-index 6daebdf..59c0c25 100644
+index 6daebdfec0..59c0c251f5 100644
 --- a/python/sglang/srt/observability/metrics_collector.py
 +++ b/python/sglang/srt/observability/metrics_collector.py
 @@ -539,6 +539,11 @@ class SchedulerMetricsCollector(_StatLoggerDIMixin):
@@ -23374,7 +23412,7 @@ index 6daebdf..59c0c25 100644
          self.num_transfer_failed_reqs.labels(**self.labels).inc(1)
  
 diff --git a/python/sglang/srt/parser/conversation.py b/python/sglang/srt/parser/conversation.py
-index 920ac33..96d3a8f 100644
+index 920ac33e3a..96d3a8fa93 100644
 --- a/python/sglang/srt/parser/conversation.py
 +++ b/python/sglang/srt/parser/conversation.py
 @@ -35,7 +35,12 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -23410,7 +23448,7 @@ index 920ac33..96d3a8f 100644
                          real_content += audio_token
                          conv.append_audio(content.audio_url.url)
 diff --git a/python/sglang/srt/parser/jinja_template_utils.py b/python/sglang/srt/parser/jinja_template_utils.py
-index f22222f..fee4d9d 100644
+index f22222fd90..fee4d9d823 100644
 --- a/python/sglang/srt/parser/jinja_template_utils.py
 +++ b/python/sglang/srt/parser/jinja_template_utils.py
 @@ -9,7 +9,7 @@ import logging
@@ -23521,7 +23559,7 @@ index f22222f..fee4d9d 100644
                          modalities.append(chunk.get("modalities"))
                      # Normalize to simple 'video' type for template compatibility
 diff --git a/python/sglang/srt/parser/template_manager.py b/python/sglang/srt/parser/template_manager.py
-index f8faabc..84db5a8 100644
+index f8faabc7c5..84db5a8265 100644
 --- a/python/sglang/srt/parser/template_manager.py
 +++ b/python/sglang/srt/parser/template_manager.py
 @@ -38,7 +38,10 @@ from sglang.srt.parser.conversation import (
@@ -23562,7 +23600,7 @@ index f8faabc..84db5a8 100644
              template
          )
 diff --git a/python/sglang/srt/speculative/adaptive_spec_params.py b/python/sglang/srt/speculative/adaptive_spec_params.py
-index 96997c1..6d33534 100644
+index 96997c1ffb..6d33534996 100644
 --- a/python/sglang/srt/speculative/adaptive_spec_params.py
 +++ b/python/sglang/srt/speculative/adaptive_spec_params.py
 @@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
@@ -23575,7 +23613,7 @@ index 96997c1..6d33534 100644
          "down_hysteresis": -0.25,
          "ceiling_coeff": 0,
 diff --git a/python/sglang/srt/speculative/base_spec_worker.py b/python/sglang/srt/speculative/base_spec_worker.py
-index 7f6edb3..ef2139c 100644
+index 7f6edb3362..ef2139c8a0 100644
 --- a/python/sglang/srt/speculative/base_spec_worker.py
 +++ b/python/sglang/srt/speculative/base_spec_worker.py
 @@ -137,15 +137,34 @@ class EagleDraftWorkerBase(ABC):
@@ -23623,7 +23661,7 @@ index 7f6edb3..ef2139c 100644
  
  class BaseSpecWorker(ABC):
 diff --git a/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py b/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py
-index 1ca19cb..0afb522 100644
+index 1ca19cbf6f..0afb522d92 100644
 --- a/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py
 +++ b/python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py
 @@ -237,7 +237,7 @@ class EAGLEDraftCudaGraphRunner(DecodeCudaGraphRunner):
@@ -23636,7 +23674,7 @@ index 1ca19cb..0afb522 100644
                  device=model_runner.device,
              )
 diff --git a/python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py b/python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py
-index 919b78a..f1c5105 100644
+index 919b78aa41..f1c510540d 100644
 --- a/python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py
 +++ b/python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py
 @@ -55,6 +55,20 @@ if TYPE_CHECKING:
@@ -23692,7 +23730,7 @@ index 919b78a..f1c5105 100644
                  dtype=torch.int32,
                  device=model_runner.device,
 diff --git a/python/sglang/srt/speculative/eagle_utils.py b/python/sglang/srt/speculative/eagle_utils.py
-index e42da16..9f0662c 100644
+index e42da165ec..9f0662c283 100644
 --- a/python/sglang/srt/speculative/eagle_utils.py
 +++ b/python/sglang/srt/speculative/eagle_utils.py
 @@ -508,21 +508,44 @@ def get_draft_recurrent_hidden_state_spec(
@@ -23763,7 +23801,7 @@ index e42da16..9f0662c 100644
              verify_forward_batch
          )
 diff --git a/python/sglang/srt/speculative/eagle_worker_common.py b/python/sglang/srt/speculative/eagle_worker_common.py
-index 91ce8a1..818657a 100644
+index 91ce8a1476..818657ac3a 100644
 --- a/python/sglang/srt/speculative/eagle_worker_common.py
 +++ b/python/sglang/srt/speculative/eagle_worker_common.py
 @@ -472,6 +472,7 @@ def run_eagle_verify(
@@ -23816,7 +23854,7 @@ index 91ce8a1..818657a 100644
          logits_output=logits_output,
          next_token_ids=predict,
 diff --git a/python/sglang/srt/speculative/eagle_worker_v2.py b/python/sglang/srt/speculative/eagle_worker_v2.py
-index afdd57a..66b7783 100644
+index afdd57ac7b..66b7783659 100644
 --- a/python/sglang/srt/speculative/eagle_worker_v2.py
 +++ b/python/sglang/srt/speculative/eagle_worker_v2.py
 @@ -7,6 +7,7 @@ from typing import List, Optional
@@ -24030,7 +24068,7 @@ index afdd57a..66b7783 100644
  
      def update_weights_from_tensor(self, recv_req: UpdateWeightsFromTensorReqInput):
 diff --git a/python/sglang/srt/speculative/spec_info.py b/python/sglang/srt/speculative/spec_info.py
-index f07f153..23130a7 100644
+index f07f153ebf..23130a7ca0 100644
 --- a/python/sglang/srt/speculative/spec_info.py
 +++ b/python/sglang/srt/speculative/spec_info.py
 @@ -10,6 +10,7 @@ import torch
@@ -24051,7 +24089,7 @@ index f07f153..23130a7 100644
          if spec is not None:
              return spec
 diff --git a/python/sglang/srt/speculative/spec_utils.py b/python/sglang/srt/speculative/spec_utils.py
-index 25db452..0b53fee 100644
+index 25db452c5f..0b53feea58 100644
 --- a/python/sglang/srt/speculative/spec_utils.py
 +++ b/python/sglang/srt/speculative/spec_utils.py
 @@ -215,13 +215,23 @@ def draft_kv_indices_used_len(
@@ -24209,7 +24247,7 @@ index 25db452..0b53fee 100644
          plan_stream = torch.get_device_module(device).Stream()
          plan_stream_ctx = torch.get_device_module(device).stream(plan_stream)
 diff --git a/python/sglang/srt/speculative/standalone_worker_v2.py b/python/sglang/srt/speculative/standalone_worker_v2.py
-index ac37350..cc1efbc 100644
+index ac37350b11..cc1efbc37d 100644
 --- a/python/sglang/srt/speculative/standalone_worker_v2.py
 +++ b/python/sglang/srt/speculative/standalone_worker_v2.py
 @@ -108,6 +108,7 @@ class StandaloneDraftWorker(EagleDraftWorker):
@@ -24221,7 +24259,7 @@ index ac37350..cc1efbc 100644
          self.dsa_extend_topk_buf = None
  
 diff --git a/python/sglang/srt/utils/async_probe.py b/python/sglang/srt/utils/async_probe.py
-index be514dc..5c39120 100644
+index be514dc4e5..5c391202a3 100644
 --- a/python/sglang/srt/utils/async_probe.py
 +++ b/python/sglang/srt/utils/async_probe.py
 @@ -131,10 +131,24 @@ def maybe_detect_oob(indices: Optional[torch.Tensor], low: int, high: int, msg:
@@ -24316,7 +24354,7 @@ index be514dc..5c39120 100644
      indices: Optional[torch.Tensor], page_size: int, msg: str
  ):
 diff --git a/python/sglang/srt/utils/common.py b/python/sglang/srt/utils/common.py
-index 04b04eb..3fa9883 100644
+index 04b04eb9c0..3fa988331d 100644
 --- a/python/sglang/srt/utils/common.py
 +++ b/python/sglang/srt/utils/common.py
 @@ -87,7 +87,7 @@ import torch
@@ -24399,7 +24437,7 @@ index 04b04eb..3fa9883 100644
  
  
 diff --git a/python/sglang/srt/utils/hf_transformers/common.py b/python/sglang/srt/utils/hf_transformers/common.py
-index 5ffa853..77fd367 100644
+index 5ffa8530c4..77fd3675c3 100644
 --- a/python/sglang/srt/utils/hf_transformers/common.py
 +++ b/python/sglang/srt/utils/hf_transformers/common.py
 @@ -32,6 +32,8 @@ from sglang.srt.configs import (
@@ -24422,7 +24460,7 @@ index 5ffa853..77fd367 100644
          FalconH1Config,
 diff --git a/python/sglang/srt/utils/mem_forensics.py b/python/sglang/srt/utils/mem_forensics.py
 new file mode 100644
-index 0000000..df84fbc
+index 0000000000..df84fbcc1b
 --- /dev/null
 +++ b/python/sglang/srt/utils/mem_forensics.py
 @@ -0,0 +1,139 @@
@@ -24567,7 +24605,7 @@ index 0000000..df84fbc
 +        logger.info("Memory forensics snapshot written: %s", path)
 diff --git a/python/sglang/srt/utils/scheduler_kernel_prewarm.py b/python/sglang/srt/utils/scheduler_kernel_prewarm.py
 new file mode 100644
-index 0000000..338efce
+index 0000000000..338efce299
 --- /dev/null
 +++ b/python/sglang/srt/utils/scheduler_kernel_prewarm.py
 @@ -0,0 +1,165 @@
@@ -24737,7 +24775,7 @@ index 0000000..338efce
 +            f" (failed: {', '.join(failed)})" if failed else "",
 +        )
 diff --git a/python/sglang/srt/utils/video_decoder.py b/python/sglang/srt/utils/video_decoder.py
-index 0dfec64..4827718 100644
+index 0dfec642f0..48277187fd 100644
 --- a/python/sglang/srt/utils/video_decoder.py
 +++ b/python/sglang/srt/utils/video_decoder.py
 @@ -87,9 +87,11 @@ class VideoDecoderWrapper:
@@ -24832,7 +24870,7 @@ index 0dfec64..4827718 100644
              self._tmp_path = None
 diff --git a/test/registered/attention/test_dsa_tilelang_fp8_kv_cuda.py b/test/registered/attention/test_dsa_tilelang_fp8_kv_cuda.py
 new file mode 100644
-index 0000000..7d03954
+index 0000000000..7d039544a0
 --- /dev/null
 +++ b/test/registered/attention/test_dsa_tilelang_fp8_kv_cuda.py
 @@ -0,0 +1,111 @@
@@ -24948,7 +24986,7 @@ index 0000000..7d03954
 +        f"not discriminating (rel err {rel_bad:.5f})"
 +    )
 diff --git a/test/registered/dcp/test_dcp_layout_unit.py b/test/registered/dcp/test_dcp_layout_unit.py
-index 53242ec..84a174e 100644
+index 53242ec0f3..84a174e50f 100644
 --- a/test/registered/dcp/test_dcp_layout_unit.py
 +++ b/test/registered/dcp/test_dcp_layout_unit.py
 @@ -435,6 +435,30 @@ class TestGetDcpLens(CustomTestCase):
@@ -24983,7 +25021,7 @@ index 53242ec..84a174e 100644
          dcp_size = 4
          physical_page_size = 64
 diff --git a/test/registered/kernels/ops/attention/test_dsa_indexer.py b/test/registered/kernels/ops/attention/test_dsa_indexer.py
-index df1c520..6d96692 100644
+index df1c520828..6d966922d3 100644
 --- a/test/registered/kernels/ops/attention/test_dsa_indexer.py
 +++ b/test/registered/kernels/ops/attention/test_dsa_indexer.py
 @@ -219,6 +219,7 @@ class MockModelRunner:
@@ -25003,7 +25041,7 @@ index df1c520..6d96692 100644
                  backend.req_to_token = torch.empty(
                      2, 4096, dtype=torch.int32, device=self.device
 diff --git a/test/registered/kernels/ops/attention/test_fused_verify_triton_gdn.py b/test/registered/kernels/ops/attention/test_fused_verify_triton_gdn.py
-index 30e89f8..fd5791f 100644
+index 30e89f8d52..fd5791f85f 100644
 --- a/test/registered/kernels/ops/attention/test_fused_verify_triton_gdn.py
 +++ b/test/registered/kernels/ops/attention/test_fused_verify_triton_gdn.py
 @@ -26,7 +26,7 @@ try:
@@ -25058,7 +25096,7 @@ index 30e89f8..fd5791f 100644
      sys.exit(pytest.main([__file__, "-v", "-s"]))
 diff --git a/test/registered/kernels/ops/attention/test_silu_and_mul_clamp.py b/test/registered/kernels/ops/attention/test_silu_and_mul_clamp.py
 new file mode 100644
-index 0000000..6e81fa7
+index 0000000000..6e81fa7173
 --- /dev/null
 +++ b/test/registered/kernels/ops/attention/test_silu_and_mul_clamp.py
 @@ -0,0 +1,90 @@
@@ -25153,7 +25191,7 @@ index 0000000..6e81fa7
 +if __name__ == "__main__":
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
-index 7e9a5a6..eaa4a93 100644
+index 7e9a5a65cd..eaa4a93920 100644
 --- a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 +++ b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 @@ -5,6 +5,9 @@ import torch
@@ -25315,7 +25353,7 @@ index 7e9a5a6..eaa4a93 100644
      import sys
  
 diff --git a/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py b/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py
-index 7007fd9..f7cde67 100644
+index 7007fd9897..f7cde67b84 100644
 --- a/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py
 +++ b/test/registered/kernels/ops/moe/test_minimax_quant_scatter.py
 @@ -8,6 +8,7 @@ import torch
@@ -25373,7 +25411,7 @@ index 7007fd9..f7cde67 100644
      [
 diff --git a/test/registered/kernels/test_dsa_kpool_chunked_logits.py b/test/registered/kernels/test_dsa_kpool_chunked_logits.py
 new file mode 100644
-index 0000000..c580051
+index 0000000000..c580051b6c
 --- /dev/null
 +++ b/test/registered/kernels/test_dsa_kpool_chunked_logits.py
 @@ -0,0 +1,413 @@
@@ -25792,7 +25830,7 @@ index 0000000..c580051
 +    unittest.main()
 diff --git a/test/registered/kernels/test_dsa_kpool_multi_pool.py b/test/registered/kernels/test_dsa_kpool_multi_pool.py
 new file mode 100644
-index 0000000..26ce445
+index 0000000000..26ce445333
 --- /dev/null
 +++ b/test/registered/kernels/test_dsa_kpool_multi_pool.py
 @@ -0,0 +1,213 @@
@@ -26010,7 +26048,7 @@ index 0000000..26ce445
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py b/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py
-index 81e0b08..a168c42 100644
+index 81e0b08b0b..a168c4253f 100644
 --- a/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py
 +++ b/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py
 @@ -14,7 +14,7 @@ from sglang.kernels.ops.mamba.causal_conv1d_triton import (
@@ -26172,7 +26210,7 @@ index 81e0b08..a168c42 100644
      sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/layers/attention/test_dsa_capture_owner_cuda.py b/test/registered/layers/attention/test_dsa_capture_owner_cuda.py
 new file mode 100644
-index 0000000..3cb26c3
+index 0000000000..3cb26c3eaa
 --- /dev/null
 +++ b/test/registered/layers/attention/test_dsa_capture_owner_cuda.py
 @@ -0,0 +1,200 @@
@@ -26378,7 +26416,7 @@ index 0000000..3cb26c3
 +    sys.exit(pytest.main([__file__, "-q"]))
 diff --git a/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
 new file mode 100644
-index 0000000..f8c88e7
+index 0000000000..f8c88e7ee6
 --- /dev/null
 +++ b/test/registered/layers/attention/test_dsa_logits_gate_owner_cuda.py
 @@ -0,0 +1,224 @@
@@ -26608,7 +26646,7 @@ index 0000000..f8c88e7
 +    torch.testing.assert_close(owner, expected_owner)
 diff --git a/test/registered/unit/attention/test_dsa_multistep_dedup.py b/test/registered/unit/attention/test_dsa_multistep_dedup.py
 new file mode 100644
-index 0000000..7378ed6
+index 0000000000..7378ed6f9f
 --- /dev/null
 +++ b/test/registered/unit/attention/test_dsa_multistep_dedup.py
 @@ -0,0 +1,144 @@
@@ -26758,7 +26796,7 @@ index 0000000..7378ed6
 +    unittest.main()
 diff --git a/test/registered/unit/configs/test_glm5_next_config.py b/test/registered/unit/configs/test_glm5_next_config.py
 new file mode 100644
-index 0000000..a3a68d5
+index 0000000000..a3a68d527e
 --- /dev/null
 +++ b/test/registered/unit/configs/test_glm5_next_config.py
 @@ -0,0 +1,107 @@
@@ -26870,7 +26908,7 @@ index 0000000..a3a68d5
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/disaggregation/test_decode_queue_cleanup.py b/test/registered/unit/disaggregation/test_decode_queue_cleanup.py
-index 7b5b9f8..79d45ac 100644
+index 7b5b9f8a06..79d45ac911 100644
 --- a/test/registered/unit/disaggregation/test_decode_queue_cleanup.py
 +++ b/test/registered/unit/disaggregation/test_decode_queue_cleanup.py
 @@ -23,6 +23,10 @@ register_cpu_ci(est_time=5, suite="base-a-test-cpu")
@@ -26952,7 +26990,7 @@ index 7b5b9f8..79d45ac 100644
          receiver = FakeReceiver()
          req = SimpleNamespace(
 diff --git a/test/registered/unit/entrypoints/openai/test_serving_chat.py b/test/registered/unit/entrypoints/openai/test_serving_chat.py
-index 2500f0c..ff0f054 100644
+index 2500f0c9c4..ff0f05440d 100644
 --- a/test/registered/unit/entrypoints/openai/test_serving_chat.py
 +++ b/test/registered/unit/entrypoints/openai/test_serving_chat.py
 @@ -20,6 +20,7 @@ from pathlib import Path
@@ -27118,7 +27156,7 @@ index 2500f0c..ff0f054 100644
          answer from the bags; `ServerArgs` keeps the launcher's seed."""
 diff --git a/test/registered/unit/layers/attention/test_dsa_capture_owner.py b/test/registered/unit/layers/attention/test_dsa_capture_owner.py
 new file mode 100644
-index 0000000..50ef1e1
+index 0000000000..50ef1e1858
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_capture_owner.py
 @@ -0,0 +1,132 @@
@@ -27256,7 +27294,7 @@ index 0000000..50ef1e1
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_graph_buffer_lifetime.py b/test/registered/unit/layers/attention/test_dsa_graph_buffer_lifetime.py
 new file mode 100644
-index 0000000..3b0e8ff
+index 0000000000..3b0e8ffd5f
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_graph_buffer_lifetime.py
 @@ -0,0 +1,126 @@
@@ -27388,7 +27426,7 @@ index 0000000..3b0e8ff
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 new file mode 100644
-index 0000000..b29f8f4
+index 0000000000..b29f8f462a
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 @@ -0,0 +1,213 @@
@@ -27606,7 +27644,7 @@ index 0000000..b29f8f4
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/layers/quantization/test_modelopt_nvfp4_moe_scales.py b/test/registered/unit/layers/quantization/test_modelopt_nvfp4_moe_scales.py
-index 5424212..a97cb46 100644
+index 5424212f7e..a97cb46d5c 100644
 --- a/test/registered/unit/layers/quantization/test_modelopt_nvfp4_moe_scales.py
 +++ b/test/registered/unit/layers/quantization/test_modelopt_nvfp4_moe_scales.py
 @@ -29,7 +29,10 @@ import torch
@@ -27660,7 +27698,7 @@ index 5424212..a97cb46 100644
  
 diff --git a/test/registered/unit/layers/test_dcp_comm.py b/test/registered/unit/layers/test_dcp_comm.py
 new file mode 100644
-index 0000000..87acadc
+index 0000000000..87acadc3a3
 --- /dev/null
 +++ b/test/registered/unit/layers/test_dcp_comm.py
 @@ -0,0 +1,42 @@
@@ -27708,7 +27746,7 @@ index 0000000..87acadc
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/managers/test_scheduler_chunked_abort_race.py b/test/registered/unit/managers/test_scheduler_chunked_abort_race.py
 new file mode 100644
-index 0000000..b7f0a82
+index 0000000000..b7f0a82941
 --- /dev/null
 +++ b/test/registered/unit/managers/test_scheduler_chunked_abort_race.py
 @@ -0,0 +1,68 @@
@@ -27782,7 +27820,7 @@ index 0000000..b7f0a82
 +    unittest.main(verbosity=2)
 diff --git a/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py b/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py
 new file mode 100644
-index 0000000..72c87f1
+index 0000000000..72c87f16b6
 --- /dev/null
 +++ b/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py
 @@ -0,0 +1,369 @@
@@ -28157,7 +28195,7 @@ index 0000000..72c87f1
 +    unittest.main()
 diff --git a/test/registered/unit/managers/test_scheduler_overlap_keep_alive_cuda.py b/test/registered/unit/managers/test_scheduler_overlap_keep_alive_cuda.py
 new file mode 100644
-index 0000000..8cffb8d
+index 0000000000..8cffb8d4fc
 --- /dev/null
 +++ b/test/registered/unit/managers/test_scheduler_overlap_keep_alive_cuda.py
 @@ -0,0 +1,83 @@
@@ -28245,7 +28283,7 @@ index 0000000..8cffb8d
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/managers/test_tokenizer_manager_rid_cleanup.py b/test/registered/unit/managers/test_tokenizer_manager_rid_cleanup.py
-index 93a3f8b..b111d83 100644
+index 93a3f8bf23..b111d83edb 100644
 --- a/test/registered/unit/managers/test_tokenizer_manager_rid_cleanup.py
 +++ b/test/registered/unit/managers/test_tokenizer_manager_rid_cleanup.py
 @@ -10,11 +10,12 @@ Covers:
@@ -28448,7 +28486,7 @@ index 93a3f8b..b111d83 100644
  if __name__ == "__main__":
 diff --git a/test/registered/unit/mem_cache/test_mamba_radix_child_key.py b/test/registered/unit/mem_cache/test_mamba_radix_child_key.py
 new file mode 100644
-index 0000000..64540d8
+index 0000000000..64540d8f01
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_mamba_radix_child_key.py
 @@ -0,0 +1,150 @@
@@ -28604,7 +28642,7 @@ index 0000000..64540d8
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
 new file mode 100644
-index 0000000..3a68150
+index 0000000000..3a68150f13
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
 @@ -0,0 +1,67 @@
@@ -28676,7 +28714,7 @@ index 0000000..3a68150
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_replayssm_ring_accounting.py b/test/registered/unit/mem_cache/test_replayssm_ring_accounting.py
-index 578bc0b..e444a4b 100644
+index 578bc0b1ff..e444a4b994 100644
 --- a/test/registered/unit/mem_cache/test_replayssm_ring_accounting.py
 +++ b/test/registered/unit/mem_cache/test_replayssm_ring_accounting.py
 @@ -9,6 +9,8 @@ under spec, see MambaPool). If the MambaPool allocation changes shape, update
@@ -28727,7 +28765,7 @@ index 578bc0b..e444a4b 100644
          # fold window: rawv 512 + rawk 512 + g(scalar, 4*8*4) 128 + beta 128 = 1280
          self.assertEqual(
 diff --git a/test/registered/unit/mem_cache/test_retraction_mamba_backup.py b/test/registered/unit/mem_cache/test_retraction_mamba_backup.py
-index 7d90e77..2082938 100644
+index 7d90e77ef6..20829388a2 100644
 --- a/test/registered/unit/mem_cache/test_retraction_mamba_backup.py
 +++ b/test/registered/unit/mem_cache/test_retraction_mamba_backup.py
 @@ -30,10 +30,12 @@ class _Allocator:
@@ -28746,7 +28784,7 @@ index 7d90e77..2082938 100644
  
  
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index ae9f0f8..37502a8 100644
+index ae9f0f889a..37502a8a76 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 @@ -7684,6 +7684,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
@@ -28796,7 +28834,7 @@ index ae9f0f8..37502a8 100644
          # A pending node split twice in one walk emits two chained Replaces:
          # the second one's old_node_id only enters the publish list when the
 diff --git a/test/registered/unit/model_executor/model_runner_components/test_spec_aux_hidden_state.py b/test/registered/unit/model_executor/model_runner_components/test_spec_aux_hidden_state.py
-index a04db98..4f75d80 100644
+index a04db98098..4f75d8015c 100644
 --- a/test/registered/unit/model_executor/model_runner_components/test_spec_aux_hidden_state.py
 +++ b/test/registered/unit/model_executor/model_runner_components/test_spec_aux_hidden_state.py
 @@ -1,14 +1,69 @@
@@ -28890,7 +28928,7 @@ index a04db98..4f75d80 100644
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/model_executor/runner/test_eager_runner_dcp_metadata.py b/test/registered/unit/model_executor/runner/test_eager_runner_dcp_metadata.py
 new file mode 100644
-index 0000000..414623f
+index 0000000000..414623fc5c
 --- /dev/null
 +++ b/test/registered/unit/model_executor/runner/test_eager_runner_dcp_metadata.py
 @@ -0,0 +1,74 @@
@@ -28969,7 +29007,7 @@ index 0000000..414623f
 +    model_runner.attn_backend.init_forward_metadata.assert_called_once_with(batch)
 +    runner._execute_extend_cp_v2.assert_called_once()
 diff --git a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
-index 4987bce..8530def 100644
+index 4987bce1f5..8530deff66 100644
 --- a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 +++ b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 @@ -20,7 +20,9 @@ profiler stepping) is pure-Python and runs on CPU.
@@ -29059,7 +29097,7 @@ index 4987bce..8530def 100644
          # The runner advertises the flag but never created a profiler; the
          # getattr guard must keep capture_one on the non-profiling path.
 diff --git a/test/registered/unit/model_executor/test_pool_configurator.py b/test/registered/unit/model_executor/test_pool_configurator.py
-index 3412a18..752ece2 100644
+index 3412a18d27..752ece2d24 100644
 --- a/test/registered/unit/model_executor/test_pool_configurator.py
 +++ b/test/registered/unit/model_executor/test_pool_configurator.py
 @@ -124,9 +124,11 @@ def _make_model_runner(
@@ -29136,7 +29174,7 @@ index 3412a18..752ece2 100644
      @patch(
          "sglang.srt.mem_cache.kv_cache_configurator.calculate_mla_kv_cache_dim",
 diff --git a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
-index 7ede4fe..182ddc7 100644
+index 7ede4fe7ee..182ddc7aa3 100644
 --- a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 +++ b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 @@ -15,6 +15,7 @@ from sglang.srt.model_executor.forward_batch_info import (
@@ -29203,7 +29241,7 @@ index 7ede4fe..182ddc7 100644
          # The server-side hidden-state ceiling and graph config are bag leaves.
 diff --git a/test/registered/unit/models/test_glm5_next_dcp.py b/test/registered/unit/models/test_glm5_next_dcp.py
 new file mode 100644
-index 0000000..6802395
+index 0000000000..6802395e48
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_dcp.py
 @@ -0,0 +1,49 @@
@@ -29258,7 +29296,7 @@ index 0000000..6802395
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/models/test_glm5_next_dflash_capture.py b/test/registered/unit/models/test_glm5_next_dflash_capture.py
 new file mode 100644
-index 0000000..2d8d9fe
+index 0000000000..2d8d9fef91
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_dflash_capture.py
 @@ -0,0 +1,92 @@
@@ -29356,7 +29394,7 @@ index 0000000..2d8d9fe
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/models/test_glm5_next_nextn_weight_loading.py b/test/registered/unit/models/test_glm5_next_nextn_weight_loading.py
 new file mode 100644
-index 0000000..6c9abaf
+index 0000000000..6c9abaf45b
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_nextn_weight_loading.py
 @@ -0,0 +1,124 @@
@@ -29486,7 +29524,7 @@ index 0000000..6c9abaf
 +    unittest.main()
 diff --git a/test/registered/unit/models/test_glm5_next_pp_metadata.py b/test/registered/unit/models/test_glm5_next_pp_metadata.py
 new file mode 100644
-index 0000000..2571689
+index 0000000000..2571689082
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_pp_metadata.py
 @@ -0,0 +1,39 @@
@@ -29531,7 +29569,7 @@ index 0000000..2571689
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/models/test_nextn_hf_to_sglang_mapper.py b/test/registered/unit/models/test_nextn_hf_to_sglang_mapper.py
 new file mode 100644
-index 0000000..cb0970f
+index 0000000000..cb0970f976
 --- /dev/null
 +++ b/test/registered/unit/models/test_nextn_hf_to_sglang_mapper.py
 @@ -0,0 +1,73 @@
@@ -29610,7 +29648,7 @@ index 0000000..cb0970f
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/models/test_nope_mha_k_cast.py b/test/registered/unit/models/test_nope_mha_k_cast.py
 new file mode 100644
-index 0000000..5e9cfef
+index 0000000000..5e9cfef4f9
 --- /dev/null
 +++ b/test/registered/unit/models/test_nope_mha_k_cast.py
 @@ -0,0 +1,52 @@
@@ -29668,7 +29706,7 @@ index 0000000..5e9cfef
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/multimodal/test_alpha_channel_gating.py b/test/registered/unit/multimodal/test_alpha_channel_gating.py
 new file mode 100644
-index 0000000..d4f13c3
+index 0000000000..d4f13c3f82
 --- /dev/null
 +++ b/test/registered/unit/multimodal/test_alpha_channel_gating.py
 @@ -0,0 +1,72 @@
@@ -29745,7 +29783,7 @@ index 0000000..d4f13c3
 +if __name__ == "__main__":
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/parser/test_jinja_template_utils.py b/test/registered/unit/parser/test_jinja_template_utils.py
-index d23b88f..b7145f7 100644
+index d23b88fc36..b7145f71c0 100644
 --- a/test/registered/unit/parser/test_jinja_template_utils.py
 +++ b/test/registered/unit/parser/test_jinja_template_utils.py
 @@ -4,6 +4,7 @@ import unittest
@@ -29793,7 +29831,7 @@ index d23b88f..b7145f7 100644
          llama4_pattern = """
 diff --git a/test/registered/unit/server_args/test_glm5_next_sm120_defaults.py b/test/registered/unit/server_args/test_glm5_next_sm120_defaults.py
 new file mode 100644
-index 0000000..e9bb5fb
+index 0000000000..e9bb5fb271
 --- /dev/null
 +++ b/test/registered/unit/server_args/test_glm5_next_sm120_defaults.py
 @@ -0,0 +1,45 @@
@@ -29843,7 +29881,7 @@ index 0000000..e9bb5fb
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/server_args/test_server_args.py b/test/registered/unit/server_args/test_server_args.py
-index b81bdd2..41e5b30 100644
+index b81bdd2dfd..41e5b30020 100644
 --- a/test/registered/unit/server_args/test_server_args.py
 +++ b/test/registered/unit/server_args/test_server_args.py
 @@ -2060,6 +2060,50 @@ class TestPrefillCudaGraphLoRACompatibility(CustomTestCase):
@@ -29898,7 +29936,7 @@ index b81bdd2..41e5b30 100644
      """The BCG "multimodal model" rule exempts archs on the BCG multimodal
      opt-in allowlist (multimodal_breakable_cuda_graph_supported_model_archs)."""
 diff --git a/test/registered/unit/spec/test_ngram_mamba_verify_update.py b/test/registered/unit/spec/test_ngram_mamba_verify_update.py
-index a620b5f..f67cf3b 100644
+index a620b5f2ff..f67cf3bc3c 100644
 --- a/test/registered/unit/spec/test_ngram_mamba_verify_update.py
 +++ b/test/registered/unit/spec/test_ngram_mamba_verify_update.py
 @@ -126,6 +126,12 @@ class TestNgramMambaVerifyUpdate(CustomTestCase):
@@ -30017,7 +30055,7 @@ index a620b5f..f67cf3b 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/spec/test_spec_cpu_overlap_constraint.py b/test/registered/unit/spec/test_spec_cpu_overlap_constraint.py
-index dabc6e9..d699afd 100644
+index dabc6e95a9..d699afd3fd 100644
 --- a/test/registered/unit/spec/test_spec_cpu_overlap_constraint.py
 +++ b/test/registered/unit/spec/test_spec_cpu_overlap_constraint.py
 @@ -1,5 +1,6 @@
@@ -30085,7 +30123,7 @@ index dabc6e9..d699afd 100644
      unittest.main()
 diff --git a/test/registered/unit/test_dsa_trtllm_fp8_cp.py b/test/registered/unit/test_dsa_trtllm_fp8_cp.py
 new file mode 100644
-index 0000000..134a7a4
+index 0000000000..134a7a462a
 --- /dev/null
 +++ b/test/registered/unit/test_dsa_trtllm_fp8_cp.py
 @@ -0,0 +1,81 @@
@@ -30171,7 +30209,7 @@ index 0000000..134a7a4
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index d9817d6..1491836 100644
+index d9817d6065..1491836fac 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
 @@ -1,6 +1,5 @@
@@ -30358,7 +30396,7 @@ index d9817d6..1491836 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_model_overrides.py b/test/registered/unit/test_model_overrides.py
-index 27e18bc..096d9f2 100644
+index 27e18bc76c..096d9f2015 100644
 --- a/test/registered/unit/test_model_overrides.py
 +++ b/test/registered/unit/test_model_overrides.py
 @@ -1877,13 +1877,18 @@ class TestGoldenModelOverrides(_IsolatedPublish):
@@ -30389,7 +30427,7 @@ index 27e18bc..096d9f2 100644
              override_platform(is_npu=False),
 diff --git a/test/registered/unit/utils/test_mem_forensics.py b/test/registered/unit/utils/test_mem_forensics.py
 new file mode 100644
-index 0000000..6ab49e5
+index 0000000000..6ab49e5440
 --- /dev/null
 +++ b/test/registered/unit/utils/test_mem_forensics.py
 @@ -0,0 +1,123 @@

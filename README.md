@@ -8,13 +8,13 @@ SGLang, TP2, no NVLink required.
 **Hugging Face model:**
 [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
 
-Current release: `v0.1.1-rc.1` for the W4A16 NVFP4 K32 experts + FP8
+Current release: `v0.1.1-rc.2` for the W4A16 NVFP4 K32 experts + FP8
 weight-only checkpoint. Source candidate, not yet built or qualified
 (internal build name
-`sglang-glm53-flash-sm120:v0.1.1-rc.1`):
+`sglang-glm53-flash-sm120:v0.1.1-rc.2`):
 
 ```text
-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1-rc.1
+ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1-rc.2
 ```
 
 `v0.1.0` (digest-identical promotion of `v0.1.0-rc.71`) remains the
@@ -22,12 +22,12 @@ latest stable, qualified image.
 
 ## What you get
 
-Measured results below were qualified on `v0.1.0`. `v0.1.1-rc.1`
+Measured results below were qualified on `v0.1.0`. `v0.1.1-rc.2`
 changes only the DSA radix top-k kernel (value-correct overflow descent
 plus crash-proofed refine rounds) and is not yet built or qualified;
 requalification is required before any number below may be cited for it.
 
-- **C4 serving with a 507,904-token KV pool and context limit** — four
+- **C4 serving with a 499,712-token KV pool and context limit** — four
   concurrent agentic requests sharing a full ~500k-token budget, with a
   502,784-token single-request cold prefill demonstrated.
 - **HiCache host tier**: 13.5M KV tokens (82.9 GB host memory) plus a mamba
@@ -67,7 +67,7 @@ corpus at 4,096 output tokens, temperature 0.
 
 | Capacity and quality | Result |
 |---|---|
-| KV pool / context limit | 507,904 tokens, C4 |
+| KV pool / context limit | 499,712 tokens, C4 |
 | Largest single cold prefill served | 502,784 tokens |
 | HiCache host tier | 13.5M KV tokens (82.9 GB) + mamba tier |
 | GSM8K (1,319q, temp 0, zero-shot) | 97.2% regraded / 89.5% pinned grader |
@@ -130,9 +130,9 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --dsa-prefill-backend flashinfer_sparse_mla \
   --dsa-decode-backend flashinfer_sparse_mla \
   --kv-cache-dtype fp8_e4m3 --mamba-ssm-dtype bfloat16 \
-  --context-length 507904 --max-total-tokens 507904 \
+  --context-length 499712 --max-total-tokens 499712 \
   --mem-fraction-static 0.99 --chunked-prefill-size 4096 \
-  --max-running-requests 4 --max-mamba-cache-size 20 \
+  --max-running-requests 4 --max-mamba-cache-size 28 \
   # add: --enable-hierarchical-cache --hicache-size 32   (host prefix cache, optional) \
   --cuda-graph-backend-prefill disabled --cuda-graph-backend-decode full \
   --cuda-graph-bs-decode 1 2 3 4 \
@@ -200,7 +200,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.1-rc.1 .
+  -t sglang-glm53-flash-sm120:v0.1.1-rc.2 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

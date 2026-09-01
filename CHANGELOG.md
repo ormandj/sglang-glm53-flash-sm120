@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.1-rc.2 (vision-attention precompile, 500k default headroom; not yet built or qualified)
+
+- Precompiles the vision tower's Triton attention kernel
+  (`context_attention_fwd`'s `_fwd_kernel`) in
+  `Glm5NextForConditionalGeneration.precompile_kernels_after_loading`.
+  Previously the cubin device-loaded on the FIRST image request — hours
+  into serving, with the memory pools holding nearly all device memory —
+  and on a 99% `mem-fraction-static` deployment that same pressure made
+  nvJPEG fall back to CPU image decode (`CUDA error: out of memory` in
+  the log; requests still succeeded). The kernel now loads during engine
+  init with the tower's exact specialization (head-dim constexprs, bf16,
+  non-causal).
+- `examples/serve-glm53-flash.sh` defaults `CONTEXT_LENGTH` /
+  `MAX_TOTAL_TOKENS` to 499,712 (was 524,288): trimming the pool ~8k
+  tokens frees roughly 240 MB per GPU of runtime headroom so GPU-side
+  image decode and any remaining lazy loads have room. Override the env
+  vars to reclaim the larger context if you do not serve images.
+
 ## v0.1.1-rc.1 (DSA radix top-k correctness and crash fix, not yet built or qualified)
 
 - Fixes `kpool_topk_transform_kernel` (`kernels/jit/csrc/dsa/kpool_topk_transform.cuh`),
