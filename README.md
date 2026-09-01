@@ -131,7 +131,7 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --dsa-decode-backend flashinfer_sparse_mla \
   --kv-cache-dtype fp8_e4m3 --mamba-ssm-dtype bfloat16 \
   --context-length 499712 --max-total-tokens 499712 \
-  --mem-fraction-static 0.99 --chunked-prefill-size 4096 \
+  --mem-fraction-static 0.99 --chunked-prefill-size 4096 --max-prefill-tokens 4096 \
   --max-running-requests 4 --max-mamba-cache-size 28 \
   # add: --enable-hierarchical-cache --hicache-size 32   (host prefix cache, optional) \
   --cuda-graph-backend-prefill disabled --cuda-graph-backend-decode full \

@@ -13,10 +13,16 @@
   init with the tower's exact specialization (head-dim constexprs, bf16,
   non-causal).
 - `examples/serve-glm53-flash.sh` defaults `CONTEXT_LENGTH` /
-  `MAX_TOTAL_TOKENS` to 499,712 (was 524,288): trimming the pool ~8k
-  tokens frees roughly 240 MB per GPU of runtime headroom so GPU-side
-  image decode and any remaining lazy loads have room. Override the env
-  vars to reclaim the larger context if you do not serve images.
+  `MAX_TOTAL_TOKENS` to 499,712 (was 524,288; ~50 MB/GPU back) and adds
+  `--max-prefill-tokens 4096` (one chunk per extend batch). The latter is
+  the load-bearing change: the KDA chunk kernels allocate per-token
+  workspace transients at runtime, and a 16,384-token 4-way batched cold
+  prefill exceeds the ~1.3 GB post-pool headroom (observed
+  `torch.OutOfMemoryError` in `chunk_gated_delta_rule_fwd_h` on both TP
+  ranks under four simultaneous cold requests). Bounding the extend batch
+  to a single 4,096-token chunk restores the transient profile that
+  serves reliably, at the cost of serializing concurrent cold prefills.
+  Override the env vars to reclaim the larger context if needed.
 
 ## v0.1.1-rc.1 (DSA radix top-k correctness and crash fix, not yet built or qualified)
 
