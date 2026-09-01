@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.1-rc.6 (short-prompt warmup coverage; not yet built or qualified)
+
+- `serving_coverage` adds ordinary-chat shapes: single prompts of 16 to
+  768 tokens, a concurrent cohort of short prompts, and one 256-token
+  decode. On rc.5 the first short thinking-mode chat took 75 s for 200
+  tokens (1.4 s on repeat): MoE route packing, kpool layout and sparse-index
+  kernels specialize on small token counts, and every warmup/test prompt
+  so far had been >=1.5k tokens, so those specializations compiled on the
+  first real chat.
+- rc.5 acceptance on quasar: 0 late loads at ready (diagnostics now gated
+  on warmup completion), image 1.4 s first / 0.5 s steady, image then four
+  simultaneous cold requests with no OOM, only the two rank processes on
+  the GPUs.
+
 ## v0.1.1-rc.5 (fixes rc.4 boot crash; not yet built or qualified)
 
 - rc.4 crashed both schedulers at the end of warmup: the new

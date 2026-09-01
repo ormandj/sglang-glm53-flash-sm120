@@ -6009,10 +6009,10 @@ index 17ecfa782d..628b3d48d6 100644
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
 diff --git a/python/sglang/srt/entrypoints/warmup.py b/python/sglang/srt/entrypoints/warmup.py
-index 2608621f6a..f49ab109af 100644
+index 2608621f6a..dcf71dc301 100644
 --- a/python/sglang/srt/entrypoints/warmup.py
 +++ b/python/sglang/srt/entrypoints/warmup.py
-@@ -127,6 +127,133 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
+@@ -127,6 +127,151 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
          await tokenizer_manager.generate_request(generate_req_input, None).__anext__()
  
  
@@ -6109,6 +6109,24 @@ index 2608621f6a..f49ab109af 100644
 +            await _run(_request(input_ids=_ids(tokens), max_new_tokens=4))
 +
 +    phases.append(("multichunk-prefill", _multichunk))
++
++    async def _short_prompts():
++        # Ordinary chat turns are tens to a few hundred tokens; MoE route
++        # packing, kpool layout and the sparse-index kernels specialize on
++        # these small token counts too, and a 200-token reply that has to
++        # compile them on first use takes over a minute. Cover them alone
++        # and as a concurrent cohort, with one long thinking-length decode.
++        for tokens in (16, 48, 128, 320, 768):
++            await _run(_request(input_ids=_ids(tokens), max_new_tokens=16))
++        await asyncio.gather(
++            *(
++                _run(_request(input_ids=_ids(24 + 40 * i), max_new_tokens=24 + 16 * i))
++                for i in range(max_running)
++            )
++        )
++        await _run(_request(input_ids=_ids(32), max_new_tokens=256))
++
++    phases.append(("short-prompts", _short_prompts))
 +
 +    mm_tokens = getattr(getattr(tokenizer_manager, "mm_processor", None), "mm_tokens", None)
 +    image_token = getattr(mm_tokens, "image_token", None)
