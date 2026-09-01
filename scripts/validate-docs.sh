@@ -33,7 +33,7 @@ critical=(
   'MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}'
   'CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-4}'
   '--enable-multimodal'
-  '--image-processor-backend pil'
+  '--image-processor-backend torchvision'
   '--moe-runner-backend flashinfer_cutlass'
   '--kv-cache-dtype fp8_e4m3'
   '--dsa-prefill-backend flashinfer_sparse_mla'

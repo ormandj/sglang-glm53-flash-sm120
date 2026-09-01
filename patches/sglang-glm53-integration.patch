@@ -5970,6 +5970,120 @@ index 17ecfa782d..628b3d48d6 100644
              # Append assistant prefix if continue_final_message is enabled
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
+diff --git a/python/sglang/srt/entrypoints/warmup.py b/python/sglang/srt/entrypoints/warmup.py
+index 2608621f6a..88a3400ad6 100644
+--- a/python/sglang/srt/entrypoints/warmup.py
++++ b/python/sglang/srt/entrypoints/warmup.py
+@@ -127,6 +127,109 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
+         await tokenizer_manager.generate_request(generate_req_input, None).__anext__()
+ 
+ 
++@warmup("serving_coverage")
++async def serving_coverage(
++    disaggregation_mode: str, tokenizer_manager: TokenizerManager
++):
++    """Drive the real serving path before ready so lazy kernel loads land now.
++
++    Triton loads a specialization's cubin at first launch, outside the torch
++    allocator; on a deployment whose pools hold nearly all device memory a
++    first use minutes into serving can OOM. Hand-rolled prewarms miss real
++    specializations, so this warmup issues genuine requests instead:
++
++    * a cohort of ``max_running_requests`` concurrent requests (speculative
++      verify / bonus / recurrent-state commit kernels at every batch size as
++      the cohort drains),
++    * cold prefills spanning one, two and three chunked-prefill chunks
++      (write-plan and MoE route-packing specializations keyed on chunk
++      count and token count),
++    * one image request when the model is multimodal (vision tower and
++      image-feature scatter).
++
++    Each phase is best-effort: a failure logs and never blocks serving.
++    """
++    import asyncio
++
++    server_args = tokenizer_manager.server_args
++    max_running = max(
++        1, min(int(getattr(server_args, "max_running_requests", None) or 1), 8)
++    )
++    chunk = int(getattr(server_args, "chunked_prefill_size", 0) or 0)
++    if chunk <= 0:
++        chunk = 4096
++
++    def _request(input_ids=None, text=None, image_data=None, max_new_tokens=48):
++        req = GenerateReqInput(
++            input_ids=input_ids,
++            text=text,
++            image_data=image_data,
++            sampling_params={
++                "max_new_tokens": max_new_tokens,
++                "temperature": 0.0,
++                "ignore_eos": True,
++            },
++        )
++        if disaggregation_mode != "null":
++            req.bootstrap_room = 0
++            req.bootstrap_host = FAKE_BOOTSTRAP_HOST
++        return req
++
++    async def _run(req):
++        async for _ in tokenizer_manager.generate_request(req, None):
++            pass
++
++    def _ids(n):
++        return np.random.randint(2**16, size=[n]).tolist()
++
++    phases = []
++
++    async def _cohort():
++        await asyncio.gather(
++            *(_run(_request(input_ids=_ids(1536 + 64 * i))) for i in range(max_running))
++        )
++
++    phases.append((f"cohort(bs={max_running})", _cohort))
++
++    async def _multichunk():
++        for chunks in (1, 2, 3):
++            await _run(_request(input_ids=_ids(chunk * chunks + 64), max_new_tokens=4))
++
++    phases.append(("multichunk-prefill", _multichunk))
++
++    mm_tokens = getattr(getattr(tokenizer_manager, "mm_processor", None), "mm_tokens", None)
++    image_token = getattr(mm_tokens, "image_token", None)
++    if isinstance(image_token, list):
++        image_token = image_token[0] if image_token else None
++    if image_token:
++
++        async def _image():
++            import base64
++            import io
++
++            from PIL import Image
++
++            buf = io.BytesIO()
++            Image.new("RGB", (64, 64), (128, 64, 32)).save(buf, format="PNG")
++            data_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
++            await _run(
++                _request(
++                    text=f"{image_token} Describe the image.",
++                    image_data=[data_url],
++                    max_new_tokens=8,
++                )
++            )
++
++        phases.append(("image", _image))
++
++    for name, fn in phases:
++        try:
++            await fn()
++            logger.info("serving_coverage warmup phase done: %s", name)
++        except Exception:
++            logger.exception("serving_coverage warmup phase failed: %s", name)
++
++
+ @warmup("prefill_shapes")
+ async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
+     """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
 index 70b2af61ed..5105c45a3d 100644
 --- a/python/sglang/srt/environ.py
@@ -22863,7 +22977,7 @@ index d7548ba201..91526c425b 100644
 +        pieces.append(gathered[start : start + output_length])
 +    return torch.cat(pieces, dim=0)
 diff --git a/python/sglang/srt/multimodal/processors/base_processor.py b/python/sglang/srt/multimodal/processors/base_processor.py
-index 919bd1b3ca..e2448facbf 100644
+index 919bd1b3ca..c483638745 100644
 --- a/python/sglang/srt/multimodal/processors/base_processor.py
 +++ b/python/sglang/srt/multimodal/processors/base_processor.py
 @@ -57,6 +57,7 @@ from sglang.srt.utils import (
@@ -22882,7 +22996,23 @@ index 919bd1b3ca..e2448facbf 100644
      prefer_tokenized_input = False
      precompute_hash_before_cpu_transfer = False
      # Set by processors that already build input_ids from the request's own
-@@ -811,6 +813,14 @@ class BaseMultimodalProcessor(ABC):
+@@ -690,8 +692,14 @@ class BaseMultimodalProcessor(ABC):
+         """The device for the fast image processor, or None to leave it unset.
+ 
+         Resolved from this processor's own ``server_args``: engines sharing a
+-        tokenizer process each carry their own ``base_gpu_id``.
++        tokenizer process each carry their own ``base_gpu_id``. A processor
++        class may pin ``image_preprocessing_device`` (the image analogue of
++        ``video_preprocessing_device``) to keep the fast processor off the
++        model's GPU.
+         """
++        pinned_device = getattr(self, "image_preprocessing_device", None)
++        if pinned_device is not None:
++            return pinned_device
+         server_args = self.server_args
+         if _is_cpu or server_args.rl_on_policy_target is not None:
+             return "cpu"
+@@ -811,6 +819,14 @@ class BaseMultimodalProcessor(ABC):
              if processor_device is not None:
                  kwargs["device"] = processor_device
  
@@ -22897,7 +23027,7 @@ index 919bd1b3ca..e2448facbf 100644
          # Avoid double BOS when the chat template already wrote one.
          if self._tokenizer_auto_adds_specials and isinstance(input_text, str):
              bos = getattr(tokenizer, "bos_token", None)
-@@ -895,8 +905,14 @@ class BaseMultimodalProcessor(ABC):
+@@ -895,8 +911,14 @@ class BaseMultimodalProcessor(ABC):
                  img, _ = load_image(data, cls.gpu_image_decode)
                  if isinstance(img, torch.Tensor):
                      return img  # JPEG already decoded on GPU by nvJPEG
@@ -22915,7 +23045,7 @@ index 919bd1b3ca..e2448facbf 100644
              elif modality == Modality.VIDEO:
                  return load_video(data, frame_count_limit)
 diff --git a/python/sglang/srt/multimodal/processors/glm4v.py b/python/sglang/srt/multimodal/processors/glm4v.py
-index c4d363f47f..b35d233654 100644
+index c4d363f47f..dc58de9e8a 100644
 --- a/python/sglang/srt/multimodal/processors/glm4v.py
 +++ b/python/sglang/srt/multimodal/processors/glm4v.py
 @@ -1,5 +1,11 @@
@@ -22930,7 +23060,7 @@ index c4d363f47f..b35d233654 100644
  from sglang.srt.layers.rotary_embedding import MRotaryEmbedding
  from sglang.srt.managers.schedule_batch import MultimodalProcessorOutput
  from sglang.srt.models.glm4v import Glm4vForConditionalGeneration
-@@ -10,19 +16,424 @@ from sglang.srt.multimodal.processors.base_processor import (
+@@ -10,19 +16,434 @@ from sglang.srt.multimodal.processors.base_processor import (
  from sglang.srt.multimodal.processors.base_processor import (
      MultimodalSpecialTokens,
  )
@@ -23345,6 +23475,16 @@ index c4d363f47f..b35d233654 100644
  
  class Glm4vImageProcessor(SGLangBaseProcessor):
 +    smart_rgb_conversion = True
++    # Keep image decode and preprocessing off the GPU: both run in the
++    # tokenizer process, and the first GPU use there pins a ~1.1 GB CUDA
++    # context on the model's device for the life of the server. On
++    # memory-tight deployments that is the runtime headroom the scheduler
++    # needs for prefill transients. Measured cost of staying on CPU: JPEG
++    # decode 1.4 ms (PIL) vs 0.4 ms (nvJPEG) at 1024x768, 12 ms vs 3 ms at
++    # 4K; torchvision preprocessing on CPU 11 ms / 122 ms (vs 0.4 / 1 ms on
++    # GPU) — noise against the vision tower's own prefill.
++    gpu_image_decode = False
++    image_preprocessing_device = "cpu"
 +    video_preprocessing_device = "cpu"
      models = [
          m
@@ -23355,7 +23495,7 @@ index c4d363f47f..b35d233654 100644
              GlmOcrForConditionalGeneration,
          ]
          if m is not None
-@@ -46,6 +457,8 @@ class Glm4vImageProcessor(SGLangBaseProcessor):
+@@ -46,6 +467,8 @@ class Glm4vImageProcessor(SGLangBaseProcessor):
          self.IMAGE_END_TOKEN_ID = hf_config.image_end_token_id
          self.VIDEO_START_TOKEN_ID = hf_config.video_start_token_id
          self.VIDEO_END_TOKEN_ID = hf_config.video_end_token_id
@@ -23364,7 +23504,7 @@ index c4d363f47f..b35d233654 100644
  
          # Vision config
          self.IMAGE_FACTOR = 28
-@@ -90,10 +503,19 @@ class Glm4vImageProcessor(SGLangBaseProcessor):
+@@ -90,10 +513,19 @@ class Glm4vImageProcessor(SGLangBaseProcessor):
          *args,
          **kwargs,
      ):

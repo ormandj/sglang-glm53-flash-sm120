@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.1-rc.3 (real-path serving warmup; not yet built or qualified)
+
+- Adds the `serving_coverage` warmup (`--warmups serving_coverage`, now the
+  documented default in place of `--skip-server-warmup`). rc.2 still
+  device-loaded ~22 distinct Triton kernels on the first real requests —
+  DSA kpool write-plan/layout kernels, speculative bonus/verify and
+  recurrent-state commit kernels, MoE route packing, allocator kernels —
+  including four the scheduler-side hand prewarm claimed to cover (its
+  synthetic launches select different specializations). The warmup instead
+  drives the genuine serving path before the server reports ready: a
+  concurrent cohort at `max_running_requests`, cold prefills spanning one,
+  two and three chunks, and one image request when multimodal. Each phase
+  is best-effort and logged.
+- Image decode and preprocessing stay on CPU for GLM (`gpu_image_decode`
+  off, new `image_preprocessing_device = "cpu"` class hook honored by the
+  fast-processor device resolver). Both ran in the tokenizer process on the
+  model's GPU 0 and the first JPEG request pinned a ~1.1 GB CUDA context
+  there for the life of the server — the headroom the scheduler needs for
+  prefill transients (rc.2: a vision request followed by four cold
+  requests OOM'd both ranks; the same cohort passes on a fresh boot).
+  Measured cost: JPEG decode 1.4 ms (PIL) vs 0.4 ms (nvJPEG) at 1024x768,
+  12 vs 3 ms at 4K; torchvision preprocessing on CPU 11 ms / 122 ms vs
+  0.4 / 1 ms on GPU. The documented profile switches
+  `--image-processor-backend` from `pil` to `torchvision` (CPU): 11 ms
+  instead of 19 ms at 1024x768, 122 ms instead of 330 ms at 4K.
+- Verified on rc.2 that `--max-prefill-tokens 4096` holds: four
+  simultaneous cold 4k-token requests complete on a fresh boot with no OOM.
+
 ## v0.1.1-rc.2 (vision-attention precompile, 500k default headroom; not yet built or qualified)
 
 - Precompiles the vision tower's Triton attention kernel
