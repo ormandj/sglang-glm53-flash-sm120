@@ -1,12 +1,15 @@
 # SGLang for GLM-5.3-Flash on SM120
 
-A reproducible Linux x86_64 image and quantization recipe for serving
-[`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash)
-(320B-A18B, hybrid KDA + DeepSeek sparse attention, vision) on two NVIDIA RTX
-PRO 6000 Blackwell (96 GB, SM120) GPUs with SGLang, TP2, no NVLink required.
+A reproducible Linux x86_64 image for serving the published
+[`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
+checkpoint on two NVIDIA RTX PRO 6000 Blackwell (96 GB, SM120) GPUs with
+SGLang, TP2, no NVLink required.
 
-Current release: `v0.1.0-rc.68` with the W4A16-K32 + FP8-attention
-MIXED_PRECISION artifact. Qualified image (internal build name
+**Hugging Face model:**
+[`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
+
+Current release: `v0.1.0-rc.68` for the W4A16 NVFP4 K32 experts + FP8
+weight-only checkpoint. Qualified image (internal build name
 `sglang-glm53-flash-sm120:v0.1.0-rc.68`):
 
 ```text
@@ -64,58 +67,25 @@ corpus at 4,096 output tokens, temperature 0.
 
 Full tables and method notes: [`BENCHMARKS.md`](BENCHMARKS.md).
 
-## The quantization
-
-The served artifact is produced locally from the BF16 checkpoint by
-[`quantization/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py`](quantization/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py)
-(~17 minutes on one SM120 GPU, atomic publish, fail-closed validation):
-
-| Component | Precision |
-|---|---|
-| Routed experts, layers 3–45 incl. the MTP layer's expert bank | NVFP4 W4A16, K=32 group scales, MSE-swept (aggregate rel-L2 0.085) |
-| Attention / KDA / MLA projections + shared experts, layers 0–44 | FP8 E4M3 weight-only, [128,128] block scales (aggregate rel-L2 0.022) |
-| MTP draft layer (45) attention, DSA indexer, vision tower, embeddings, LM head, routers, norms | BF16 |
-
-Two hard-won rules are baked into the producer: the DSA indexer projections
-stay BF16 (the head-gate reads raw weights), and **the MTP draft layer's
-attention stays BF16** — quantizing it loads through the draft's remapped
-namespace where mixed-precision resolution silently fails, collapsing
-speculative acceptance to exactly zero while outputs remain correct.
-
-The artifact totals 165.8 GiB (vs 172.2 for the BF16-attention W4A16
-predecessor); the ~2.6 GB/GPU reclaimed funds the 507,904-token pool at
-chunked-prefill 2,048.
-
 ## Quickstart
 
 You need Linux x86_64, a CUDA 13-compatible driver, Docker with the NVIDIA
-Container Toolkit, two visible SM120 GPUs, ~600 GB scratch for the BF16
-source plus ~170 GB for the artifact, and 128+ GB of host RAM at the
-qualified HiCache size (reduce `--hicache-size` otherwise).
+Container Toolkit, two visible SM120 GPUs, about 170 GB for the published
+checkpoint, and 128+ GB of host RAM at the qualified HiCache size (reduce
+`--hicache-size` otherwise).
 
-### 1. Produce the artifact
+### 1. Download the published checkpoint
 
 ```bash
-export SRC=/srv/models/GLM-5.3-Flash-BF16
-uvx --from huggingface-hub hf download zai-org/GLM-5.3-Flash \
-  --revision f12e0fe1f6b2ea274c11a569582edfd99d993c5e --local-dir "$SRC"
-printf 'f12e0fe1f6b2ea274c11a569582edfd99d993c5e\n' > "$SRC/.source-revision"
-touch "$SRC/.download-complete"
-
-docker run --rm --gpus device=0 \
-  -v /srv/models:/scratch \
-  -v "$PWD/quantization:/opt/q:ro" \
-  --entrypoint /opt/sglang/bin/python \
-  ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.0-rc.68 \
-  /opt/q/quantize_glm53_bf16_w4a16_k32_fp8attn_mix.py \
-  --source /scratch/GLM-5.3-Flash-BF16 \
-  --output /scratch/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
+export MODEL_REPO=ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
+export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
+mkdir -p "$MODEL_DIR"
+HF_XET_HIGH_PERFORMANCE=1 hf download "$MODEL_REPO" --local-dir "$MODEL_DIR"
 ```
 
 ### 2. Serve the qualified TP2 configuration
 
 ```bash
-export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-K32-FP8PBWO-MIX-V2
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v52
 mkdir -p "$CACHE_DIR"
 cat > adaptive.json <<'JSON'
@@ -198,6 +168,10 @@ The full failure-and-fix narrative — the CUDA-graph workspace use-after-free
 hunt, the padded-replay corruption, and the zero-acceptance MTP regression —
 is preserved in [`CHANGELOG.md`](CHANGELOG.md) and the receipts under
 [`evidence/`](evidence/).
+
+Most users should download the published checkpoint as shown above. To
+reproduce it from the pinned BF16 source, see
+[`QUANTIZATION.md`](QUANTIZATION.md).
 
 ## Build from source
 

@@ -57,12 +57,12 @@
   failed its group-16 block-scale shape check during autotune warmup.
   Cache schema v51.
 
-## v0.1.0-rc.63 (mixed-precision loader fix for the FP8-mix artifact, superseded before qualification)
+## v0.1.0-rc.63 (mixed-precision loader fix for the W4A16 NVFP4 K32 experts + FP8 weight-only checkpoint, superseded before qualification)
 
 - Exposes `linear_fp8_config` on `ModelOptMixedPrecisionConfig`: MLA
   absorption in `deepseek_weight_loader.post_load_weights` selects its
   `kv_b_proj` dequant branch from that hook, and the first boot of the
-  MIXED_PRECISION artifact (W4A16-K32 experts + FP8 [128,128]-block
+  `GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO` checkpoint (W4A16-K32 experts + FP8 [128,128]-block
   weight-only attention/shared experts, 165.64 GiB, expert aggregate
   relative-L2 0.0851, FP8 aggregate 0.0225) crashed reading
   `weight_scale` on a block-quantized `ColumnParallelLinear`. The hook

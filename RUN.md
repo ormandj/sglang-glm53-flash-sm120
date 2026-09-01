@@ -1,8 +1,12 @@
 # Running `v0.1.0-rc.68`
 
 ```bash
+export MODEL_REPO=ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
+export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
+mkdir -p "$MODEL_DIR"
+HF_XET_HIGH_PERFORMANCE=1 hf download "$MODEL_REPO" --local-dir "$MODEL_DIR"
+
 export IMAGE=sglang-glm53-flash-sm120:v0.1.0-rc.68
-export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-E4M3-K32-MSE
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v52
 ./examples/serve-glm53-flash.sh
 ```

@@ -1,4 +1,4 @@
-DFlash-2 drafter evaluation - 2026-08-31 (rc65, MIX-V2 target, IPC allreduce, seeded glm-c1 n=5)
+DFlash-2 drafter evaluation - 2026-08-31 (rc65, GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO target, IPC allreduce, seeded glm-c1 n=5)
 
 boot: three blockers fixed to first serve on SM120: accelerate dep for the ModelOpt draft loader (rc65), --speculative-draft-model-quantization unquant (draft inherits target modelopt_mixed otherwise), hicache host-tier budget (the draft allocates its own 63.3 GB host pool at hicache 128; experiment ran at 48). Draft attention on flashinfer (fa4 excluded on SM120). Pool capped 393216 for the experiment.
 

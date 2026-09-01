@@ -1,8 +1,8 @@
-# Measured results — v0.1.0-rc.65 + MIX-V2 artifact
+# Measured results — v0.1.0-rc.65 + GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
 
 All numbers below were measured on 2026-08-31 on one host: 2x NVIDIA RTX PRO
 6000 Blackwell Max-Q Workstation Edition (96 GB, SM120), TP2, PCIe, no NVLink,
-serving the MIXED_PRECISION artifact described in
+serving the `GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO` checkpoint described in
 [`QUANTIZATION.md`](QUANTIZATION.md) with the exact configuration in
 [`RUN.md`](RUN.md) (pool and context 507,904 tokens, chunked prefill 2,048,
 C4, native EAGLE MTP 5/1/6, FP8 E4M3 KV, HiCache 128 GB). Raw receipts live
