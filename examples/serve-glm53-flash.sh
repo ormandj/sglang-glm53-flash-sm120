@@ -62,6 +62,16 @@ fi
 mkdir -p "$CACHE_DIR"
 model_dir=$(cd "$MODEL_DIR" && pwd)
 cache_dir=$(cd "$CACHE_DIR" && pwd)
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# The adaptive spec-decode step config is REQUIRED at long context: without
+# it the adaptive controller sizes its speculative state buffers for the
+# default step ladder, which scales with the token pool and OOMs once real
+# context accumulates. The shipped config pins candidate_steps [3, 5].
+ADAPTIVE_CONFIG=${ADAPTIVE_CONFIG:-$script_dir/glm53-adaptive.json}
+if [[ ! -f "$ADAPTIVE_CONFIG" ]]; then
+  echo "ADAPTIVE_CONFIG not found: $ADAPTIVE_CONFIG" >&2
+  exit 2
+fi
 container_model_path=/models/glm53-flash-w4a16-e4m3-k32
 
 # EP is deliberately absent: TP=2 keeps half of the routed-expert bank on each
@@ -76,6 +86,7 @@ exec docker run --rm \
   --publish "${PORT}:8000" \
   --volume "${model_dir}:${container_model_path}:ro" \
   --volume "${cache_dir}:/root/.cache" \
+  --volume "${ADAPTIVE_CONFIG}:/etc/glm53-adaptive/adaptive.json:ro" \
   --env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
   --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
@@ -110,6 +121,7 @@ exec docker run --rm \
   --speculative-eagle-topk 1 \
   --speculative-num-draft-tokens 6 \
   --speculative-adaptive \
+  --speculative-adaptive-config /etc/glm53-adaptive/adaptive.json \
   --reasoning-parser glm45 \
   --tool-call-parser glm47 \
   --enable-metrics \
