@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.1",
-    "candidate": 6,
-    "candidate_tag": "v0.1.1-rc.6",
+    "candidate": 7,
+    "candidate_tag": "v0.1.1-rc.7",
     "stable_tag": "v0.1.1",
     "cache_schema": "v54"
   },
   "image": {
-    "tag": "v0.1.1-rc.6",
+    "tag": "v0.1.1-rc.7",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,7 +49,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 6
+      "value": 7
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "17808f3fc63e62963967262041774ecf2fd4024d"
+      "value": "4511e4cf4af2bc3d6e3715e8848d9c0dc38262f2"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "6b57df2eb359af02448a5f735075f4e074a5e6a54865e56cef0186bb266eb6b7"
+      "value": "9a6aee29d758886f47aae210808f679c332b0b2ea8a74b986eaae1738ec2ec68"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,12 +149,12 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b",
       "upstream_tree": "3babfd36d877df796283b229eb96145e7846750f",
-      "tree": "17808f3fc63e62963967262041774ecf2fd4024d",
+      "tree": "4511e4cf4af2bc3d6e3715e8848d9c0dc38262f2",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "6b57df2eb359af02448a5f735075f4e074a5e6a54865e56cef0186bb266eb6b7",
+      "patch_sha256": "9a6aee29d758886f47aae210808f679c332b0b2ea8a74b986eaae1738ec2ec68",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260901",
-      "working_head": "ad0152be028d9eee5c0fc65652f9479e331e6c88",
+      "working_head": "43a0a29d764f916710029ab6b6488119c74145aa",
       "upstream_main_base": "5ab97c4f441462f3d2adb1ffa954cc92518beece",
       "included_upstream_work": [
         "sglang#36507",
@@ -236,10 +236,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "6b57df2eb359af02448a5f735075f4e074a5e6a54865e56cef0186bb266eb6b7",
+      "sha256": "9a6aee29d758886f47aae210808f679c332b0b2ea8a74b986eaae1738ec2ec68",
       "base_head": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b",
       "base_tree": "3babfd36d877df796283b229eb96145e7846750f",
-      "result_tree": "17808f3fc63e62963967262041774ecf2fd4024d"
+      "result_tree": "4511e4cf4af2bc3d6e3715e8848d9c0dc38262f2"
     },
     {
       "name": "flashinfer-glm53-integration",

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.1-rc.7 (natural-text warmup for speculative shapes; not yet built or qualified)
+
+- `serving_coverage` gains a `natural-text` phase. rc.6's short-prompt
+  phase did not remove the 75 s first-chat compile: warmup prompts were
+  random token ids, so EAGLE drafts never matched and adaptive speculation
+  never issued the wider verify batches real text produces — the MoE
+  route-packing, kpool-layout and recurrent-state kernels specialize on
+  exactly those widths. Verified on rc.6: four natural-text generations
+  first (7 s), then the same chat in 1.7 s instead of 75 s.
+
 ## v0.1.1-rc.6 (short-prompt warmup coverage; not yet built or qualified)
 
 - `serving_coverage` adds ordinary-chat shapes: single prompts of 16 to

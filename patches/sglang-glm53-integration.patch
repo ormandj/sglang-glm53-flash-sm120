@@ -6009,10 +6009,10 @@ index 17ecfa782d..628b3d48d6 100644
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
 diff --git a/python/sglang/srt/entrypoints/warmup.py b/python/sglang/srt/entrypoints/warmup.py
-index 2608621f6a..dcf71dc301 100644
+index 2608621f6a..f71622ceea 100644
 --- a/python/sglang/srt/entrypoints/warmup.py
 +++ b/python/sglang/srt/entrypoints/warmup.py
-@@ -127,6 +127,151 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
+@@ -127,6 +127,179 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
          await tokenizer_manager.generate_request(generate_req_input, None).__anext__()
  
  
@@ -6127,6 +6127,34 @@ index 2608621f6a..dcf71dc301 100644
 +        await _run(_request(input_ids=_ids(32), max_new_tokens=256))
 +
 +    phases.append(("short-prompts", _short_prompts))
++
++    async def _natural_text():
++        # Random token ids make speculative drafts miss, so adaptive
++        # speculation never issues the wider verify batches real text
++        # produces — and those verify widths are what the route-packing,
++        # kpool-layout and recurrent-state kernels specialize on. Decode
++        # natural text, alone and as a cohort, so the accepted-draft shapes
++        # load here instead of on the first real chat.
++        prompts = [
++            "The history of the Roman Empire begins with the founding of",
++            "In Python, a list comprehension is a compact way to",
++            "Photosynthesis is the process by which plants convert",
++            "To make a simple tomato sauce, start by heating olive oil and",
++            "The three laws of motion formulated by Newton describe how",
++            "A binary search tree is a data structure in which each node",
++            "The water cycle describes how water evaporates from the surface,",
++            "Machine learning models are trained by adjusting parameters to",
++        ]
++        for text in prompts[:2]:
++            await _run(_request(text=text, max_new_tokens=192))
++        await asyncio.gather(
++            *(
++                _run(_request(text=prompts[(2 + i) % len(prompts)], max_new_tokens=96 + 32 * i))
++                for i in range(max_running)
++            )
++        )
++
++    phases.append(("natural-text", _natural_text))
 +
 +    mm_tokens = getattr(getattr(tokenizer_manager, "mm_processor", None), "mm_tokens", None)
 +    image_token = getattr(mm_tokens, "image_token", None)
