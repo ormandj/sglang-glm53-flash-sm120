@@ -46,10 +46,13 @@ jobs:
             --format '{{.Digest}}' "docker://${candidate_image}")
           [[ "${candidate_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
 
+          # skopeo rejects tag@digest references; copy by digest alone. The
+          # digest was resolved from the candidate tag two lines up, so the
+          # tag-to-digest binding is still what gets promoted.
           skopeo copy --all \
             --src-creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
             --dest-creds "${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}" \
-            "docker://${candidate_image}@${candidate_digest}" \
+            "docker://${repository}@${candidate_digest}" \
             "docker://${stable_image}"
 
           stable_digest=$(skopeo inspect \
