@@ -82,7 +82,7 @@ exec docker run --rm \
   --max-total-tokens "$MAX_TOTAL_TOKENS" \
   --kv-cache-dtype fp8_e4m3 \
   --mem-fraction-static "$MEM_FRACTION" \
-  --chunked-prefill-size 8192 \
+  --chunked-prefill-size 4096 \
   --max-running-requests "$MAX_RUNNING_REQUESTS" \
   --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
   --mamba-ssm-dtype bfloat16 \
