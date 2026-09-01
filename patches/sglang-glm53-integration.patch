@@ -16729,7 +16729,7 @@ index a1ffb4f555..043fe008b1 100644
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 8dc2f21b9f..235b48d1ed 100644
+index 8dc2f21b9f..16247447f7 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -16854,7 +16854,33 @@ index 8dc2f21b9f..235b48d1ed 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3800,20 +3838,27 @@ class Scheduler(
+@@ -3592,10 +3630,22 @@ class Scheduler(
+                     if req.mamba_pool_idx is not None and not getattr(
+                         req, "session", None
+                     ):
+-                        self.tree_cache.req_to_token_pool.mamba_allocator.free(
+-                            req.mamba_pool_idx.unsqueeze(-1)
++                        from sglang.srt.mem_cache.common import (
++                            req_mamba_slot_node_owned,
+                         )
+-                        req.mamba_pool_idx = None
++
++                        if req_mamba_slot_node_owned(req):
++                            # Host load-back committed this slot as the loaded
++                            # node's device mamba value, and a queued
++                            # host->device restore may still target it. The
++                            # tree owns the lifecycle; drop the request's
++                            # alias instead of freeing under the DMA.
++                            req.mamba_pool_idx = None
++                        else:
++                            self.tree_cache.req_to_token_pool.mamba_allocator.free(
++                                req.mamba_pool_idx.unsqueeze(-1)
++                            )
++                            req.mamba_pool_idx = None
+                 break
+ 
+         if mamba_allocator is not None:
+@@ -3800,20 +3850,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -16896,7 +16922,7 @@ index 8dc2f21b9f..235b48d1ed 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -3826,12 +3871,11 @@ class Scheduler(
+@@ -3826,12 +3883,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -16914,7 +16940,7 @@ index 8dc2f21b9f..235b48d1ed 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -3846,12 +3890,11 @@ class Scheduler(
+@@ -3846,12 +3902,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -16930,7 +16956,7 @@ index 8dc2f21b9f..235b48d1ed 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -3907,7 +3950,7 @@ class Scheduler(
+@@ -3907,7 +3962,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -16939,7 +16965,7 @@ index 8dc2f21b9f..235b48d1ed 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -3933,13 +3976,12 @@ class Scheduler(
+@@ -3933,13 +3988,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -16959,7 +16985,7 @@ index 8dc2f21b9f..235b48d1ed 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4061,7 +4103,11 @@ class Scheduler(
+@@ -4061,7 +4115,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -16972,7 +16998,7 @@ index 8dc2f21b9f..235b48d1ed 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4073,7 +4119,11 @@ class Scheduler(
+@@ -4073,7 +4131,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -16984,7 +17010,7 @@ index 8dc2f21b9f..235b48d1ed 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4196,9 +4246,11 @@ class Scheduler(
+@@ -4196,9 +4258,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -16999,7 +17025,7 @@ index 8dc2f21b9f..235b48d1ed 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4221,31 +4273,42 @@ class Scheduler(
+@@ -4221,31 +4285,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -17063,7 +17089,7 @@ index 8dc2f21b9f..235b48d1ed 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4280,7 +4343,7 @@ class Scheduler(
+@@ -4280,7 +4355,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -17735,6 +17761,72 @@ index fd0f326829..60aa4af5df 100644
 +            mamba_indices=mamba_indices,
 +            req_pool_index=req_pool_index,
          )
+diff --git a/python/sglang/srt/mem_cache/common.py b/python/sglang/srt/mem_cache/common.py
+index 93d814f38e..506e19a79c 100644
+--- a/python/sglang/srt/mem_cache/common.py
++++ b/python/sglang/srt/mem_cache/common.py
+@@ -198,6 +198,41 @@ def retraction_discard(req: Req, tree_cache: BasePrefixCache, backend: str) -> N
+     req.retraction_backup = None
+ 
+ 
++def req_mamba_slot_node_owned(req: Req) -> bool:
++    """True when req.mamba_pool_idx aliases the radix node's cached mamba
++    value. Host load-back commits the restore-destination slot as the loaded
++    node's device value while the request still carries the same slot id, so
++    a request-side free (admission rejection, early release) would free a
++    slot the tree still serves and a queued host->device restore still
++    targets. Callers must then drop the request's alias instead of freeing.
++    """
++    node = getattr(req, "last_node", None)
++    slot = req.mamba_pool_idx
++    if node is None or slot is None:
++        return False
++    slot_id = int(slot.item()) if hasattr(slot, "item") else int(slot)
++    cd_map = getattr(node, "component_data", None)
++    if cd_map is not None:
++        for cd in cd_map.values():
++            value = getattr(cd, "value", None)
++            if (
++                value is not None
++                and hasattr(value, "numel")
++                and value.numel() == 1
++                and int(value[0]) == slot_id
++            ):
++                return True
++    value = getattr(node, "mamba_value", None)
++    if (
++        value is not None
++        and hasattr(value, "numel")
++        and value.numel() >= 1
++        and int(value[0]) == slot_id
++    ):
++        return True
++    return False
++
++
+ def release_kv_cache(req: Req, tree_cache: BasePrefixCache, is_insert: bool = True):
+     assert (not req.is_holding_kv) == req.kv.is_released
+     # MambaRadixCache may alloc mamba state before alloc KV cache
+@@ -207,10 +242,15 @@ def release_kv_cache(req: Req, tree_cache: BasePrefixCache, is_insert: bool = Tr
+         ), "Only MambaRadixCache allow freeing before alloc"
+         # TODO (csy, hanming): clean up this early allocation logic
+         if req.mamba_pool_idx is not None:
+-            tree_cache.req_to_token_pool.mamba_allocator.free(
+-                req.mamba_pool_idx.unsqueeze(-1)
+-            )
+-            req.mamba_pool_idx = None
++            if req_mamba_slot_node_owned(req):
++                # Load-back committed this slot as the node's device value;
++                # the tree (and the pending restore) own its lifecycle.
++                req.mamba_pool_idx = None
++            else:
++                tree_cache.req_to_token_pool.mamba_allocator.free(
++                    req.mamba_pool_idx.unsqueeze(-1)
++                )
++                req.mamba_pool_idx = None
+         return
+ 
+     effective_kv_committed_len = req.effective_kv_committed_len()
 diff --git a/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py b/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py
 index 54eabcb7e8..29c56cd012 100644
 --- a/python/sglang/srt/mem_cache/deepseek_v4_memory_pool.py

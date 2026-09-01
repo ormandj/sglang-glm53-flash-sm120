@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.0-rc.68 (hicache load-back mamba slot write-after-free fix, not yet built or qualified)
+
+- Fixes a crash and silent-corruption bug on the hierarchical-cache
+  load-back path for hybrid mamba models: the restore-destination mamba
+  slot is committed as the loaded radix node's device value while the
+  request still carries the same slot id; admission rejection (or early
+  release) then freed it through the request's alias while the queued
+  host-to-device restore still targeted it. The reallocated slot was
+  overwritten by the late DMA, corrupting a live request's recurrent
+  state (NaN logits; illegal memory access inside captured decode
+  graphs). Reproduced 8/8 by twin client streams re-requesting recently
+  finished prompts; hicache-off and forced-miss controls clean. The fix
+  detects the aliasing and drops the request's alias instead of freeing.
+  Cache schema v52.
+
 ## v0.1.0-rc.67 (adaptive-switch graph buffer lifetime fix, not yet built or qualified)
 
 - Pins the topk1 chain prealloc buffers per (steps, max_bs) for the
