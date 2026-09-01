@@ -102,3 +102,5 @@ assert 'FullComponent.evict_component value' in inspect.getsource(full_component
 assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 656
 assert callable(getattr(SparseMLASm120Wrapper, 'run', None))
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))
+
+# Build-input acceptance contract; edits here retrigger image builds.
