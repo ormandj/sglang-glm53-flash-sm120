@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.0-rc.69 (hicache layer-load synchronization race fixes, not yet built or qualified)
+
+- Root-causes and fixes the remaining twin-stream crash (NaN sampler
+  assert / illegal memory access in the DSA top-k transform): the
+  hierarchical-cache layer-by-layer host-to-device restore was not
+  reliably ordered against consuming forwards. Three holes closed:
+  - `LayerDoneCounter.wait_until` waited only on the consumer index the
+    triggering batch carried; decode batches (and rejected-and-retried
+    admissions) carry `-1` and skipped the wait entirely. It now waits
+    on every producer's per-layer events.
+  - The per-layer load events are recorded by the transfer thread with
+    no happens-before against the forward thread's
+    `cudaStreamWaitEvent`; CUDA treats a wait on a never-recorded event
+    as a no-op, so forwards could issue vacuous waits and read restore
+    destinations mid-DMA (probe receipts: raw sparse-attention output
+    goes whole-row nonfinite for exactly the freshly adopted request,
+    at a per-event-varying set of full-attention layers, transiently -
+    the same rows scan clean one second later). A host-side
+    recorded-layer watermark now blocks the consumer until the target
+    layer's event exists, then issues the stream wait; the watermark
+    fails closed on timeout.
+  - `copy_mamba_state` dropped its `consumer_index >= 0` guard, which
+    was defeating the all-producer wait for mamba copy-on-write in
+    retried batches.
+  Reproduced 10/10 in 6-25 min by twin GSM8K client streams with
+  hicache on; hicache-off, forced-miss, and single-stream controls
+  clean. Cache schema v53.
+
 ## v0.1.0-rc.68 (hicache load-back mamba slot write-after-free fix, not yet built or qualified)
 
 - Fixes a crash and silent-corruption bug on the hierarchical-cache

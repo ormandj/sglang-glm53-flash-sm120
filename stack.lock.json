@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.0",
-    "candidate": 68,
-    "candidate_tag": "v0.1.0-rc.68",
+    "candidate": 69,
+    "candidate_tag": "v0.1.0-rc.69",
     "stable_tag": "v0.1.0",
-    "cache_schema": "v52"
+    "cache_schema": "v53"
   },
   "image": {
-    "tag": "v0.1.0-rc.68",
+    "tag": "v0.1.0-rc.69",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -43,47 +43,164 @@
     "expert_parallel": 1
   },
   "pins": [
-    {"arg": "GLM53_RELEASE_VERSION", "value": "0.1.0"},
-    {"arg": "GLM53_RELEASE_CANDIDATE", "value": "68"},
-    {"arg": "GLM53_CACHE_SCHEMA", "value": "v52"},
-    {"arg": "GLM53_SGLANG_BASE", "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
-    {"arg": "GLM53_SGLANG_BASE_TAG", "value": "glm-5.3-flash"},
-    {"arg": "GLM53_SGLANG_BASE_INDEX", "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"},
-    {"arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST", "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"},
-    {"arg": "GLM53_SGLANG_REPOSITORY", "value": "https://github.com/sgl-project/sglang.git"},
-    {"arg": "GLM53_SGLANG_HEAD", "value": "5ab97c4f441462f3d2adb1ffa954cc92518beece"},
-    {"arg": "GLM53_SGLANG_UPSTREAM_TREE", "value": "ed9070a3b150aaab5f9417b398817bacd823689a"},
-    {"arg": "GLM53_SGLANG_TREE", "value": "ce59a768c965bbb0c1a60fb99e9aebb8ae3a4130"},
-    {"arg": "GLM53_SGLANG_PATCH_SHA256", "value": "1fcfa1531fa8dd5cb6615a583b48c99941d0eb4a1d16fb0911272d87a826c0ce"},
-    {"arg": "GLM53_FLASHINFER_REPOSITORY", "value": "https://github.com/flashinfer-ai/flashinfer.git"},
-    {"arg": "GLM53_FLASHINFER_VERSION", "value": "0.6.18"},
-    {"arg": "GLM53_FLASHINFER_HEAD", "value": "231f70828dfe93f5bbba7f0360a64435a7a846be"},
-    {"arg": "GLM53_FLASHINFER_UPSTREAM_TREE", "value": "5bf33e0d8bedac8ab72cea7012326414a45ccd0a"},
-    {"arg": "GLM53_FLASHINFER_TREE", "value": "411d1cb5884621f74d96da6fee1b982b09d9d747"},
-    {"arg": "GLM53_FLASHINFER_PATCH_SHA256", "value": "f5ebdf9ace91c6ac24b0efe94cce7252de1141214899b9c3e2fa83688f78d33f"},
-    {"arg": "GLM53_MODELOPT_REPOSITORY", "value": "https://github.com/NVIDIA/Model-Optimizer.git"},
-    {"arg": "GLM53_MODELOPT_VERSION", "value": "0.47.0rc0"},
-    {"arg": "GLM53_MODELOPT_RELEASE_TAG", "value": "0.47.0rc0"},
-    {"arg": "GLM53_MODELOPT_HEAD", "value": "022767c7ab3d7d36211affd85e5c496770cde768"},
-    {"arg": "GLM53_MODELOPT_TREE", "value": "9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9"},
-    {"arg": "GLM53_MODEL_REPOSITORY", "value": "zai-org/GLM-5.3-Flash-BF16"},
-    {"arg": "GLM53_MODEL_REVISION", "value": "f12e0fe1f6b2ea274c11a569582edfd99d993c5e"}
+    {
+      "arg": "GLM53_RELEASE_VERSION",
+      "value": "0.1.0"
+    },
+    {
+      "arg": "GLM53_RELEASE_CANDIDATE",
+      "value": "69"
+    },
+    {
+      "arg": "GLM53_CACHE_SCHEMA",
+      "value": "v53"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE",
+      "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_TAG",
+      "value": "glm-5.3-flash"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_INDEX",
+      "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"
+    },
+    {
+      "arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST",
+      "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"
+    },
+    {
+      "arg": "GLM53_SGLANG_REPOSITORY",
+      "value": "https://github.com/sgl-project/sglang.git"
+    },
+    {
+      "arg": "GLM53_SGLANG_HEAD",
+      "value": "5ab97c4f441462f3d2adb1ffa954cc92518beece"
+    },
+    {
+      "arg": "GLM53_SGLANG_UPSTREAM_TREE",
+      "value": "ed9070a3b150aaab5f9417b398817bacd823689a"
+    },
+    {
+      "arg": "GLM53_SGLANG_TREE",
+      "value": "a77ef51eed7561b811c514974d353ab6e0e323f0"
+    },
+    {
+      "arg": "GLM53_SGLANG_PATCH_SHA256",
+      "value": "a3f143566d5325e33646344ba922bac2e65e72f0389644042476937eec38a4e0"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_REPOSITORY",
+      "value": "https://github.com/flashinfer-ai/flashinfer.git"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_VERSION",
+      "value": "0.6.18"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_HEAD",
+      "value": "231f70828dfe93f5bbba7f0360a64435a7a846be"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
+      "value": "5bf33e0d8bedac8ab72cea7012326414a45ccd0a"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_TREE",
+      "value": "411d1cb5884621f74d96da6fee1b982b09d9d747"
+    },
+    {
+      "arg": "GLM53_FLASHINFER_PATCH_SHA256",
+      "value": "f5ebdf9ace91c6ac24b0efe94cce7252de1141214899b9c3e2fa83688f78d33f"
+    },
+    {
+      "arg": "GLM53_MODELOPT_REPOSITORY",
+      "value": "https://github.com/NVIDIA/Model-Optimizer.git"
+    },
+    {
+      "arg": "GLM53_MODELOPT_VERSION",
+      "value": "0.47.0rc0"
+    },
+    {
+      "arg": "GLM53_MODELOPT_RELEASE_TAG",
+      "value": "0.47.0rc0"
+    },
+    {
+      "arg": "GLM53_MODELOPT_HEAD",
+      "value": "022767c7ab3d7d36211affd85e5c496770cde768"
+    },
+    {
+      "arg": "GLM53_MODELOPT_TREE",
+      "value": "9ccd3a130aec6a0ebcf85f6a0dd724b50d0e8bd9"
+    },
+    {
+      "arg": "GLM53_MODEL_REPOSITORY",
+      "value": "zai-org/GLM-5.3-Flash-BF16"
+    },
+    {
+      "arg": "GLM53_MODEL_REVISION",
+      "value": "f12e0fe1f6b2ea274c11a569582edfd99d993c5e"
+    }
   ],
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "5ab97c4f441462f3d2adb1ffa954cc92518beece",
       "upstream_tree": "ed9070a3b150aaab5f9417b398817bacd823689a",
-      "tree": "ce59a768c965bbb0c1a60fb99e9aebb8ae3a4130",
+      "tree": "a77ef51eed7561b811c514974d353ab6e0e323f0",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "1fcfa1531fa8dd5cb6615a583b48c99941d0eb4a1d16fb0911272d87a826c0ce",
+      "patch_sha256": "a3f143566d5325e33646344ba922bac2e65e72f0389644042476937eec38a4e0",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260830",
       "working_head": "40d0be2bfdf06b8cb4815b27c789d90c25bb6f5b",
       "upstream_main_base": "5ab97c4f441462f3d2adb1ffa954cc92518beece",
-      "included_upstream_work": ["sglang#36507", "sglang#36904", "sglang#36958 request/KV ownership cleanup", "sglang#36661 result-owned overlap snapshot lifetime", "sglang#36696 Mamba radix child-key consistency", "sglang#36821 ReplaySSM fused KDA verify ring writes", "sglang#36798 aligned HiCache host registration", "flashinfer#4802 native GLM NoPE integration", "native FlashInfer validation scoped to configurations that select it", "native NoPE detection from absorbed query geometry", "2,051-to-2,176 temporary index padding", "528-byte packed native NoPE KV rows", "GLM-only serialized ModelOpt FP4 NextN preservation", "ReplaySSM capability detection from the KDA cache contract", "SM120 GLM DeepGEMM HC-prenorm capability guard", "SM120 TileLang FP8 DSA zero-tail guard", "SM120 TileLang BF16 DSA low-SMEM schedule", "SM120 W4A16 in-place prepared-weight ownership", "kpool ragged MQA-logits Q-row chunking under the shared budget mixin", "process-lifetime topk1 chain buffers across adaptive spec tier switches", "node-owned mamba slot preserved across admission rejection (hicache load-back write-after-free fix)", "shape-keyed SM120 KDA static tactics and pre-pool long-prefill compilation", "pre-pool DSA index gather and multi-regime W4A16 route-pack compilation", "debug-gated paged-allocator negative-location attribution", "debug-gated asynchronous unified-radix insertion, split, and eviction attribution", "debug-gated synchronous full-radix value attribution at insert, new-node, unevict, split, match, and eviction boundaries", "debug-gated per-node Full-value storage snapshots and reachable-free alias rejection across insert action barriers", "debug-gated between-operation paged-allocator state snapshots with synchronous release-input attribution", "debug-gated DSA CUDA-graph logits/top-k range attribution and optional capture-owner retention", "debug-gated graph-range context on the first paged-allocator range failure",
-        "capture-scoped standalone and fused post/pre MHC split-K scratch ownership for full CUDA graphs", "capture-scoped compiled DSA head-gate output ownership for full CUDA graphs", "pre-consumer outer-compile-safe paged-MQA logits ownership for full CUDA graphs", "exact invalid page overwrite extent diagnostics", "exact-shape DeepGEMM shared graph-pool lifetime regression", "debug-gated allocator-history forensics snapshots at serving readiness and at allocator-corruption detection"],
-      "excluded_work": ["DP-attention-only MHC communicator change from sglang#36884", "C4-unsafe process/device-shared DSA indexer compression-gate stream"]
+      "included_upstream_work": [
+        "sglang#36507",
+        "sglang#36904",
+        "sglang#36958 request/KV ownership cleanup",
+        "sglang#36661 result-owned overlap snapshot lifetime",
+        "sglang#36696 Mamba radix child-key consistency",
+        "sglang#36821 ReplaySSM fused KDA verify ring writes",
+        "sglang#36798 aligned HiCache host registration",
+        "flashinfer#4802 native GLM NoPE integration",
+        "native FlashInfer validation scoped to configurations that select it",
+        "native NoPE detection from absorbed query geometry",
+        "2,051-to-2,176 temporary index padding",
+        "528-byte packed native NoPE KV rows",
+        "GLM-only serialized ModelOpt FP4 NextN preservation",
+        "ReplaySSM capability detection from the KDA cache contract",
+        "SM120 GLM DeepGEMM HC-prenorm capability guard",
+        "SM120 TileLang FP8 DSA zero-tail guard",
+        "SM120 TileLang BF16 DSA low-SMEM schedule",
+        "SM120 W4A16 in-place prepared-weight ownership",
+        "kpool ragged MQA-logits Q-row chunking under the shared budget mixin",
+        "process-lifetime topk1 chain buffers across adaptive spec tier switches",
+        "node-owned mamba slot preserved across admission rejection (hicache load-back write-after-free fix)",
+        "shape-keyed SM120 KDA static tactics and pre-pool long-prefill compilation",
+        "pre-pool DSA index gather and multi-regime W4A16 route-pack compilation",
+        "debug-gated paged-allocator negative-location attribution",
+        "debug-gated asynchronous unified-radix insertion, split, and eviction attribution",
+        "debug-gated synchronous full-radix value attribution at insert, new-node, unevict, split, match, and eviction boundaries",
+        "debug-gated per-node Full-value storage snapshots and reachable-free alias rejection across insert action barriers",
+        "debug-gated between-operation paged-allocator state snapshots with synchronous release-input attribution",
+        "debug-gated DSA CUDA-graph logits/top-k range attribution and optional capture-owner retention",
+        "debug-gated graph-range context on the first paged-allocator range failure",
+        "capture-scoped standalone and fused post/pre MHC split-K scratch ownership for full CUDA graphs",
+        "capture-scoped compiled DSA head-gate output ownership for full CUDA graphs",
+        "pre-consumer outer-compile-safe paged-MQA logits ownership for full CUDA graphs",
+        "exact invalid page overwrite extent diagnostics",
+        "exact-shape DeepGEMM shared graph-pool lifetime regression",
+        "debug-gated allocator-history forensics snapshots at serving readiness and at allocator-corruption detection",
+        "all-producer hicache layer-load waits (batches consuming restores triggered by earlier batches)",
+        "host-side record watermark closing the vacuous cudaStreamWaitEvent race in layer-by-layer hicache loads",
+        "fail-closed load-record timeout and unconditional mamba-COW load wait"
+      ],
+      "excluded_work": [
+        "DP-attention-only MHC communicator change from sglang#36884",
+        "C4-unsafe process/device-shared DSA indexer compression-gate stream"
+      ]
     },
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
@@ -97,7 +214,14 @@
       "working_branch": "integration/glm53-main-20260830",
       "working_head": "a41d12bfa2d6691184211c738aa0d56ef114aeaa",
       "upstream_main_base": "231f70828dfe93f5bbba7f0360a64435a7a846be",
-      "included_upstream_work": ["flashinfer#4802", "flashinfer#4687", "native 528-byte GLM NoPE KV rows with padded decode-row compatibility", "SM120 W4A16 TC-decode ultra-tile replay validation", "ModelOpt E2M1/E4M3-K32 W4A16 preparation", "process-lifetime pinning of graph-referenced SM12x MoE workspaces across cache replacement and clear"]
+      "included_upstream_work": [
+        "flashinfer#4802",
+        "flashinfer#4687",
+        "native 528-byte GLM NoPE KV rows with padded decode-row compatibility",
+        "SM120 W4A16 TC-decode ultra-tile replay validation",
+        "ModelOpt E2M1/E4M3-K32 W4A16 preparation",
+        "process-lifetime pinning of graph-referenced SM12x MoE workspaces across cache replacement and clear"
+      ]
     },
     "modelopt": {
       "repository": "https://github.com/NVIDIA/Model-Optimizer.git",

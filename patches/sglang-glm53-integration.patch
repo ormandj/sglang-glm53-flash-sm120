@@ -5843,6 +5843,47 @@ index 9309b3b6a9..d56bf517e2 100644
  
      if is_npu() and isinstance(token_to_kv_pool, DSV4NPUTokenToKVPool):
          from sglang.srt.disaggregation.ascend.conn import AscendStateType
+diff --git a/python/sglang/srt/entrypoints/http_server.py b/python/sglang/srt/entrypoints/http_server.py
+index 872d1b1691..dcd2b27796 100644
+--- a/python/sglang/srt/entrypoints/http_server.py
++++ b/python/sglang/srt/entrypoints/http_server.py
+@@ -2371,16 +2371,26 @@ def _freeze_gc_after_server_warmup(server_args: ServerArgs):
+     freeze_headers = {}
+     if freeze_key:
+         freeze_headers["Authorization"] = f"Bearer {freeze_key}"
+-    try:
+-        res = requests.post(
+-            server_args.url() + "/freeze_gc",
+-            headers=freeze_headers,
+-            timeout=10,
+-            verify=ssl_verify_of(server_args),
+-        )
+-        res.raise_for_status()
+-    except requests.exceptions.RequestException:
+-        logger.warning("post-warmup freeze_gc failed", exc_info=True)
++    # With --skip-server-warmup this runs while the model is still loading,
++    # minutes before uvicorn listens; a single immediate POST produced a
++    # connection-refused traceback on every boot and silently skipped the
++    # freeze. Retry until the server is up (bounded), then freeze.
++    deadline = time.perf_counter() + 3600.0
++    while True:
++        try:
++            res = requests.post(
++                server_args.url() + "/freeze_gc",
++                headers=freeze_headers,
++                timeout=10,
++                verify=ssl_verify_of(server_args),
++            )
++            res.raise_for_status()
++            return
++        except requests.exceptions.RequestException:
++            if time.perf_counter() >= deadline:
++                logger.warning("post-warmup freeze_gc failed", exc_info=True)
++                return
++            time.sleep(5.0)
+ 
+ 
+ def _wait_and_warmup(
 diff --git a/python/sglang/srt/entrypoints/openai/protocol.py b/python/sglang/srt/entrypoints/openai/protocol.py
 index 109542667f..82a384a096 100644
 --- a/python/sglang/srt/entrypoints/openai/protocol.py
@@ -16671,6 +16712,83 @@ index 2a692eeb45..acf2aa8c9d 100644
      )
  
  
+diff --git a/python/sglang/srt/managers/cache_controller.py b/python/sglang/srt/managers/cache_controller.py
+index 556fb6cd2f..14becaccfa 100644
+--- a/python/sglang/srt/managers/cache_controller.py
++++ b/python/sglang/srt/managers/cache_controller.py
+@@ -55,12 +55,43 @@ class LayerLoadingEvent:
+         self._num_layers = num_layers
+         self.load_events = [device_module.Event() for _ in range(num_layers)]
+         self.start_event = device_module.Event()  # start event on controller stream
++        # Host-side record watermark. cudaStreamWaitEvent on an event that has
++        # not been recorded yet is defined as a no-op, and the per-layer events
++        # are recorded by the transfer thread with no happens-before against
++        # the forward thread's wait. Without this watermark a forward can
++        # issue a vacuous wait for a layer whose copy has not even been
++        # enqueued and read the restore destination mid-transfer.
++        self._record_cond = threading.Condition()
++        self._recorded_upto = -1
++        self._loading = False
++
++    def begin_load(self):
++        with self._record_cond:
++            self._recorded_upto = -1
++            self._loading = True
+ 
+     def complete(self, layer_index: int):
+         assert 0 <= layer_index < self._num_layers
+         self.load_events[layer_index].record()
++        with self._record_cond:
++            if layer_index > self._recorded_upto:
++                self._recorded_upto = layer_index
++            if layer_index == self._num_layers - 1:
++                self._loading = False
++            self._record_cond.notify_all()
+ 
+     def wait(self, layer_index: int):
++        with self._record_cond:
++            while self._loading and self._recorded_upto < layer_index:
++                if not self._record_cond.wait(timeout=120.0):
++                    # Fail closed: proceeding would issue a vacuous wait on a
++                    # never-recorded event and read the restore mid-transfer.
++                    raise RuntimeError(
++                        "LayerLoadingEvent.wait timed out waiting for layer "
++                        f"{layer_index} to be recorded "
++                        f"(recorded_upto={self._recorded_upto}); the "
++                        "host-to-device cache load appears stuck."
++                    )
+         device_module.current_stream().wait_event(self.load_events[layer_index])
+ 
+     @property
+@@ -90,9 +121,17 @@ class LayerDoneCounter:
+         self.consumer_index = index
+ 
+     def wait_until(self, threshold: int):
+-        if self.consumer_index < 0:
+-            return
+-        self.events[self.consumer_index].wait(threshold)
++        # Wait on EVERY producer, not just the consumer bound to the current
++        # batch. A batch can consume pages or recurrent state restored by a
++        # load an EARLIER batch triggered: an admission that queued the load
++        # can be rejected and retried, and a prefix restored for one request
++        # can be read (mamba COW, shared-prefix KV) by another. Those
++        # consuming batches carry no consumer index and previously skipped
++        # the wait, reading the restore destination mid-DMA. Waiting on a
++        # settled or never-recorded event is a no-op, so this is safe and
++        # cheap for batches with no load in flight.
++        for event in self.events:
++            event.wait(threshold)
+ 
+     def reset(self):
+         self.producer_index = -1
+@@ -923,6 +962,7 @@ class HiCacheController:
+         host_indices, device_indices, pool_transfers = self._move_op_indices(op)
+         self.load_queue.clear()
+         producer_event = self.layer_done_counter.events[producer_id]
++        producer_event.begin_load()
+         producer_event.start_event.record()
+ 
+         if self.load_fence_stream is not None:
 diff --git a/python/sglang/srt/managers/overlap_utils.py b/python/sglang/srt/managers/overlap_utils.py
 index 3433f6c986..543d3a5fc7 100644
 --- a/python/sglang/srt/managers/overlap_utils.py
@@ -18391,10 +18509,10 @@ index 125a9847b7..4efd0e409a 100644
              child.hash_value, split_len, self.page_size
          )
 diff --git a/python/sglang/srt/mem_cache/memory_pool.py b/python/sglang/srt/mem_cache/memory_pool.py
-index 5191304aa6..e0c40bbc2a 100644
+index 5191304aa6..aac9fcdbb4 100644
 --- a/python/sglang/srt/mem_cache/memory_pool.py
 +++ b/python/sglang/srt/mem_cache/memory_pool.py
-@@ -1429,6 +1429,19 @@ class HybridReqToTokenPool(ReqToTokenPool):
+@@ -1429,6 +1429,20 @@ class HybridReqToTokenPool(ReqToTokenPool):
      def mamba2_layer_cache(self, layer_id: int):
          return self.mamba_pool.mamba2_layer_cache(self.mamba2_layer_index(layer_id))
  
@@ -18403,10 +18521,11 @@ index 5191304aa6..e0c40bbc2a 100644
 +    ) -> None:
 +        if src_index.numel() == 0:
 +            return
-+        if (
-+            self.layer_transfer_counter is not None
-+            and self.layer_transfer_counter.consumer_index >= 0
-+        ):
++        if self.layer_transfer_counter is not None:
++            # No consumer_index guard: wait_until covers every producer, and a
++            # COW consumer's batch may carry consumer_index -1 (e.g. a
++            # rejected-and-retried admission) while its restore is in flight.
++            # Waiting on settled or idle producers is a no-op.
 +            last_mamba_layer = max(self.mamba_map)
 +            self.layer_transfer_counter.wait_until(last_mamba_layer - self.start_layer)
 +        self.mamba_pool.copy_from(src_index, dst_index)
@@ -18414,7 +18533,7 @@ index 5191304aa6..e0c40bbc2a 100644
      def get_speculative_mamba2_params_all_layers(self) -> MambaPool.SpeculativeState:
          return self.mamba_pool.get_speculative_mamba2_params_all_layers()
  
-@@ -1573,6 +1586,10 @@ class HybridReqToTokenPool(ReqToTokenPool):
+@@ -1573,6 +1587,10 @@ class HybridReqToTokenPool(ReqToTokenPool):
              req.mamba_ping_pong_track_buffer = None
              req.mamba_next_track_idx = None
              req.mamba_last_track_idx = None
@@ -18425,7 +18544,7 @@ index 5191304aa6..e0c40bbc2a 100644
  
      def clear(self):
          logger.info("Reset HybridReqToTokenPool")
-@@ -1773,10 +1790,12 @@ class KVCache(abc.ABC):
+@@ -1773,10 +1791,12 @@ class KVCache(abc.ABC):
      def register_layer_transfer_counter(self, layer_transfer_counter: LayerDoneCounter):
          self.layer_transfer_counter = layer_transfer_counter
  
@@ -18440,7 +18559,7 @@ index 5191304aa6..e0c40bbc2a 100644
          raise NotImplementedError()
  
      def get_kv_cache_quant_method(self) -> Any:
-@@ -2275,7 +2294,7 @@ class MHATokenToKVPool(KVCache):
+@@ -2275,7 +2295,7 @@ class MHATokenToKVPool(KVCache):
          item_lens = [d.item_len_bytes(self.page_size) for d in self._kv_buffer_descs]
          return ptrs, lens, item_lens
  
@@ -18449,7 +18568,7 @@ index 5191304aa6..e0c40bbc2a 100644
          assert not self.use_hnd, (
              "CPU KV offload indexes by slot (NHD); HND KV cache "
              "(SGLANG_USE_HND_KVCACHE) is not supported with CPU offload yet."
-@@ -2297,7 +2316,9 @@ class MHATokenToKVPool(KVCache):
+@@ -2297,7 +2317,9 @@ class MHATokenToKVPool(KVCache):
          current_platform.synchronize()
          return kv_cache_cpu
  
@@ -18460,7 +18579,7 @@ index 5191304aa6..e0c40bbc2a 100644
          assert not self.use_hnd, (
              "CPU KV offload indexes by slot (NHD); HND KV cache "
              "(SGLANG_USE_HND_KVCACHE) is not supported with CPU offload yet."
-@@ -3316,13 +3337,15 @@ class PageMajorMHATokenToKVPool(MHATokenToKVPool):
+@@ -3316,13 +3338,15 @@ class PageMajorMHATokenToKVPool(MHATokenToKVPool):
              "with a page-aware transfer scheme)."
          )
  
@@ -18478,7 +18597,7 @@ index 5191304aa6..e0c40bbc2a 100644
          raise NotImplementedError(
              "CPU offloading is unsupported under the page-major layout "
              "(TODO: split token ids into page/slot for the 4-D index)."
-@@ -3717,7 +3740,17 @@ class HybridLinearKVPool(KVCache):
+@@ -3717,7 +3741,17 @@ class HybridLinearKVPool(KVCache):
          use_mla: bool = False,
          kv_lora_rank: int = None,
          qk_rope_head_dim: int = None,
@@ -18496,7 +18615,7 @@ index 5191304aa6..e0c40bbc2a 100644
          full_kv_pool_class: Optional[type] = None,
          quant_method=None,
          # When provided (shared-KV-pool path), use this pool for the
-@@ -3743,6 +3776,7 @@ class HybridLinearKVPool(KVCache):
+@@ -3743,6 +3777,7 @@ class HybridLinearKVPool(KVCache):
          # identity for a static pool, `translate_kv_loc_dense` for the unified pool.
          self._full_translate = lambda ids: ids
          self.use_mla = use_mla
@@ -18504,7 +18623,7 @@ index 5191304aa6..e0c40bbc2a 100644
          if full_kv_pool is not None:
              # Shared-KV-pool path: the caller built a UnifiedMHATokenToKVPool
              # aliasing the shared byte buffer.
-@@ -3788,6 +3822,41 @@ class HybridLinearKVPool(KVCache):
+@@ -3788,6 +3823,41 @@ class HybridLinearKVPool(KVCache):
                  **quant_method_kwarg,
                  **post_capture_kwargs,
              )
@@ -18546,7 +18665,7 @@ index 5191304aa6..e0c40bbc2a 100644
          else:
              TokenToKVPoolClass = MLATokenToKVPool
  
-@@ -3832,6 +3901,60 @@ class HybridLinearKVPool(KVCache):
+@@ -3832,6 +3902,60 @@ class HybridLinearKVPool(KVCache):
          self.full_kv_pool._finalize_backing_tokens(config.max_total_num_tokens)
          self.size = int(config.max_total_num_tokens)
  
@@ -18607,7 +18726,7 @@ index 5191304aa6..e0c40bbc2a 100644
      def get_kv_size_bytes(self):
          return self.full_kv_pool.get_kv_size_bytes()
  
-@@ -3996,8 +4119,8 @@ class HybridLinearKVPool(KVCache):
+@@ -3996,8 +4120,8 @@ class HybridLinearKVPool(KVCache):
      def move_kv_cache(self, tgt_loc: torch.Tensor, src_loc: torch.Tensor):
          self.full_kv_pool.move_kv_cache(tgt_loc, src_loc)
  
@@ -18618,7 +18737,7 @@ index 5191304aa6..e0c40bbc2a 100644
          # mamba_pool stores PHYSICAL ids; translate the (unified-pool virtual) ids first.
          mamba_cpu = (
              self.mamba_pool.get_cpu_copy(self._mamba_translate(mamba_indices))
-@@ -4006,9 +4129,11 @@ class HybridLinearKVPool(KVCache):
+@@ -4006,9 +4130,11 @@ class HybridLinearKVPool(KVCache):
          )
          return kv_cpu, mamba_cpu
  
@@ -18632,7 +18751,7 @@ index 5191304aa6..e0c40bbc2a 100644
          if mamba_cpu is not None and mamba_indices is not None:
              self.mamba_pool.load_cpu_copy(
                  mamba_cpu, self._mamba_translate(mamba_indices)
-@@ -4041,6 +4166,14 @@ class HybridLinearKVPool(KVCache):
+@@ -4041,6 +4167,14 @@ class HybridLinearKVPool(KVCache):
          with self._transfer_id_context(layer):
              self.full_kv_pool.set_mla_kv_buffer(layer, loc, cache_k_nope, cache_k_rope)
  
@@ -18647,7 +18766,7 @@ index 5191304aa6..e0c40bbc2a 100644
      def get_mla_kv_buffer(
          self,
          layer: RadixAttention,
-@@ -4052,6 +4185,145 @@ class HybridLinearKVPool(KVCache):
+@@ -4052,6 +4186,145 @@ class HybridLinearKVPool(KVCache):
          with self._transfer_id_context(layer):
              return self.full_kv_pool.get_mla_kv_buffer(layer, loc, dst_dtype)
  
@@ -18793,7 +18912,7 @@ index 5191304aa6..e0c40bbc2a 100644
  
  class MLATokenToKVPool(KVCache):
      def __init__(
-@@ -4203,9 +4475,12 @@ class MLATokenToKVPool(KVCache):
+@@ -4203,9 +4476,12 @@ class MLATokenToKVPool(KVCache):
          cache_k_nope: torch.Tensor,
          cache_k_rope: torch.Tensor,
      ) -> None:
@@ -18808,7 +18927,7 @@ index 5191304aa6..e0c40bbc2a 100644
              set_mla_kv_buffer_triton_fp8_quant(
                  dst_buffer,
                  loc,
-@@ -4233,10 +4508,12 @@ class MLATokenToKVPool(KVCache):
+@@ -4233,10 +4509,12 @@ class MLATokenToKVPool(KVCache):
          else:
              if cache_k_nope.dtype != self.dtype:
                  cache_k_nope = cache_k_nope.to(self.dtype)
@@ -18823,7 +18942,7 @@ index 5191304aa6..e0c40bbc2a 100644
  
              set_mla_kv_buffer_triton(
                  dst_buffer,
-@@ -4285,11 +4562,14 @@ class MLATokenToKVPool(KVCache):
+@@ -4285,11 +4563,14 @@ class MLATokenToKVPool(KVCache):
              dtype=dst_dtype,
              device=kv_buffer.device,
          )
@@ -18843,7 +18962,7 @@ index 5191304aa6..e0c40bbc2a 100644
          get_mla_kv_buffer_triton(kv_buffer, loc, cache_k_nope, cache_k_rope)
          return cache_k_nope, cache_k_rope
  
-@@ -4307,12 +4587,14 @@ class MLATokenToKVPool(KVCache):
+@@ -4307,12 +4588,14 @@ class MLATokenToKVPool(KVCache):
          for kv_cache in self.kv_buffer:
              kv_cache[tgt_loc_flat] = kv_cache[src_loc_flat]
  
@@ -18859,7 +18978,7 @@ index 5191304aa6..e0c40bbc2a 100644
              for i in range(0, len(indices), chunk_size):
                  chunk_indices = indices[i : i + chunk_size]
                  kv_cpu = self.kv_buffer[layer_id][chunk_indices].to(
-@@ -4322,10 +4604,14 @@ class MLATokenToKVPool(KVCache):
+@@ -4322,10 +4605,14 @@ class MLATokenToKVPool(KVCache):
          current_platform.synchronize()
          return kv_cache_cpu
  
@@ -18875,7 +18994,7 @@ index 5191304aa6..e0c40bbc2a 100644
              for i in range(0, len(indices), chunk_size):
                  chunk_indices = indices[i : i + chunk_size]
                  kv_cpu = kv_cache_cpu[layer_id][i // chunk_size]
-@@ -4453,13 +4739,18 @@ class MLATokenToKVPoolFP4(MLATokenToKVPool):
+@@ -4453,13 +4740,18 @@ class MLATokenToKVPoolFP4(MLATokenToKVPool):
                  cache_k_nope_fp4, cache_k_nope_fp4_sf = (
                      FP4MXBlock16KVQuantizeUtil.batched_quantize(cache_k_nope)
                  )
@@ -18898,7 +19017,7 @@ index 5191304aa6..e0c40bbc2a 100644
  
              set_mla_kv_buffer_triton(
                  self.kv_buffer[layer_id - self.start_layer],
-@@ -4495,6 +4786,10 @@ class DSATokenToKVPool(MLATokenToKVPool):
+@@ -4495,6 +4787,10 @@ class DSATokenToKVPool(MLATokenToKVPool):
          start_layer: Optional[int] = None,
          end_layer: Optional[int] = None,
          index_buf_size: Optional[int] = None,
@@ -18909,7 +19028,7 @@ index 5191304aa6..e0c40bbc2a 100644
          skip_topk_layers: Optional[List[bool]] = None,
      ):
          override_dim = (
-@@ -4518,6 +4813,10 @@ class DSATokenToKVPool(MLATokenToKVPool):
+@@ -4518,6 +4814,10 @@ class DSATokenToKVPool(MLATokenToKVPool):
          # self.index_k_dtype = torch.float8_e4m3fn
          # self.index_k_scale_dtype = torch.float32
          self.index_head_dim = index_head_dim
@@ -18920,7 +19039,7 @@ index 5191304aa6..e0c40bbc2a 100644
          if index_buf_size is None:
              index_buf_size = size
          self.index_buf_size = index_buf_size
-@@ -4543,19 +4842,181 @@ class DSATokenToKVPool(MLATokenToKVPool):
+@@ -4543,19 +4843,181 @@ class DSATokenToKVPool(MLATokenToKVPool):
          else:
              assert self.page_size == 64
          self.index_key_cache = self._create_index_key_cache()
@@ -19102,7 +19221,7 @@ index 5191304aa6..e0c40bbc2a 100644
  
      def move_kv_cache(self, tgt_loc: torch.Tensor, src_loc: torch.Tensor):
          """Move latent KV and the DSA indexer cache (key + scale) in lockstep."""
-@@ -4604,15 +5065,82 @@ class DSATokenToKVPool(MLATokenToKVPool):
+@@ -4604,15 +5066,82 @@ class DSATokenToKVPool(MLATokenToKVPool):
      ) -> None:
          self.index_key_cache.store_quantized(layer_id, loc, index_k, index_k_scale)
  
@@ -19562,7 +19681,7 @@ index 194a8a91d7..c46bb7065e 100644
              assert self._swa_allocator is not None
              swa_phys = self._virt_tokens_to_phys_tokens(indices, self._swa_allocator)
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index f4371bb41b..56c281c641 100644
+index f4371bb41b..11a17aa286 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -88,6 +88,7 @@ from sglang.srt.runtime_context import (
@@ -19864,6 +19983,31 @@ index f4371bb41b..56c281c641 100644
      def _apply_cache_action(self, action: CacheAction | ComponentAction) -> None:
          # Component actions route to their component class; the rest are
          # cache-owned and handled here by type.
+@@ -1511,6 +1744,24 @@ class UnifiedRadixCache(BasePrefixCache):
+             )
+         )
+ 
++        # The mamba restore lands in the transfer's device slot (just
++        # committed as the node's value above), NOT in the slot
++        # prepare_load_back put on the request. Stage a COW so the consuming
++        # forward copies node -> request state (copy_mamba_state waits on the
++        # load producers). Without this, a first-try admission decodes from
++        # an uninitialized slot; only a rejected-and-rematched retry restaged
++        # the COW via finalize_match_result_in_cache.
++        if req is not None and getattr(req, "mamba_pool_idx", None) is not None:
++            for xfer in comp_xfers.get(ComponentType.MAMBA) or []:
++                dev = getattr(xfer, "device_indices", None)
++                if (
++                    dev is not None
++                    and dev.numel() >= 1
++                    and int(dev[0]) != int(req.mamba_pool_idx)
++                ):
++                    req.mamba_cow_src_index = dev[:1].clone()
++                    break
++
+         self.ongoing_load_back[node_id] = _OngoingLoadBack(
+             node_id,
+             self.inc_lock_ref(node_id).to_dec_params(),
 diff --git a/python/sglang/srt/model_executor/forward_batch_info.py b/python/sglang/srt/model_executor/forward_batch_info.py
 index 7c504656fd..a051fefa09 100644
 --- a/python/sglang/srt/model_executor/forward_batch_info.py
