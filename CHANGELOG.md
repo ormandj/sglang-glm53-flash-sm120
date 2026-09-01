@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.0 (stable)
+
+- Digest-identical promotion of `v0.1.0-rc.71`. Validation summary:
+  twin cached-prefix reproducer clean on debug-parity and production
+  configurations (the pre-fix stack crashed 10/10 within 6-50 minutes);
+  ~247k-token host-tier restores served in seconds with no numerical
+  faults; GSM8K 97.19%/97.12% regraded across two full 1319-request runs
+  (baseline 97.0); decode engine at 54.5 forward passes/s (baseline
+  ~52). Ships the hierarchical-cache scale-byte fix, the layer-load
+  synchronization fixes, and the exact-candidate-count sparse-MLA
+  wrapper on current upstream SGLang main and FlashInfer PR #4802.
+- The serve example now ships and mounts `examples/glm53-adaptive.json`
+  and passes `--speculative-adaptive-config` (user report: without the
+  adaptive step config the speculative state buffers size for the
+  default ladder and OOM once real context accumulates).
+
 ## v0.1.0-rc.71 (rc.70 + boot fix, not yet qualified)
 
 - rc.70's published image failed at boot: the carried GLM commit predated
