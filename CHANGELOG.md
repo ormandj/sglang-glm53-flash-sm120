@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.1-rc.5 (fixes rc.4 boot crash; not yet built or qualified)
+
+- rc.4 crashed both schedulers at the end of warmup: the new
+  `triton_serving_started` signal was acted on but then also handed to the
+  config override, which rejects unknown fields. The signal is now removed
+  from the override set. rc.4 was never serving; do not use it.
+
 ## v0.1.1-rc.4 (late-load diagnostics after warmup, wider warmup shapes; not yet built or qualified)
 
 - The scheduler's "Triton kernel device-loaded after serving started"

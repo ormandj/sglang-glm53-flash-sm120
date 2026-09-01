@@ -16894,7 +16894,7 @@ index ae9fa0dc95..4b9ff8d15c 100644
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index bccbf46ad9..61e3d37e4e 100644
+index bccbf46ad9..138d411428 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -17280,6 +17280,16 @@ index bccbf46ad9..61e3d37e4e 100644
              if k not in args_allow_update:
                  logging.warning(f"Updating {k} is not supported.")
                  if_success = False
+@@ -4886,6 +4972,9 @@ class Scheduler(
+             # DSpark control keys are worker commands, not server args; route
+             # them to the draft worker and keep them out of the override.
+             remaining = dict(server_args_dict)
++            # Already acted on above; it is a scheduler signal, not a config
++            # leaf, and the override would reject it.
++            remaining.pop("triton_serving_started", None)
+             frac = remaining.pop("dspark_force_budget_frac", None)
+             if "dspark_force_budget_frac" in server_args_dict:
+                 self.draft_worker.set_dspark_forced_budget_frac(
 diff --git a/python/sglang/srt/managers/tokenizer_manager.py b/python/sglang/srt/managers/tokenizer_manager.py
 index 895484239d..6026d8661b 100644
 --- a/python/sglang/srt/managers/tokenizer_manager.py
