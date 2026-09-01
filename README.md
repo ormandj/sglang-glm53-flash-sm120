@@ -71,8 +71,9 @@ Full tables and method notes: [`BENCHMARKS.md`](BENCHMARKS.md).
 
 You need Linux x86_64, a CUDA 13-compatible driver, Docker with the NVIDIA
 Container Toolkit, two visible SM120 GPUs, about 170 GB for the published
-checkpoint, and 128+ GB of host RAM at the qualified HiCache size (reduce
-`--hicache-size` otherwise).
+checkpoint. HiCache (the host-RAM prefix cache tier) is disabled by
+default; enabling it needs free host RAM equal to the tier size
+(`ENABLE_HICACHE=1`, `HICACHE_SIZE_GB=32` by default -- see the launcher).
 
 ### 1. Download the published checkpoint
 
@@ -123,7 +124,7 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --context-length 507904 --max-total-tokens 507904 \
   --mem-fraction-static 0.99 --chunked-prefill-size 4096 \
   --max-running-requests 4 --max-mamba-cache-size 20 \
-  --enable-hierarchical-cache --hicache-size 128 \
+  # add: --enable-hierarchical-cache --hicache-size 32   (host prefix cache, optional) \
   --cuda-graph-backend-prefill disabled --cuda-graph-backend-decode full \
   --cuda-graph-bs-decode 1 2 3 4 \
   --speculative-algorithm EAGLE --speculative-num-steps 5 \
