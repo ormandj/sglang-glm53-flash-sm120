@@ -24895,10 +24895,10 @@ index 04b04eb9c0..3fa988331d 100644
  
 diff --git a/python/sglang/srt/utils/extend_mem_profile.py b/python/sglang/srt/utils/extend_mem_profile.py
 new file mode 100644
-index 0000000000..2b8ddf4c20
+index 0000000000..126d92e9d4
 --- /dev/null
 +++ b/python/sglang/srt/utils/extend_mem_profile.py
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,105 @@
 +"""Per-phase device-memory peaks for extend (prefill) forwards.
 +
 +Enabled by ``SGLANG_EXTEND_MEM_PROFILE=1``. The allocator's peak counters are
@@ -24964,12 +24964,21 @@ index 0000000000..2b8ddf4c20
 +            _phase_peaks[tag] = peak
 +        # Report large phases immediately: an OOM later in the same extend
 +        # would otherwise take the numbers with it.
-+        if peak >= 256 * 2**20:
++        live_after = torch.cuda.memory_allocated()
++        retained = live_after - before
++        if peak >= 256 * 2**20 or retained >= 256 * 2**20:
 +            free_b, _ = torch.cuda.mem_get_info()
 +            logger.info(
-+                "extend-mem-profile phase %s peak=%.0fMiB live_after=%.2fGiB device_free=%.2fGiB",
-+                tag, peak / 2**20, torch.cuda.memory_allocated() / 2**30, free_b / 2**30,
++                "extend-mem-profile phase %s peak=%.0fMiB retained=%.0fMiB live_after=%.2fGiB device_free=%.2fGiB",
++                tag, peak / 2**20, retained / 2**20, live_after / 2**30, free_b / 2**30,
 +            )
++        if retained >= 256 * 2**20:
++            # A phase that leaves this much behind is the question the
++            # profiler exists to answer; when allocator history is being
++            # recorded (SGLANG_MEM_FORENSICS_DIR), snapshot it with stacks.
++            from sglang.srt.utils.mem_forensics import maybe_dump_memory_forensics
++
++            maybe_dump_memory_forensics(f"retained-{tag}")
 +
 +
 +def end(extra: Optional[str] = None) -> None:

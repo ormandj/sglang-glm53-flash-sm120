@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.1-rc.13 (profiler snapshots retained memory; not yet built or qualified)
+
+- rc.12 measurement of a 4K image at the 8,000-token budget: the vision
+  tower peaks at 854 MiB and is freed, but the first full-attention (MLA)
+  layer of the image chunk RETAINS ~400 MiB (text extends retain ~40 MiB),
+  and the extend OOMs a few MLA layers later. The profiler now dumps a
+  `torch.cuda.memory._snapshot` with allocation stacks whenever a phase
+  retains >=256 MiB (requires `SGLANG_MEM_FORENSICS_DIR`), to name the
+  holder.
+
 ## v0.1.1-rc.12 (profiler reports phases immediately; not yet built or qualified)
 
 - rc.11 validation: token-blocked KDA removed the KDA layers from the
