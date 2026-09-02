@@ -13464,7 +13464,7 @@ index ae9fa0dc95..b63c390580 100644
                      storage_hit_len=req.storage_hit_length,
                  )
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index eb3f566a0d..8ddf6d1a7f 100644
+index eb3f566a0d..85a0938684 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -13492,16 +13492,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
  from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
  from sglang.srt.utils.numa_utils import get_numa_node_if_available, numa_bind_to_node
  from sglang.srt.utils.nvtx_utils import scheduler_nvtx_method
-@@ -584,6 +588,8 @@ class Scheduler(
-         )
-         self.is_hybrid_swa = result.is_hybrid_swa
-         self.is_hybrid_ssm = result.is_hybrid_ssm
-+        self._log_admission_refusals = get_bool_env_var("SGLANG_LOG_ADMISSION_REFUSALS")
-+        self._last_admission_refusal_log = 0.0
-         self.sliding_window_size = result.sliding_window_size
-         self.full_tokens_per_layer = result.full_tokens_per_layer
-         self.swa_tokens_per_layer = result.swa_tokens_per_layer
-@@ -662,9 +668,14 @@ class Scheduler(
+@@ -662,9 +666,14 @@ class Scheduler(
  
          # Init prefill kv split size when deterministic inference is enabled with various attention backends
          self.init_deterministic_inference_config()
@@ -13516,7 +13507,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
          # Init request dispatcher
          self.init_request_dispatcher()
  
-@@ -1584,12 +1595,6 @@ class Scheduler(
+@@ -1584,12 +1593,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -13529,7 +13520,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1619,6 +1624,28 @@ class Scheduler(
+@@ -1619,6 +1622,28 @@ class Scheduler(
              get_int_env_var(env_var, default_size) if env_var else None
          )
  
@@ -13558,7 +13549,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
      def init_request_dispatcher(self):
          self._request_dispatcher = TypeBasedDispatcher(
              [
-@@ -1694,6 +1721,7 @@ class Scheduler(
+@@ -1694,6 +1719,7 @@ class Scheduler(
                  (ShutdownReq, self.handle_shutdown),
                  (GetInternalStateReq, self.get_internal_state),
                  (SetInternalStateReq, self.set_internal_state),
@@ -13566,7 +13557,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1766,10 +1794,20 @@ class Scheduler(
+@@ -1766,10 +1792,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -13590,7 +13581,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3277,6 +3315,11 @@ class Scheduler(
+@@ -3277,6 +3313,11 @@ class Scheduler(
              # it. Drop the marker once the request is actually gone.
              if req.finished() or not req.kv.holds_kv:
                  self._pending_chunked_abort_req = None
@@ -13602,7 +13593,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
              return
  
          prepare_abort(req, "Aborted")
-@@ -3430,6 +3473,7 @@ class Scheduler(
+@@ -3430,6 +3471,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -13610,79 +13601,26 @@ index eb3f566a0d..8ddf6d1a7f 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3491,6 +3535,56 @@ class Scheduler(
- 
-         return NextBatchPlan(batch_to_run=ret, running_batch=running_batch)
- 
-+    def _log_admission_refusal(self, req, adder, running_batch, reason: str):
-+        """Env-gated (SGLANG_LOG_ADMISSION_REFUSALS=1) scheduler diagnostic:
-+        why a waiting request was not admitted this round, with the adder's
-+        remaining budgets and the pool states admission reads. Throttled to
-+        one line per second."""
-+        if not self._log_admission_refusals:
-+            return
-+        now = time.monotonic()
-+        if now - self._last_admission_refusal_log < 1.0:
-+            return
-+        self._last_admission_refusal_log = now
-+        fields = {
-+            "reason": reason,
-+            "rid": req.rid,
-+            "running": len(running_batch.reqs),
-+            "can_run": len(adder.can_run_list),
-+            "waiting": len(self.waiting_queue),
-+            "extend_len": (
-+                getattr(req.extend_range, "length", None)
-+                if getattr(req, "extend_range", None) is not None
-+                else None
-+            ),
-+            "holds_mamba": req.kv.holds_mamba,
-+            "rem_total_tokens": adder.rem_total_tokens,
-+            "cur_rem_tokens": adder.cur_rem_tokens,
-+            "rem_input_tokens": adder.rem_input_tokens,
-+            "rem_chunk_tokens": adder.rem_chunk_tokens,
-+            "rem_mamba_slots": adder.rem_mamba_slots,
-+            "req_slots_avail": self.req_to_token_pool.available_size(),
-+            "kv_avail": self.token_to_kv_pool_allocator.available_size(),
-+        }
-+        try:
-+            fields["kv_evictable"] = self.tree_cache.evictable_size()
-+        except Exception:
-+            pass
-+        mamba_allocator = getattr(self.req_to_token_pool, "mamba_allocator", None)
-+        if mamba_allocator is not None:
-+            fields["mamba_avail"] = mamba_allocator.available_size()
-+            fields["mamba_schedulable"] = mamba_allocator.schedulable_available_size()
-+            for name in ("mamba_evictable_size", "mamba_protected_size"):
-+                fn = getattr(self.tree_cache, name, None)
-+                if fn is not None:
-+                    try:
-+                        fields[name.replace("_size", "")] = fn()
-+                    except Exception:
-+                        pass
-+        logger.info(
-+            "admission refused: " + " ".join(f"{k}={v}" for k, v in fields.items())
-+        )
-+
-     def get_num_allocatable_reqs(
-         self,
-         running_bs: int,
-@@ -3554,8 +3648,13 @@ class Scheduler(
+@@ -3554,8 +3596,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
 -        if self.enable_priority_preemption or self.is_hybrid_swa:
-+        if self.enable_priority_preemption or self.is_hybrid_swa or self.is_hybrid_ssm:
-             # Reset batch_is_full to try preemption with a prefill adder.
-+            # Hybrid SSM caches also re-evaluate every round: mamba slot
-+            # capacity changes without a running request finishing (radix
-+            # checkpoints become evictable, host write-backs complete), so a
-+            # latched batch_is_full would hold the queue closed until a
-+            # request finishes.
+-            # Reset batch_is_full to try preemption with a prefill adder.
++        if (
++            self.enable_priority_preemption
++            or self.is_hybrid_swa
++            or (self.is_hybrid_ssm and self.tree_cache.supports_mamba())
++        ):
++            # batch_is_full is otherwise cleared only when the running batch
++            # shrinks. Preemption, SWA eviction and mamba-aware radix
++            # eviction (cached recurrent states of finished requests become
++            # evictable while the batch is unchanged) can all admit a request
++            # before that, so re-run admission every round.
              running_batch.batch_is_full = False
  
          if (
-@@ -3656,6 +3755,9 @@ class Scheduler(
+@@ -3656,6 +3706,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -13692,17 +13630,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3680,6 +3782,9 @@ class Scheduler(
-                     not self.enable_priority_preemption
-                     or not adder.preempt_to_schedule(req)
-                 ):
-+                    self._log_admission_refusal(
-+                        req, adder, running_batch, "batch_is_full"
-+                    )
-                     break
- 
-             if self.enable_hicache_storage:
-@@ -3692,6 +3797,18 @@ class Scheduler(
+@@ -3692,6 +3745,17 @@ class Scheduler(
                  if loaded_tokens > 0:
                      req.storage_hit_length = loaded_tokens
  
@@ -13714,22 +13642,13 @@ index eb3f566a0d..8ddf6d1a7f 100644
 +                # No free or evictable mamba slot: the prefix match below
 +                # would try to copy a cached state into a per-request slot
 +                # and fail loudly. Stop admitting until a slot frees.
-+                self._log_admission_refusal(req, adder, running_batch, "NO_MAMBA_SLOT")
 +                running_batch.batch_is_full = True
 +                break
 +
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -3722,6 +3839,7 @@ class Scheduler(
-                 running_loras.add(req.lora_id)
- 
-             if res != AddReqResult.CONTINUE:
-+                self._log_admission_refusal(req, adder, running_batch, res.name)
-                 if res == AddReqResult.NO_TOKEN:
-                     if self.enable_hierarchical_cache:
-                         # Set batch_is_full after making sure there are requests that can be served
-@@ -3960,20 +4078,27 @@ class Scheduler(
+@@ -3960,20 +4024,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -13771,7 +13690,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -3986,12 +4111,11 @@ class Scheduler(
+@@ -3986,12 +4057,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -13789,7 +13708,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4006,12 +4130,11 @@ class Scheduler(
+@@ -4006,12 +4076,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -13805,7 +13724,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4067,7 +4190,7 @@ class Scheduler(
+@@ -4067,7 +4136,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -13814,7 +13733,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4093,13 +4216,12 @@ class Scheduler(
+@@ -4093,13 +4162,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -13834,7 +13753,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4221,7 +4343,11 @@ class Scheduler(
+@@ -4221,7 +4289,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -13847,7 +13766,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4233,7 +4359,11 @@ class Scheduler(
+@@ -4233,7 +4305,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -13859,7 +13778,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4356,9 +4486,11 @@ class Scheduler(
+@@ -4356,9 +4432,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -13874,7 +13793,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4381,31 +4513,42 @@ class Scheduler(
+@@ -4381,31 +4459,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -13938,7 +13857,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4440,7 +4583,7 @@ class Scheduler(
+@@ -4440,7 +4529,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -13947,7 +13866,7 @@ index eb3f566a0d..8ddf6d1a7f 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5397,6 +5540,38 @@ class Scheduler(
+@@ -5397,6 +5486,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -16258,18 +16177,17 @@ index c9102411d4..6b3583ebee 100644
              freed = len(cd.value)
              self.tree_core.component_evictable_size_[self.component_type] -= freed
 diff --git a/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py b/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
-index 0e6042af1c..41ba328ca7 100644
+index 0e6042af1c..084abe0f79 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
-@@ -1,6 +1,8 @@
+@@ -1,5 +1,7 @@
  from __future__ import annotations
  
- from collections import defaultdict
 +import logging
 +import time
+ from collections import defaultdict
  from typing import TYPE_CHECKING, Callable, Optional, Sequence
  
- import torch
 @@ -56,6 +58,9 @@ if TYPE_CHECKING:
      )
  
@@ -17734,10 +17652,10 @@ index 65c880d48e..6c8ca7efa1 100644
              ),
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
 new file mode 100644
-index 0000000000..0754dad135
+index 0000000000..2e3a88130e
 --- /dev/null
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -0,0 +1,1859 @@
+@@ -0,0 +1,1858 @@
 +import logging
 +from contextlib import nullcontext
 +from functools import partial
@@ -19062,21 +18980,20 @@ index 0000000000..0754dad135
 +        """Compile the vision MLP's ``torch.compile``d activation before pools exist.
 +
 +        ``swiglu_clamped`` is compiled with dynamo's default shape policy: the
-+        first call compiles a static-shape kernel, and a second, different
-+        token count recompiles a dynamic-shape one. Each compile runs
-+        inductor's Triton autotuning, which allocates benchmark buffers on the
-+        device. Without this hook the first image whose token count differs
-+        from the warmup image's (a 3840x2160 image at the 8,000-token budget
-+        after a 64x64 warmup) triggers that autotune during serving with the
-+        memory pools already allocated, and it fails with CUDA OOM at
-+        ``mem_fraction_static`` 0.99. Running the MLP at two token counts here
-+        settles dynamo on the dynamic kernel while memory is free; the
-+        inductor cache then serves later boots.
++        first call compiles a static-shape kernel and a second, different token
++        count recompiles a dynamic-shape one. Each compile runs inductor's
++        Triton autotuning, which allocates benchmark buffers on the device.
++        Without this, the first image whose token count differs from the
++        warmup image's triggers that autotune during serving with the memory
++        pools already allocated, which fails with CUDA OOM at a high
++        ``mem_fraction_static``. Running the block MLP and the patch merger
++        (the two callers, with different gate_up widths) at two token counts
++        here settles dynamo on the dynamic kernels while memory is free; the
++        inductor cache then serves later boots. Failures are logged at WARNING
++        and swallowed, as for the attention precompile.
 +        """
 +        if self.visual is None or not self.pp_group.is_first_rank:
 +            return
-+        # Both callers of swiglu_clamped: the block MLP and the patch merger,
-+        # whose gate_up widths differ and therefore compile separately.
 +        targets = []
 +        for cls, first_linear in (
 +            (Glm5NextVisionMLP, "gate_up_proj"),
@@ -27382,6 +27299,216 @@ index 0000000000..ff243db63f
 +
 +if __name__ == "__main__":
 +    unittest.main(verbosity=2)
+diff --git a/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_latch.py b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_latch.py
+new file mode 100644
+index 0000000000..cfe1902275
+--- /dev/null
++++ b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_latch.py
+@@ -0,0 +1,70 @@
++"""Gating of the per-round batch_is_full reset in _get_new_batch_prefill_raw:
++cleared for hybrid SWA and for a hybrid SSM model with a mamba-aware cache,
++kept for a hybrid SSM model whose cache lacks mamba support and for a model
++that is neither hybrid SSM nor hybrid SWA (no preemption in any case)."""
++
++import unittest
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++from sglang.test.ci.ci_register import register_cpu_ci
++from sglang.test.test_utils import CustomTestCase, maybe_stub_sgl_kernel
++
++maybe_stub_sgl_kernel()
++
++from sglang.srt.managers.scheduler import Scheduler
++
++register_cpu_ci(est_time=3, suite="base-a-test-cpu")
++
++
++def _scheduler(
++    *, is_hybrid_ssm: bool, is_hybrid_swa: bool = False, supports_mamba: bool = True
++) -> Scheduler:
++    s = Scheduler.__new__(Scheduler)
++    s.grammar_manager = MagicMock()
++    s.grammar_manager.has_waiting_grammars.return_value = False
++    s.enable_hierarchical_cache = False
++    s.enable_hicache_storage = False
++    s.enable_priority_preemption = False
++    s.is_hybrid_swa = is_hybrid_swa
++    s.is_hybrid_ssm = is_hybrid_ssm
++    s.tree_cache = SimpleNamespace(supports_mamba=lambda: supports_mamba)
++    s.waiting_queue = []
++    s.chunked_req = None
++    return s
++
++
++class TestHybridSsmAdmissionLatch(CustomTestCase):
++    def _latch_after_round(self, s):
++        running_batch = SimpleNamespace(batch_is_full=True, reqs=[])
++        with patch(
++            "sglang.srt.managers.scheduler.get_memory",
++            return_value=SimpleNamespace(enable_flexkv=False),
++        ):
++            ret, rb = Scheduler._get_new_batch_prefill_raw(
++                s, prefill_delayer_single_pass=None, running_batch=running_batch
++            )
++        self.assertIsNone(ret)
++        return rb.batch_is_full
++
++    def test_hybrid_ssm_with_mamba_radix_cache_resets_latch(self):
++        self.assertFalse(self._latch_after_round(_scheduler(is_hybrid_ssm=True)))
++
++    def test_hybrid_ssm_without_mamba_cache_keeps_latch(self):
++        self.assertTrue(
++            self._latch_after_round(
++                _scheduler(is_hybrid_ssm=True, supports_mamba=False)
++            )
++        )
++
++    def test_hybrid_swa_resets_latch(self):
++        self.assertFalse(
++            self._latch_after_round(_scheduler(is_hybrid_ssm=False, is_hybrid_swa=True))
++        )
++
++    def test_non_hybrid_model_keeps_latch(self):
++        self.assertTrue(self._latch_after_round(_scheduler(is_hybrid_ssm=False)))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_retry.py b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_retry.py
+new file mode 100644
+index 0000000000..21cd1d6c74
+--- /dev/null
++++ b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_retry.py
+@@ -0,0 +1,128 @@
++"""With a PrefillAdder stand-in that refuses every request with NO_TOKEN, a
++hybrid SSM model with a mamba-aware cache re-offers the waiting request each
++round; a model that is neither hybrid SSM nor hybrid SWA offers it once and
++keeps batch_is_full set."""
++
++import unittest
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++from sglang.test.ci.ci_register import register_cpu_ci
++from sglang.test.test_utils import CustomTestCase, maybe_stub_sgl_kernel
++
++maybe_stub_sgl_kernel()
++
++from sglang.srt.disaggregation.utils import DisaggregationMode
++from sglang.srt.managers.schedule_policy import AddReqResult
++from sglang.srt.managers.scheduler import Scheduler
++
++register_cpu_ci(est_time=3, suite="base-a-test-cpu")
++
++
++class _RefusingAdder:
++    """PrefillAdder stand-in: every add_one_req is refused with NO_TOKEN."""
++
++    calls = 0
++
++    def __init__(self, *args, **kwargs):
++        self.can_run_list = []
++        self.new_chunked_req = None
++        self.rem_mamba_slots = None
++
++    def chunk_budget_exhausted(self):
++        return False
++
++    def add_chunked_req(self, req):
++        return req
++
++    def preempt_to_schedule(self, req):
++        return False
++
++    def add_one_req(self, req, **kwargs):
++        _RefusingAdder.calls += 1
++        return AddReqResult.NO_TOKEN
++
++
++def _req():
++    return SimpleNamespace(
++        rid="r1",
++        beam_group=None,
++        session=None,
++        lora_id=None,
++        init_next_round_input=MagicMock(),
++        kv=SimpleNamespace(
++            holds_mamba=False, mamba_cow_src_index=None, mamba_needs_clear=False
++        ),
++    )
++
++
++def _scheduler(*, is_hybrid_ssm: bool) -> Scheduler:
++    s = Scheduler.__new__(Scheduler)
++    s.grammar_manager = MagicMock()
++    s.grammar_manager.has_waiting_grammars.return_value = False
++    s.enable_hierarchical_cache = False
++    s.enable_hicache_storage = False
++    s.enable_priority_preemption = False
++    s.is_hybrid_swa = False
++    s.is_hybrid_ssm = is_hybrid_ssm
++    s.tree_cache = SimpleNamespace(
++        supports_mamba=lambda: True,
++        req_to_token_pool=SimpleNamespace(),
++    )
++    s.waiting_queue = [_req()]
++    s.chunked_req = None
++    s.min_free_slots_delayer = None
++    s.get_num_allocatable_reqs = lambda *args, **kwargs: 1
++    s.policy = MagicMock()
++    s.chunked_prefill_size = 4096
++    s.enable_dynamic_chunking = False
++    s.tp_worker = SimpleNamespace(
++        model_runner=SimpleNamespace(attn_backend=SimpleNamespace())
++    )
++    s.page_size = 1
++    s.token_to_kv_pool_allocator = MagicMock()
++    s.new_token_ratio_tracker = SimpleNamespace(current=1.0)
++    s.max_prefill_tokens = 4096
++    s.is_mixed_chunk = False
++    s.priority_scheduling_preemption_threshold = 0
++    s.max_prefill_bs = 1
++    s.max_running_requests = 4
++    s.dllm_config = None
++    s.enable_lora = False
++    s.lora_drainer = None
++    s.req_to_token_pool = SimpleNamespace()
++    s.disaggregation_mode = DisaggregationMode.NULL
++    s.truncation_align_size = None
++    return s
++
++
++class TestHybridSsmAdmissionRetry(CustomTestCase):
++    def _rounds(self, s, n):
++        running_batch = SimpleNamespace(batch_is_full=False, reqs=[])
++        _RefusingAdder.calls = 0
++        with patch("sglang.srt.managers.scheduler.PrefillAdder", _RefusingAdder), patch(
++            "sglang.srt.managers.scheduler.get_memory",
++            return_value=SimpleNamespace(enable_flexkv=False),
++        ), patch(
++            "sglang.srt.managers.scheduler.get_schedule",
++            return_value=SimpleNamespace(prefill_max_requests=None),
++        ):
++            for _ in range(n):
++                ret, running_batch = Scheduler._get_new_batch_prefill_raw(
++                    s, prefill_delayer_single_pass=None, running_batch=running_batch
++                )
++                self.assertIsNone(ret)
++        return _RefusingAdder.calls, running_batch.batch_is_full
++
++    def test_hybrid_ssm_retries_admission_every_round(self):
++        calls, _ = self._rounds(_scheduler(is_hybrid_ssm=True), 3)
++        self.assertEqual(calls, 3)
++
++    def test_non_hybrid_model_latches_after_one_refusal(self):
++        calls, latched = self._rounds(_scheduler(is_hybrid_ssm=False), 3)
++        self.assertEqual(calls, 1)
++        self.assertTrue(latched)
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py b/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py
 new file mode 100644
 index 0000000000..72c87f16b6
@@ -28460,6 +28587,87 @@ index 1005400e4c..f20edb4ba5 100644
 +
  if __name__ == "__main__":
      unittest.main()
+diff --git a/test/registered/unit/mem_cache/test_mamba_component_pool_exhaustion.py b/test/registered/unit/mem_cache/test_mamba_component_pool_exhaustion.py
+new file mode 100644
+index 0000000000..f9b145fa8a
+--- /dev/null
++++ b/test/registered/unit/mem_cache/test_mamba_component_pool_exhaustion.py
+@@ -0,0 +1,75 @@
++"""An exhausted unified mamba pool skips the unfinished-request checkpoint
++instead of asserting; with a free slot the request's checkpoint slot is
++donated and the free slot replaces it, as before."""
++
++import unittest
++from types import SimpleNamespace
++from unittest.mock import MagicMock
++
++import torch
++
++from sglang.test.ci.ci_register import register_cpu_ci
++from sglang.test.test_utils import CustomTestCase, maybe_stub_sgl_kernel
++
++maybe_stub_sgl_kernel()
++
++from sglang.srt.mem_cache.base_prefix_cache import InsertParams
++from sglang.srt.mem_cache.unified_cache.components.mamba_component import (
++    MambaComponent,
++)
++
++register_cpu_ci(est_time=3, suite="base-a-test-cpu")
++
++
++def _component(*, slot):
++    comp = object.__new__(MambaComponent)
++    allocator = MagicMock()
++    allocator.alloc.return_value = slot
++    allocator.available_size.return_value = 0
++    allocator.size = 28
++    pool = SimpleNamespace(
++        mamba_allocator=allocator,
++        mamba_ckpt_pool=None,
++        donate_mamba_ping_pong_slot=MagicMock(return_value=torch.tensor([3])),
++    )
++    comp.cache = SimpleNamespace(
++        req_to_token_pool=pool,
++        enable_mamba_extra_buffer=True,
++        evict_for_alloc=MagicMock(),
++    )
++    comp.tree_core = SimpleNamespace(mamba_evictable_size=lambda: 0)
++    return comp, allocator
++
++
++def _req():
++    return SimpleNamespace(
++        rid="r1",
++        kv=SimpleNamespace(mamba_last_track_seqlen=4096, mamba_pool_idx=None),
++    )
++
++
++class TestMambaPoolExhaustion(CustomTestCase):
++    def test_unfinished_checkpoint_skipped_when_pool_exhausted(self):
++        comp, allocator = _component(slot=None)
++        params = InsertParams(prev_prefix_len=0, chunked=True, priority=0)
++        cache_len = comp.prepare_for_caching_req(
++            req=_req(), insert_params=params, token_ids_len=4096, is_finished=False
++        )
++        self.assertEqual(cache_len, 0)
++        self.assertIsNone(params.mamba_value)
++        comp.cache.evict_for_alloc.assert_called_once()
++        self.assertEqual(allocator.alloc.call_count, 2)
++
++    def test_unfinished_checkpoint_donated_when_replacement_slot_available(self):
++        comp, allocator = _component(slot=torch.tensor([7]))
++        params = InsertParams(prev_prefix_len=0, chunked=True, priority=0)
++        cache_len = comp.prepare_for_caching_req(
++            req=_req(), insert_params=params, token_ids_len=4096, is_finished=False
++        )
++        self.assertEqual(cache_len, 4096)
++        self.assertTrue(torch.equal(params.mamba_value, torch.tensor([3])))
++        comp.cache.evict_for_alloc.assert_not_called()
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_mamba_radix_child_key.py b/test/registered/unit/mem_cache/test_mamba_radix_child_key.py
 new file mode 100644
 index 0000000000..64540d8f01
@@ -29464,10 +29672,10 @@ index 0000000000..2d8d9fef91
 +    sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/models/test_glm5_next_vision_precompile.py b/test/registered/unit/models/test_glm5_next_vision_precompile.py
 new file mode 100644
-index 0000000000..19c014cf54
+index 0000000000..8dd7895de7
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_vision_precompile.py
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,202 @@
 +"""Argument-contract tests for the GLM-5-Next vision-tower precompile hook.
 +
 +These tests verify what ``precompile_kernels_after_loading`` passes to
@@ -29519,6 +29727,31 @@ index 0000000000..19c014cf54
 +    @property
 +    def device(self) -> torch.device:
 +        return self.proj.weight.device
++
++
++class _RecordingActivationModule(nn.Module):
++    """Stands in for the block MLP or the patch merger: records the token
++    counts it is run at and exposes the first linear's input width."""
++
++    def __init__(self, first_linear: str, in_features: int, calls: list):
++        nn.Module.__init__(self)
++        setattr(self, first_linear, SimpleNamespace(input_size=in_features))
++        self.calls = calls
++        self.in_features = in_features
++
++    def forward(self, x):
++        self.calls.append((tuple(x.shape), x.dtype, x.device))
++        return x
++
++
++class _RecordingMLP(_RecordingActivationModule, glm5_next.Glm5NextVisionMLP):
++    def __init__(self, in_features, calls):
++        _RecordingActivationModule.__init__(self, "gate_up_proj", in_features, calls)
++
++
++class _RecordingMerger(_RecordingActivationModule, glm5_next.Glm5NextVisionPatchMerger):
++    def __init__(self, in_features, calls):
++        _RecordingActivationModule.__init__(self, "proj", in_features, calls)
 +
 +
 +def _make_model(visual, is_first_rank: bool = True):
@@ -29584,6 +29817,45 @@ index 0000000000..19c014cf54
 +            _make_model(visual, is_first_rank=False), lambda *a, **k: calls.append(a)
 +        )
 +        self.assertEqual(calls, [])
++
++    def test_mlp_and_merger_run_at_two_token_counts(self):
++        # Two distinct token counts make dynamo compile the static kernel and
++        # then settle on the dynamic one before the pools exist.
++        mlp_calls, merger_calls = [], []
++        visual = _FakeVisionTower(hidden_size=1536, num_heads=12, backend="fa3")
++        visual.mlp = _RecordingMLP(3072, mlp_calls)
++        visual.merger = _RecordingMerger(1536, merger_calls)
++        self._run_hook(_make_model(visual), lambda *a, **k: None)
++        self.assertEqual(
++            [shape for shape, _, _ in mlp_calls], [(64, 3072), (4096, 3072)]
++        )
++        self.assertEqual(
++            [shape for shape, _, _ in merger_calls], [(64, 1536), (4096, 1536)]
++        )
++        for _, dtype, device in mlp_calls + merger_calls:
++            self.assertEqual(dtype, torch.bfloat16)
++            self.assertEqual(device, visual.device)
++
++    def test_mlp_precompile_skips_without_the_modules_or_off_first_rank(self):
++        calls = []
++        visual = _FakeVisionTower(hidden_size=1536, num_heads=12, backend="fa3")
++        self._run_hook(_make_model(visual), lambda *a, **k: None)  # no modules
++        visual.mlp = _RecordingMLP(3072, calls)
++        self._run_hook(_make_model(visual, is_first_rank=False), lambda *a, **k: None)
++        self.assertEqual(calls, [])
++
++    def test_mlp_failure_is_logged_not_raised(self):
++        class _Failing(_RecordingMLP):
++            def forward(self, x):
++                raise RuntimeError("mlp compile failed")
++
++        visual = _FakeVisionTower(hidden_size=1536, num_heads=12, backend="fa3")
++        visual.mlp = _Failing(3072, [])
++        with self.assertLogs(glm5_next.logger, level="WARNING") as logs:
++            self._run_hook(_make_model(visual), lambda *a, **k: None)
++        self.assertTrue(
++            any("MLP precompile failed" in line for line in logs.output), logs.output
++        )
 +
 +    def test_kernel_failure_is_logged_not_raised(self):
 +        def stub(*args, **kwargs):

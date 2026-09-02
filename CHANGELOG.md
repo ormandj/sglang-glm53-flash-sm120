@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.4-rc.2
+
+- Same bases as rc.1 (SGLang main f8cbf000f4 with #36507 head 545bd6f839,
+  FlashInfer main c92227fad3 with #4802 head 8c765a04c1), rebuilt so that
+  every carried pull request is applied from its current PR head: sglang
+  #36904, #36661, #36696, #36821 (rebased copies, third-party PRs whose
+  branches predate the series), #37168, #37169, #37535, #37536, #37537,
+  #37539, #37541, #37612, #37619, #37625 (heads; #37534 and #37538 are the
+  rebased copies because their heads conflict with the #36507 series), and
+  flashinfer #4802, #4687, #4827 (heads). Downstream-only commits are the
+  SM120 glue, the graph-capture and allocator diagnostics, the mamba
+  admission gating companion to #37619 and the Triton late-load diagnostic.
+- Working heads 0ee9b629d1 (sglang) and bc2107ad50 (flashinfer). The
+  flashinfer tree is identical to rc.1; the sglang tree differs from rc.1
+  only in the #37612, #37619 and #37539 files taken from their PR heads and
+  in the removal of the admission refusal log diagnostic.
+- Cache schema v56 unchanged; launcher and docs unchanged.
+
 ## v0.1.4-rc.1
 
 - Base refresh: SGLang main f8cbf000f4 (2026-09-02; #37477, the GLM-5.3-Flash
