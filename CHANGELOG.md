@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.1-rc.14 (offload raw image features after encoding; full extend profiler; not yet built or qualified)
+
+- Raw image features (pixel patches) return to host memory as soon as the
+  vision encoder has consumed them. The embedding is cached; a chunked
+  prefill otherwise kept the per-image device copies alive through every
+  remaining chunk — 143 MiB for a 4K image next to the language-model
+  layers' activations. Diagnosed from the rc.13 allocator snapshot: the
+  two-chunk image extend OOMs at the first full-attention layer with ~200
+  MiB more live than a text extend, which the profiler shows runs with
+  ~50 MiB to spare at a 4096-token chunk (MHC keeps two fp32 4x-hidden
+  residual streams per token; FlashInfer's W4A16 MoE workspace holds a
+  further 414 MiB for the process lifetime). No leak across requests:
+  the baseline is stable through repeated image requests.
+- Profiler sub-phases (env-gated, off by default): KDA conv vs chunk
+  kernels, MLA indexer / KV write / sparse attention, per-block vision
+  tower, retained-memory allocator snapshots.
+
 ## v0.1.1-rc.13 (profiler snapshots retained memory; not yet built or qualified)
 
 - rc.12 measurement of a 4K image at the 8,000-token budget: the vision

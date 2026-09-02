@@ -6801,10 +6801,10 @@ index 4f630c1247..0d3c197703 100644
                  self.index_topk,
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 new file mode 100644
-index 0000000000..56f2a6efaa
+index 0000000000..87a2cabbe8
 --- /dev/null
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-@@ -0,0 +1,1955 @@
+@@ -0,0 +1,1971 @@
 +from __future__ import annotations
 +
 +from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -8545,6 +8545,22 @@ index 0000000000..56f2a6efaa
 +        return self._get_topk_paged(forward_batch, layer_id, q_fp8, weights, metadata)
 +
 +    def forward_cuda(
++        self,
++        x: torch.Tensor,
++        q_lora: torch.Tensor,
++        positions: torch.Tensor,
++        forward_batch: ForwardBatch,
++        layer_id: int,
++        return_indices: bool = True,
++    ) -> Optional[torch.Tensor]:
++        from sglang.srt.utils import extend_mem_profile
++
++        with extend_mem_profile.phase("mla:indexer"):
++            return self._forward_cuda_impl(
++                x, q_lora, positions, forward_batch, layer_id, return_indices
++            )
++
++    def _forward_cuda_impl(
 +        self,
 +        x: torch.Tensor,
 +        q_lora: torch.Tensor,
@@ -11935,7 +11951,7 @@ index e469a61162..1b95e753fd 100644
      return torch.pow(2.0, torch.ceil(torch.log2(x.abs())))
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 9369ad2896..8bcd477fa2 100644
+index 9369ad2896..d5b16e0fbc 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -1,9 +1,10 @@
@@ -12668,8 +12684,7 @@ index 9369ad2896..8bcd477fa2 100644
 +                        local_seq_lens_cpu=indexer_seq_lens_cpu.tolist(),
 +                        local_req_pool_indices=forward_batch.req_pool_indices[bs_idx],
 +                    )
- 
--            if any(forward_batch.extend_prefix_lens_cpu) or bs_idx_cpu is not None:
++
 +            elif dsa_use_prefill_cp(
 +                forward_batch
 +            ) and not can_dsa_prefill_cp_round_robin_split(forward_batch):
@@ -12713,7 +12728,8 @@ index 9369ad2896..8bcd477fa2 100644
 +                local_extend_seq_lens_cpu = [int(x) for x in prev_q_lens] + [
 +                    int(x) for x in next_q_lens
 +                ]
-+
+ 
+-            if any(forward_batch.extend_prefix_lens_cpu) or bs_idx_cpu is not None:
 +                local_seqlens = []
 +                for q_len, kv_len in zip(
 +                    local_extend_seq_lens_cpu, local_seq_lens_cpu, strict=True
@@ -13550,7 +13566,29 @@ index 9369ad2896..8bcd477fa2 100644
          if dsa_impl == "trtllm" and not self.use_mha:
              return self._forward_trtllm(
                  q,
-@@ -1957,7 +3170,9 @@ class DeepseekSparseAttnBackend(
+@@ -1927,12 +3140,15 @@ class DeepseekSparseAttnBackend(
+                     if not layer.is_cross_attention
+                     else forward_batch.encoder_out_cache_loc
+                 )
+-                self.token_to_kv_pool.set_mla_kv_buffer(  # type: ignore
+-                    layer,
+-                    cache_loc,
+-                    k,
+-                    k_rope,
+-                )
++                from sglang.srt.utils import extend_mem_profile
++
++                with extend_mem_profile.phase("mla:kv-write"):
++                    self.token_to_kv_pool.set_mla_kv_buffer(  # type: ignore
++                        layer,
++                        cache_loc,
++                        k,
++                        k_rope,
++                    )
+ 
+         # Use MHA kernel if in MHA_ONE_SHOT mode
+         if self.use_mha:
+@@ -1957,7 +3173,9 @@ class DeepseekSparseAttnBackend(
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
@@ -13561,7 +13599,7 @@ index 9369ad2896..8bcd477fa2 100644
              )
          else:
              q_all = q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim)
-@@ -2046,6 +3261,10 @@ class DeepseekSparseAttnBackend(
+@@ -2046,6 +3264,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -13572,7 +13610,31 @@ index 9369ad2896..8bcd477fa2 100644
              )
          elif dsa_impl in ("flashmla_sparse", "flashmla_sparse_q8"):
              if topk_transform_method == TopkTransformMethod.RAGGED:
-@@ -2153,16 +3372,35 @@ class DeepseekSparseAttnBackend(
+@@ -2131,13 +3353,16 @@ class DeepseekSparseAttnBackend(
+                 q_all = concat_mla_absorb_q_general(q_nope, q_rope)
+             if topk_transform_method == TopkTransformMethod.RAGGED:
+                 page_table_1 = topk_indices
+-            return self._forward_flashinfer_sparse_mla(
+-                q_all=q_all,
+-                kv_cache=kv_cache,
+-                page_table_1=page_table_1,
+-                seq_lens=metadata.dsa_cache_seqlens_int32,
+-                sm_scale=layer.scaling,
+-                skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_PREFILL_THRESHOLD_SCALE_FACTOR.get(),
++            from sglang.srt.utils import extend_mem_profile
++
++            with extend_mem_profile.phase("mla:sparse-attn"):
++                return self._forward_flashinfer_sparse_mla(
++                    q_all=q_all,
++                    kv_cache=kv_cache,
++                    page_table_1=page_table_1,
++                    seq_lens=metadata.dsa_cache_seqlens_int32,
++                    sm_scale=layer.scaling,
++                    skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_PREFILL_THRESHOLD_SCALE_FACTOR.get(),
+             )
+         elif dsa_impl == "flashmla_kv":
+             if q_rope is not None:
+@@ -2153,16 +3378,35 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
              )
          elif dsa_impl == "fa3":
@@ -13613,7 +13675,7 @@ index 9369ad2896..8bcd477fa2 100644
                  sm_scale=layer.scaling,
                  logit_cap=layer.logit_cap,
                  page_size=1,
-@@ -2202,7 +3440,10 @@ class DeepseekSparseAttnBackend(
+@@ -2202,7 +3446,10 @@ class DeepseekSparseAttnBackend(
          metadata = self.forward_metadata
          assert causal, "DSA is causal only"
  
@@ -13625,7 +13687,7 @@ index 9369ad2896..8bcd477fa2 100644
              return self._forward_trtllm(
                  q,
                  k,
-@@ -2239,7 +3480,9 @@ class DeepseekSparseAttnBackend(
+@@ -2239,7 +3486,9 @@ class DeepseekSparseAttnBackend(
          if q_rope is not None:
              q_nope = q.view(-1, layer.tp_q_head_num, layer.v_head_dim)
              q_rope = q_rope.view(
@@ -13636,7 +13698,7 @@ index 9369ad2896..8bcd477fa2 100644
              )
              # Caller passed split q_nope / q_rope; we'll need to concat below if
              # the chosen impl wants q_all.
-@@ -2272,7 +3515,7 @@ class DeepseekSparseAttnBackend(
+@@ -2272,7 +3521,7 @@ class DeepseekSparseAttnBackend(
                  page_size=1,
              )
  
@@ -13645,7 +13707,7 @@ index 9369ad2896..8bcd477fa2 100644
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashmla_sparse(
-@@ -2283,7 +3526,7 @@ class DeepseekSparseAttnBackend(
+@@ -2283,7 +3532,7 @@ class DeepseekSparseAttnBackend(
                  v_head_dim=layer.v_head_dim,
                  topk_length=metadata.dsa_cache_seqlens_int32,
              )
@@ -13654,7 +13716,7 @@ index 9369ad2896..8bcd477fa2 100644
              if q_all is None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashinfer_sparse_mla(
-@@ -2294,7 +3537,7 @@ class DeepseekSparseAttnBackend(
+@@ -2294,7 +3543,7 @@ class DeepseekSparseAttnBackend(
                  sm_scale=layer.scaling,
                  skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              )
@@ -13663,7 +13725,7 @@ index 9369ad2896..8bcd477fa2 100644
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              return self._forward_flashmla_kv(
-@@ -2307,7 +3550,7 @@ class DeepseekSparseAttnBackend(
+@@ -2307,7 +3556,7 @@ class DeepseekSparseAttnBackend(
                  metadata=metadata,
                  page_table_1=page_table_1,
              )
@@ -13672,7 +13734,7 @@ index 9369ad2896..8bcd477fa2 100644
              # Cat-skip (HIP-only): when caller passes q_rope=None on HIP, q_all
              # has already been set to a zero-copy view of q in the else branch
              # above and we can reuse it directly. The `not _is_hip` clause keeps
-@@ -2320,8 +3563,12 @@ class DeepseekSparseAttnBackend(
+@@ -2320,8 +3569,12 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -13686,7 +13748,7 @@ index 9369ad2896..8bcd477fa2 100644
              return self._forward_fa3(
                  q_rope=q_rope,
                  kv_cache=kv_cache,
-@@ -2336,7 +3583,7 @@ class DeepseekSparseAttnBackend(
+@@ -2336,7 +3589,7 @@ class DeepseekSparseAttnBackend(
                  logit_cap=layer.logit_cap,
                  page_size=1,
              )
@@ -13695,7 +13757,7 @@ index 9369ad2896..8bcd477fa2 100644
              if q_all is None or not _is_hip:
                  q_all = torch.cat([q_nope, q_rope], dim=-1)
              return self._forward_aiter(
-@@ -2349,7 +3596,7 @@ class DeepseekSparseAttnBackend(
+@@ -2349,7 +3602,7 @@ class DeepseekSparseAttnBackend(
              )
  
          else:
@@ -13704,7 +13766,7 @@ index 9369ad2896..8bcd477fa2 100644
  
      def _forward_fa3(
          self,
-@@ -2369,13 +3616,21 @@ class DeepseekSparseAttnBackend(
+@@ -2369,13 +3622,21 @@ class DeepseekSparseAttnBackend(
          k_rope_cache = kv_cache[:, :, v_head_dim:]
          c_kv_cache = kv_cache[:, :, :v_head_dim]
          qk_rope_dim = k_rope_cache.shape[-1]
@@ -13729,7 +13791,7 @@ index 9369ad2896..8bcd477fa2 100644
              page_table=page_table,
              cache_seqlens=cache_seqlens,
              cu_seqlens_q=cu_seqlens_q,
-@@ -2783,6 +4038,7 @@ class DeepseekSparseAttnBackend(
+@@ -2783,6 +4044,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -13737,7 +13799,7 @@ index 9369ad2896..8bcd477fa2 100644
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -2927,9 +4183,34 @@ class DeepseekSparseAttnBackend(
+@@ -2927,9 +4189,34 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -13772,7 +13834,7 @@ index 9369ad2896..8bcd477fa2 100644
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3129,39 +4410,50 @@ class DeepseekSparseAttnBackend(
+@@ -3129,39 +4416,50 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.forward_metadata
  
@@ -13850,7 +13912,7 @@ index 9369ad2896..8bcd477fa2 100644
                  if is_cp_v2_active(forward_batch):
                      k, k_rope = get_cp_strategy().all_gather_dsa_trtllm_fp8_kv(
                          forward_batch, k, k_rope
-@@ -3219,6 +4511,12 @@ class DeepseekSparseAttnBackend(
+@@ -3219,6 +4517,12 @@ class DeepseekSparseAttnBackend(
                  topk_indices=topk_indices,
                  page_size=1,
              )
@@ -13863,7 +13925,7 @@ index 9369ad2896..8bcd477fa2 100644
  
          q_scale = 1.0
          k_scale = (
-@@ -3264,11 +4562,16 @@ class DeepseekSparseAttnBackend(
+@@ -3264,11 +4568,16 @@ class DeepseekSparseAttnBackend(
              block_tables=block_tables,
              seq_lens=seq_lens,
              max_seq_len=metadata.max_seq_len_k,
@@ -13881,7 +13943,7 @@ index 9369ad2896..8bcd477fa2 100644
          )
  
          return out
-@@ -3302,13 +4605,11 @@ class DeepseekSparseAttnBackend(
+@@ -3302,13 +4611,11 @@ class DeepseekSparseAttnBackend(
          """
          Decide all attention prefill dispatch strategies for this batch.
          """
@@ -13900,7 +13962,7 @@ index 9369ad2896..8bcd477fa2 100644
  
          # Decide MHA vs MLA
          if is_in_tc_piecewise_cuda_graph() or is_in_breakable_cuda_graph():
-@@ -3455,6 +4756,19 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3455,6 +4762,19 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -13920,7 +13982,7 @@ index 9369ad2896..8bcd477fa2 100644
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3588,6 +4902,16 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3588,6 +4908,16 @@ class DeepseekSparseAttnMultiStepBackend:
                      precomputed.seqlens_expanded_size,
                  )
  
@@ -13937,7 +13999,7 @@ index 9369ad2896..8bcd477fa2 100644
                  # Copy remaining backends one by one (if > 3 backends)
                  for i in range(3, self.speculative_num_steps - 1):
                      self.attn_backends[
-@@ -3616,15 +4940,36 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3616,15 +4946,36 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:
@@ -14842,7 +14904,7 @@ index 126e48bdd2..44e9f31172 100644
          for attn_backend in self.attn_backend_list:
              attn_backend.init_cuda_graph_state(max_bs, max_num_tokens)
 diff --git a/python/sglang/srt/layers/attention/linear/kda_backend.py b/python/sglang/srt/layers/attention/linear/kda_backend.py
-index 699971f08b..28867ac5d3 100644
+index 699971f08b..fafd0da2dd 100644
 --- a/python/sglang/srt/layers/attention/linear/kda_backend.py
 +++ b/python/sglang/srt/layers/attention/linear/kda_backend.py
 @@ -151,7 +151,7 @@ class KDAKernelDispatcher:
@@ -14947,7 +15009,7 @@ index 699971f08b..28867ac5d3 100644
          if self.forward_metadata.has_mamba_track_mask:
              # Snapshot the conv sliding window at the last track-aligned chunk
              # boundary into the ping-pong track slots (the prefix-cache restore
-@@ -729,55 +753,30 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -729,56 +753,36 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  self.forward_metadata.conv_states_mask_indices
              ] = mixed_qkv[self.forward_metadata.track_conv_indices]
  
@@ -14961,7 +15023,10 @@ index 699971f08b..28867ac5d3 100644
 -            q_bias, k_bias, v_bias = layer.bias.split(splits, dim=0)
 -        else:
 -            q_bias, k_bias, v_bias = None, None, None
--
++        # Depthwise conv is channel-independent, so one packed call over the
++        # full qkv width matches the decode path and saves two kernel launches.
++        from sglang.srt.utils import extend_mem_profile
+ 
 -        q = causal_conv1d_fn(
 -            q,
 -            q_conv_weight,
@@ -14988,20 +15053,25 @@ index 699971f08b..28867ac5d3 100644
 -            v,
 -            v_conv_weight,
 -            v_bias,
-+        # Depthwise conv is channel-independent, so one packed call over the
-+        # full qkv width matches the decode path and saves two kernel launches.
-+        qkv = causal_conv1d_fn(
-+            mixed_qkv.transpose(0, 1),
-+            layer.conv_weights,
-+            layer.bias,
-             activation="silu",
+-            activation="silu",
 -            conv_states=v_conv_state,
-+            conv_states=conv_states,
-             has_initial_state=has_initial_state,
-             cache_indices=cache_indices,
-             query_start_loc=query_start_loc,
-             seq_lens_cpu=forward_batch.extend_seq_lens_cpu,
-         ).transpose(0, 1)
+-            has_initial_state=has_initial_state,
+-            cache_indices=cache_indices,
+-            query_start_loc=query_start_loc,
+-            seq_lens_cpu=forward_batch.extend_seq_lens_cpu,
+-        ).transpose(0, 1)
++        with extend_mem_profile.phase("kda:conv"):
++            qkv = causal_conv1d_fn(
++                mixed_qkv.transpose(0, 1),
++                layer.conv_weights,
++                layer.bias,
++                activation="silu",
++                conv_states=conv_states,
++                has_initial_state=has_initial_state,
++                cache_indices=cache_indices,
++                query_start_loc=query_start_loc,
++                seq_lens_cpu=forward_batch.extend_seq_lens_cpu,
++            ).transpose(0, 1)
 +        q, k, v = qkv.split([layer.q_dim, layer.k_dim, layer.v_dim], dim=-1)
  
          q = q.unflatten(-1, (-1, layer.head_q_dim)).unsqueeze(0)  # n (h d) -> 1 n h d
@@ -15014,9 +15084,12 @@ index 699971f08b..28867ac5d3 100644
 +            a = a.unflatten(-1, (-1, layer.head_k_dim))
 +
          track_ssm = self.forward_metadata.has_mamba_track_mask
++        _kda_chunk_phase = extend_mem_profile.phase("kda:chunk")
++        _kda_chunk_phase.__enter__()
          core_attn_out = self.kernel_dispatcher.extend(
              q=q,
-@@ -791,6 +790,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+             k=k,
+@@ -791,6 +795,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              A_log=layer.A_log,
              dt_bias=layer.dt_bias,
              lower_bound=layer.lower_bound,
@@ -15024,7 +15097,15 @@ index 699971f08b..28867ac5d3 100644
              extend_seq_lens_cpu=forward_batch.extend_seq_lens_cpu,
              # draft_extend_v2 must stay rollback-able, so kernels that commit state
              # in place (e.g. FlashKDA) must not run for it.
-@@ -825,6 +825,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -803,6 +808,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+                 self.forward_metadata.track_ssm_h_src if track_ssm else None
+             ),
+         )
++        _kda_chunk_phase.__exit__(None, None, None)
+         if track_ssm:
+             # Snapshot the SSM state at the last track-aligned chunk boundary
+             # from the kernel's per-chunk states (h) / final states into the
+@@ -825,6 +831,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
              intermediate_ssm[slots, 0] = ssm_states[slots].to(intermediate_ssm.dtype)
              self.accept_lens_pool[slots] = 1
  
@@ -15038,7 +15119,7 @@ index 699971f08b..28867ac5d3 100644
          return core_attn_out
  
      def _forward_target_verify(
-@@ -864,6 +871,27 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -864,6 +877,27 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  "KDA target_verify requires a speculative mamba cache "
                  "(MambaPool.SpeculativeState); none found."
              )
@@ -15066,7 +15147,7 @@ index 699971f08b..28867ac5d3 100644
          intermediate_conv_window_cache = mamba_cache_params.intermediate_conv_window[0]
          intermediate_state_indices = self.verify_intermediate_state_indices
  
-@@ -923,6 +951,9 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -923,6 +957,9 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  retrieve_next_sibling=retrieve_next_sibling,
                  retrieve_parent_token=retrieve_parent_token,
                  replayssm_rawv=replayssm_rawv,
@@ -15076,7 +15157,7 @@ index 699971f08b..28867ac5d3 100644
              ):
                  return self._fused_chain_verify_fn(
                      mixed_qkv=mixed_qkv,
-@@ -953,6 +984,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -953,6 +990,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
                      head_k_dim=layer.head_k_dim,
                      head_v_dim=layer.head_v_dim,
                      lower_bound=layer.lower_bound,
@@ -15084,7 +15165,7 @@ index 699971f08b..28867ac5d3 100644
                  )
              dense_token_indices = None
              mixed_qkv_dense = mixed_qkv.view(batch_size, draft_token_num, -1)
-@@ -1011,22 +1043,6 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1011,22 +1049,6 @@ class KDAAttnBackend(MambaAttnBackendBase):
          k = k.unflatten(-1, (-1, layer.head_k_dim)).unsqueeze(0)
          v = v.unflatten(-1, (-1, layer.head_v_dim)).unsqueeze(0)
  
@@ -15107,7 +15188,7 @@ index 699971f08b..28867ac5d3 100644
          core_attn_out = self.kernel_dispatcher.target_verify(
              A_log=layer.A_log,
              dt_bias=layer.dt_bias,
-@@ -1086,10 +1102,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1086,10 +1108,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
          retrieve_next_sibling: Optional[torch.Tensor],
          retrieve_parent_token: Optional[torch.Tensor],
          replayssm_rawv: Optional[torch.Tensor],
@@ -15122,7 +15203,7 @@ index 699971f08b..28867ac5d3 100644
              value is not None
              for value in (
                  retrieve_next_token,
-@@ -1098,6 +1117,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1098,6 +1123,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              )
          ):
              return False
@@ -15130,7 +15211,7 @@ index 699971f08b..28867ac5d3 100644
          if draft_token_num < 3 or mixed_qkv.shape[0] % draft_token_num != 0:
              return False
          if (
-@@ -1149,7 +1169,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1149,7 +1175,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
              layer.A_log.dtype != torch.float32
              or layer.dt_bias.dtype != torch.float32
              or ssm_states.dtype != torch.float32
@@ -15153,7 +15234,7 @@ index 699971f08b..28867ac5d3 100644
              or intermediate_state_cache.dtype != torch.float32
          ):
              return False
-@@ -1159,7 +1193,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1159,7 +1199,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              or b.stride(-1) != 1
              or not conv_states.is_contiguous()
              or not ssm_states.is_contiguous()
@@ -15162,7 +15243,7 @@ index 699971f08b..28867ac5d3 100644
          ):
              return False
          if (
-@@ -1177,10 +1211,15 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1177,10 +1217,15 @@ class KDAAttnBackend(MambaAttnBackendBase):
              or ssm_states.ndim != 4
              or tuple(ssm_states.shape[-3:])
              != (layer.num_v_heads, layer.head_v_dim, layer.head_k_dim)
@@ -15182,7 +15263,7 @@ index 699971f08b..28867ac5d3 100644
          ):
              return False
          if (
-@@ -1200,15 +1239,76 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1200,15 +1245,76 @@ class KDAAttnBackend(MambaAttnBackendBase):
              b,
              conv_states,
              ssm_states,
@@ -16999,6 +17080,57 @@ index 556fb6cd2f..14becaccfa 100644
          producer_event.start_event.record()
  
          if self.load_fence_stream is not None:
+diff --git a/python/sglang/srt/managers/mm_schedule.py b/python/sglang/srt/managers/mm_schedule.py
+index dbf6d2f217..2db2ea72db 100644
+--- a/python/sglang/srt/managers/mm_schedule.py
++++ b/python/sglang/srt/managers/mm_schedule.py
+@@ -216,6 +216,22 @@ def _move_items_to_device(
+             item.feature = item.feature.to(device, non_blocking=True)
+ 
+ 
++def _offload_items_to_host(items: List[MultimodalDataItem]) -> None:
++    """Return encoded items' raw features to host memory.
++
++    Once the encoder has produced (and cached) an item's embedding, the raw
++    pixel/patch tensor is dead weight on the device — but a chunked prefill
++    keeps the item alive for every remaining chunk, so a 4K image's 143 MiB
++    of patches would otherwise sit next to the language-model layers'
++    activations for the whole request. The host copy preserves the
++    re-encode fallback the embedding cache's eviction relies on.
++    """
++    for item in items:
++        feature = item.feature
++        if isinstance(feature, torch.Tensor) and feature.is_cuda:
++            item.feature = feature.to("cpu", non_blocking=True)
++
++
+ def _acknowledge_deferred_cuda_ipc_cache_hits(
+     items: List[MultimodalDataItem],
+ ) -> None:
+@@ -272,6 +288,7 @@ def _get_chunked_embedding_full(
+         if not _can_skip_pre_embed_feature_move(data_embedding_func):
+             _move_items_to_device(embedding_items_per_req, device)
+         embedding = data_embedding_func(embedding_items_per_req)
++        _offload_items_to_host(embedding_items_per_req)
+         if isinstance(embedding, list):
+             # This path caches the combined per-request embedding, so the
+             # per-item form is flattened here.
+@@ -379,6 +396,7 @@ def _batch_encode_per_image_misses(
+         if not _can_skip_pre_embed_feature_move(data_embedding_func):
+             _move_items_to_device(miss_items, device)
+         all_miss_embedding = data_embedding_func(miss_items)
++        _offload_items_to_host(miss_items)
+ 
+         if isinstance(all_miss_embedding, list):
+             # Per-item embeddings: no split needed, and each cache entry owns
+@@ -457,6 +475,7 @@ def _get_chunked_embedding_by_item(
+         if not _can_skip_pre_embed_feature_move(data_embedding_func):
+             _move_items_to_device(miss_item_list, device)
+         all_miss_embedding = data_embedding_func(miss_item_list)
++        _offload_items_to_host(miss_item_list)
+ 
+         if isinstance(all_miss_embedding, list):
+             # Per-item embeddings: no split needed, and each cache entry owns
 diff --git a/python/sglang/srt/managers/mm_utils.py b/python/sglang/srt/managers/mm_utils.py
 index 4a9d7a29e8..2e2d36cc45 100644
 --- a/python/sglang/srt/managers/mm_utils.py
@@ -23172,7 +23304,7 @@ index 0000000000..b96b8db944
 +
 +EntryClass = [Glm5NextForConditionalGenerationNextN]
 diff --git a/python/sglang/srt/models/glm_ocr.py b/python/sglang/srt/models/glm_ocr.py
-index dfd00f31bd..15fb7d6c99 100644
+index dfd00f31bd..31df21716e 100644
 --- a/python/sglang/srt/models/glm_ocr.py
 +++ b/python/sglang/srt/models/glm_ocr.py
 @@ -26,7 +26,6 @@ import torch.nn as nn
@@ -23209,7 +23341,32 @@ index dfd00f31bd..15fb7d6c99 100644
              quant_config=quant_config,
              bias=False,
              prefix=add_prefix("merger", prefix),
-@@ -285,7 +290,6 @@ class GlmOcrForConditionalGeneration(Glm4vForConditionalGeneration):
+@@ -252,14 +257,17 @@ class GlmOcrVisionModel(Glm4vVisionModel):
+         # x.shape: (s, b, d) where b=1 for vision processing
+         # transformers
+         x = x.unsqueeze(1)
++        from sglang.srt.utils import extend_mem_profile
++
+         for blk in self.blocks:
+-            x = blk(
+-                x,
+-                cu_seqlens=cu_seqlens,
+-                rotary_pos_emb_cos=rotary_pos_emb_cos,
+-                rotary_pos_emb_sin=rotary_pos_emb_sin,
+-                forward_metadata=forward_metadata,
+-            )
++            with extend_mem_profile.phase("vit:block"):
++                x = blk(
++                    x,
++                    cu_seqlens=cu_seqlens,
++                    rotary_pos_emb_cos=rotary_pos_emb_cos,
++                    rotary_pos_emb_sin=rotary_pos_emb_sin,
++                    forward_metadata=forward_metadata,
++                )
+ 
+         # adapter
+         x = self.post_layernorm(x)
+@@ -285,7 +293,6 @@ class GlmOcrForConditionalGeneration(Glm4vForConditionalGeneration):
          self.use_data_parallel = get_mm().mm_enable_dp_encoder
          self.visual = GlmOcrVisionModel(
              vision_config=config.vision_config,
