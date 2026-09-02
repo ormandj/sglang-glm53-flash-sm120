@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.2",
-    "candidate": 1,
-    "candidate_tag": "v0.1.2-rc.1",
+    "candidate": 2,
+    "candidate_tag": "v0.1.2-rc.2",
     "stable_tag": "v0.1.2",
     "cache_schema": "v55"
   },
   "image": {
-    "tag": "v0.1.2-rc.1",
+    "tag": "v0.1.2-rc.2",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,7 +49,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 1
+      "value": 2
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "9606b85c086dd6bbc9ceaaed703447e7230efdd1"
+      "value": "fb87f891a7c94c761dd7eec81a82ad3b615777bd"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "858d0326222ab3dba0e9c48932a8a60b7fce12203a4f65cf6d7a0a0d3762401d"
+      "value": "54bc28a3342e6f554fcd5410ce612f0c41e299d0de349e29a20950bbfffa4e26"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,12 +149,12 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "1109e44305e266e7002c0129aec4a2fec8ef0e8c",
       "upstream_tree": "ead9238cf1aaff7466c7a1eb7c645d6873eea201",
-      "tree": "9606b85c086dd6bbc9ceaaed703447e7230efdd1",
+      "tree": "fb87f891a7c94c761dd7eec81a82ad3b615777bd",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "858d0326222ab3dba0e9c48932a8a60b7fce12203a4f65cf6d7a0a0d3762401d",
+      "patch_sha256": "54bc28a3342e6f554fcd5410ce612f0c41e299d0de349e29a20950bbfffa4e26",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260902",
-      "working_head": "b92a1d9c544848bb6ce5be72ccd555004e508ddf",
+      "working_head": "36e337ea0ff99b2da506f15fc6a04eef58640823",
       "upstream_main_base": "1109e44305e266e7002c0129aec4a2fec8ef0e8c",
       "included_upstream_work": [
         "sglang#36507 (head 515e865189, merged onto main 1109e44305; includes #37484 prefill-CP removal, #36884, #36885, #37250, #36708, #36755)",
@@ -202,7 +202,8 @@
         "sglang#37540 kpool top-k transform fix (bold84)",
         "downstream-only: Triton late-load diagnostics armed after the HTTP warmups (single-worker form)",
         "downstream-only pending upstream: vision MLP and patch-merger swiglu precompile at two token counts (dynamo dynamic-shape settle before pools)",
-        "downstream pending upstream: per-round prefill admission re-evaluation on hybrid SSM caches (batch_is_full latch) plus SGLANG_LOG_ADMISSION_REFUSALS diagnostic"
+        "downstream pending upstream: per-round prefill admission re-evaluation on hybrid SSM caches (batch_is_full latch) plus SGLANG_LOG_ADMISSION_REFUSALS diagnostic",
+        "downstream pending upstream: exhausted mamba pool skips the unfinished-request checkpoint, static-pool mamba admission gating, pre-match admission stop (no scheduler assert)"
       ],
       "excluded_work": [
         "C4-unsafe process/device-shared DSA indexer compression-gate stream",
@@ -243,10 +244,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "858d0326222ab3dba0e9c48932a8a60b7fce12203a4f65cf6d7a0a0d3762401d",
+      "sha256": "54bc28a3342e6f554fcd5410ce612f0c41e299d0de349e29a20950bbfffa4e26",
       "base_head": "1109e44305e266e7002c0129aec4a2fec8ef0e8c",
       "base_tree": "ead9238cf1aaff7466c7a1eb7c645d6873eea201",
-      "result_tree": "9606b85c086dd6bbc9ceaaed703447e7230efdd1"
+      "result_tree": "fb87f891a7c94c761dd7eec81a82ad3b615777bd"
     },
     {
       "name": "flashinfer-glm53-integration",

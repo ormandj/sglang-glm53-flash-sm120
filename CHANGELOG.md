@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.2-rc.2
+
+- Scheduler: an exhausted mamba pool no longer asserts. The chunk-boundary
+  checkpoint of an unfinished request is skipped when no slot is free or
+  evictable (throttled info line), the static mamba pool gates admission on
+  free plus evictable slots, and the admission loop stops before a prefix
+  match when that budget is zero. Found with four concurrent cold 95k-token
+  prompts on rc.1: `AssertionError: Can not alloc mamba cache` in
+  `stash_chunked_request` killed the scheduler during the half-second
+  window after a cold long prefill in which every cached state is locked
+  for its host backup. Working head 36e337ea0f.
+- Everything else identical to v0.1.2-rc.1.
+
 ## v0.1.2 (stable; digest-identical promotion of v0.1.2-rc.1)
 
 - Promoted without a rebuild from the rc.1 candidate built from source

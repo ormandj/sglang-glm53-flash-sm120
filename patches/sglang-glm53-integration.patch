@@ -16822,10 +16822,47 @@ index 0552fbde28..369790e0e9 100755
          self.kv.retraction_backup = None
  
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index ae9fa0dc95..4b9ff8d15c 100644
+index ae9fa0dc95..1dbc71df82 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
-@@ -807,6 +807,11 @@ class PrefillAdder:
+@@ -577,6 +577,22 @@ class PrefillAdder:
+             )
+             if self.is_hybrid_ssm_cache:
+                 self.rem_mamba_slots += self.tree_cache.mamba_evictable_size()
++        elif self.is_hybrid_ssm_cache:
++            # Static mamba pool: a new request still needs one free or
++            # evictable slot at prepare time (`alloc_req_slots` asserts
++            # otherwise), and the evictable count can drop to zero while
++            # cached states are locked for a host backup. Gate on the same
++            # mamba-recoverable budget so admission never over-commits.
++            static_allocator = getattr(
++                getattr(self.tree_cache, "req_to_token_pool", None),
++                "mamba_allocator",
++                None,
++            )
++            if static_allocator is not None:
++                self.rem_mamba_slots = (
++                    static_allocator.available_size()
++                    + self.tree_cache.mamba_evictable_size()
++                )
+ 
+         self.priority_scheduling_preemption_threshold = (
+             priority_scheduling_preemption_threshold
+@@ -789,6 +805,13 @@ class PrefillAdder:
+             >= capacity
+         )
+ 
++    def _mamba_slot_needed(self, req: Req) -> bool:
++        # Static pool only (the unified pool charges through mamba_gap_reserve).
++        # Every request admitted here is new this round; a slot it already
++        # holds came from this round's group allocation or prefix-match copy,
++        # both drawn from the budget snapshot, so charge it either way.
++        return self.rem_mamba_slots is not None and not self._mamba_slot_cost
++
+     def _mamba_gap_budget_for_req(self, req: Req) -> int:
+         """Shared-gap reservation (full-token-equivalents) for a request's new
+         mamba state. Charged only on the SHARED Mamba pool (`_mamba_slot_cost > 0`)
+@@ -807,6 +830,11 @@ class PrefillAdder:
      def ceil_paged_tokens(self, tokens: int) -> int:
          return -(-tokens // self.page_size) * self.page_size
  
@@ -16837,8 +16874,81 @@ index ae9fa0dc95..4b9ff8d15c 100644
      def budget_state(self):
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
+@@ -837,6 +865,7 @@ class PrefillAdder:
+         max_new_tokens: int,
+         retracted_stain: bool,
+         mamba_gap_reserve: int = 0,
++        needs_mamba_slot: bool = False,
+         host_hit_len: int = 0,
+         storage_hit_len: int = 0,
+     ):
+@@ -857,7 +886,7 @@ class PrefillAdder:
+         )
+         # The new mamba slot also consumes one mamba-recoverable slot (gated
+         # separately so full_evictable can't cover it — see __init__).
+-        if mamba_gap_reserve and self.rem_mamba_slots is not None:
++        if (mamba_gap_reserve or needs_mamba_slot) and self.rem_mamba_slots is not None:
+             self.rem_mamba_slots -= 1
+         self.rem_input_tokens -= extend_input_len
+ 
+@@ -919,6 +948,7 @@ class PrefillAdder:
+             0,
+             req.retracted_stain,
+             mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++            needs_mamba_slot=self._mamba_slot_needed(req),
+             host_hit_len=req.host_hit_length,
+             storage_hit_len=req.storage_hit_length,
+         )
+@@ -961,6 +991,7 @@ class PrefillAdder:
+             max_new_tokens,
+             req.retracted_stain,
+             mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++            needs_mamba_slot=self._mamba_slot_needed(req),
+         )
+ 
+         # Return based on remaining token availability
+@@ -1016,6 +1047,7 @@ class PrefillAdder:
+             ),
+             req.retracted_stain,
+             mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++            needs_mamba_slot=self._mamba_slot_needed(req),
+         )
+ 
+         # Return if chunked prefill not finished
+@@ -1147,6 +1179,7 @@ class PrefillAdder:
+                 min(req.sampling_params.max_new_tokens, CLIP_MAX_NEW_TOKENS),
+                 req.retracted_stain,
+                 mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++                needs_mamba_slot=self._mamba_slot_needed(req),
+             )
+         else:
+             if self.rem_chunk_tokens <= 0:
+@@ -1170,6 +1203,7 @@ class PrefillAdder:
+                 0,
+                 req.retracted_stain,
+                 mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++                needs_mamba_slot=self._mamba_slot_needed(req),
+             )
+ 
+         return self.budget_state()
+@@ -1349,6 +1383,7 @@ class PrefillAdder:
+                     ),
+                     req.retracted_stain,
+                     mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++                    needs_mamba_slot=self._mamba_slot_needed(req),
+                     host_hit_len=req.host_hit_length,
+                     storage_hit_len=req.storage_hit_length,
+                 )
+@@ -1397,6 +1432,7 @@ class PrefillAdder:
+                     0,
+                     req.retracted_stain,
+                     mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
++                    needs_mamba_slot=self._mamba_slot_needed(req),
+                     host_hit_len=req.host_hit_length,
+                     storage_hit_len=req.storage_hit_length,
+                 )
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 454f754544..ea46e967ac 100644
+index 454f754544..0bc8f2dd4d 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -17076,7 +17186,22 @@ index 454f754544..ea46e967ac 100644
                      break
  
              if self.enable_hicache_storage:
-@@ -3719,6 +3824,7 @@ class Scheduler(
+@@ -3689,6 +3794,14 @@ class Scheduler(
+                 if loaded_tokens > 0:
+                     req.storage_hit_length = loaded_tokens
+ 
++            if adder.rem_mamba_slots is not None and adder.rem_mamba_slots <= 0:
++                # No free or evictable mamba slot: the prefix match below
++                # would try to copy a cached state into a per-request slot
++                # and fail loudly. Stop admitting until a slot frees.
++                self._log_admission_refusal(req, adder, running_batch, "NO_MAMBA_SLOT")
++                running_batch.batch_is_full = True
++                break
++
+             req.init_next_round_input(self.tree_cache)
+             if (
+                 self.enable_hicache_storage
+@@ -3719,6 +3832,7 @@ class Scheduler(
                  running_loras.add(req.lora_id)
  
              if res != AddReqResult.CONTINUE:
@@ -17084,7 +17209,7 @@ index 454f754544..ea46e967ac 100644
                  if res == AddReqResult.NO_TOKEN:
                      if self.enable_hierarchical_cache:
                          # Set batch_is_full after making sure there are requests that can be served
-@@ -3957,20 +4063,27 @@ class Scheduler(
+@@ -3957,20 +4071,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -17126,7 +17251,7 @@ index 454f754544..ea46e967ac 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -3983,12 +4096,11 @@ class Scheduler(
+@@ -3983,12 +4104,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -17144,7 +17269,7 @@ index 454f754544..ea46e967ac 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4003,12 +4115,11 @@ class Scheduler(
+@@ -4003,12 +4123,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -17160,7 +17285,7 @@ index 454f754544..ea46e967ac 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4064,7 +4175,7 @@ class Scheduler(
+@@ -4064,7 +4183,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -17169,7 +17294,7 @@ index 454f754544..ea46e967ac 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4090,13 +4201,12 @@ class Scheduler(
+@@ -4090,13 +4209,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -17189,7 +17314,7 @@ index 454f754544..ea46e967ac 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4218,7 +4328,11 @@ class Scheduler(
+@@ -4218,7 +4336,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -17202,7 +17327,7 @@ index 454f754544..ea46e967ac 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4230,7 +4344,11 @@ class Scheduler(
+@@ -4230,7 +4352,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -17214,7 +17339,7 @@ index 454f754544..ea46e967ac 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4353,9 +4471,11 @@ class Scheduler(
+@@ -4353,9 +4479,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -17229,7 +17354,7 @@ index 454f754544..ea46e967ac 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4378,31 +4498,42 @@ class Scheduler(
+@@ -4378,31 +4506,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -17293,7 +17418,7 @@ index 454f754544..ea46e967ac 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4437,7 +4568,7 @@ class Scheduler(
+@@ -4437,7 +4576,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -17302,7 +17427,7 @@ index 454f754544..ea46e967ac 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5394,6 +5525,38 @@ class Scheduler(
+@@ -5394,6 +5533,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -19612,6 +19737,109 @@ index c9102411d4..6b3583ebee 100644
              device_frees[self.component_type].append(cd.value)
              freed = len(cd.value)
              self.tree_core.component_evictable_size_[self.component_type] -= freed
+diff --git a/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py b/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
+index 0e6042af1c..41ba328ca7 100644
+--- a/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
++++ b/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
+@@ -1,6 +1,8 @@
+ from __future__ import annotations
+ 
+ from collections import defaultdict
++import logging
++import time
+ from typing import TYPE_CHECKING, Callable, Optional, Sequence
+ 
+ import torch
+@@ -56,6 +58,9 @@ if TYPE_CHECKING:
+     )
+ 
+ 
++logger = logging.getLogger(__name__)
++
++
+ class MambaComponent(TreeComponent):
+     component_type = ComponentType.MAMBA
+ 
+@@ -492,13 +497,36 @@ class MambaComponent(TreeComponent):
+ 
+     def _alloc_mamba_slot(self) -> torch.Tensor:
+         """Allocate one mamba pool slot, evicting if necessary."""
++        slot = self._try_alloc_mamba_slot()
++        assert slot is not None, "Can not alloc mamba cache"
++        return slot
++
++    def _try_alloc_mamba_slot(self) -> Optional[torch.Tensor]:
++        """Allocate one mamba pool slot, evicting if necessary; None when the
++        pool has no free or evictable slot."""
+         slot = self.cache.req_to_token_pool.mamba_allocator.alloc(1)
+         if slot is None:
+             self.cache.evict_for_alloc(EvictParams(num_tokens=0, mamba_num=1))
+             slot = self.cache.req_to_token_pool.mamba_allocator.alloc(1)
+-            assert slot is not None, "Can not alloc mamba cache"
+         return slot
+ 
++    _last_skip_log_time = 0.0
++
++    def _log_skipped_checkpoint(self, req: Req) -> None:
++        now = time.monotonic()
++        if now - MambaComponent._last_skip_log_time < 1.0:
++            return
++        MambaComponent._last_skip_log_time = now
++        allocator = self.cache.req_to_token_pool.mamba_allocator
++        logger.info(
++            "mamba checkpoint skipped for rid=%s: no free or evictable slot "
++            "(available=%d evictable=%d of %d)",
++            req.rid,
++            allocator.available_size(),
++            self.tree_core.mamba_evictable_size(),
++            getattr(allocator, "size", -1),
++        )
++
+     @property
+     def int8_ckpt_pool(self):
+         return getattr(self.cache.req_to_token_pool, "mamba_ckpt_pool", None)
+@@ -572,9 +600,17 @@ class MambaComponent(TreeComponent):
+             if cache_len is None:
+                 return 0
+             # Donate the mamba index to the radix cache instead of copying.
++            # An unfinished request's checkpoint is an optimization: when the
++            # pool has no free or evictable slot (every slot is held by running
++            # requests or locked for a pending host backup), skip this stash
++            # instead of failing; the request keeps its own state and the next
++            # stash retries.
+             if self.int8_ckpt_pool is not None:
+                 if self.cache.enable_mamba_extra_buffer:
+-                    new_slot = self._alloc_mamba_slot()
++                    new_slot = self._try_alloc_mamba_slot()
++                    if new_slot is None:
++                        self._log_skipped_checkpoint(req)
++                        return 0
+                     src_active = (
+                         self.cache.req_to_token_pool.donate_mamba_ping_pong_slot(
+                             req, new_slot
+@@ -587,14 +623,20 @@ class MambaComponent(TreeComponent):
+                         req.kv.mamba_pool_idx.view(-1)
+                     )
+             elif self.cache.enable_mamba_extra_buffer:
+-                new_slot = self._alloc_mamba_slot()
++                new_slot = self._try_alloc_mamba_slot()
++                if new_slot is None:
++                    self._log_skipped_checkpoint(req)
++                    return 0
+                 mamba_value_donated = (
+                     self.cache.req_to_token_pool.donate_mamba_ping_pong_slot(
+                         req, new_slot
+                     )
+                 )
+             else:
+-                mamba_value_donated = self._alloc_mamba_slot()
++                mamba_value_donated = self._try_alloc_mamba_slot()
++                if mamba_value_donated is None:
++                    self._log_skipped_checkpoint(req)
++                    return 0
+                 # mamba_pool is a pure PHYSICAL store; translate both slot ids
+                 # virtual->physical (identity for the non-unified memory pool) first.
+                 translate = self.cache.req_to_token_pool.translate_mamba_indices
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
 index 5d3a02cd3f..8e4fe1bf0c 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
