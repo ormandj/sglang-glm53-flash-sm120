@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.2-rc.1
+
+- Scheduler: prefill admission is re-evaluated every round on hybrid SSM
+  caches. The `batch_is_full` latch, set when a waiting request hits
+  NO_TOKEN and cleared only when the running batch shrinks, kept a fourth
+  concurrent request queued for the whole decode of the other three on
+  v0.1.1 although mamba slots were free or evictable. Working head
+  b92a1d9c54 on `integration/glm53-main-20260902`.
+- New diagnostic `SGLANG_LOG_ADMISSION_REFUSALS=1`: one scheduler log line
+  per second naming why a waiting request was not admitted, with the
+  adder budgets and the pool states admission reads. Off by default.
+- Everything else identical to v0.1.1 (sglang base 1109e44305, flashinfer
+  c5ff6f48, ModelOpt 0.47.0rc0, cache schema v55).
+
 ## v0.1.1 (stable; digest-identical promotion of v0.1.1-rc.16)
 
 - Promoted without a rebuild from the rc.16 candidate built from source
