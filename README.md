@@ -84,9 +84,9 @@ profile. Two settings matter more than they look:
 
 Measured on 2026-09-02 with the launcher configuration plus HiCache, using
 the vendored harness in [`bench/`](bench/) on a warm server. The four-request
-row is from `v0.1.3` at the 450,560-token pool; the other rows were measured
-on `v0.1.1` at 499,712, whose serving code differs only by the scheduler
-fixes.
+row is from `v0.1.4` at the 450,560-token pool; the other rows were measured
+on `v0.1.1` at 499,712 (same kernels, earlier upstream base and no scheduler
+fixes).
 Full tables and method notes are in [`BENCHMARKS.md`](BENCHMARKS.md); raw
 receipts are in [`evidence/`](evidence/).
 
@@ -99,7 +99,7 @@ tokens; forwards per second is the engine step rate.
 | 1 | 174.4 (175.1) | 52.7 | 3.5 |
 | 2 | 252.1 (244.5) | 38.4 | 3.2 |
 | 3 | 298.8 (297.7) | 33.0 | 3.0 |
-| 4 | 357.7 (355.4) | 28.9 | 2.9 |
+| 4 | 371.9 (360.6) | 28.8 | 3.1 |
 
 **Prefill.** Five cold, cache-busted requests per length, one at a time.
 
@@ -116,10 +116,10 @@ tokens; forwards per second is the engine step rate.
 | | |
 |---|---|
 | Context and KV pool | 450,560 tokens shared by up to four requests |
-| Largest prompt served | 436,295 tokens plus an 8K image at 99% pool usage (v0.1.3) |
+| Largest prompt served | 436,295 tokens plus a full-budget image at 99% pool usage (v0.1.3) |
 | Concurrent long prompts | 4 x 122,880 tokens |
 | HiCache host tier (32 GB) | 2.65M KV tokens plus an 11.2 GB recurrent-state tier |
-| GSM8K, 1,319 questions | 96.9% (v0.1.0: 97.2%, BF16-attention control: 97.0%) |
+| GSM8K, 1,319 questions | 96.9% on v0.1.1 (v0.1.0: 97.2%, BF16-attention control: 97.0%); 98/100 on the v0.1.4 100-question subset |
 | Images | 3840x2160 in 3.4 s, 7680x4320 in 3.0 s |
 | Stability | zero restarts and zero OOM errors across the decode, prefill, capacity and GSM8K runs |
 
