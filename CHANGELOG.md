@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.2-rc.2
+## v0.1.3-rc.1
 
 - Scheduler: an exhausted mamba pool no longer asserts. The chunk-boundary
   checkpoint of an unfinished request is skipped when no slot is free or

@@ -5,8 +5,8 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from exact
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
-ARG GLM53_RELEASE_VERSION=0.1.2
-ARG GLM53_RELEASE_CANDIDATE=2
+ARG GLM53_RELEASE_VERSION=0.1.3
+ARG GLM53_RELEASE_CANDIDATE=1
 ARG GLM53_CACHE_SCHEMA=v55
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash

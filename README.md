@@ -179,7 +179,7 @@ armed after the serving warmup. Already merged upstream and in the base:
 ## Releases
 
 `v0.1.2` (2026-09-02) is the current release, a digest-identical promotion
-of `v0.1.2-rc.2`. It fixes the scheduler latch that kept a fourth
+of `v0.1.2-rc.1`. It fixes the scheduler latch that kept a fourth
 concurrent request queued until another finished, so four requests now
 decode together (the C4 row above). `v0.1.1` (2026-09-02) fixed the Xid 31
 fault in the DSA top-k kernel under long prefill (reported by @bold84 and
@@ -203,7 +203,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.2-rc.2 .
+  -t sglang-glm53-flash-sm120:v0.1.3-rc.1 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.
