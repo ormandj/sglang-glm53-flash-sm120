@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.1-rc.8 (sampling warmup: FlashInfer sampling module built before ready; not yet built or qualified)
+
+- `serving_coverage` gains a `sampling` phase (temperature / top-p / top-k /
+  min-p / repetition-penalty variants, alone and at batch). Root cause of
+  the 75 s first chat on rc.5-rc.7: every warmup phase decoded greedily, so
+  FlashInfer's `sampling` module (`csrc_sampling.cu`, `csrc_renorm.cu`,
+  binding) was JIT-built by nvcc inside the first real request that
+  sampled — the build's `sampling.so` landed on the cache volume at the
+  exact second that chat returned. It rebuilds on the first boot of every
+  new image (ninja sees newer sources), which is why re-boots of the same
+  image never showed it. Diagnosed from VictoriaLogs and the cache
+  volume's file mtimes.
+
 ## v0.1.1-rc.7 (natural-text warmup for speculative shapes; not yet built or qualified)
 
 - `serving_coverage` gains a `natural-text` phase. rc.6's short-prompt

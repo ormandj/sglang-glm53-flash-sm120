@@ -6009,10 +6009,10 @@ index 17ecfa782d..628b3d48d6 100644
              if assistant_prefix:
                  prompt_ids = self._append_assistant_prefix_to_prompt_ids(
 diff --git a/python/sglang/srt/entrypoints/warmup.py b/python/sglang/srt/entrypoints/warmup.py
-index 2608621f6a..f71622ceea 100644
+index 2608621f6a..a34978a04d 100644
 --- a/python/sglang/srt/entrypoints/warmup.py
 +++ b/python/sglang/srt/entrypoints/warmup.py
-@@ -127,6 +127,179 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
+@@ -127,6 +127,210 @@ async def voice_chat(disaggregation_mode: str, tokenizer_manager: TokenizerManag
          await tokenizer_manager.generate_request(generate_req_input, None).__anext__()
  
  
@@ -6155,6 +6155,37 @@ index 2608621f6a..f71622ceea 100644
 +        )
 +
 +    phases.append(("natural-text", _natural_text))
++
++    async def _sampling():
++        # Every phase above decodes greedily. Real chats sample (temperature,
++        # top-p, top-k, min-p), and the sampling kernels are JIT-built on
++        # first use — on the first boot of a new image that is a full nvcc
++        # build inside a user's request. Exercise the sampling paths, alone
++        # and at batch, before ready.
++        variants = [
++            {"temperature": 0.8, "top_p": 0.95},
++            {"temperature": 1.0, "top_p": 0.9, "top_k": 40},
++            {"temperature": 0.7, "top_k": 20, "min_p": 0.05},
++            {"temperature": 0.6, "top_p": 0.95, "repetition_penalty": 1.05},
++        ]
++        for i, params in enumerate(variants):
++            req = _request(text=prompts_for_sampling[i % len(prompts_for_sampling)], max_new_tokens=48)
++            req.sampling_params.update(params)
++            await _run(req)
++        reqs = []
++        for i in range(max_running):
++            req = _request(text=prompts_for_sampling[i % len(prompts_for_sampling)], max_new_tokens=40 + 8 * i)
++            req.sampling_params.update(variants[i % len(variants)])
++            reqs.append(req)
++        await asyncio.gather(*(_run(r) for r in reqs))
++
++    prompts_for_sampling = [
++        "Write two sentences about the ocean at night.",
++        "List three uses for a paperclip.",
++        "Describe a quiet morning in a small town.",
++        "Give a short tip for learning a new language.",
++    ]
++    phases.append(("sampling", _sampling))
 +
 +    mm_tokens = getattr(getattr(tokenizer_manager, "mm_processor", None), "mm_tokens", None)
 +    image_token = getattr(mm_tokens, "image_token", None)
