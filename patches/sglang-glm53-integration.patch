@@ -24895,10 +24895,10 @@ index 04b04eb9c0..3fa988331d 100644
  
 diff --git a/python/sglang/srt/utils/extend_mem_profile.py b/python/sglang/srt/utils/extend_mem_profile.py
 new file mode 100644
-index 0000000000..a5ce3ae15e
+index 0000000000..2b8ddf4c20
 --- /dev/null
 +++ b/python/sglang/srt/utils/extend_mem_profile.py
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,96 @@
 +"""Per-phase device-memory peaks for extend (prefill) forwards.
 +
 +Enabled by ``SGLANG_EXTEND_MEM_PROFILE=1``. The allocator's peak counters are
@@ -24962,6 +24962,14 @@ index 0000000000..a5ce3ae15e
 +        prev = _phase_peaks.get(tag)
 +        if prev is None or peak > prev:
 +            _phase_peaks[tag] = peak
++        # Report large phases immediately: an OOM later in the same extend
++        # would otherwise take the numbers with it.
++        if peak >= 256 * 2**20:
++            free_b, _ = torch.cuda.mem_get_info()
++            logger.info(
++                "extend-mem-profile phase %s peak=%.0fMiB live_after=%.2fGiB device_free=%.2fGiB",
++                tag, peak / 2**20, torch.cuda.memory_allocated() / 2**30, free_b / 2**30,
++            )
 +
 +
 +def end(extra: Optional[str] = None) -> None:

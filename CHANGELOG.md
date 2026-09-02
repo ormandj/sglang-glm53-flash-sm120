@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.1-rc.12 (profiler reports phases immediately; not yet built or qualified)
+
+- rc.11 validation: token-blocked KDA removed the KDA layers from the
+  extend's top peaks (the 11 full-attention MLA layers now lead at 534 MiB
+  each on a 4096-token extend), but a 4K image at the 8,000-token budget
+  still OOM'd — in the sparse-MLA output allocation, with ~2 GB more live
+  memory than a same-size text extend carries. The profiler now logs any
+  phase peaking above 256 MiB as it completes, so the vision-path numbers
+  survive an OOM later in the same extend.
+
 ## v0.1.1-rc.11 (token-blocked KDA extend; not yet built or qualified)
 
 - The KDA (linear-attention) extend now processes each sequence in token

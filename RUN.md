@@ -1,4 +1,4 @@
-# Running `v0.1.1-rc.11`
+# Running `v0.1.1-rc.12`
 
 ```bash
 export MODEL_REPO=ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
@@ -6,7 +6,7 @@ export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
 mkdir -p "$MODEL_DIR"
 HF_XET_HIGH_PERFORMANCE=1 hf download "$MODEL_REPO" --local-dir "$MODEL_DIR"
 
-export IMAGE=sglang-glm53-flash-sm120:v0.1.1-rc.11
+export IMAGE=sglang-glm53-flash-sm120:v0.1.1-rc.12
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v54
 ./examples/serve-glm53-flash.sh
 ```
@@ -28,4 +28,4 @@ CUDA_GRAPH_MAX_BS=1 \
 ```
 
 Use a new cache directory for every candidate/runtime/graph combination. Never
-reuse an earlier candidate's cache with `v0.1.1-rc.11`.
+reuse an earlier candidate's cache with `v0.1.1-rc.12`.
