@@ -37,9 +37,9 @@ otherwise.
 - **C4 serving with a 499,712-token KV pool and context limit**: four
   concurrent agentic requests sharing a full ~500k-token budget, with a
   494,592-token single-request prefill served at 99.2% pool usage.
-- **HiCache host tier**: 13.5M KV tokens (82.9 GB host memory) plus a mamba
-  state tier, so evicted long prefixes resume from RAM instead of
-  recomputing.
+- **HiCache host tier** (32 GB default): 2.65M KV tokens (20.9 GB) plus an
+  11.2 GB mamba state tier, so evicted long prefixes resume from RAM
+  instead of recomputing; the v0.1.0 128 GB setting held 13.5M KV tokens.
 - **Adaptive EAGLE/NextN MTP speculative decoding** (candidate steps [3,5],
   acceptance-driven) plus PCIe IPC allreduce for TP2 small reduces:
   decode plateaus of 174.4 tok/s at C1 (52.7 forwards/s), 252.1 at C2
