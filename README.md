@@ -84,8 +84,9 @@ profile. Two settings matter more than they look:
 
 Measured on 2026-09-02 with the launcher configuration plus HiCache, using
 the vendored harness in [`bench/`](bench/) on a warm server. The four-request
-row is from `v0.1.2`; the other rows were measured on `v0.1.1`, whose
-serving code is identical apart from the scheduler admission fix.
+row is from `v0.1.3` at the 450,560-token pool; the other rows were measured
+on `v0.1.1` at 499,712, whose serving code differs only by the scheduler
+fixes.
 Full tables and method notes are in [`BENCHMARKS.md`](BENCHMARKS.md); raw
 receipts are in [`evidence/`](evidence/).
 
@@ -98,7 +99,7 @@ tokens; forwards per second is the engine step rate.
 | 1 | 174.4 (175.1) | 52.7 | 3.5 |
 | 2 | 252.1 (244.5) | 38.4 | 3.2 |
 | 3 | 298.8 (297.7) | 33.0 | 3.0 |
-| 4 | 357.8 (342.0) | 29.4 | 2.9 |
+| 4 | 357.7 (355.4) | 28.9 | 2.9 |
 
 **Prefill.** Five cold, cache-busted requests per length, one at a time.
 
@@ -170,6 +171,7 @@ SGLang (base `main` 1109e44305, 2026-09-02):
 | [sgl-project/sglang#37540](https://github.com/sgl-project/sglang/pull/37540) | kpool top-k transform: clipped stage-1 bins and bounded selection stores (by @bold84) |
 | [sgl-project/sglang#37541](https://github.com/sgl-project/sglang/pull/37541) | opt-in `serving_coverage` request warmup |
 | [sgl-project/sglang#37612](https://github.com/sgl-project/sglang/pull/37612) | prefill admission re-evaluated every round on hybrid SSM radix caches (the v0.1.2 C4 fix) |
+| [sgl-project/sglang#37619](https://github.com/sgl-project/sglang/pull/37619) | unfinished-request mamba checkpoint skipped when the pool is exhausted (the v0.1.3 crash fix) |
 
 FlashInfer (base `main` c5ff6f48, 2026-09-02):
 

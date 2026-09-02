@@ -58,6 +58,7 @@ analyzer-valid with zero flags:
 | Cell | OLS tok/s per repetition | Mean tok/s | Median tok/s | Forwards/s per repetition | Mean fwd/s | Accepted tok/fwd/req (median) |
 |---|---|---:|---:|---|---:|---:|
 | C4 (v0.1.2) | 333.8 / 411.3 / 342.0 / 363.9 / 338.1 | 357.8 | 342.0 | 30.8 / 25.6 / 30.0 / 29.6 / 31.1 | 29.4 | 2.9 |
+| C4 (v0.1.3, pool 450,560) | 339.5 / 342.2 / 355.4 / 372.1 / 379.1 | 357.7 | 355.4 | 30.7 / 30.8 / 30.0 / 25.7 / 27.5 | 28.9 | 2.9 |
 
 On v0.1.1 a four-request cohort never decoded four at once: the scheduler's
 `batch_is_full` latch, set by one transient admission refusal, is cleared
