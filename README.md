@@ -9,7 +9,7 @@ reasoning and tool calling.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.3` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.4` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
@@ -44,7 +44,7 @@ the open pull requests listed under [Carried upstream changes](#carried-upstream
    ```bash
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.3
+   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.4
    export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v56
    ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
    ```
@@ -193,11 +193,15 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.1.3` (2026-09-02) is the current release, a digest-identical promotion
-of `v0.1.4-rc.2`. It is the crash-free configuration: pool and context
-450,560 tokens, and a scheduler that skips a recurrent-state checkpoint
-instead of asserting when the mamba pool is exhausted (see the limits
-above and `BENCHMARKS.md`). `v0.1.2` (2026-09-02) fixed the scheduler
+`v0.1.4` (2026-09-02) is the current release, a digest-identical promotion
+of its rc.2 candidate: the same serving configuration as v0.1.3 on refreshed
+upstream bases (SGLang main f8cbf000f4 with the merged #37477 kernel port,
+FlashInfer main c92227fad3 with #4802 round 2), with every carried pull
+request applied from its current PR head. `v0.1.3` (2026-09-02) was the
+crash-free configuration: pool and context 450,560 tokens, and a scheduler
+that skips a recurrent-state checkpoint instead of asserting when the
+mamba pool is exhausted (see the limits above and `BENCHMARKS.md`).
+`v0.1.2` (2026-09-02) fixed the scheduler
 latch that kept a fourth concurrent request queued until another finished,
 so four requests decode together. `v0.1.1` (2026-09-02) fixed the Xid 31
 fault in the DSA top-k kernel under long prefill (reported by @bold84 and

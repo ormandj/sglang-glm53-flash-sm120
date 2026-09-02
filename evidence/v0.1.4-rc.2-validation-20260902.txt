@@ -1,0 +1,13 @@
+v0.1.4-rc.2 validation, 2026-09-02 17:52-18:12 UTC
+image: v0.1.4-rc.2, internal digest sha256:a8ba090579c4ee7208bba899d5e6ab9ee2c0a7d3c6909874632997927bac6dbc (container commit 406edcd)
+bases: sglang main f8cbf000f4 + #36507 head 545bd6f839 + every carried PR from its PR head (see CHANGELOG) + downstream-only commits
+       (integration/glm53-main-20260902c head 0ee9b629d1); flashinfer main c92227fad3 + #4802/#4687/#4827 heads + 2 sm12x commits
+       (integration/glm53-fi-20260902c head bc2107ad50, tree identical to rc.1); cache schema v56 (reused from rc.1)
+config: pool/context 450,560, TP2, C4, chunk 4096, mamba 28, hicache 32, diagnostics off
+boot: existing v56 cache, 0 restarts
+probes: 4 x 18k distinct -> 4 running (x2); V1 3x143k + full-budget image OK; V4 4 x 109k cold OK; V6 10 images OK alone and with 3x125k resident;
+        0 OOM / assert / mapping-warning lines
+C4 cohort gate (repeat-c4, 5 reps, all valid; evidence/v0.1.4-engine-gates/repeat-c4-cohort-450k-rc2/):
+  r01 352.6 tok/s 28.5 fwd/s 3.09 | r02 417.6 27.7 3.77 | r03 360.6 29.5 3.13 | r04 341.2 31.0 2.77 | r05 387.7 27.2 3.52
+  mean 371.9 (median 360.6) tok/s, 28.8 (28.5) fwd/s, accepted 3.13 median
+GSM8K 100-question subset, greedy, concurrency 4: 98/100 regraded (raw evidence/v0.1.4-rc.2-gsm8k-100-20260902.jsonl)

@@ -1,0 +1,13 @@
+v0.1.4-rc.1 validation, 2026-09-02 17:12-17:35 UTC
+image: v0.1.4-rc.1, internal digest sha256:f448ab2690fadb9ba82120b284c8a5cebd4a8dcde5208824b83605537f717dd4 (container commit 889a7f0)
+bases: sglang main f8cbf000f4 + #36507 head 545bd6f839 + 69 carried commits (integration head 6ea7fa421e);
+       flashinfer main c92227fad3 + #4802 head 8c765a04c1 + #4687 + 2 sm12x + #4827 (head 6b697d531c); cache schema v56 (fresh)
+config: pool/context 450,560, TP2, C4, chunk 4096, mamba 28, hicache 32, diagnostics off
+boot: fresh cache, ready 12 min after weight load start, 0 restarts, 2 late-load lines at warmup end
+probes: 4 x 18k distinct -> 4 running (x2); V1 3x143k + full-budget image OK; V4 4 x 109k cold OK; V6 10 images OK alone and with 3x125k resident;
+        0 OOM / assert / mapping-warning lines
+C4 cohort gate (repeat-c4, 5 reps, all valid; evidence/v0.1.4-engine-gates/repeat-c4-cohort-450k/):
+  r01 353.4 tok/s 30.0 fwd/s 2.93 | r02 381.7 25.3 3.62 | r03 342.4 30.3 2.83 | r04 344.1 30.0 2.86 | r05 358.4 30.1 3.08
+  mean 356.0 (median 353.4) tok/s, 29.1 (30.0) fwd/s, accepted 2.93 median
+GSM8K 100-question subset, greedy, concurrency 4: 98/100 regraded
+Not promoted: per user, the release will be rc.2 built from the exact upstream mains plus the final PR branch heads.

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.4 (stable; digest-identical promotion of v0.1.4-rc.2)
+
+- Promoted without a rebuild from the rc.2 candidate built from source
+  revision 406edcd: internal registry digest
+  `sha256:a8ba090579c4ee7208bba899d5e6ab9ee2c0a7d3c6909874632997927bac6dbc`
+  (the deployment that was validated), ghcr digest
+  `sha256:a7e40ce16e42054ccc0fd1a16231f4b67ccad101b32ff7f0633f4b6291b40eb9`
+  (GitHub's independent build of the same pinned sources).
+- Base refresh onto SGLang main f8cbf000f4 (#37477 in the base, #36507 head
+  545bd6f839) and FlashInfer main c92227fad3 (#4802 round 2, #4687, #4827);
+  every carried PR of ours applied from its PR head (see the rc.2 entry).
+  Cache schema v56. Launcher unchanged from v0.1.3 (pool and context
+  450,560, mamba 28).
+- C4 cohort gate on rc.2: 371.9 tok/s mean (360.6 median) at 28.8
+  forwards/s, five analyzer-valid repetitions; GSM8K 100-question subset
+  98/100; stress shapes clean.
+
 ## v0.1.4-rc.2
 
 - Same bases as rc.1 (SGLang main f8cbf000f4 with #36507 head 545bd6f839,
