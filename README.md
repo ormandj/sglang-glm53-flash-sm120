@@ -84,6 +84,50 @@ corpus at 4,096 output tokens, temperature 0.
 
 Full tables and method notes: [`BENCHMARKS.md`](BENCHMARKS.md).
 
+## Carried upstream changes
+
+The image is official SGLang and FlashInfer `main` plus checksummed patches
+(`patches/`, pinned in `stack.lock.json`). Everything in those patches that
+is not SM120-specific glue is an open upstream pull request; the image
+carries the exact PR commits. When one merges, it leaves the patch at the
+next base refresh.
+
+SGLang (base `main` 1109e44305, 2026-09-02):
+
+| PR | What it carries |
+|---|---|
+| [sgl-project/sglang#36507](https://github.com/sgl-project/sglang/pull/36507) | GLM-5.3-Flash model support (the series branch, at head 515e865189) |
+| [sgl-project/sglang#36904](https://github.com/sgl-project/sglang/pull/36904) | TileLang fp8_e4m3 KV cache on CUDA (raw layout) |
+| [sgl-project/sglang#36661](https://github.com/sgl-project/sglang/pull/36661) | overlap batch snapshot lifetime tied to result completion |
+| [sgl-project/sglang#36696](https://github.com/sgl-project/sglang/pull/36696) | mamba radix cache split-node key fix |
+| [sgl-project/sglang#36821](https://github.com/sgl-project/sglang/pull/36821) | ReplaySSM ring-write in the fused KDA chain-verify kernel |
+| [sgl-project/sglang#37168](https://github.com/sgl-project/sglang/pull/37168) | full CUDA-graph capture owners (MHC and DSA tensors replayed by captured graphs) |
+| [sgl-project/sglang#37169](https://github.com/sgl-project/sglang/pull/37169) | opt-in allocator-history forensics snapshots |
+| [sgl-project/sglang#37534](https://github.com/sgl-project/sglang/pull/37534) | HiCache host pool rows sized to packed DSA KV rows |
+| [sgl-project/sglang#37535](https://github.com/sgl-project/sglang/pull/37535) | opt-in token-blocked KDA extend (`SGLANG_KDA_EXTEND_BLOCK_TOKENS`) |
+| [sgl-project/sglang#37536](https://github.com/sgl-project/sglang/pull/37536) | raw multimodal features released from the device after encoding |
+| [sgl-project/sglang#37537](https://github.com/sgl-project/sglang/pull/37537) | `--mm-preprocessing-device` for the base visual preprocessing path |
+| [sgl-project/sglang#37538](https://github.com/sgl-project/sglang/pull/37538) | env-gated extend memory profiler |
+| [sgl-project/sglang#37539](https://github.com/sgl-project/sglang/pull/37539) | GLM-5-Next vision-tower attention and compiled-activation precompile at startup |
+| [sgl-project/sglang#37540](https://github.com/sgl-project/sglang/pull/37540) | kpool top-k transform: clipped stage-1 bins and bounded selection stores (by @bold84) |
+| [sgl-project/sglang#37541](https://github.com/sgl-project/sglang/pull/37541) | opt-in `serving_coverage` request warmup |
+
+FlashInfer (base `main` c5ff6f48, 2026-09-02):
+
+| PR | What it carries |
+|---|---|
+| [flashinfer-ai/flashinfer#4802](https://github.com/flashinfer-ai/flashinfer/pull/4802) | native SM120 sparse-MLA runner with GLM NoPE rows (at head 98bcd8501b) |
+| [flashinfer-ai/flashinfer#4687](https://github.com/flashinfer-ai/flashinfer/pull/4687) | W4A16 large weight bank addressing |
+| [flashinfer-ai/flashinfer#4827](https://github.com/flashinfer-ai/flashinfer/pull/4827) | SM12x MoE workspaces kept alive while captured CUDA graphs reference them |
+
+Downstream-only in the patches (no upstream PR): the SM120 W4A16 MoE and
+NoPE-row integration, the ModelOpt E4M3-K32 W4A16 weight preparation, the
+adaptive-MTP chain-buffer pinning, and the Triton late-load diagnostic
+armed after the serving warmup. Merged upstream and already in the base:
+[sgl-project/sglang#37317](https://github.com/sgl-project/sglang/pull/37317),
+[#36958](https://github.com/sgl-project/sglang/pull/36958),
+[#36798](https://github.com/sgl-project/sglang/pull/36798).
+
 ## Quickstart
 
 You need Linux x86_64, a CUDA 13-compatible driver, Docker with the NVIDIA
@@ -172,15 +216,10 @@ Two configuration rules matter more than they look:
 checksummed integration patches in [`patches/`](patches/), the exact ModelOpt
 commit and release tag, and the vendor base image digests.
 `scripts/verify-patches.sh` re-fetches the official trees, applies the
-patches, and asserts the exact resulting tree hashes. The carried patches
-include the SM120 enablement and the CUDA-graph lifetime fixes submitted
-upstream as
-[flashinfer-ai/flashinfer#4827](https://github.com/flashinfer-ai/flashinfer/pull/4827),
-[sgl-project/sglang#37168](https://github.com/sgl-project/sglang/pull/37168),
-and
-[sgl-project/sglang#37169](https://github.com/sgl-project/sglang/pull/37169),
-plus three fixes to SGLang's `modelopt_mixed` loading path found while
-qualifying this artifact (see `CHANGELOG.md`).
+patches, and asserts the exact resulting tree hashes. The patches are the
+open upstream pull requests listed under "Carried upstream changes" plus
+the SM120 glue, and three fixes to SGLang's `modelopt_mixed` loading path
+found while qualifying this artifact (see `CHANGELOG.md`).
 
 The full failure-and-fix narrative — the CUDA-graph workspace use-after-free
 hunt, the padded-replay corruption, and the zero-acceptance MTP regression —
