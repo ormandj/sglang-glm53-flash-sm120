@@ -1,0 +1,125 @@
+{
+  "average_context_length": {
+    "max": 19843.0,
+    "mean": 18635.722972972973,
+    "median": 18571.75,
+    "min": 17506.0,
+    "p05": 17582.8625,
+    "samples": 74
+  },
+  "decode": {
+    "counter_delta": 9943.0,
+    "counter_family": "sglang:realtime_tokens{mode=decode,tp_rank=0}",
+    "ols_r_squared": 0.9983438373477436,
+    "target_concurrency": 4,
+    "tokens_per_second_delta": 408.38423632684663,
+    "tokens_per_second_ols": 411.3107455686384
+  },
+  "engine_work": {
+    "active_request_ranks": {
+      "max": 1,
+      "mean": 1.0,
+      "median": 1.0,
+      "min": 1,
+      "p05": 1.0,
+      "samples": 74
+    },
+    "counter_delta": 630.0,
+    "counter_family": "sglang:cuda_graph_passes{mode=decode_cuda_graph|decode_none,tp_rank=0}",
+    "forward_passes_per_second_delta": 25.875698369296327,
+    "forward_passes_per_second_ols": 25.58293544368009,
+    "ols_r_squared": 0.9971791097217936,
+    "useful_tokens_per_forward_per_request": 3.945634920634921
+  },
+  "failures": [],
+  "phase": {
+    "end_ns": 1788354490311516953,
+    "start_ns": 1788354435525199371
+  },
+  "plateau": {
+    "average_context_lower": 17408.0,
+    "average_context_upper": 20480.0,
+    "duration_seconds": 24.347168954,
+    "end_ns": 1788354482895337397,
+    "end_reason": "average_context_window",
+    "first_occupancy_departure_ns": null,
+    "scrapes": 74,
+    "selection": "average_context_window",
+    "settle_seconds": 0.0,
+    "start_ns": 1788354458548168443,
+    "tail_seconds": 0.0
+  },
+  "prefill_control": {
+    "cache": {
+      "counter_delta": 0.0,
+      "ols_r_squared": 1.0,
+      "series_observed": false,
+      "tokens_per_second_delta": 0.0,
+      "tokens_per_second_ols": 0.0
+    },
+    "compute": {
+      "counter_delta": 0.0,
+      "ols_r_squared": 1.0,
+      "series_observed": true,
+      "tokens_per_second_delta": 0.0,
+      "tokens_per_second_ols": 0.0
+    }
+  },
+  "queued_requests": {
+    "max": 0.0,
+    "mean": 0.0,
+    "median": 0.0,
+    "min": 0.0,
+    "p05": 0.0,
+    "samples": 74
+  },
+  "running_requests": {
+    "max": 4.0,
+    "mean": 4.0,
+    "median": 4.0,
+    "min": 4.0,
+    "p05": 4.0,
+    "samples": 74
+  },
+  "schema_version": "1.0",
+  "server_cross_checks": {
+    "generation_throughput": {
+      "max": 473.0089600368685,
+      "mean": 403.59288397781455,
+      "median": 417.5370831442619,
+      "min": 319.0211040036945,
+      "p05": 333.50018396866096,
+      "samples": 74
+    },
+    "spec_accept_length": {
+      "max": 5.03125,
+      "mean": 3.9461993243243243,
+      "median": 3.95,
+      "min": 2.7,
+      "p05": 2.8015625,
+      "samples": 74
+    },
+    "spec_accept_rate": {
+      "max": 0.80625,
+      "mean": 0.6608277027027026,
+      "median": 0.65625,
+      "min": 0.5525,
+      "p05": 0.5617083333333333,
+      "samples": 74
+    }
+  },
+  "source": {
+    "jsonl": "/root/.cache/bench-stage/results/engine-gates/v012rc1-20260902/v0.1.2-rc.1-cohort-repeat-c4/decode/c4/r02/server_metrics_export.jsonl",
+    "summary": "/root/.cache/bench-stage/results/engine-gates/v012rc1-20260902/v0.1.2-rc.1-cohort-repeat-c4/decode/c4/r02/server_metrics_export.json"
+  },
+  "validation": {
+    "average_context_within_bounds": true,
+    "decode_counter_monotonic": true,
+    "exact_occupancy_fraction": 1.0,
+    "exact_occupancy_required": 0.98,
+    "prefill_cache_counter_unchanged": true,
+    "prefill_compute_counter_unchanged": true,
+    "queue_empty": true,
+    "valid": true
+  }
+}

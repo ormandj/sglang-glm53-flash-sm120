@@ -1,0 +1,435 @@
+{
+  "build_id": "v0.1.2-rc.1-cohort",
+  "decode": {
+    "c4": {
+      "client_latency_ms": {
+        "inter_token_latency": {
+          "avg_per_run": {
+            "count": 5,
+            "max": 12.363569045177043,
+            "mean": 11.832874602136751,
+            "median": 12.072254182539682,
+            "min": 10.640329459401709,
+            "sample_cv": 0.0583477091839278,
+            "sample_stddev": 0.6904211260953605
+          },
+          "p50_per_run": {
+            "count": 5,
+            "max": 12.333670657997557,
+            "mean": 11.701412675726496,
+            "median": 11.879123726617827,
+            "min": 10.598500490354091,
+            "sample_cv": 0.055628986524306,
+            "sample_stddev": 0.6509377280533327
+          },
+          "p90_per_run": {
+            "count": 5,
+            "max": 12.912344028473747,
+            "mean": 12.489713324400487,
+            "median": 12.85501942188034,
+            "min": 11.024284873601951,
+            "sample_cv": 0.06574095708474363,
+            "sample_stddev": 0.8210857076601632
+          },
+          "p99_per_run": {
+            "count": 5,
+            "max": 13.20664445955067,
+            "mean": 12.725331831429058,
+            "median": 13.083353450974357,
+            "min": 11.182351127360194,
+            "sample_cv": 0.06794857784769506,
+            "sample_stddev": 0.8646682005856093
+          }
+        },
+        "request_latency": {
+          "avg_per_run": {
+            "count": 5,
+            "max": 58606.22663775,
+            "mean": 56245.635150849994,
+            "median": 56943.84486275,
+            "min": 51230.454606499996,
+            "sample_cv": 0.0516779818352256,
+            "sample_stddev": 2906.6609116363525
+          },
+          "p50_per_run": {
+            "count": 5,
+            "max": 58594.302880999996,
+            "mean": 56712.6660474,
+            "median": 57724.4098025,
+            "min": 51449.6477085,
+            "sample_cv": 0.052313696542425896,
+            "sample_stddev": 2966.849201715624
+          },
+          "p90_per_run": {
+            "count": 5,
+            "max": 59797.130261,
+            "mean": 57909.32460196,
+            "median": 58343.7167853,
+            "min": 54209.9966104,
+            "sample_cv": 0.03773837324537861,
+            "sample_stddev": 2185.4037062165526
+          },
+          "p99_per_run": {
+            "count": 5,
+            "max": 60022.9393178,
+            "mean": 58184.429841556004,
+            "median": 58608.35568393,
+            "min": 54709.997720139996,
+            "sample_cv": 0.03584494424055648,
+            "sample_stddev": 2085.6176433391456
+          }
+        },
+        "time_to_first_token": {
+          "avg_per_run": {
+            "count": 5,
+            "max": 8012.3547295,
+            "mean": 7790.0136551000005,
+            "median": 7794.03269275,
+            "min": 7507.9639852499995,
+            "sample_cv": 0.02734214789632343,
+            "sample_stddev": 212.99570547212326
+          },
+          "p50_per_run": {
+            "count": 5,
+            "max": 8111.76905,
+            "mean": 7890.6691112,
+            "median": 7933.152007,
+            "min": 7600.090776999999,
+            "sample_cv": 0.029067578368941294,
+            "sample_stddev": 229.36264277319034
+          },
+          "p90_per_run": {
+            "count": 5,
+            "max": 10971.1881036,
+            "mean": 10626.84332668,
+            "median": 10573.8991601,
+            "min": 10235.6398752,
+            "sample_cv": 0.026941580074923352,
+            "sample_stddev": 286.3039504294141
+          },
+          "p99_per_run": {
+            "count": 5,
+            "max": 11620.16570016,
+            "mean": 11238.709073428,
+            "median": 11218.811044009997,
+            "min": 10828.676832719999,
+            "sample_cv": 0.027029944119265046,
+            "sample_stddev": 303.78167822743586
+          }
+        }
+      },
+      "engine_forward_passes_per_second": {
+        "count": 5,
+        "max": 31.067526457217074,
+        "mean": 29.416873269926818,
+        "median": 30.00423030566836,
+        "min": 25.58293544368009,
+        "sample_cv": 0.07565498507249385,
+        "sample_stddev": 2.2255331081157568
+      },
+      "output_tokens_per_forward_per_request": {
+        "count": 5,
+        "max": 3.945634920634921,
+        "mean": 3.0484753696986466,
+        "median": 2.8569165786694826,
+        "min": 2.6939864209505333,
+        "sample_cv": 0.16998173554741022,
+        "sample_stddev": 0.518185134114909
+      },
+      "repetitions": [
+        {
+          "client_latency_ms": {
+            "inter_token_latency": {
+              "avg": 12.212010890293039,
+              "p50": 11.893847256532355,
+              "p90": 12.85501942188034,
+              "p99": 13.20664445955067
+            },
+            "request_latency": {
+              "avg": 57802.217288499996,
+              "p50": 58159.821132499994,
+              "p90": 59197.1305915,
+              "p99": 59509.18651645
+            },
+            "time_to_first_token": {
+              "avg": 7794.03269275,
+              "p50": 7933.152007,
+              "p90": 10521.048000399998,
+              "p99": 11098.74044914
+            }
+          },
+          "forward_passes_per_second": 30.835229897191457,
+          "id": "r01",
+          "output_tokens_per_forward_per_request": 2.6939864209505333,
+          "speculative": {
+            "accept_length": {
+              "max": 3.15625,
+              "mean": 2.7094678217821784,
+              "median": 2.675,
+              "min": 2.4375
+            },
+            "accept_rate": {
+              "max": 0.71875,
+              "mean": 0.5698226072607261,
+              "median": 0.5583333333333333,
+              "min": 0.4791666666666667
+            }
+          },
+          "synthetic_decode_tokens_per_second": 333.76091970895527
+        },
+        {
+          "client_latency_ms": {
+            "inter_token_latency": {
+              "avg": 10.640329459401709,
+              "p50": 10.598500490354091,
+              "p90": 11.024284873601951,
+              "p99": 11.182351127360194
+            },
+            "request_latency": {
+              "avg": 51230.454606499996,
+              "p50": 51449.6477085,
+              "p90": 54209.9966104,
+              "p99": 54709.997720139996
+            },
+            "time_to_first_token": {
+              "avg": 7658.305470249999,
+              "p50": 7710.5967685,
+              "p90": 10573.8991601,
+              "p99": 11218.811044009997
+            }
+          },
+          "forward_passes_per_second": 25.58293544368009,
+          "id": "r02",
+          "output_tokens_per_forward_per_request": 3.945634920634921,
+          "speculative": {
+            "accept_length": {
+              "max": 5.03125,
+              "mean": 3.9461993243243243,
+              "median": 3.95,
+              "min": 2.7
+            },
+            "accept_rate": {
+              "max": 0.80625,
+              "mean": 0.6608277027027026,
+              "median": 0.65625,
+              "min": 0.5525
+            }
+          },
+          "synthetic_decode_tokens_per_second": 411.3107455686384
+        },
+        {
+          "client_latency_ms": {
+            "inter_token_latency": {
+              "avg": 12.072254182539682,
+              "p50": 11.801921247130647,
+              "p90": 12.766476536117215,
+              "p99": 13.083353450974357
+            },
+            "request_latency": {
+              "avg": 56943.84486275,
+              "p50": 57635.1487125,
+              "p90": 58343.7167853,
+              "p99": 58608.35568393
+            },
+            "time_to_first_token": {
+              "avg": 7507.9639852499995,
+              "p50": 7600.090776999999,
+              "p90": 10235.6398752,
+              "p99": 10828.676832719999
+            }
+          },
+          "forward_passes_per_second": 30.00423030566836,
+          "id": "r03",
+          "output_tokens_per_forward_per_request": 2.8569165786694826,
+          "speculative": {
+            "accept_length": {
+              "max": 3.19375,
+              "mean": 2.858333333333333,
+              "median": 2.9,
+              "min": 2.50625
+            },
+            "accept_rate": {
+              "max": 0.73125,
+              "mean": 0.6194444444444445,
+              "median": 0.6333333333333333,
+              "min": 0.5020833333333333
+            }
+          },
+          "synthetic_decode_tokens_per_second": 342.03304126219786
+        },
+        {
+          "client_latency_ms": {
+            "inter_token_latency": {
+              "avg": 11.876209433272283,
+              "p50": 11.879123726617827,
+              "p90": 12.890441761929182,
+              "p99": 13.04240997773138
+            },
+            "request_latency": {
+              "avg": 56645.43235875,
+              "p50": 57724.4098025,
+              "p90": 57998.648761599994,
+              "p99": 58071.669969459996
+            },
+            "time_to_first_token": {
+              "avg": 8012.3547295,
+              "p50": 8097.7369535,
+              "p90": 10971.1881036,
+              "p99": 11620.16570016
+            }
+          },
+          "forward_passes_per_second": 29.59444424587709,
+          "id": "r04",
+          "output_tokens_per_forward_per_request": 3.023204419889503,
+          "speculative": {
+            "accept_length": {
+              "max": 4.5,
+              "mean": 3.0436141304347823,
+              "median": 2.91875,
+              "min": 2.55625
+            },
+            "accept_rate": {
+              "max": 0.7104166666666667,
+              "mean": 0.6205163043478261,
+              "median": 0.6239583333333334,
+              "min": 0.51875
+            }
+          },
+          "synthetic_decode_tokens_per_second": 363.84598818019157
+        },
+        {
+          "client_latency_ms": {
+            "inter_token_latency": {
+              "avg": 12.363569045177043,
+              "p50": 12.333670657997557,
+              "p90": 12.912344028473747,
+              "p99": 13.111900141528691
+            },
+            "request_latency": {
+              "avg": 58606.22663775,
+              "p50": 58594.302880999996,
+              "p90": 59797.130261,
+              "p99": 60022.9393178
+            },
+            "time_to_first_token": {
+              "avg": 7977.411397749999,
+              "p50": 8111.76905,
+              "p90": 10832.4414941,
+              "p99": 11427.151341109999
+            }
+          },
+          "forward_passes_per_second": 31.067526457217074,
+          "id": "r05",
+          "output_tokens_per_forward_per_request": 2.722634508348794,
+          "speculative": {
+            "accept_length": {
+              "max": 3.04375,
+              "mean": 2.7214285714285715,
+              "median": 2.71875,
+              "min": 2.33125
+            },
+            "accept_rate": {
+              "max": 0.68125,
+              "mean": 0.5738095238095238,
+              "median": 0.5729166666666666,
+              "min": 0.44375
+            }
+          },
+          "synthetic_decode_tokens_per_second": 338.10919840621955
+        }
+      ],
+      "speculative": {
+        "accept_length": {
+          "max_per_run": {
+            "count": 5,
+            "max": 5.03125,
+            "mean": 3.785,
+            "median": 3.19375,
+            "min": 3.04375,
+            "sample_cv": 0.2420978540381669,
+            "sample_stddev": 0.9163403775344617
+          },
+          "mean_per_run": {
+            "count": 5,
+            "max": 3.9461993243243243,
+            "mean": 3.055808636260638,
+            "median": 2.858333333333333,
+            "min": 2.7094678217821784,
+            "sample_cv": 0.16875396849660126,
+            "sample_stddev": 0.5156798343351697
+          },
+          "median_per_run": {
+            "count": 5,
+            "max": 3.95,
+            "mean": 3.0324999999999998,
+            "median": 2.9,
+            "min": 2.675,
+            "sample_cv": 0.1728138283712673,
+            "sample_stddev": 0.524057934535868
+          },
+          "min_per_run": {
+            "count": 5,
+            "max": 2.7,
+            "mean": 2.50625,
+            "median": 2.50625,
+            "min": 2.33125,
+            "sample_cv": 0.054777762185757646,
+            "sample_stddev": 0.1372867664780551
+          }
+        },
+        "accept_rate": {
+          "max_per_run": {
+            "count": 5,
+            "max": 0.80625,
+            "mean": 0.7295833333333334,
+            "median": 0.71875,
+            "min": 0.68125,
+            "sample_cv": 0.06392774560345275,
+            "sample_stddev": 0.0466406177298524
+          },
+          "mean_per_run": {
+            "count": 5,
+            "max": 0.6608277027027026,
+            "mean": 0.6088841165130446,
+            "median": 0.6194444444444445,
+            "min": 0.5698226072607261,
+            "sample_cv": 0.06200270173241207,
+            "sample_stddev": 0.037752460265761546
+          },
+          "median_per_run": {
+            "count": 5,
+            "max": 0.65625,
+            "mean": 0.6089583333333334,
+            "median": 0.6239583333333334,
+            "min": 0.5583333333333333,
+            "sample_cv": 0.06829015527892213,
+            "sample_stddev": 0.04158585914172696
+          },
+          "min_per_run": {
+            "count": 5,
+            "max": 0.5525,
+            "mean": 0.49924999999999997,
+            "median": 0.5020833333333333,
+            "min": 0.44375,
+            "sample_cv": 0.0820219373893282,
+            "sample_stddev": 0.0409494522416221
+          }
+        }
+      },
+      "synthetic_decode_tokens_per_second": {
+        "count": 5,
+        "max": 411.3107455686384,
+        "mean": 357.81197862524056,
+        "median": 342.03304126219786,
+        "min": 333.76091970895527,
+        "sample_cv": 0.0896304265633518,
+        "sample_stddev": 32.070840273657225
+      }
+    }
+  },
+  "engine": "sglang",
+  "interpretation": "same-process engineering regression signal; synthetic fixed-window output rate is not expected production, interactive, or application throughput and includes path-dependent speculative acceptance; repetitions are prompt-path subsamples, not independent deployment replicates",
+  "mode": "repeat-c4",
+  "prefill": {},
+  "schema_version": "1.2"
+}

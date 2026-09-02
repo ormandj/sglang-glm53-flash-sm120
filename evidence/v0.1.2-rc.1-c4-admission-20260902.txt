@@ -1,0 +1,37 @@
+C4 admission fix validation, v0.1.2-rc.1 - 2026-09-02 13:00-13:12 UTC
+image: v0.1.2-rc.1, internal digest sha256:9f65221e2d605e386dd85dfd7314d61c95ecfd0e93529423d32c3693aed87b30
+source: container commit 85d9e5d (sglang working head b92a1d9c54 on integration/glm53-main-20260902)
+change vs v0.1.1: scheduler batch_is_full latch re-evaluated every round on hybrid SSM caches;
+  SGLANG_LOG_ADMISSION_REFUSALS=1 diagnostic enabled in this deployment
+config: identical to v0.1.1 (TP2, pool/context 499,712, chunk 4096, max-running 4, mamba 28, hicache 32)
+
+Probe: four concurrent distinct-prefix requests, 300 output tokens, greedy, in-pod /tmp/c4probe.py,
+num_running_reqs sampled from /metrics every 0.5 s.
+  v0.1.1 (rc.16), same probe earlier the same day:
+    38k tokens x4: peak running 3 (first run), 4 (second run)
+    8k x4: 4 | 18k x4: 3 (1 queued whole cell) | 28k x4: 4 | 38k x4: 4
+  v0.1.2-rc.1:
+    38k x4: peak running 4 (run 1), 4 (run 2)
+    8k x4: 4 | 28k x4: 4
+  admission refusals logged on rc.1 during the probes: 42 OTHER (chunk budget consumed),
+  8 batch_is_full (all four request slots in use), 0 NO_TOKEN.
+
+Engine gate repeat-c4 as a cohort (DECODE_REQUESTS_OVERRIDE=4), campaign v012rc1-20260902,
+build v0.1.2-rc.1-cohort, 5 repetitions, all analyzer-valid with zero flags
+(root /root/.cache/bench-stage/results/engine-gates/v012rc1-20260902/v0.1.2-rc.1-cohort-repeat-c4,
+analysis files under evidence/v0.1.2-engine-gates/repeat-c4-cohort/):
+  rep   OLS tok/s   fwd/s   accepted tok/fwd/req
+  r01     333.8     30.8     2.69
+  r02     411.3     25.6     3.95
+  r03     342.0     30.0     2.86
+  r04     363.9     29.6     3.02
+  r05     338.1     31.1     2.72
+  mean    357.8     29.4     3.05   (median 342.0 tok/s, 30.0 fwd/s, 2.86)
+  client: ITL avg 11.8 ms, request latency avg 56.2 s for 4,096 output tokens
+  decode rounds with #running-req: 4 in the server log during the gate: 171
+  (v0.1.1 cohort cell: decode concurrency never exceeded 3; 12 batch_is_full and 36 OTHER refusals on rc.1 during the gate, 0 NO_TOKEN)
+
+Sanity on rc.1: 3840x2160 image (7,998 tokens) answered in 4.3 s; boot to ready 470 s on the v55 cache, 0 restarts.
+
+GSM8K 100-question subset on rc.1 (greedy, concurrency 4, reasoning on, 16,384-token cap): 96/100 regraded
+(position-based extraction; raw outputs evidence/v0.1.2-rc.1-gsm8k-100-20260902.json). rc.16 scored 98/100 on the same subset.
