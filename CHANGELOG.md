@@ -2,6 +2,13 @@
 
 ## v0.1.1-rc.8 (sampling warmup: FlashInfer sampling module built before ready; not yet built or qualified)
 
+- Deployment/launcher config (no image change): `--mm-process-config
+  '{"image": {"max_image_tokens": 3072}}'`. The HF processor default of
+  8,000 image tokens let a 3840x2160 image become an ~8k-token prefill that
+  cannot be split across chunks; that extend's KDA workspace transient
+  OOM'd both ranks on rc.8 (`chunk_kda_fwd_intra`). 3,072 keeps image plus
+  text inside the proven 4,096-token extend (~12k patches, roughly a
+  1550x1550 px equivalent; larger inputs are downscaled by the processor).
 - `serving_coverage` gains a `sampling` phase (temperature / top-p / top-k /
   min-p / repetition-penalty variants, alone and at batch). Root cause of
   the 75 s first chat on rc.5-rc.7: every warmup phase decoded greedily, so

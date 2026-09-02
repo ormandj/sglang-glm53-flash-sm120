@@ -101,6 +101,7 @@ exec docker run --rm \
   --enable-multimodal \
   --warmups serving_coverage \
   --image-processor-backend torchvision \
+  --mm-process-config '{"image": {"max_image_tokens": 3072}}' \
   --moe-runner-backend flashinfer_cutlass \
   --disable-shared-experts-fusion \
   --disable-custom-all-reduce \
