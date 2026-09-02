@@ -86,18 +86,16 @@ v0.1.1 (the ladder's fill ran on cached prefixes).
 
 GSM8K, all 1,319 test questions, zero-shot, temperature 0, seed 42,
 16,384-token cap, concurrency 4, served through the OpenAI-compatible API
-with reasoning enabled (bench/aiperf `configs/gsm8k.yaml`).
+with reasoning enabled (bench/aiperf `configs/gsm8k.yaml`), graded with the
+position-based extractor ([`bench/regrade_gsm8k.py`](bench/regrade_gsm8k.py)),
+which reads the final answer of a marker-less response instead of its last
+number.
 
-| Grader | Correct | Accuracy |
+| Run | Correct | Accuracy |
 |---|---:|---:|
-| Pinned AIPerf grader (last-number fallback) | 1,174 / 1,319 | 89.0% |
-| Position-based regrader ([`bench/regrade_gsm8k.py`](bench/regrade_gsm8k.py)) | 1,278 / 1,319 | 96.9% |
-
-The pinned grader under-scores marker-less models: GLM-5.3 emits no `####`
-answer marker zero-shot, and all 104 grader disagreements were correct
-answers the fallback mis-extracted (zero downward flips). v0.1.0 scored
-1,180 / 1,282 (89.5% / 97.2%) and its BF16-attention predecessor 89.0% /
-97.0% with the same method.
+| v0.1.1 (2026-09-02) | 1,278 / 1,319 | 96.9% |
+| v0.1.0 (2026-08-31) | 1,282 / 1,319 | 97.2% |
+| BF16-attention predecessor artifact | 1,280 / 1,319 | 97.0% |
 
 Vision: 3840x2160 and 7680x4320 images at the model's 8,000-token budget
 (7,994 prompt tokens) answer in 3.4 s and 3.0 s through the

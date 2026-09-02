@@ -47,9 +47,8 @@ otherwise.
   The math-content C1 figure of 257 to 267 tok/s is a v0.1.0 measurement.
 - **Vision intact**, exercised through the OpenAI-compatible image input.
 - **GSM8K 96.9%** (1,278/1,319, zero-shot, temperature 0, position-based
-  answer extraction; 89.0% under the raw last-number grader), within
-  repetition spread of v0.1.0's 97.2% and the BF16-attention control's
-  97.0%.
+  answer extraction), within repetition spread of v0.1.0's 97.2% and the
+  BF16-attention control's 97.0%.
 - **Reproducible end to end**: exact upstream SGLang/FlashInfer commits plus
   checksummed patches (`stack.lock.json`, `scripts/verify-patches.sh`), the
   quantization producers (`quantization/`), the benchmark harness
@@ -83,7 +82,7 @@ is after MTP acceptance; forwards per second is the engine step rate.
 | KV pool / context limit | 499,712 tokens, four running requests |
 | Largest single prefill served | 494,592 tokens (pool usage 99.2%, on a 200k cached prefix) |
 | HiCache host tier (32 GB setting) | 2.65M KV tokens (20.9 GB) + 11.2 GB mamba tier |
-| GSM8K (1,319q, temp 0, zero-shot) | 96.9% regraded / 89.0% pinned grader |
+| GSM8K (1,319q, temp 0, zero-shot) | 96.9% (1,278/1,319, position-based answer extraction) |
 | MTP acceptance (coding corpus) | 2.7 to 4.2 accepted tokens per forward per request |
 | Large images | 3840x2160 in 3.4 s, 7680x4320 in 3.0 s at the model's 8,000-token budget |
 | Ladder, waves, gates, GSM8K | zero restarts, zero OOM errors; four recoverable allocator segment-mapping warnings at 99% pool usage |
