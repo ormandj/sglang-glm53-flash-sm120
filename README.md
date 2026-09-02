@@ -73,10 +73,12 @@ The launcher is a plain `docker run`; read [`examples/serve-glm53-flash.sh`](exa
 to see or change every flag. [`RUN.md`](RUN.md) has a reduced first-boot
 profile. Two settings matter more than they look:
 
-- `--cuda-graph-bs-decode` must list every batch size up to
-  `--max-running-requests`. Decode batches that replay through a padded
-  larger graph corrupt outputs on this hybrid model (GSM8K 68% against 90%
-  with graphs at batch 1 and 4 only). The launcher captures 1 through 4.
+- `--cuda-graph-bs-decode` lists every batch size up to
+  `--max-running-requests`, so no decode batch replays through a padded
+  graph. On builds before the 2026-09-02 upstream base, padded replay
+  corrupted outputs on this hybrid model (GSM8K 68% against 90% with graphs
+  at batch 1 and 4 only); on v0.1.4 the same test scores 98.3% on 300
+  questions, so the exact list is kept as a precaution, not a requirement.
 - `--max-mamba-cache-size` is recurrent-state slots, not KV cache. Each live
   request uses four to five, so the launcher ships 28 for four requests.
 

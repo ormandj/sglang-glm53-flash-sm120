@@ -1,0 +1,19 @@
+Padded decode-graph replay recheck on v0.1.4-rc.2, 2026-09-02 18:53-19:10 UTC
+Background: on rc.62 (2026-08-31, evidence/v0.1.0-rc.62-gsm8k-padded-replay-diagnostic-20260831.txt) decode graphs
+captured only at bs [1,4] gave GSM8K 68.4% (MTP off) versus 89.6% with exact graphs at [1,2,3,4]; the standing rule
+since then is to capture every batch size up to max-running-requests.
+Method: same image (v0.1.4-rc.2, internal digest a8ba0905), same launcher config except the capture list; GSM8K
+100-question subset, greedy, reasoning on, 16,384-token cap, concurrency 3 (decode batches of 2 and 3 replay through
+the padded bs-4 graph on the diagnostic deployment; gitops deployment-glm53-flash-sglang-v0-1-4-rc2-padded-graph-diag.yaml).
+Boot log of the diagnostic pod: "Capture target verify CUDA graph ... bs=[1, 4]", "Capture draft decode ... bs=[1, 4]".
+Results (position-based regrade):
+  exact graphs [1,2,3,4], c=3:  97/100 (evidence/v0.1.4-rc.2-gsm8k-100-c3-exact-graphs-20260902.jsonl)
+  padded graphs [1,4],   c=3:  98/100 (evidence/v0.1.4-rc.2-gsm8k-100-c3-padded-graphs-20260902.jsonl)
+Conclusion: the padded-replay corruption measured on rc.62 does not reproduce on the current bases (sglang main
+f8cbf000f4 with the #36507 series at 545bd6f839, which includes #36885 "stop remapping the -1 padding sentinel onto a
+live mamba slot" and #37250 "preserve split-grid program ids"). The Triton KDA backend used here masks padded rows
+(kda_triton.py: valid = idx >= 0); the cutedsl, nvidia and ptx KDA backends still remap -1 to the last pool slot
+(torch.where(cache_indices >= 0, cache_indices, ssm_states.shape[0] - 1)), not exercised by this deployment.
+  padded graphs [1,4],   c=3, n=300: 295/300 = 98.3% (evidence/v0.1.4-rc.2-gsm8k-300-c3-padded-graphs-20260902.jsonl)
+Final: no padded-replay degradation on v0.1.4 (98.3% on 300 padded versus 97-98% exact). TODO section 1 closed; the
+launcher keeps --cuda-graph-bs-decode 1 2 3 4 (harmless), but it is no longer a correctness requirement on this base.
