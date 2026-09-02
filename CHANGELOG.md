@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.1.1 (stable; digest-identical promotion of v0.1.1-rc.16)
+
+- Digest `sha256:5e499c5fde911ca20345431fb25d70202eefaed662beb1fec27887d99abd33d0`,
+  promoted internally and on ghcr without a rebuild.
+- Fixes since v0.1.0: the no-restore Xid 31 fault in
+  `kpool_topk_transform_kernel<512>` (issue #3, PR #4 by @bold84,
+  reported by @bold84 and @sousekd; upstream sgl-project/sglang#37540);
+  mamba pool 28 so four simultaneous cold requests admit; large images at
+  the model's 8,000-token budget (raw features offloaded after encoding,
+  sglang#37536; opt-in token-blocked KDA extend, sglang#37535; vision
+  attention and compiled-activation precompile before pools,
+  sglang#37539); a serving-coverage warmup before ready (sglang#37541);
+  image preprocessing on the CPU (`--mm-preprocessing-device cpu`,
+  sglang#37537); HiCache host rows at the packed DSA width
+  (sglang#37534); extend memory profiler (sglang#37538, off by default).
+- Stack: SGLang main 1109e44305 with the GLM-5.3-Flash series at
+  sgl-project/sglang#36507 head 515e865189; FlashInfer main c5ff6f48 with
+  #4802, #4687 and #4827; ModelOpt 0.47.0rc0; cache schema v55.
+- Validation on rc.16 (2x RTX PRO 6000 Blackwell, TP2): first boot 9 min
+  on a fresh cache with every warmup phase complete and zero late kernel
+  loads at ready; 3840x2160 image 3.4 s and 7680x4320 image 3.0 s at
+  7,994 prompt tokens; four concurrent cold 4,066-token prefills 3.3 s
+  each; sampled chat 1.4 s; GSM8K 98/100 (100 questions, greedy,
+  reasoning effort low, concurrency 4); no restarts. Throughput was not
+  re-benchmarked; the v0.1.0 numbers in BENCHMARKS.md stand for v0.1.0.
+- Launcher: `--mm-preprocessing-device cpu` and
+  `SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048` are set explicitly because both
+  are opt-in upstream.
+
 ## v0.1.1-rc.16 (precompile the vision MLP and patch-merger activations; not yet built or qualified)
 
 - rc.15 first boot: the first 3840x2160 image request OOMed both ranks

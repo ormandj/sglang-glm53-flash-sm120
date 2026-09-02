@@ -8,24 +8,32 @@ SGLang, TP2, no NVLink required.
 **Hugging Face model:**
 [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
 
-Current release: `v0.1.1-rc.16` for the W4A16 NVFP4 K32 experts + FP8
-weight-only checkpoint. Source candidate, not yet built or qualified
-(internal build name
-`sglang-glm53-flash-sm120:v0.1.1-rc.16`):
+Current release: `v0.1.1` (stable; digest-identical promotion of
+`v0.1.1-rc.16`) for the W4A16 NVFP4 K32 experts + FP8 weight-only
+checkpoint (internal build name `sglang-glm53-flash-sm120:v0.1.1-rc.16`):
 
 ```text
-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1-rc.16
+ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1
 ```
 
-`v0.1.0` (digest-identical promotion of `v0.1.0-rc.71`) remains the
-latest stable, qualified image.
+`v0.1.1` fixes the no-restore Xid 31 fault in the DSA top-k kernel
+(reported by @bold84 and @sousekd, fixed by @bold84), raises the mamba
+pool so four simultaneous cold requests admit, serves 3840x2160 and
+7680x4320 images at the model's 8,000-token budget without OOM, warms
+every serving shape before ready (first sampled chat 1.4 s instead of
+75 s on a new image), keeps image preprocessing on the CPU, and moves to
+upstream SGLang and FlashInfer main of 2026-09-02 with every downstream
+change submitted upstream (`sgl-project/sglang#37534` to `#37541`).
+Validation on rc.16 (the promoted candidate): 9-minute first boot with
+zero late kernel loads at ready, 4K and 8K images 3.4 s and 3.0 s, four
+concurrent cold 4k-token prefills 3.3 s each, GSM8K 98/100 on a
+100-question subset. `v0.1.0` remains available.
 
 ## What you get
 
-Measured results below were qualified on `v0.1.0`. `v0.1.1-rc.16`
-changes only the DSA radix top-k kernel (value-correct overflow descent
-plus crash-proofed refine rounds) and is not yet built or qualified;
-requalification is required before any number below may be cited for it.
+The throughput and capacity numbers below were measured on `v0.1.0`;
+`v0.1.1` was validated for correctness and capacity as listed above and
+was not re-benchmarked.
 
 - **C4 serving with a 499,712-token KV pool and context limit** — four
   concurrent agentic requests sharing a full ~500k-token budget, with a
