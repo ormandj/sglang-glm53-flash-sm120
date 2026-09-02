@@ -8,13 +8,13 @@ SGLang, TP2, no NVLink required.
 **Hugging Face model:**
 [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO)
 
-Current release: `v0.1.1-rc.10` for the W4A16 NVFP4 K32 experts + FP8
+Current release: `v0.1.1-rc.11` for the W4A16 NVFP4 K32 experts + FP8
 weight-only checkpoint. Source candidate, not yet built or qualified
 (internal build name
-`sglang-glm53-flash-sm120:v0.1.1-rc.10`):
+`sglang-glm53-flash-sm120:v0.1.1-rc.11`):
 
 ```text
-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1-rc.10
+ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1-rc.11
 ```
 
 `v0.1.0` (digest-identical promotion of `v0.1.0-rc.71`) remains the
@@ -22,7 +22,7 @@ latest stable, qualified image.
 
 ## What you get
 
-Measured results below were qualified on `v0.1.0`. `v0.1.1-rc.10`
+Measured results below were qualified on `v0.1.0`. `v0.1.1-rc.11`
 changes only the DSA radix top-k kernel (value-correct overflow descent
 plus crash-proofed refine rounds) and is not yet built or qualified;
 requalification is required before any number below may be cited for it.
@@ -201,7 +201,7 @@ podman build \
   --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.1-rc.10 .
+  -t sglang-glm53-flash-sm120:v0.1.1-rc.11 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

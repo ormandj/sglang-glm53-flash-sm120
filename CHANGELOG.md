@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.1-rc.11 (token-blocked KDA extend; not yet built or qualified)
+
+- The KDA (linear-attention) extend now processes each sequence in token
+  blocks (`SGLANG_KDA_EXTEND_BLOCK_TOKENS`, default 2048, 0 disables),
+  carrying the recurrent state through the pool slot between blocks — the
+  chunk kernel already loads the block's initial state from the slot and
+  stores the final state back in place, exactly as decode does per step.
+  Measured with the rc.10 profiler: every KDA layer's workspace peaked at
+  641 MiB for a 4096-token extend, which was the whole runtime headroom on
+  the 99%-static deployment; blocking bounds it by the block size. This is
+  the fix for the large-image and batched-prefill OOMs that rc.2 and rc.8
+  worked around with `--max-prefill-tokens 4096` and the 3,072 image-token
+  budget; those caps can be lifted once this is validated.
+- Block boundaries sit on 64-token chunk boundaries (chunk-local gate
+  cumsum), the output assembles in place in a contiguous `v` buffer, and
+  tracked intermediate states concatenate across blocks in chunk order.
+
 ## v0.1.1-rc.10 (fixes rc.9 boot crash; not yet built or qualified)
 
 - rc.9's profiler module imported the environ module instead of its `envs`

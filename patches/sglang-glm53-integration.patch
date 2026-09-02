@@ -6224,10 +6224,10 @@ index 2608621f6a..a34978a04d 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 70b2af61ed..852c77c60b 100644
+index 70b2af61ed..ddfddf3150 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
-@@ -1296,6 +1296,14 @@ class Envs:
+@@ -1296,6 +1296,20 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -6239,10 +6239,16 @@ index 70b2af61ed..852c77c60b 100644
 +    # Log per-phase device-memory peaks for extend forwards (see
 +    # utils/extend_mem_profile.py). Host-side counters only; no device sync.
 +    SGLANG_EXTEND_MEM_PROFILE = EnvBool(False)
++    # KDA (linear-attention) extend: process each sequence in token blocks of
++    # this size, carrying the recurrent state through the pool slot between
++    # blocks, so the chunk kernels' workspace scales with the block instead
++    # of the whole extend (measured 641 MiB per layer at 4096 tokens). Must be
++    # a multiple of the 64-token chunk. 0 disables blocking.
++    SGLANG_KDA_EXTEND_BLOCK_TOKENS = EnvInt(2048)
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1465,6 +1473,16 @@ class Envs:
+@@ -1465,6 +1479,16 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -15339,7 +15345,7 @@ index 9872cf5473..70b8b5af21 100644
          # flash_kda wants A_log [H] fp32 and dt_bias [H, K] fp32. The model
          # stores A_log as [1, 1, H, 1] and dt_bias as 1D [H*K], so reshape both.
 diff --git a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
-index 400a5303c7..8ecbad1589 100644
+index 400a5303c7..7a472250a6 100644
 --- a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 +++ b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 @@ -171,7 +171,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
@@ -15351,7 +15357,7 @@ index 400a5303c7..8ecbad1589 100644
          lower_bound: Optional[float] = None,
          # fused ReplaySSM ring-write (dense verify only; off elsewhere).
          cache_ring: bool = False,
-@@ -229,6 +229,7 @@ class TritonKDAKernel(LinearAttnKernelBase):
+@@ -229,21 +229,84 @@ class TritonKDAKernel(LinearAttnKernelBase):
          A_log: Optional[torch.Tensor] = None,
          dt_bias: Optional[torch.Tensor] = None,
          lower_bound: Optional[float] = None,
@@ -15359,13 +15365,90 @@ index 400a5303c7..8ecbad1589 100644
          return_intermediate_states: bool = False,
          **kwargs,
      ) -> tuple[torch.Tensor, torch.Tensor | None]:
-@@ -245,5 +246,6 @@ class TritonKDAKernel(LinearAttnKernelBase):
+-        return chunk_kda(
+-            q=q,
+-            k=k,
+-            v=v,
+-            g=g,
+-            beta=beta,
++        common = dict(
+             initial_state=ssm_states,
+             initial_state_indices=cache_indices,
+             use_qk_l2norm_in_kernel=True,
+-            cu_seqlens=query_start_loc,
              A_log=A_log,
              dt_bias=dt_bias,
              lower_bound=lower_bound,
 +            beta_is_raw=beta_is_raw,
              output_intermediate_states=return_intermediate_states,
          )
++        block = _extend_block_tokens()
++        num_tokens = q.shape[1]
++        if block <= 0 or num_tokens <= block:
++            return chunk_kda(
++                q=q, k=k, v=v, g=g, beta=beta, cu_seqlens=query_start_loc, **common
++            )
++
++        # Token-blocked extend. The chunk kernels allocate workspace
++        # proportional to the tokens in one call (cumsum'd gates, w/u/k
++        # projections, the per-chunk state buffer, the intra-chunk A matrix):
++        # measured 641 MiB per layer for a 4096-token extend, which is the
++        # runtime headroom on a memory-tight deployment. Processing each
++        # sequence in blocks bounds that workspace by the block size. State
++        # carries through the pool slot: the fwd_h kernel loads the block's
++        # initial state from ``initial_state[index]`` and stores the final
++        # state back to the same slot (INPLACE_UPDATE), exactly as decode
++        # does step to step, so consecutive blocks chain with no extra copies.
++        # Blocks start at multiples of the 64-token chunk within a sequence,
++        # keeping the chunk-local gate cumsum aligned. The output is written
++        # into ``v``'s storage by chunk_gla_fwd_o_gk (o=v), so per-block slices
++        # of ``v`` assemble the full output in place.
++        seq_lens = kwargs.get("extend_seq_lens_cpu")
++        if seq_lens is None:
++            seq_lens = torch.diff(query_start_loc).tolist()
++        else:
++            seq_lens = [int(x) for x in seq_lens]
++        device = q.device
++        # The caller's v is a strided split view; chunk_kda would copy each
++        # block to make it contiguous and write the output into that copy.
++        # One contiguous buffer up front makes the block slices real views,
++        # so the in-place o=v writes land in the returned tensor.
++        v = v.contiguous()
++        h_parts = [] if return_intermediate_states else None
++        start = 0
++        for i, length in enumerate(seq_lens):
++            if length <= 0:
++                continue
++            idx = cache_indices[i : i + 1]
++            for b0 in range(0, length, block):
++                b1 = min(b0 + block, length)
++                s, e = start + b0, start + b1
++                cu = torch.tensor([0, b1 - b0], dtype=torch.int32, device=device)
++                out = chunk_kda(
++                    q=q[:, s:e],
++                    k=k[:, s:e],
++                    v=v[:, s:e],
++                    g=g[:, s:e],
++                    beta=beta[:, s:e],
++                    cu_seqlens=cu,
++                    **{**common, "initial_state_indices": idx},
++                )
++                if return_intermediate_states:
++                    h_parts.append(out[1])
++            start += length
++        if return_intermediate_states:
++            return v, torch.cat(h_parts, dim=1)
++        return v
++
++
++def _extend_block_tokens() -> int:
++    from sglang.srt.environ import envs
++
++    block = int(envs.SGLANG_KDA_EXTEND_BLOCK_TOKENS.get() or 0)
++    if block <= 0:
++        return 0
++    # Chunk-local gate cumsum: blocks must start on 64-token chunk boundaries.
++    return max(64, (block // 64) * 64)
 diff --git a/python/sglang/srt/layers/communicator.py b/python/sglang/srt/layers/communicator.py
 index c5c35016a5..a5fc895d1e 100644
 --- a/python/sglang/srt/layers/communicator.py
