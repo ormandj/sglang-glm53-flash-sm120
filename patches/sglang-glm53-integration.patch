@@ -6224,10 +6224,10 @@ index 2608621f6a..a34978a04d 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 70b2af61ed..5105c45a3d 100644
+index 70b2af61ed..852c77c60b 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
-@@ -1296,6 +1296,11 @@ class Envs:
+@@ -1296,6 +1296,14 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -6236,10 +6236,13 @@ index 70b2af61ed..5105c45a3d 100644
 +    # captured CUDA graph still writes through.
 +    SGLANG_MEM_FORENSICS_DIR = EnvStr(None)
 +    SGLANG_MEM_FORENSICS_MAX_ENTRIES = EnvInt(300000)
++    # Log per-phase device-memory peaks for extend forwards (see
++    # utils/extend_mem_profile.py). Host-side counters only; no device sync.
++    SGLANG_EXTEND_MEM_PROFILE = EnvBool(False)
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1465,6 +1470,16 @@ class Envs:
+@@ -1465,6 +1473,16 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -16913,6 +16916,40 @@ index 556fb6cd2f..14becaccfa 100644
          producer_event.start_event.record()
  
          if self.load_fence_stream is not None:
+diff --git a/python/sglang/srt/managers/mm_utils.py b/python/sglang/srt/managers/mm_utils.py
+index 4a9d7a29e8..2e2d36cc45 100644
+--- a/python/sglang/srt/managers/mm_utils.py
++++ b/python/sglang/srt/managers/mm_utils.py
+@@ -459,16 +459,19 @@ def embed_mm_inputs(
+                     flatten_nested_list([item.offsets for item in mm_items])
+                 )
+ 
+-            embedding, mask, input_ids = get_embedding_and_mask(
+-                data_embedding_func=embedder,
+-                embedding_items=items,
+-                placeholder_tensor=placeholder_tensor,
+-                input_ids=input_ids,
+-                items_size=items_size,
+-                prefix_length=extend_prefix_lens,
+-                extend_length=extend_seq_lens,
+-                items_offset_list=items_offsets,
+-            )
++            from sglang.srt.utils import extend_mem_profile
++
++            with extend_mem_profile.phase(f"mm-embed:{modality_id}"):
++                embedding, mask, input_ids = get_embedding_and_mask(
++                    data_embedding_func=embedder,
++                    embedding_items=items,
++                    placeholder_tensor=placeholder_tensor,
++                    input_ids=input_ids,
++                    items_size=items_size,
++                    prefix_length=extend_prefix_lens,
++                    extend_length=extend_seq_lens,
++                    items_offset_list=items_offsets,
++                )
+ 
+             if use_deepstack.get(modality, None) and embedding is not None:
+                 embedding, deepstack_embedding = (
 diff --git a/python/sglang/srt/managers/overlap_utils.py b/python/sglang/srt/managers/overlap_utils.py
 index 9ac8f3d02f..fbdcaae1ba 100644
 --- a/python/sglang/srt/managers/overlap_utils.py
@@ -20100,7 +20137,7 @@ index 3926aa58c3..afdd0e3e68 100644
                  bs = bs * self.spec_info.num_tokens_per_req
                  if logits_output.next_token_logits is not None:
 diff --git a/python/sglang/srt/model_executor/model_runner.py b/python/sglang/srt/model_executor/model_runner.py
-index 9f66e95ab4..1e23b7c001 100644
+index 9f66e95ab4..48e6bfedc9 100644
 --- a/python/sglang/srt/model_executor/model_runner.py
 +++ b/python/sglang/srt/model_executor/model_runner.py
 @@ -225,6 +225,7 @@ from sglang.srt.utils import (
@@ -20131,7 +20168,27 @@ index 9f66e95ab4..1e23b7c001 100644
                      pool.translate_mamba_indices(forward_batch.mamba_cow_src_indices),
                      pool.translate_mamba_indices(forward_batch.mamba_cow_dst_indices),
                  )
-@@ -1831,9 +1836,9 @@ class ModelRunner:
+@@ -1797,9 +1802,19 @@ class ModelRunner:
+                 can_run_graph = True
+             else:
+                 # Eager: decode / extend / idle dispatched inside the runner.
++                from sglang.srt.utils import extend_mem_profile
++
++                profile_extend = (
++                    forward_batch.forward_mode.is_extend()
++                    and extend_mem_profile.enabled()
++                )
++                if profile_extend:
++                    extend_mem_profile.begin(int(forward_batch.input_ids.numel()))
+                 ret = self.eager_runner.execute(
+                     forward_batch, pp_proxy_tensors=pp_proxy_tensors
+                 )
++                if profile_extend:
++                    extend_mem_profile.end()
+ 
+             if (
+                 forward_batch.global_num_tokens_cpu is not None
+@@ -1831,9 +1846,9 @@ class ModelRunner:
  
          # Release the vocab_mask GPU tensor immediately after it has been applied
          # to the logits. In overlap scheduling, the sampling_info (and its
@@ -20952,10 +21009,10 @@ index f3ed43efeb..ea4871cecf 100644
              ),
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
 new file mode 100644
-index 0000000000..5f5175192d
+index 0000000000..d794ddf294
 --- /dev/null
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -0,0 +1,1968 @@
+@@ -0,0 +1,1975 @@
 +import logging
 +from contextlib import nullcontext
 +from functools import partial
@@ -21827,14 +21884,19 @@ index 0000000000..5f5175192d
 +            )
 +            get_attn_tp_context().set_hidden_states_local(hidden_states)
 +
-+        hidden_states = self.self_attn(
-+            positions=positions,
-+            hidden_states=hidden_states,
-+            forward_batch=forward_batch,
-+            zero_allocator=zero_allocator,
-+            layer_scatter_modes=self.layer_scatter_modes,
-+            prev_topk_indices=prev_topk_indices,
-+        )
++        from sglang.srt.utils import extend_mem_profile
++
++        with extend_mem_profile.phase(
++            f"L{self.layer_id}:{'kda' if self.is_linear_attn else 'mla'}"
++        ):
++            hidden_states = self.self_attn(
++                positions=positions,
++                hidden_states=hidden_states,
++                forward_batch=forward_batch,
++                zero_allocator=zero_allocator,
++                layer_scatter_modes=self.layer_scatter_modes,
++                prev_topk_indices=prev_topk_indices,
++            )
 +        if isinstance(hidden_states, tuple):
 +            hidden_states, topk_indices = hidden_states
 +        else:
@@ -21885,7 +21947,9 @@ index 0000000000..5f5175192d
 +            fuse_mlp_allreduce=should_allreduce_fusion,
 +            mlp_reduce_scatter=use_reduce_scatter,
 +        ):
-+            with _mlp_ctx:
++            with _mlp_ctx, extend_mem_profile.phase(
++                f"L{self.layer_id}:{'moe' if isinstance(self.mlp, Glm5NextMoE) else 'mlp'}"
++            ):
 +                hidden_states = self.mlp(
 +                    hidden_states,
 +                    forward_batch,
@@ -24746,6 +24810,100 @@ index 04b04eb9c0..3fa988331d 100644
      return image, image_size
  
  
+diff --git a/python/sglang/srt/utils/extend_mem_profile.py b/python/sglang/srt/utils/extend_mem_profile.py
+new file mode 100644
+index 0000000000..f47928dbc3
+--- /dev/null
++++ b/python/sglang/srt/utils/extend_mem_profile.py
+@@ -0,0 +1,88 @@
++"""Per-phase device-memory peaks for extend (prefill) forwards.
++
++Enabled by ``SGLANG_EXTEND_MEM_PROFILE=1``. The allocator's peak counters are
++host-side bookkeeping, so reading them adds no device synchronization; the
++cost is a handful of Python calls per layer, which is why the whole module
++is a no-op unless the env is set.
++
++Usage: ``begin(num_tokens)`` at the start of an extend forward, ``phase(tag)``
++as a context manager around any sub-step (a decoder layer, the vision tower,
++the embedding step), ``end()`` to log one line with the extend's overall
++peak and the top phases by peak delta. Only extends with at least
++``min_tokens`` tokens are recorded, so decode and tiny prefills stay silent.
++"""
++
++from __future__ import annotations
++
++import contextlib
++import logging
++from typing import Dict, Optional
++
++import torch
++
++from sglang.srt import environ as envs
++
++logger = logging.getLogger(__name__)
++
++_active: bool = False
++_num_tokens: int = 0
++_base: int = 0
++_phase_peaks: Dict[str, int] = {}
++_extend_count: int = 0
++
++
++def enabled() -> bool:
++    return envs.SGLANG_EXTEND_MEM_PROFILE.get()
++
++
++def begin(num_tokens: int, min_tokens: int = 1024) -> None:
++    global _active, _num_tokens, _base, _phase_peaks
++    if not enabled() or num_tokens < min_tokens or not torch.cuda.is_available():
++        _active = False
++        return
++    _active = True
++    _num_tokens = num_tokens
++    _phase_peaks = {}
++    torch.cuda.reset_peak_memory_stats()
++    _base = torch.cuda.memory_allocated()
++
++
++@contextlib.contextmanager
++def phase(tag: str):
++    if not _active:
++        yield
++        return
++    before = torch.cuda.memory_allocated()
++    torch.cuda.reset_peak_memory_stats()
++    try:
++        yield
++    finally:
++        peak = torch.cuda.max_memory_allocated() - before
++        prev = _phase_peaks.get(tag)
++        if prev is None or peak > prev:
++            _phase_peaks[tag] = peak
++
++
++def end(extra: Optional[str] = None) -> None:
++    global _active, _extend_count
++    if not _active:
++        return
++    _active = False
++    _extend_count += 1
++    # Peak across the whole extend, relative to the live set at entry; the
++    # per-phase resets above do not disturb the allocator's running total.
++    live_now = torch.cuda.memory_allocated()
++    free_b, total_b = torch.cuda.mem_get_info()
++    top = sorted(_phase_peaks.items(), key=lambda kv: kv[1], reverse=True)[:8]
++    phases = ", ".join(f"{k}={v / 2**20:.0f}MiB" for k, v in top)
++    logger.info(
++        "extend-mem-profile #%d tokens=%d live_at_entry=%.2fGiB live_after=%.2fGiB "
++        "device_free_now=%.2fGiB top_phase_peaks[%s]%s",
++        _extend_count,
++        _num_tokens,
++        _base / 2**30,
++        live_now / 2**30,
++        free_b / 2**30,
++        phases,
++        f" {extra}" if extra else "",
++    )
 diff --git a/python/sglang/srt/utils/hf_transformers/common.py b/python/sglang/srt/utils/hf_transformers/common.py
 index 5ffa8530c4..77fd3675c3 100644
 --- a/python/sglang/srt/utils/hf_transformers/common.py

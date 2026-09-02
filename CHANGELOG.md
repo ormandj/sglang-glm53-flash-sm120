@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.1-rc.9 (extend memory profiler; not yet built or qualified)
+
+- Adds `SGLANG_EXTEND_MEM_PROFILE=1`: per-phase device-memory peaks for
+  extend forwards (each layer's attention and MoE step, the multimodal
+  embed step, the whole extend), host-side allocator counters only. Off by
+  default. Purpose: measure what a 4,096-token extend's ~1.4 GB transient
+  is made of, to bound it in code instead of by the rc.8 image-token cap.
+
 ## v0.1.1-rc.8 (sampling warmup: FlashInfer sampling module built before ready; not yet built or qualified)
 
 - Deployment/launcher config (no image change): `--mm-process-config
