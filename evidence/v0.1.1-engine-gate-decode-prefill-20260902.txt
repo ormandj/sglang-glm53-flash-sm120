@@ -1,0 +1,20 @@
+Harness-grade decode plateaus and cold-prefill panel, v0.1.1 - 2026-09-02
+image: v0.1.1 = v0.1.1-rc.16, internal digest sha256:5e499c5fde911ca20345431fb25d70202eefaed662beb1fec27887d99abd33d0
+config: TP2, pool/context 499,712, chunk 4096, max-prefill-tokens 4096, max-running-requests 4, fp8 e4m3 KV, mamba 28, MTP EAGLE 5/1/6 adaptive, decode graphs bs [1,2,3,4], hicache 32 GB, KDA extend block 2048, CPU image preprocessing
+harness: benchmarks/aiperf run-engine-gate-in-pod.sh, campaign v011-20260902b, mode glm-qualification (cohort-only decode cells, requests == concurrency, 4,096 output tokens, temperature 0; prefill panel 5 cold requests per length at C1), pinned aiperf 0.12.0@6ed4823d, run inside the serving pod 11:12-11:31 UTC on a warmed server (every shape warmed once before the timed cells)
+method: OLS over the server decode-token and forward-pass counters within the analyzer plateau (zero analyzer flags on every listed repetition); average decode context 18.6k-19.0k tokens
+artifacts: evidence/v0.1.1-engine-gates/glm-qualification (analyzer outputs, summary.json); raw exports retained outside git
+
+decode, per repetition r01..r05 (OLS tok/s | engine forward passes/s | accepted tokens per forward per request):
+C1: 150.9|56.1|2.73  204.2|49.5|4.15  175.1|51.5|3.53  155.5|55.2|2.84  186.2|51.0|3.78   -> mean 174.4 tok/s, median 175.1; fwd/s mean 52.7, median 51.5
+C2: 282.0|34.2|3.88  272.3|38.4|3.74  229.8|40.6|2.94  231.7|39.6|3.10  244.5|39.1|3.16   -> mean 252.1 tok/s, median 244.5; fwd/s mean 38.4, median 39.1
+C3: 296.7|34.2|2.86  297.7|32.5|3.04  310.4|32.2|3.30  281.4|34.3|2.77  308.0|31.9|3.34   -> mean 298.8 tok/s, median 297.7; fwd/s mean 33.0, median 32.5
+v0.1.0 reference (same harness, mamba 20): C1 169.7 tok/s at 54.0 fwd/s, C2 235.7 at 40.4; C3 not measurable then (cohort ceiling)
+
+C4: not a qualified cell. repeat-c4 (refill, 12 requests): all five repetitions analyzer-rejected (prefill counters moved in the plateau, exact occupancy 95.8%). repeat-c4 with DECODE_REQUESTS_OVERRIDE=4 (cohort): effective decode concurrency max 3 in both attempts; the server's mamba pool showed 12 slots used (4 per decoding request), 13-21 evictable radix-cached, 2 free of 28, so the fourth request waited in prefill/queue. The deployment's simultaneous-decode ceiling at ~18k context is 3 with mamba 28; admission does not evict cached mamba states to admit a fourth. Numbers from the rejected cells are not quoted.
+
+cold prefill panel (5 requests each, C1, temperature 0, one output token; aggregate prompt tokens per second over the window, median TTFT):
+8k   (8,205 tokens):   5,263 tok/s, TTFT 1.55 s
+32k  (32,781 tokens):  5,903 tok/s, TTFT 5.55 s
+64k  (65,549 tokens):  5,918 tok/s, TTFT 11.12 s
+128k (130,829 tokens): 5,918 tok/s, TTFT 22.15 s

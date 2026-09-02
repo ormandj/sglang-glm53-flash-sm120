@@ -1,0 +1,17 @@
+Capacity ladder, v0.1.1 - 2026-09-02 12:21:58-12:26:21 UTC
+image: v0.1.1 = v0.1.1-rc.16, internal digest sha256:5e499c5fde911ca20345431fb25d70202eefaed662beb1fec27887d99abd33d0
+config: TP2, pool/context 499,712, chunk 4096, max-prefill-tokens 4096, max-running-requests 4, fp8 e4m3 KV, mamba 28, MTP EAGLE 5/1/6 adaptive, hicache 32 GB
+driver: gitops Job glm53-flash-v0-1-1-w4a16-c4-500k-ladder (benchmarks/qualify_openai.py, temperature 0, reasoning effort low, max 1,024/2,048 output tokens) against the service; job log in evidence/v0.1.1-capacity-ladder-job-20260902.log
+server state sampled from the pod log (decode-batch lines) during the window
+
+phase        requests  prompt tokens          TTFT (max)  completion tokens  result
+c1-200k      1         204,800 (cold)         34.14 s     986                pass   -> 6,000 prompt tok/s cold
+c1-350k      1         358,400 (200k cached)  31.34 s     843                pass
+c1-494k      1         494,592 (358k cached)  33.75 s     1,024              pass
+c4-120k-fill 4         4 x 122,880 (cached)   2.43 s      4,086              pass   (256 aggregate output tok/s)
+waves 1-8    4 each    4 x 29,551 distinct    0.87-5.50 s 3,296-4,122        8/8 pass (255-269 aggregate output tok/s)
+
+peak KV usage: #full token 495,616 of 499,712 (usage 0.99) during the 494,592-token request; peak mamba usage 0.93
+serving pod: 0 restarts, 0 OutOfMemoryError, 0 Xid, 0 request errors
+allocator: four CUDACachingAllocator warnings "expandable_segments: memory mapping failed with OOM ... while trying to map 2097152 bytes (free: 1703936)" at 11:52:32 (both ranks, GSM8K start), 12:22:21 (rank 1, 350k prefill) and 12:24:21 (rank 0, 494k prefill). These are recoverable segment-mapping failures at ~1.7 MB free device memory: the allocator releases cached blocks and retries, no exception was raised and every request completed. They mark the headroom at 99% pool usage as effectively zero.
+note: the 350k and 494k prompts extend the 200k prompt's prefix, so only the 200k phase is a cold prefill; 350k/494k prefill 150k/136k new tokens on top of a cached prefix (4.8k / 4.0k new tok/s incl. the hicache lookups). Compare v0.1.0 ladder: 200k cold 5,153 tok/s.

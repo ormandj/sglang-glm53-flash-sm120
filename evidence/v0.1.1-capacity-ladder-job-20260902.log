@@ -1,0 +1,36 @@
+phase=c1-200k start
+{"aggregate_completion_tokens": 986, "aggregate_output_tokens_per_second": 23.85509803759289, "max_latency_seconds": 41.32602128200233, "max_ttft_seconds": 34.143095502164215, "mean_latency_seconds": 41.32602128200233, "mean_reported_output_tokens_per_second": 137.2699691214437, "mean_ttft_seconds": 34.143095502164215, "requests": 1, "wall_seconds": 41.332884000148624}
+phase=c1-200k pass
+phase=c1-350k start
+{"aggregate_completion_tokens": 843, "aggregate_output_tokens_per_second": 22.336668626385272, "max_latency_seconds": 37.73191102175042, "max_ttft_seconds": 31.342522733844817, "mean_latency_seconds": 37.73191102175042, "mean_reported_output_tokens_per_second": 131.9375129534238, "mean_ttft_seconds": 31.342522733844817, "requests": 1, "wall_seconds": 37.74063241481781}
+phase=c1-350k pass
+phase=c1-494k start
+{"aggregate_completion_tokens": 1024, "aggregate_output_tokens_per_second": 24.648440103550296, "max_latency_seconds": 41.53309560101479, "max_ttft_seconds": 33.74746477929875, "mean_latency_seconds": 41.53309560101479, "mean_reported_output_tokens_per_second": 131.52434574007953, "mean_ttft_seconds": 33.74746477929875, "requests": 1, "wall_seconds": 41.54421114269644}
+phase=c1-494k pass
+phase=c4-120k-fill start
+{"aggregate_completion_tokens": 4086, "aggregate_output_tokens_per_second": 256.4416629790729, "max_latency_seconds": 15.910195495001972, "max_ttft_seconds": 2.4272379972971976, "mean_latency_seconds": 15.053501698654145, "mean_reported_output_tokens_per_second": 79.82892586937636, "mean_ttft_seconds": 2.23141816444695, "requests": 4, "wall_seconds": 15.933448381721973}
+phase=c4-120k-fill pass
+wave=001 start
+{"aggregate_completion_tokens": 3377, "aggregate_output_tokens_per_second": 203.42099656785993, "max_latency_seconds": 16.595154310110956, "max_ttft_seconds": 5.495920012239367, "mean_latency_seconds": 16.246026112115942, "mean_reported_output_tokens_per_second": 78.48463465893087, "mean_ttft_seconds": 5.492993882857263, "requests": 4, "wall_seconds": 16.601039504166692}
+wave=001 pass
+wave=002 start
+{"aggregate_completion_tokens": 3829, "aggregate_output_tokens_per_second": 262.18778696481957, "max_latency_seconds": 14.595872049219906, "max_ttft_seconds": 0.9708556369878352, "mean_latency_seconds": 12.990332369925454, "mean_reported_output_tokens_per_second": 78.99674976191524, "mean_ttft_seconds": 0.8931920987088233, "requests": 4, "wall_seconds": 14.604036459233612}
+wave=002 pass
+wave=003 start
+{"aggregate_completion_tokens": 4122, "aggregate_output_tokens_per_second": 265.515040839912, "max_latency_seconds": 15.513916298281401, "max_ttft_seconds": 0.8937744139693677, "mean_latency_seconds": 14.273595066042617, "mean_reported_output_tokens_per_second": 76.27873135583314, "mean_ttft_seconds": 0.8275624922243878, "requests": 4, "wall_seconds": 15.524544247891754}
+wave=003 pass
+wave=004 start
+{"aggregate_completion_tokens": 3544, "aggregate_output_tokens_per_second": 260.9977232754164, "max_latency_seconds": 13.574137278832495, "max_ttft_seconds": 0.9066323270089924, "mean_latency_seconds": 12.458056198665872, "mean_reported_output_tokens_per_second": 76.42206633039903, "mean_ttft_seconds": 0.841927534667775, "requests": 4, "wall_seconds": 13.578662509098649}
+wave=004 pass
+wave=005 start
+{"aggregate_completion_tokens": 3296, "aggregate_output_tokens_per_second": 265.63868664338713, "max_latency_seconds": 12.404214582405984, "max_ttft_seconds": 0.8699248898774385, "mean_latency_seconds": 11.511265240842476, "mean_reported_output_tokens_per_second": 76.78869193833027, "mean_ttft_seconds": 0.8063485648017377, "requests": 4, "wall_seconds": 12.40783126000315}
+wave=005 pass
+wave=006 start
+{"aggregate_completion_tokens": 3521, "aggregate_output_tokens_per_second": 268.8107732795737, "max_latency_seconds": 13.09215209633112, "max_ttft_seconds": 0.9065951239317656, "mean_latency_seconds": 12.531833715853281, "mean_reported_output_tokens_per_second": 75.30973892887289, "mean_ttft_seconds": 0.8384191895602271, "requests": 4, "wall_seconds": 13.098433359060436}
+wave=006 pass
+wave=007 start
+{"aggregate_completion_tokens": 3760, "aggregate_output_tokens_per_second": 266.192941388102, "max_latency_seconds": 14.114293826278299, "max_ttft_seconds": 0.9033128940500319, "mean_latency_seconds": 13.328354172059335, "mean_reported_output_tokens_per_second": 75.15248050105926, "mean_ttft_seconds": 0.8373008171329275, "requests": 4, "wall_seconds": 14.125092800706625}
+wave=007 pass
+wave=008 start
+{"aggregate_completion_tokens": 3461, "aggregate_output_tokens_per_second": 255.272840240357, "max_latency_seconds": 13.552248642779887, "max_ttft_seconds": 0.8797812992706895, "mean_latency_seconds": 12.059482831507921, "mean_reported_output_tokens_per_second": 76.63033860171416, "mean_ttft_seconds": 0.8163001287030056, "requests": 4, "wall_seconds": 13.55804243311286}
+wave=008 pass

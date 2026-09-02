@@ -1,0 +1,70 @@
+{
+  "cell": {
+    "expected_requests": 5,
+    "isl_tolerance": 16,
+    "target_concurrency": 1,
+    "target_isl": 32768
+  },
+  "engine": "sglang",
+  "failures": [],
+  "prefill_concurrency": {
+    "duration_seconds": 27.766279488,
+    "fraction_of_window_at_target": 0.9996042045530533,
+    "max": 1,
+    "target": 1,
+    "time_weighted_mean": 0.9996042045530533,
+    "window_end_ns": 1788348489739104442,
+    "window_start_ns": 1788348461972824954
+  },
+  "requests": {
+    "aggregate_prompt_tokens": 163904.0,
+    "aggregate_prompt_tokens_per_second": 5902.9874733788465,
+    "completed": 5,
+    "input_tokens": {
+      "count": 5,
+      "max": 32783.0,
+      "mean": 32780.8,
+      "median": 32781.0,
+      "min": 32779.0,
+      "p90": 32782.2,
+      "p95": 32782.6,
+      "p99": 32782.92,
+      "sample_stddev": 1.4832396974191326
+    },
+    "records_exported": 5,
+    "time_to_first_token_ms": {
+      "count": 5,
+      "max": 5570.193797,
+      "mean": 5551.0579442,
+      "median": 5551.395216999999,
+      "min": 5528.428671,
+      "p90": 5569.2733358000005,
+      "p95": 5569.733566399999,
+      "p99": 5570.10175088,
+      "sample_stddev": 18.363608908173333
+    }
+  },
+  "schema_version": "1.0",
+  "server_controls": {
+    "cache": {
+      "counter_family": "sglang:realtime_tokens",
+      "tokens_per_second": 0.0,
+      "total_tokens": 0.0
+    },
+    "compute": {
+      "maximum_allowed_ratio": 1.1,
+      "ratio_to_observed_prompt_tokens": 1.001561889886763,
+      "tokens_per_second": 5249.508175262701,
+      "total_tokens": 164160.0
+    },
+    "counter_family": "sglang:realtime_tokens"
+  },
+  "source": {
+    "records": "/root/.cache/bench-stage/results/engine-gates/v011-20260902b/v0.1.1-glm-qualification/prefill/32k-c1/profile_export.jsonl",
+    "server_summary": "/root/.cache/bench-stage/results/engine-gates/v011-20260902b/v0.1.1-glm-qualification/prefill/32k-c1/server_metrics_export.json",
+    "summary": "/root/.cache/bench-stage/results/engine-gates/v011-20260902b/v0.1.1-glm-qualification/prefill/32k-c1/profile_export_aiperf.json"
+  },
+  "validation": {
+    "valid": true
+  }
+}

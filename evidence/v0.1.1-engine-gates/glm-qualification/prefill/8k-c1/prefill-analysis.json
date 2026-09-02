@@ -1,0 +1,70 @@
+{
+  "cell": {
+    "expected_requests": 5,
+    "isl_tolerance": 16,
+    "target_concurrency": 1,
+    "target_isl": 8192
+  },
+  "engine": "sglang",
+  "failures": [],
+  "prefill_concurrency": {
+    "duration_seconds": 7.794701827,
+    "fraction_of_window_at_target": 0.998986449748131,
+    "max": 1,
+    "target": 1,
+    "time_weighted_mean": 0.998986449748131,
+    "window_end_ns": 1788348449360865977,
+    "window_start_ns": 1788348441566164150
+  },
+  "requests": {
+    "aggregate_prompt_tokens": 41024.0,
+    "aggregate_prompt_tokens_per_second": 5263.06212995824,
+    "completed": 5,
+    "input_tokens": {
+      "count": 5,
+      "max": 8206.0,
+      "mean": 8204.8,
+      "median": 8205.0,
+      "min": 8203.0,
+      "p90": 8206.0,
+      "p95": 8206.0,
+      "p99": 8206.0,
+      "sample_stddev": 1.3038404810405297
+    },
+    "records_exported": 5,
+    "time_to_first_token_ms": {
+      "count": 5,
+      "max": 1578.7499149999999,
+      "mean": 1557.360301,
+      "median": 1554.5991649999999,
+      "min": 1548.3733029999999,
+      "p90": 1569.6770938,
+      "p95": 1574.2135044,
+      "p99": 1577.8426328799999,
+      "sample_stddev": 12.422585040158676
+    }
+  },
+  "schema_version": "1.0",
+  "server_controls": {
+    "cache": {
+      "counter_family": "sglang:realtime_tokens",
+      "tokens_per_second": 0.0,
+      "total_tokens": 0.0
+    },
+    "compute": {
+      "maximum_allowed_ratio": 1.1,
+      "ratio_to_observed_prompt_tokens": 1.0062402496099845,
+      "tokens_per_second": 3663.6582335911667,
+      "total_tokens": 41280.0
+    },
+    "counter_family": "sglang:realtime_tokens"
+  },
+  "source": {
+    "records": "/root/.cache/bench-stage/results/engine-gates/v011-20260902b/v0.1.1-glm-qualification/prefill/8k-c1/profile_export.jsonl",
+    "server_summary": "/root/.cache/bench-stage/results/engine-gates/v011-20260902b/v0.1.1-glm-qualification/prefill/8k-c1/server_metrics_export.json",
+    "summary": "/root/.cache/bench-stage/results/engine-gates/v011-20260902b/v0.1.1-glm-qualification/prefill/8k-c1/profile_export_aiperf.json"
+  },
+  "validation": {
+    "valid": true
+  }
+}

@@ -1,0 +1,56 @@
+GSM8K full quality gate, v0.1.1 - 2026-09-02
+image: v0.1.1 = v0.1.1-rc.16, internal digest sha256:5e499c5fde911ca20345431fb25d70202eefaed662beb1fec27887d99abd33d0 (ghcr v0.1.1 = sha256:66eb45f044ba26a47433992b788fa12f3f84fe65067dba8d9c938630f95f2eb4, GitHub's build of the same source 6e5498b)
+config: TP2, pool/context 499,712, chunk 4096, max-prefill-tokens 4096, fp8 e4m3 KV, mamba 28, MTP EAGLE 5/1/6 adaptive, decode graphs full backend bs [1,2,3,4], hicache 32 GB, KDA extend block 2048, CPU image preprocessing
+harness: pinned aiperf 0.12.0@6ed4823d (benchmarks/aiperf configs/gsm8k.yaml), all 1,319 GSM8K test questions, zero-shot, temperature 0, seed 42, max 16,384 tokens, concurrency 4 (matched to max-running-requests), run 11:52-12:09 UTC inside the serving pod (17 min, 1.35 req/s)
+
+pinned grader : 1174/1319 = 89.0%  (last-number fallback on every response; GLM emits no #### marker zero-shot)
+regraded      : 1278/1319 = 96.9%  (benchmarks/regrade_gsm8k.py position-based extraction; 104 upward flips, zero downward flips)
+v0.1.0 reference (rc.62 baseline, same harness): 1174/1319 pinned, 1280/1319 = 97.0% regraded
+
+raw artifacts: aiperf accuracy_results.csv (below) and accuracy_export.jsonl (kept outside git, 1,319 records with model outputs)
+
+== accuracy_results.csv ==
+task,correct,total,unparsed,accuracy
+OVERALL,1174,1319,1319,0.8901
+gsm8k,1174,1319,1319,0.8901
+
+== failures listed by an approximate re-extraction (39 shown; the regrader counts 41 = 1319 - 1278) ==
+session_000012 expected=13 extracted=12
+session_000245 expected=7 extracted=14
+session_000287 expected=8 extracted=5
+session_000340 expected=4 extracted=6
+session_000353 expected=20 extracted=8
+session_000368 expected=18 extracted=10
+session_000255 expected=192 extracted=176
+session_000403 expected=81 extracted=135
+session_000417 expected=3140 extracted=140
+session_000406 expected=200 extracted=240
+session_000454 expected=150 extracted=240
+session_000563 expected=12 extracted=15
+session_000590 expected=319 extracted=318
+session_000601 expected=104 extracted=3
+session_000640 expected=43500 extracted=45000
+session_000649 expected=162000 extracted=160000
+session_000675 expected=33 extracted=17
+session_000729 expected=1000 extracted=00
+session_000749 expected=3 extracted=6
+session_000768 expected=675 extracted=600
+session_000782 expected=54 extracted=27
+session_000796 expected=2880000 extracted=1040000
+session_000814 expected=11 extracted=17
+session_000823 expected=14 extracted=18
+session_000835 expected=48 extracted=36
+session_000856 expected=7 extracted=2
+session_000912 expected=6 extracted=7.5
+session_000952 expected=360 extracted=1800
+session_000951 expected=300 extracted=150
+session_000962 expected=1000 extracted=600
+session_000984 expected=342 extracted=162
+session_001001 expected=2 extracted=00
+session_001042 expected=3 extracted=10.75
+session_001048 expected=7400 extracted=9860.78
+session_001113 expected=-3 extracted=3
+session_001119 expected=18 extracted=4
+session_001161 expected=170 extracted=140
+session_001198 expected=140 extracted=120
+session_001309 expected=2280 extracted=2180

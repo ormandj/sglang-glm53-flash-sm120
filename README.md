@@ -31,25 +31,25 @@ concurrent cold 4k-token prefills 3.3 s each, GSM8K 98/100 on a
 
 ## What you get
 
-The throughput and capacity numbers below were measured on `v0.1.0`;
-`v0.1.1` was validated for correctness and capacity as listed above and
-was not re-benchmarked.
+The numbers below were measured on `v0.1.1` (2026-09-02) unless a row says
+otherwise.
 
-- **C4 serving with a 499,712-token KV pool and context limit** — four
+- **C4 serving with a 499,712-token KV pool and context limit**: four
   concurrent agentic requests sharing a full ~500k-token budget, with a
-  502,784-token single-request cold prefill demonstrated.
+  494,592-token single-request prefill served at 99.2% pool usage.
 - **HiCache host tier**: 13.5M KV tokens (82.9 GB host memory) plus a mamba
   state tier, so evicted long prefixes resume from RAM instead of
   recomputing.
 - **Adaptive EAGLE/NextN MTP speculative decoding** (candidate steps [3,5],
   acceptance-driven) plus PCIe IPC allreduce for TP2 small reduces:
-  decode plateaus of 169.7 tok/s at C1, 235.7 at C2, and 347.0 sustained
-  at C4; 257–267 tok/s at C1 on math where acceptance reaches ~6 tokens.
-  Cold 200k prefill 5,153 tok/s.
+  decode plateaus of 174.4 tok/s at C1 (52.7 forwards/s), 252.1 at C2
+  (38.4 fwd/s) and 298.8 at C3 (33.0 fwd/s); cold 200k prefill 6,000 tok/s.
+  The math-content C1 figure of 257 to 267 tok/s is a v0.1.0 measurement.
 - **Vision intact**, exercised through the OpenAI-compatible image input.
-- **GSM8K 97.2%** (1,282/1,319, zero-shot, temperature 0, position-based
-  answer extraction; 89.5% under the raw last-number grader) — identical to
-  the BF16-attention control, so the FP8 tier is measured-lossless here.
+- **GSM8K 96.9%** (1,278/1,319, zero-shot, temperature 0, position-based
+  answer extraction; 89.0% under the raw last-number grader), within
+  repetition spread of v0.1.0's 97.2% and the BF16-attention control's
+  97.0%.
 - **Reproducible end to end**: exact upstream SGLang/FlashInfer commits plus
   checksummed patches (`stack.lock.json`, `scripts/verify-patches.sh`), the
   quantization producers (`quantization/`), the benchmark harness
@@ -57,30 +57,36 @@ was not re-benchmarked.
 
 ### Performance and capacity at a glance
 
-All rows are the shipped configuration (adaptive MTP [3,5] + PCIe IPC
-allreduce), measured with the vendored harness; decode is the n=5 coding
-corpus at 4,096 output tokens, temperature 0.
+All rows were measured on `v0.1.1` (2026-09-02) in the shipped
+configuration with the vendored harness (pinned aiperf 0.12.0): decode is
+the n=5 coding corpus at 4,096 output tokens, temperature 0, cohort-only
+cells, warm server; every repetition is analyzer-valid. Tokens per second
+is after MTP acceptance; forwards per second is the engine step rate.
 
-| Decode (n=5 mean OLS plateau over server decode counters) | Rate |
-|---|---:|
-| C1 (pure equal-context plateau) | 169.7 tok/s |
-| C2 (pure equal-context plateau) | 235.7 tok/s |
-| C4 (sustained with request refill) | 347.0 tok/s |
-| C1 on math-class content (acceptance ~6) | 257–267 tok/s |
+| Decode (n=5, OLS plateau over server counters) | tok/s mean (median) | Forwards/s mean | Accepted tok/fwd/req |
+|---|---:|---:|---:|
+| C1 | 174.4 (175.1) | 52.7 | 3.5 |
+| C2 | 252.1 (244.5) | 38.4 | 3.2 |
+| C3 | 298.8 (297.7) | 33.0 | 3.0 |
+| C4 | no qualified cell: at most 3 requests decode at once (mamba admission, see BENCHMARKS.md); 8/8 four-request waves at 255 to 269 aggregate tok/s |
 
-| Cold prefill (prompt tokens / TTFT) | Rate |
+| Cold prefill (5 requests each, C1, prompt tokens / TTFT) | Rate |
 |---|---:|
-| 200k, C1 | 5,153 tok/s |
-| 4 x 120k concurrent (aggregate) | 4,985 tok/s |
+| 8k | 5,263 tok/s |
+| 32k | 5,903 tok/s |
+| 64k | 5,918 tok/s |
+| 128k | 5,918 tok/s |
+| 200k (ladder, single request) | 6,000 tok/s |
 
 | Capacity and quality | Result |
 |---|---|
-| KV pool / context limit | 499,712 tokens, C4 |
-| Largest single cold prefill served | 502,784 tokens |
-| HiCache host tier | 13.5M KV tokens (82.9 GB) + mamba tier |
-| GSM8K (1,319q, temp 0, zero-shot) | 97.2% regraded / 89.5% pinned grader |
-| MTP acceptance | ~2.5 general content, ~6.0 math (257–267 tok/s C1) |
-| Sustained C4 + capacity ladder | zero restarts, zero OOMs |
+| KV pool / context limit | 499,712 tokens, four running requests |
+| Largest single prefill served | 494,592 tokens (pool usage 99.2%, on a 200k cached prefix) |
+| HiCache host tier (32 GB setting) | 2.65M KV tokens (20.9 GB) + 11.2 GB mamba tier |
+| GSM8K (1,319q, temp 0, zero-shot) | 96.9% regraded / 89.0% pinned grader |
+| MTP acceptance (coding corpus) | 2.7 to 4.2 accepted tokens per forward per request |
+| Large images | 3840x2160 in 3.4 s, 7680x4320 in 3.0 s at the model's 8,000-token budget |
+| Ladder, waves, gates, GSM8K | zero restarts, zero OOM errors; four recoverable allocator segment-mapping warnings at 99% pool usage |
 
 Full tables and method notes: [`BENCHMARKS.md`](BENCHMARKS.md).
 
