@@ -49,16 +49,22 @@ v0.1.0 on the same harness: C1 169.7 tok/s at 54.0 fwd/s, C2 235.7 at
 40.4. The engine step rate is unchanged within repetition spread; the
 higher token rates come from acceptance.
 
-C4 is not a qualified cell on v0.1.1. The refill-style `repeat-c4` cell
-(12 requests, the shape v0.1.0 reported as "C4 sustained") is analyzer-
-rejected on all five repetitions: refill prefills land inside the plateau
-and exact occupancy holds for 95.8% of the window. A true four-request
-cohort never decodes four at once: the server's decode concurrency peaks at
-3, each decoding request holds 4 mamba slots (12 used), 13 to 21 slots are
-evictable radix-cached states and only 2 are free of 28, and admission does
-not evict cached mamba states to admit the fourth. The fourth request waits
-in prefill or the queue. Numbers from rejected cells are not quoted; the
-C4 wave receipts above are the sustained four-request evidence.
+C4 was measured on `v0.1.2` (rc.1, internal digest `sha256:9f65221e...`),
+which differs from v0.1.1 only by the scheduler admission fix; the same
+`repeat-c4` gate run as a four-request cohort, five repetitions, all
+analyzer-valid with zero flags:
+
+| Cell | OLS tok/s per repetition | Mean tok/s | Median tok/s | Forwards/s per repetition | Mean fwd/s | Accepted tok/fwd/req (median) |
+|---|---|---:|---:|---|---:|---:|
+| C4 (v0.1.2) | 333.8 / 411.3 / 342.0 / 363.9 / 338.1 | 357.8 | 342.0 | 30.8 / 25.6 / 30.0 / 29.6 / 31.1 | 29.4 | 2.9 |
+
+On v0.1.1 a four-request cohort never decoded four at once: the scheduler's
+`batch_is_full` latch, set by one transient admission refusal, is cleared
+only when a request finishes, so the fourth request waited for the whole
+decode of the other three (three decoding, one queued). v0.1.2 re-evaluates
+admission every round on hybrid SSM caches. Receipts:
+`evidence/v0.1.2-rc.1-c4-admission-20260902.txt` and
+`evidence/v0.1.2-engine-gates/`.
 
 MTP acceptance on the coding corpus is 2.7 to 4.2 accepted tokens per
 forward per request. The math-content C1 figure (257 to 267 tok/s at
@@ -113,10 +119,6 @@ not repeated.
 
 ## Known measurement gaps
 
-- No qualified C4 decode cell (see Decode). Raising the mamba pool to
-  about 36 slots would cost about 300 MB per GPU that the 0.99 memory
-  fraction does not have at chunk 4,096; the fix belongs in the scheduler's
-  admission path (evict cached mamba states on demand).
 - The 350k and 494k ladder rungs and the C4 fill ran on cached prefixes
   because of rung ordering; only the 200k rung and the engine-gate panel
   are cold prefill rates.

@@ -9,7 +9,7 @@ reasoning and tool calling.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.2` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
@@ -44,7 +44,7 @@ the open pull requests listed under [Carried upstream changes](#carried-upstream
    ```bash
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.1
+   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.2
    export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v55
    ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
    ```
@@ -82,8 +82,10 @@ profile. Two settings matter more than they look:
 
 ## What to expect
 
-Measured on `v0.1.1` (2026-09-02) with the launcher configuration plus
-HiCache, using the vendored harness in [`bench/`](bench/) on a warm server.
+Measured on 2026-09-02 with the launcher configuration plus HiCache, using
+the vendored harness in [`bench/`](bench/) on a warm server. The four-request
+row is from `v0.1.2`; the other rows were measured on `v0.1.1`, whose
+serving code is identical apart from the scheduler admission fix.
 Full tables and method notes are in [`BENCHMARKS.md`](BENCHMARKS.md); raw
 receipts are in [`evidence/`](evidence/).
 
@@ -96,7 +98,7 @@ tokens; forwards per second is the engine step rate.
 | 1 | 174.4 (175.1) | 52.7 | 3.5 |
 | 2 | 252.1 (244.5) | 38.4 | 3.2 |
 | 3 | 298.8 (297.7) | 33.0 | 3.0 |
-| 4 | 255 to 269 aggregate over eight four-request waves (see the limits below) |
+| 4 | 357.8 (342.0) | 29.4 | 2.9 |
 
 **Prefill.** Five cold, cache-busted requests per length, one at a time.
 
@@ -122,10 +124,6 @@ tokens; forwards per second is the engine step rate.
 
 **Limits worth knowing.**
 
-- With four requests in flight, at most three decode at the same time. The
-  scheduler does not evict cached recurrent states to admit the fourth, so
-  it waits for a slot. This is under investigation; the wave numbers above
-  are what four concurrent requests actually get today.
 - At 99% pool usage the GPUs have no free memory left. The allocator logged
   four recoverable segment-mapping warnings there and every request
   completed, but a workload that needs a large transient at that point would
@@ -179,13 +177,14 @@ armed after the serving warmup. Already merged upstream and in the base:
 
 ## Releases
 
-`v0.1.1` (2026-09-02) is the current release, a digest-identical promotion
-of `v0.1.2-rc.1`. It fixes the Xid 31 fault in the DSA top-k kernel under
-long prefill (reported by @bold84 and @sousekd, fixed by @bold84), admits
-four simultaneous cold requests, serves 4K and 8K images without OOM, warms
-every serving shape before ready, keeps image preprocessing on the CPU, and
-moves to the 2026-09-02 upstream mains. `v0.1.0` remains available. Details
-and every candidate build are in [`CHANGELOG.md`](CHANGELOG.md).
+`v0.1.2` (2026-09-02) is the current release, a digest-identical promotion
+of `v0.1.2-rc.1`. It fixes the scheduler latch that kept a fourth
+concurrent request queued until another finished, so four requests now
+decode together (the C4 row above). `v0.1.1` (2026-09-02) fixed the Xid 31
+fault in the DSA top-k kernel under long prefill (reported by @bold84 and
+@sousekd, fixed by @bold84), large-image OOMs and first-request warmup, and
+moved to the 2026-09-02 upstream mains. Details and every candidate build
+are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Reproducibility and building
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.2 (stable; digest-identical promotion of v0.1.2-rc.1)
+
+- Promoted without a rebuild from the rc.1 candidate built from source
+  revision 85d9e5d: internal registry digest
+  `sha256:9f65221e2d605e386dd85dfd7314d61c95ecfd0e93529423d32c3693aed87b30`
+  (the deployment that was validated), ghcr digest
+  `sha256:d11e2a1e987e4dd3cc0e6763299633094e0dcf6093abd434f21033a01ff23929`
+  (GitHub's independent build of the same pinned sources).
+- Fix since v0.1.1: the scheduler's `batch_is_full` latch, cleared only
+  when a request finished, kept a fourth concurrent request queued for the
+  whole decode of the other three. Admission is now re-evaluated every
+  round on hybrid SSM caches. C4 cohort gate on rc.1: 357.8 tok/s mean
+  (342.0 median) at 29.4 forwards/s, five analyzer-valid repetitions;
+  four distinct 18k-token requests decode together (v0.1.1: three and one
+  queued). GSM8K 100-question subset 96/100. Stack, cache schema (v55) and
+  launcher flags unchanged from v0.1.1.
+
 ## v0.1.2-rc.1
 
 - Scheduler: prefill admission is re-evaluated every round on hybrid SSM
