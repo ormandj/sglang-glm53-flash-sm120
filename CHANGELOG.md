@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.3 (stable; digest-identical promotion of v0.1.3-rc.1)
+
+- Promoted without a rebuild from the rc.1 candidate built from source
+  revision 13eefe8: internal registry digest
+  `sha256:0c9d080be12dd4b2606472d1799243e51d2750c197fc9a31fca50245fdee3106`
+  (the deployment that was validated), ghcr digest
+  `sha256:0cbeffe0689084a8e932282941e7b4e1a5400b6c03b5529d743f490abb638496`
+  (GitHub's independent build of the same pinned sources).
+- Crash-free configuration: pool and context 450,560 tokens (was 499,712).
+  At 499,712 a full-budget image encoded while three long requests were
+  decoding ran the vision encoder out of memory (weights 84.7 GB per GPU,
+  KV pool 4.4 GB, encode transient 0.85 GiB on 92.0 GiB live). At 450,560
+  every stress shape passes with about 0.3 GiB to spare; see the "Memory
+  headroom" section of `BENCHMARKS.md`.
+- Scheduler: an exhausted mamba pool no longer asserts (upstream
+  sgl-project/sglang#37619 for the checkpoint skip; admission gating on
+  free plus evictable slots is downstream). Found with four concurrent cold
+  95k-token prompts.
+- C4 cohort gate at 450,560: 357.7 tok/s mean (355.4 median) at 28.9
+  forwards/s, five analyzer-valid repetitions. Stack and cache schema (v55)
+  unchanged from v0.1.2.
+
 ## v0.1.3-rc.1
 
 - Scheduler: an exhausted mamba pool no longer asserts. The chunk-boundary
