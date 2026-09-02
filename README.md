@@ -158,6 +158,7 @@ SGLang (base `main` 1109e44305, 2026-09-02):
 | [sgl-project/sglang#37539](https://github.com/sgl-project/sglang/pull/37539) | GLM-5-Next vision-tower attention and compiled-activation precompile at startup |
 | [sgl-project/sglang#37540](https://github.com/sgl-project/sglang/pull/37540) | kpool top-k transform: clipped stage-1 bins and bounded selection stores (by @bold84) |
 | [sgl-project/sglang#37541](https://github.com/sgl-project/sglang/pull/37541) | opt-in `serving_coverage` request warmup |
+| [sgl-project/sglang#37612](https://github.com/sgl-project/sglang/pull/37612) | prefill admission re-evaluated every round on hybrid SSM radix caches (the v0.1.2 C4 fix) |
 
 FlashInfer (base `main` c5ff6f48, 2026-09-02):
 

@@ -11,7 +11,8 @@
 - Fix since v0.1.1: the scheduler's `batch_is_full` latch, cleared only
   when a request finished, kept a fourth concurrent request queued for the
   whole decode of the other three. Admission is now re-evaluated every
-  round on hybrid SSM caches. C4 cohort gate on rc.1: 357.8 tok/s mean
+  round on hybrid SSM caches (upstream sgl-project/sglang#37612). C4
+  cohort gate on rc.1: 357.8 tok/s mean
   (342.0 median) at 29.4 forwards/s, five analyzer-valid repetitions;
   four distinct 18k-token requests decode together (v0.1.1: three and one
   queued). GSM8K 100-question subset 96/100. Stack, cache schema (v55) and
