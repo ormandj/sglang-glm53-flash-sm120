@@ -1,8 +1,8 @@
 diff --git a/CLAUDE.md b/CLAUDE.md
-index 37479876..11f4ae46 100644
+index 58e5e716..9640b10e 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -580,7 +580,7 @@ Used by `flashinfer.trace` / `fi_trace`.
+@@ -583,7 +583,7 @@ Used by `flashinfer.trace` / `fi_trace`.
  | `FLASHINFER_AUTOTUNER_LOAD_FROM_FILE` | `0` | `flashinfer/autotuner/autotuner.py` | `1` loads previously serialized autotune results from disk instead of re-running the search. |
  | `FLASHINFER_DIST_AWARE_AUTOTUNE` | `0` | `flashinfer/fused_moe/da_config.py` | `1` enables experimental distribution-aware autotune and kernel dispatch (TRT-LLM MoE only). |
  | `FLASHINFER_DA_DISTRIBUTIONS` | built-in distribution catalog | `flashinfer/fused_moe/da_config.py` | Comma-separated training distributions used by the experimental TRT-LLM distribution-aware MoE autotuner. |
@@ -4510,10 +4510,10 @@ index 67849b90..4eb1679b 100644
      return output
 diff --git a/flashinfer/mla/_sparse_mla_sm120_cpb.py b/flashinfer/mla/_sparse_mla_sm120_cpb.py
 new file mode 100644
-index 00000000..2922989a
+index 00000000..38fc16e1
 --- /dev/null
 +++ b/flashinfer/mla/_sparse_mla_sm120_cpb.py
-@@ -0,0 +1,1348 @@
+@@ -0,0 +1,1455 @@
 +# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +# SPDX-License-Identifier: BSD-3-Clause
 +#
@@ -4570,6 +4570,12 @@ index 00000000..2922989a
 +as absent, so their families recalibrate on the next tuning-mode pass). The
 +runtime decode/prefill routing in :mod:`._sparse_mla_sm120` consults it;
 +absent entries keep the historical decode-first policy.
++
++Finally, tuning-mode decode-form calls refine the model's cpb pick for the
++exact shape being warmed (:func:`refine_cpb`): the pick +/- a small candidate
++window is timed and the measured best persists as a per-shape override. The
++model remains the proposal and the fallback for every shape never warmed
++(off-grid ``num_heads``, dual-cache calls, non-tuning processes).
 +"""
 +
 +from __future__ import annotations
@@ -4606,9 +4612,15 @@ index 00000000..2922989a
 +
 +# Device-level key in the JSON payload holding the crossover table.
 +_DECODE_MAX_TOKENS_KEY = "decode_max_tokens"
++# Device-level key holding measured per-shape cpb picks (refine_cpb).
++_CPB_OVERRIDES_KEY = "cpb_overrides"
 +# Probe grid and decode-wins margin for crossover calibration.
 +_CROSSOVER_PROBED_T = (4, 8, 16, 24, 32, 48, 64)
 +_CROSSOVER_MARGIN = 0.95
++# refine_cpb times the model pick +- this many cpb candidates and keeps the
++# measured best; the window covers every model-vs-oracle gap observed in the
++# kernel-bench sweep matrix (max distance 6 at mid-T wave-quantization rows).
++_REFINE_WINDOW = 6
 +
 +# (num_tokens, num_heads, topk, chunks_per_block); see calibrate().
 +_MEASUREMENTS = (
@@ -4654,10 +4666,16 @@ index 00000000..2922989a
 +    (64, 64, 576, 9),
 +)
 +
-+_POOL_BYTES_TARGET = 2 << 30  # >> L2, so calibration traffic is HBM-faithful
++_POOL_BYTES_TARGET = 2 << 30  # >> L2, so calibration traffic is DRAM-faithful
 +_POOL_BYTES_MIN = 512 << 20
 +_WARMUP_ITERS = 3
-+_TIMED_ITERS = 10
++# Batched timing (_time_call_fresh_indices): batches per measurement, and the
++# per-batch call-count floor/cap around the L2 reuse-distance sizing. The cap
++# must stay above L2/min-footprint (T=4, topk=128 ~ 0.3 MiB -> ~400 calls)
++# or small-footprint probes would go L2-warm across batches.
++_TIMED_BATCHES = 5
++_MIN_BATCH_CALLS = 8
++_MAX_BATCH_CALLS = 1024
 +
 +
 +class CalibrationError(RuntimeError):
@@ -4671,7 +4689,7 @@ index 00000000..2922989a
 +    Attributes
 +    ----------
 +    inv_bw : float
-+        s/byte; inverse aggregate HBM bandwidth.
++        s/byte; inverse aggregate DRAM bandwidth.
 +    inv_rsm : float
 +        s/byte; inverse single-SM streaming rate (latency-bound regime).
 +    c0 : float
@@ -4759,7 +4777,7 @@ index 00000000..2922989a
 +    ``sm_count`` SMs: ``m*(s-1)`` full blocks of ``cpb`` chunks followed by
 +    ``m`` tail blocks of the short last split, each block paying the fixed
 +    per-block overhead ``c0`` plus per-chunk time ``t_c``. ``t_c`` is the
-+    larger of the bandwidth-bound term (``g`` concurrent blocks share HBM)
++    larger of the bandwidth-bound term (``g`` concurrent blocks share DRAM)
 +    and the single-SM latency-bound term. Early-exit blocks only write their
 +    LSE sentinel and retire; their scheduling churn is neglected (charging
 +    them ``c0`` each measurably over-predicts mid-cpb candidates).
@@ -4842,58 +4860,61 @@ index 00000000..2922989a
 +    return kv_cache, kv_cache.shape[0] * 64
 +
 +
-+def _time_call(call: Callable[[], None]) -> float:
-+    """Min CUDA-event wall time (seconds) over warmup + timed iterations."""
-+    for _ in range(_WARMUP_ITERS):
-+        call()
-+    torch.cuda.synchronize()
-+    start = torch.cuda.Event(enable_timing=True)
-+    end = torch.cuda.Event(enable_timing=True)
-+    best = float("inf")
-+    for _ in range(_TIMED_ITERS):
-+        start.record()
-+        call()
-+        end.record()
-+        torch.cuda.synchronize()
-+        best = min(best, start.elapsed_time(end) / 1e3)
-+    return best
-+
-+
 +def _time_call_fresh_indices(
 +    call: Callable[[torch.Tensor], None],
 +    num_tokens: int,
 +    topk: int,
 +    num_slots: int,
 +    device: torch.device,
++    bytes_per_token: int,
 +) -> float:
-+    """Like :func:`_time_call`, but every rep (warmup included) gets a freshly
-+    drawn full-pool uniform index set.
++    """Steady-state time (seconds) of one call: min over ``_TIMED_BATCHES``
++    batches of the per-call mean, each batch enqueuing its calls back-to-back
++    under a single sync.
 +
-+    ``num_tokens * topk * bytes_per_token`` fits in L2 at these sizes, so
-+    reusing one index set across reps makes the KV working set L2-resident
-+    after warmup and understates the HBM-bound steady state — this tainted
-+    earlier calibration rounds (decode looked artificially fast). The redraw
-+    runs outside the timed region.
++    The queued batch keeps the GPU busy across call boundaries, so per-call
++    launch latency overlaps execution — the regime production runs in (a
++    graph-replayed decode step pays no per-kernel launch gap). A per-rep
++    sync instead exposes one launch gap per call, which distorted small-T
++    measurements by a fixed ~7us.
++
++    L2 fidelity: every call in a batch gathers under a different pre-drawn
++    full-pool uniform index set. Consecutive sets overlap by
++    ~footprint/pool, and the batch length is sized so a set's reuse distance
++    ((K-1) calls x per-call gather footprint) exceeds L2 — reusing one index
++    set across reps makes the working set L2-resident after warmup and
++    understates the DRAM-bound steady state (this tainted earlier calibration
++    rounds: decode looked artificially fast). The draws run before timing.
 +    """
-+
-+    def fresh() -> torch.Tensor:
-+        return torch.randint(
++    # A set recurs after K-1 intervening calls; require the reuse distance to
++    # cover L2 so no gathered page survives between visits. Without a known
++    # L2 size, the minimum batch still hides launch latency.
++    l2 = int(getattr(torch.cuda.get_device_properties(device), "L2_cache_size", 0) or 0)
++    footprint = max(1, num_tokens * topk * bytes_per_token)
++    k = (
++        _MIN_BATCH_CALLS
++        if not l2
++        else min(_MAX_BATCH_CALLS, max(_MIN_BATCH_CALLS, l2 // footprint + 2))
++    )
++    sets = [
++        torch.randint(
 +            0, num_slots, (num_tokens, topk), dtype=torch.int32, device=device
 +        )
-+
-+    for _ in range(_WARMUP_ITERS):
-+        call(fresh())
++        for _ in range(k)
++    ]
++    for i in range(_WARMUP_ITERS):
++        call(sets[i % k])
 +    torch.cuda.synchronize()
 +    start = torch.cuda.Event(enable_timing=True)
 +    end = torch.cuda.Event(enable_timing=True)
 +    best = float("inf")
-+    for _ in range(_TIMED_ITERS):
-+        indices = fresh()
++    for _ in range(_TIMED_BATCHES):
 +        start.record()
-+        call(indices)
++        for indices in sets:
++            call(indices)
 +        end.record()
 +        torch.cuda.synchronize()
-+        best = min(best, start.elapsed_time(end) / 1e3)
++        best = min(best, start.elapsed_time(end) / 1e3 / k)
 +    return best
 +
 +
@@ -4999,9 +5020,11 @@ index 00000000..2922989a
 +    """Calibrate the cpb model constants for ``family`` on ``device``.
 +
 +    Drives the real decode kernel over a ~2 GiB KV pool (halved on OOM down
-+    to 512 MiB) with fresh full-pool uniform indices per rep so the measured
-+    working set stays HBM-resident, then fits the three constants to six
-+    fixed shapes by Levenberg-Marquardt on relative residuals.
++    to 512 MiB), timing queued batches over rotating fresh full-pool uniform
++    index sets (:func:`_time_call_fresh_indices`) so the measured working
++    set stays DRAM-resident and launch latency stays off the clock, then fits
++    the three constants to six fixed shapes by Levenberg-Marquardt on
++    relative residuals.
 +    ``module_getter`` returns the loaded TVM-FFI kernel module.
 +    """
 +    if family not in _BYTES_PER_TOKEN:
@@ -5041,10 +5064,9 @@ index 00000000..2922989a
 +
 +    def measure(num_tokens: int, num_heads: int, topk: int, cpb: int) -> float:
 +        call = build_call(num_tokens, num_heads, topk, model_type, cpb)
-+        # Fresh full-pool uniform indices per rep: one fixed index set goes
-+        # L2-resident after warmup and understates the HBM-bound steady state
-+        # (the crossover calibration's protocol).
-+        return _time_call_fresh_indices(call, num_tokens, topk, num_slots, device)
++        return _time_call_fresh_indices(
++            call, num_tokens, topk, num_slots, device, _BYTES_PER_TOKEN[family]
++        )
 +
 +    t = [measure(*m) for m in measurements]
 +
@@ -5158,7 +5180,7 @@ index 00000000..2922989a
 +    the grid keep the decode-first default) — or on ``grid_override`` when
 +    given (the public calibration API's arbitrary-shape entries) — both paths
 +    are timed at
-+    each probed T with the HBM-faithful protocol of
++    each probed T with the DRAM-faithful protocol of
 +    :func:`_time_call_fresh_indices`: the decode kernel runs with the model's
 +    ``select_cpb`` pick; the prefill orchestrator runs with
 +    ``prefill_impl=auto`` variant choice (swapAB preferred where
@@ -5241,7 +5263,9 @@ index 00000000..2922989a
 +    ) -> float:
 +        cpb = select_cpb(num_tokens, num_heads, topk, 0, c, chunk_width=bi)
 +        call = build_call(num_tokens, num_heads, topk, model_type, cpb)
-+        return _time_call_fresh_indices(call, num_tokens, topk, num_slots, device)
++        return _time_call_fresh_indices(
++            call, num_tokens, topk, num_slots, device, _BYTES_PER_TOKEN[family]
++        )
 +
 +    def time_prefill(
 +        num_tokens: int, num_heads: int, topk: int, model_type: int
@@ -5296,7 +5320,9 @@ index 00000000..2922989a
 +            torch.cuda.synchronize()
 +        except RuntimeError:
 +            return float("inf")
-+        return _time_call_fresh_indices(call, num_tokens, topk, num_slots, device)
++        return _time_call_fresh_indices(
++            call, num_tokens, topk, num_slots, device, _BYTES_PER_TOKEN[family]
++        )
 +
 +    table: dict[str, int] = {}
 +    for prefix, pairs, model_type in spaces:
@@ -5309,6 +5335,58 @@ index 00000000..2922989a
 +                    best = num_tokens
 +            table[f"{prefix}|{num_heads}|{topk}"] = best
 +    return table
++
++
++def refine_cpb(
++    module_getter: Callable[[], Any],
++    family: str,
++    device: torch.device,
++    c: CpbConstants,
++    num_tokens: int,
++    num_heads: int,
++    topk: int,
++) -> int:
++    """Measured best cpb around the model pick for one single-cache shape.
++
++    Times ``select_cpb``'s pick +/- ``_REFINE_WINDOW`` candidates (clamped to
++    1..N) with the calibration timing protocol and returns the measured
++    argmin. The analytical model proposes; this closes its residual pick
++    error — largest at mid-T wave-quantization shapes (up to 1.3x kernel
++    time in kernel-bench sweeps) — for exactly the shapes the caller warms
++    up. Dual-cache (extra_topk > 0) shapes stay on the model: their measured
++    pick error stays within ~6%.
++    """
++    from ._sparse_mla_sm120_plan import (
++        _MODEL_TYPE_DSV3_2,
++        _MODEL_TYPE_GLM53_NOPE,
++    )
++
++    if family not in _BYTES_PER_TOKEN:
++        raise ValueError(f"unknown sparse-MLA family {family!r}")
++    if torch.cuda.is_current_stream_capturing():
++        # Same contract as calibrate(): synchronizes and allocates GiB pools.
++        raise CalibrationError(
++            "sparse-MLA SM120 cpb refinement must not run under CUDA graph capture"
++        )
++    bi = _CHUNK_WIDTH[family]
++    n = _ceil_div(topk, bi)
++    center = select_cpb(num_tokens, num_heads, topk, 0, c, chunk_width=bi)
++    kv_cache, num_slots = _allocate_kv_pool(family, device)
++    build_call = _make_decode_call_builder(module_getter(), family, device, kv_cache)
++    model_type = (
++        _MODEL_TYPE_GLM53_NOPE if family == "glm53_nope" else _MODEL_TYPE_DSV3_2
++    )
++    best_cpb, best_t = center, float("inf")
++    lo = max(1, center - _REFINE_WINDOW)
++    hi = min(n, center + _REFINE_WINDOW)
++    for cpb in range(lo, hi + 1):
++        call = build_call(num_tokens, num_heads, topk, model_type, cpb)
++        t = _time_call_fresh_indices(
++            call, num_tokens, topk, num_slots, device, _BYTES_PER_TOKEN[family]
++        )
++        if t < best_t:
++            best_cpb, best_t = cpb, t
++    return best_cpb
 +
 +
 +def default_cache_path() -> pathlib.Path:
@@ -5332,6 +5410,9 @@ index 00000000..2922989a
 +# dev_key -> flat {"<family>|<num_heads>|<topk>": decode_max_tokens} table.
 +_crossover: dict[str, dict[str, int]] = {}
 +_crossover_failed: set[tuple[str, str]] = set()
++# dev_key -> flat {"<family>|<num_heads>|<topk>|<num_tokens>": cpb} table of
++# per-shape measured picks written by refine_cpb at tuning time.
++_cpb_overrides: dict[str, dict[str, int]] = {}
 +# Bumped whenever new constants enter the process (disk load or save), so
 +# select_cpb memoization keyed on it never serves stale picks.
 +_constants_version: int = 0
@@ -5353,7 +5434,7 @@ index 00000000..2922989a
 +    return key
 +
 +
-+def _parse_payload_devices(devices: dict) -> tuple[dict, dict]:
++def _parse_payload_devices(devices: dict) -> tuple[dict, dict, dict]:
 +    """Parse a cache document's ``devices`` mapping into process-cache entries.
 +
 +    Raises on malformed entries; callers must publish the returned dicts
@@ -5361,6 +5442,7 @@ index 00000000..2922989a
 +    """
 +    new_constants: dict = {}
 +    new_crossover: dict = {}
++    new_overrides: dict = {}
 +    for dev_key, families in devices.items():
 +        if not isinstance(families, dict):
 +            continue
@@ -5369,8 +5451,12 @@ index 00000000..2922989a
 +                if isinstance(raw, dict):
 +                    new_crossover[dev_key] = {str(k): int(v) for k, v in raw.items()}
 +                continue
++            if family == _CPB_OVERRIDES_KEY:
++                if isinstance(raw, dict):
++                    new_overrides[dev_key] = {str(k): int(v) for k, v in raw.items()}
++                continue
 +            new_constants[(dev_key, family)] = CpbConstants(**raw)
-+    return new_constants, new_crossover
++    return new_constants, new_crossover, new_overrides
 +
 +
 +def _maybe_load_disk() -> None:
@@ -5395,12 +5481,13 @@ index 00000000..2922989a
 +            return
 +        # Parse fully into locals first: a mid-document failure must not
 +        # publish a prefix of the entries while leaving mtime/version stale.
-+        new_constants, new_crossover = _parse_payload_devices(devices)
++        new_constants, new_crossover, new_overrides = _parse_payload_devices(devices)
 +    except (OSError, ValueError, TypeError, KeyError):
 +        # Keep mtime unchanged so the next cold call retries.
 +        return
 +    _constants.update(new_constants)
 +    _crossover.update(new_crossover)
++    _cpb_overrides.update(new_overrides)
 +    _cache_mtime = mtime
 +    _constants_version += 1
 +
@@ -5430,49 +5517,73 @@ index 00000000..2922989a
 +    return {"schema_version": _SCHEMA_VERSION, "devices": {}}
 +
 +
-+def save_constants(device: torch.device, family: str, c: CpbConstants) -> None:
-+    """Merge ``c`` into the disk cache (read-modify-write, atomic replace) and
-+    the process cache. A failed disk write only loses cross-process sharing;
-+    the in-process constants still take effect."""
-+    global _cache_mtime, _constants_version
-+    key = (_device_key(device), family)
++def _merge_into_cache(dev_key: str, section: str, entries: dict) -> dict:
++    """Read-modify-write ``entries`` into ``section`` of ``dev_key``'s device
++    record and return the merged document ({"devices": {}} when the write
++    fails — callers still publish to the process cache, losing only
++    cross-process sharing).
++
++    The read-modify-write is FileLock-serialized across processes (multi-GPU
++    tuning saves sibling device keys into the same file); reads stay
++    lock-free because the write is an atomic replace.
++    """
++    global _cache_mtime
 +    path = default_cache_path()
-+    # Serialize the read-modify-write across processes (multi-GPU tuning saves
-+    # sibling device keys into the same file); reads stay lock-free because
-+    # the write is an atomic replace.
 +    try:
 +        with FileLock(str(path.with_name(path.name + ".lock"))):
 +            payload = _read_payload_for_merge(path)
 +            if not isinstance(payload.get("devices"), dict):
 +                payload["devices"] = {}
-+            if not isinstance(payload["devices"].get(key[0]), dict):
-+                payload["devices"][key[0]] = {}
-+            payload["devices"][key[0]][family] = asdict(c)
++            dev = payload["devices"].setdefault(dev_key, {})
++            if not isinstance(dev, dict):
++                dev = payload["devices"][dev_key] = {}
++            sec = dev.setdefault(section, {})
++            if not isinstance(sec, dict):
++                sec = dev[section] = {}
++            sec.update(entries)
 +            path.parent.mkdir(parents=True, exist_ok=True)
 +            tmp = path.with_name(path.name + ".tmp")
 +            tmp.write_text(json.dumps(payload, indent=2) + "\n")
 +            os.replace(tmp, path)
 +    except OSError as e:
 +        logger.warning(
-+            "SM120 sparse-MLA cpb constants not persisted to %s (%s); "
-+            "using them in-process only.",
++            "SM120 sparse-MLA cpb cache not persisted to %s (%s); "
++            "using entries in-process only.",
 +            path,
 +            e,
 +        )
 +        payload = {"devices": {}}
-+    # Publish the whole merged document, not only the family just saved: the
-+    # merge may have carried on-disk sibling entries written by other
-+    # processes, and _cache_mtime now asserts we hold the file's content.
-+    try:
-+        new_constants, new_crossover = _parse_payload_devices(payload["devices"])
-+    except (ValueError, TypeError, KeyError):
-+        new_constants, new_crossover = {}, {}
-+    _constants.update(new_constants)
-+    _crossover.update(new_crossover)
-+    _constants[key] = c
-+    _constants_version += 1
 +    with contextlib.suppress(OSError):
 +        _cache_mtime = path.stat().st_mtime
++    return payload
++
++
++def _publish_payload(payload: dict) -> None:
++    """Re-parse a merged document into the process caches and bump the
++    constants version. Publishes the whole document, not only the section
++    just saved: the merge may have carried on-disk sibling entries written by
++    other processes, and _cache_mtime now asserts we hold the file's content.
++    """
++    global _constants_version
++    try:
++        new_constants, new_crossover, new_overrides = _parse_payload_devices(
++            payload["devices"]
++        )
++    except (ValueError, TypeError, KeyError):
++        new_constants, new_crossover, new_overrides = {}, {}, {}
++    _constants.update(new_constants)
++    _crossover.update(new_crossover)
++    _cpb_overrides.update(new_overrides)
++    _constants_version += 1
++
++
++def save_constants(device: torch.device, family: str, c: CpbConstants) -> None:
++    """Merge ``c`` into the disk cache (read-modify-write, atomic replace) and
++    the process cache. A failed disk write only loses cross-process sharing;
++    the in-process constants still take effect."""
++    key = (_device_key(device), family)
++    _publish_payload(_merge_into_cache(key[0], family, asdict(c)))
++    _constants[key] = c
 +
 +
 +def mark_calibration_failed(device: torch.device, family: str) -> None:
@@ -5489,45 +5600,9 @@ index 00000000..2922989a
 +    """Merge a crossover table into the disk cache (read-modify-write, atomic
 +    replace) and the process cache. Same failure semantics as
 +    :func:`save_constants`."""
-+    global _cache_mtime, _constants_version
 +    dev_key = _device_key(device)
-+    path = default_cache_path()
-+    # Same cross-process serialization as save_constants.
-+    try:
-+        with FileLock(str(path.with_name(path.name + ".lock"))):
-+            payload = _read_payload_for_merge(path)
-+            if not isinstance(payload.get("devices"), dict):
-+                payload["devices"] = {}
-+            dev = payload["devices"].setdefault(dev_key, {})
-+            if not isinstance(dev, dict):
-+                dev = payload["devices"][dev_key] = {}
-+            xo = dev.setdefault(_DECODE_MAX_TOKENS_KEY, {})
-+            if not isinstance(xo, dict):
-+                xo = dev[_DECODE_MAX_TOKENS_KEY] = {}
-+            xo.update(table)
-+            path.parent.mkdir(parents=True, exist_ok=True)
-+            tmp = path.with_name(path.name + ".tmp")
-+            tmp.write_text(json.dumps(payload, indent=2) + "\n")
-+            os.replace(tmp, path)
-+    except OSError as e:
-+        logger.warning(
-+            "SM120 sparse-MLA crossover table not persisted to %s (%s); "
-+            "using it in-process only.",
-+            path,
-+            e,
-+        )
-+        payload = {"devices": {}}
-+    # Same sibling-entry reasoning as save_constants.
-+    try:
-+        new_constants, new_crossover = _parse_payload_devices(payload["devices"])
-+    except (ValueError, TypeError, KeyError):
-+        new_constants, new_crossover = {}, {}
-+    _constants.update(new_constants)
-+    _crossover.update(new_crossover)
++    _publish_payload(_merge_into_cache(dev_key, _DECODE_MAX_TOKENS_KEY, table))
 +    _crossover.setdefault(dev_key, {}).update(table)
-+    _constants_version += 1
-+    with contextlib.suppress(OSError):
-+        _cache_mtime = path.stat().st_mtime
 +
 +
 +def get_decode_max_tokens(
@@ -5605,6 +5680,38 @@ index 00000000..2922989a
 +def is_crossover_failed(device: torch.device, family: str) -> bool:
 +    """True iff crossover calibration already failed for (device, family)."""
 +    return (_device_key(device), family) in _crossover_failed
++
++
++def get_cpb_override(
++    device: torch.device, family: str, num_heads: int, topk: int, num_tokens: int
++) -> Optional[int]:
++    """Measured per-shape cpb from :func:`refine_cpb`; None when absent (the
++    analytical model's pick governs)."""
++    dev_key = _device_key(device)
++    table = _cpb_overrides.get(dev_key)
++    if table is None:
++        _maybe_load_disk()
++        table = _cpb_overrides.get(dev_key)
++    if table is None:
++        return None
++    return table.get(f"{family}|{num_heads}|{topk}|{num_tokens}")
++
++
++def save_cpb_override(
++    device: torch.device,
++    family: str,
++    num_heads: int,
++    topk: int,
++    num_tokens: int,
++    cpb: int,
++) -> None:
++    """Merge one refined pick into the disk cache (read-modify-write, atomic
++    replace) and the process cache. Same failure semantics as
++    :func:`save_constants`."""
++    dev_key = _device_key(device)
++    entry = {f"{family}|{num_heads}|{topk}|{num_tokens}": int(cpb)}
++    _publish_payload(_merge_into_cache(dev_key, _CPB_OVERRIDES_KEY, entry))
++    _cpb_overrides.setdefault(dev_key, {}).update(entry)
 +
 +
 +# ── Public calibration entry point ─────────────────────────────────────────
@@ -5864,10 +5971,10 @@ index 00000000..2922989a
 +    )
 diff --git a/flashinfer/mla/_sparse_mla_sm120_plan.py b/flashinfer/mla/_sparse_mla_sm120_plan.py
 new file mode 100644
-index 00000000..3a4299df
+index 00000000..eb9e22a9
 --- /dev/null
 +++ b/flashinfer/mla/_sparse_mla_sm120_plan.py
-@@ -0,0 +1,617 @@
+@@ -0,0 +1,655 @@
 +# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +# SPDX-License-Identifier: BSD-3-Clause
 +#
@@ -6375,14 +6482,52 @@ index 00000000..3a4299df
 +    )
 +    cpb = _cpb_hot_cache.get(hot_key)
 +    if cpb is None:
-+        cpb = _cpb.select_cpb(
-+            num_tokens,
-+            num_heads,
-+            topk,
-+            extra_topk,
-+            c,
-+            chunk_width=_cpb._CHUNK_WIDTH[cpb_family],
-+        )
++        cpb = _cpb.get_cpb_override(device, cpb_family, num_heads, topk, num_tokens)
++        if (
++            cpb is None
++            and tuning
++            and not skipped
++            # Refinement measures single-cache shapes only; dual-cache picks
++            # stay on the model (their measured pick error is within ~6%).
++            and extra_topk == 0
++            and not torch.cuda.is_current_stream_capturing()
++        ):
++            from ._sparse_mla_sm120 import _get_sparse_mla_sm120_decode_module
++
++            try:
++                cpb = _cpb.refine_cpb(
++                    _get_sparse_mla_sm120_decode_module,
++                    cpb_family,
++                    device,
++                    c,
++                    num_tokens,
++                    num_heads,
++                    topk,
++                )
++            except (CalibrationError, torch.cuda.OutOfMemoryError, RuntimeError) as e:
++                logger.warning(
++                    "SM120 sparse-MLA %s cpb refinement failed at T=%d H=%d "
++                    "topk=%d (%s); using the model pick.",
++                    cpb_family,
++                    num_tokens,
++                    num_heads,
++                    topk,
++                    e,
++                )
++                cpb = None
++            else:
++                _cpb.save_cpb_override(
++                    device, cpb_family, num_heads, topk, num_tokens, cpb
++                )
++        if cpb is None:
++            cpb = _cpb.select_cpb(
++                num_tokens,
++                num_heads,
++                topk,
++                extra_topk,
++                c,
++                chunk_width=_cpb._CHUNK_WIDTH[cpb_family],
++            )
 +        _cpb_hot_cache[hot_key] = cpb
 +    return cpb
 +
@@ -6532,10 +6677,34 @@ index f4d9b940..ac35f429 100644
  #define CUDA_CHECK(call)                                                                         \
    do {                                                                                           \
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh b/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh
-index ff1d1066..6d2e6cc9 100644
+index ff1d1066..a72ee93c 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh
-@@ -90,6 +90,13 @@ __device__ __forceinline__ uint64_t create_l2_evict_first_policy() {
+@@ -83,6 +83,23 @@ __device__ __forceinline__ void cp_async_bulk_g2s_l2hint(void* smem_dst, const v
+       "l"(gmem_src), "r"(bytes), "r"(mbar_addr), "l"(cache_policy));
+ }
+ 
++// cp.async.bulk.prefetch: warm L2 for a future bulk copy. Pure hint, no
++// completion tracking; the caller guarantees the address is valid.
++__device__ __forceinline__ void cp_async_bulk_prefetch_l2(const void* gmem_src, uint32_t bytes) {
++  asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(gmem_src), "r"(bytes));
++}
++
++__device__ __forceinline__ void cp_async_bulk_prefetch_l2_hint(const void* gmem_src, uint32_t bytes,
++                                                               uint64_t cache_policy) {
++  asm volatile("cp.async.bulk.prefetch.L2.global.L2::cache_hint [%0], %1, %2;" ::"l"(gmem_src),
++               "r"(bytes), "l"(cache_policy));
++}
++
++// Single-line L2 prefetch; never faults.
++__device__ __forceinline__ void prefetch_l2_line(const void* addr) {
++  asm volatile("prefetch.global.L2 [%0];" ::"l"(addr));
++}
++
+ // Create L2 evict-first cache policy (streaming data consumed once)
+ __device__ __forceinline__ uint64_t create_l2_evict_first_policy() {
+   uint64_t policy;
+@@ -90,6 +107,13 @@ __device__ __forceinline__ uint64_t create_l2_evict_first_policy() {
    return policy;
  }
  
@@ -6883,10 +7052,10 @@ index 8260f87a..443cde5a 100644
 +  bar_sync_t<2, _MATH_THREADS>();
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
-index 86ae07cc..9679d671 100644
+index 86ae07cc..12268e94 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
-@@ -53,13 +53,20 @@ struct KVIOTraits {
+@@ -53,14 +53,20 @@ struct KVIOTraits {
    // DSV3_2: IO_STRIDE = KV_GMEM_STRIDE = 656 (inline, bulk copy includes scale)
    // DSV4: IO_STRIDE = D_NOPE + D_ROPE*2 = 576 (footer, data portion only)
    static constexpr int IO_STRIDE =
@@ -6898,40 +7067,104 @@ index 86ae07cc..9679d671 100644
  // Bulk gather token nope data (and inline scales for DSV3_2) from global to smem.
  // DSV3_2: flat addressing (idx * 656). DSV4: block-structured (footer layout).
 -template <ModelType MT, int PAGE_BLOCK_SIZE, bool USE_L2_HINT = false>
+-__device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, const int32_t* indices,
 +//
-+// TILE_BI / TILE_IO_THREADS default to the namespace-scope 64/128, so every
-+// existing `io_bulk_gather_tile<MT, PBS, HINT>` spelling keeps its old geometry.
-+// A kernel running a different tile (DOTS3_SWA prefill: BI=32, 4 IO warps) must
-+// pass them, or the mbarrier transaction count and the gather stride disagree
-+// with the smem buffer it is filling.
++// `idx` is this IO thread's candidate index, staged in a register by the caller
++// one tile ahead of use so the LDG latency does not sit on the TMA issue chain.
++// TILE_BI <= TILE_IO_THREADS gives each IO thread at most one candidate, so the
++// thread's slot in the smem tile is io_tid.
 +template <ModelType MT, int PAGE_BLOCK_SIZE, bool USE_L2_HINT = false, int TILE_BI = BI,
 +          int TILE_IO_THREADS = IO_THREADS>
- __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, const int32_t* indices,
++__device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, int idx,
                                                      const uint8_t* __restrict__ kv_ptr,
                                                      uint64_t* mbar, int io_tid,
-@@ -70,10 +77,10 @@ __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, const int32_t*
+                                                     size_t stride_kv_block,
+@@ -69,32 +75,64 @@ __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, const int32_t*
+   using IO = KVIOTraits<MT>;
    constexpr int COPY_BYTES = KV::KV_SMEM_COPY_BYTES;
    constexpr int SMEM_STRIDE = KV::KV_SMEM_STRIDE;
++  static_assert(TILE_BI <= TILE_IO_THREADS,
++                "per-thread index staging assumes at most one candidate per IO thread");
  
 -  if (io_tid == 0) mbarrier_arrive_expect_tx(mbar, BI * COPY_BYTES);
 +  if (io_tid == 0) mbarrier_arrive_expect_tx(mbar, TILE_BI * COPY_BYTES);
++  if (io_tid >= TILE_BI) return;
  
- #pragma unroll 1
+-#pragma unroll 1
 -  for (int bi = io_tid; bi < BI; bi += IO_THREADS) {
-+  for (int bi = io_tid; bi < TILE_BI; bi += TILE_IO_THREADS) {
-     int idx = indices[bi];
-     idx = (idx >= 0) ? idx : 0;
+-    int idx = indices[bi];
+-    idx = (idx >= 0) ? idx : 0;
++  idx = (idx >= 0) ? idx : 0;
  
-@@ -93,7 +100,7 @@ __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, const int32_t*
+-    const uint8_t* src;
+-    if constexpr (KV::SCALE_IN_KV_SMEM) {
+-      src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
+-    } else {
+-      constexpr int pbs = PAGE_BLOCK_SIZE;
+-      int block_idx = idx / pbs;
+-      int local_idx = idx % pbs;
+-      src = kv_ptr + (size_t)block_idx * stride_kv_block + (size_t)local_idx * IO::IO_STRIDE;
+-    }
+-    if constexpr (USE_L2_HINT)
+-      cp_async_bulk_g2s_l2hint(dst + bi * SMEM_STRIDE, src, COPY_BYTES, mbar, cache_policy);
+-    else
+-      cp_async_bulk_g2s(dst + bi * SMEM_STRIDE, src, COPY_BYTES, mbar);
++  const uint8_t* src;
++  if constexpr (KV::SCALE_IN_KV_SMEM) {
++    src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
++  } else {
++    constexpr int pbs = PAGE_BLOCK_SIZE;
++    int block_idx = idx / pbs;
++    int local_idx = idx % pbs;
++    src = kv_ptr + (size_t)block_idx * stride_kv_block + (size_t)local_idx * IO::IO_STRIDE;
    }
++  if constexpr (USE_L2_HINT)
++    cp_async_bulk_g2s_l2hint(dst + io_tid * SMEM_STRIDE, src, COPY_BYTES, mbar, cache_policy);
++  else
++    cp_async_bulk_g2s(dst + io_tid * SMEM_STRIDE, src, COPY_BYTES, mbar);
  }
  
 -template <ModelType MT, int PAGE_BLOCK_SIZE>
+-__device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, const int32_t* indices,
++// Warm L2 for a candidate row ahead of its gather; issued by IO threads idle
++// on the release handshake. Pure hint: padding indices are skipped, not
++// clamped. Addressing mirrors io_bulk_gather_tile; footer models also warm the
++// scale line, whose synchronous LDG sits on the gather issue path.
++template <ModelType MT, int PAGE_BLOCK_SIZE, bool USE_L2_HINT = false, int TILE_BI = BI,
++          int TILE_IO_THREADS = IO_THREADS>
++__device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __restrict__ kv_ptr,
++                                                    int io_tid, size_t stride_kv_block,
++                                                    uint64_t cache_policy = 0) {
++  using KV = KVCacheTraits<MT>;
++  using IO = KVIOTraits<MT>;
++  static_assert(TILE_BI <= TILE_IO_THREADS);
++  if (io_tid >= TILE_BI || idx < 0) return;
++
++  const uint8_t* src;
++  if constexpr (KV::SCALE_IN_KV_SMEM) {
++    src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
++  } else {
++    constexpr int pbs = PAGE_BLOCK_SIZE;
++    src = kv_ptr + (size_t)(idx / pbs) * stride_kv_block + (size_t)(idx % pbs) * IO::IO_STRIDE;
++    const uint8_t* footer = kv_ptr + (size_t)(idx / pbs) * stride_kv_block +
++                            (size_t)pbs * IO::IO_STRIDE +
++                            (size_t)(idx % pbs) * KV::SCALE_BYTES_PER_TOKEN;
++    prefetch_l2_line(footer);
++  }
++  if constexpr (USE_L2_HINT)
++    cp_async_bulk_prefetch_l2_hint(src, IO::IO_STRIDE, cache_policy);
++  else
++    cp_async_bulk_prefetch_l2(src, IO::IO_STRIDE);
++}
++
++// `idx` is the same per-thread staged value passed to io_bulk_gather_tile, so
++// the footer-scale model reads each index from gmem once per tile, not twice.
 +template <ModelType MT, int PAGE_BLOCK_SIZE, int TILE_BI = BI, int TILE_IO_THREADS = IO_THREADS>
- __device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, const int32_t* indices,
++__device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, int idx,
                                                   const uint8_t* __restrict__ kv_ptr, int io_tid,
                                                   size_t stride_kv_block) {
-@@ -103,8 +110,13 @@ __device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, const int32
+   using KV = KVCacheTraits<MT>;
+@@ -103,16 +141,21 @@ __device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, const int32
  
    constexpr int pbs = PAGE_BLOCK_SIZE;
    constexpr int SCALE_BYTES = KV::SCALE_BYTES_PER_TOKEN;
@@ -6940,12 +7173,29 @@ index 86ae07cc..9679d671 100644
 +  static_assert(KV::SCALE_IN_KV_SMEM || SCALE_BYTES == sizeof(uint64_t),
 +                "the footer gather moves one uint64 per token; a different footer width needs a "
 +                "different load");
++  static_assert(TILE_BI <= TILE_IO_THREADS,
++                "per-thread index staging assumes at most one candidate per IO thread");
++  if (io_tid >= TILE_BI) return;
  
 -  for (int bi = io_tid; bi < BI; bi += IO_THREADS) {
-+  for (int bi = io_tid; bi < TILE_BI; bi += TILE_IO_THREADS) {
-     int idx = indices[bi];
-     idx = (idx >= 0) ? idx : 0;
+-    int idx = indices[bi];
+-    idx = (idx >= 0) ? idx : 0;
++  idx = (idx >= 0) ? idx : 0;
  
+-    int block_idx = idx / pbs;
+-    int local_idx = idx % pbs;
+-    const uint8_t* src = kv_ptr + (size_t)block_idx * stride_kv_block +
+-                         (size_t)pbs * IO::IO_STRIDE + (size_t)local_idx * SCALE_BYTES;
+-    *reinterpret_cast<uint64_t*>(scale_dst + bi * SCALE_BYTES) =
+-        __ldg(reinterpret_cast<const uint64_t*>(src));
+-  }
++  int block_idx = idx / pbs;
++  int local_idx = idx % pbs;
++  const uint8_t* src = kv_ptr + (size_t)block_idx * stride_kv_block + (size_t)pbs * IO::IO_STRIDE +
++                       (size_t)local_idx * SCALE_BYTES;
++  *reinterpret_cast<uint64_t*>(scale_dst + io_tid * SCALE_BYTES) =
++      __ldg(reinterpret_cast<const uint64_t*>(src));
+ }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh
 index 9ce8e2de..524d8c0f 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh
@@ -7043,7 +7293,7 @@ index 9ce8e2de..524d8c0f 100644
 +  qk[3] += ra[3];
 +}
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
-index 8d8a50d7..93fdab87 100644
+index 8d8a50d7..4c7c9d69 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
 @@ -29,6 +29,7 @@
@@ -7092,16 +7342,38 @@ index 8d8a50d7..93fdab87 100644
  
    // Per-head online softmax state
    static constexpr size_t SMEM_M = HPB * sizeof(float);
-@@ -72,7 +74,7 @@ struct SmemLayout {
+@@ -71,9 +73,18 @@ struct SmemLayout {
+ 
    // XV phase — w_fp8 for all V chunks (batch W quant, single barrier).
    // XV is always FP8; CM only flips the QK side.
-   static constexpr size_t SMEM_W_SC_ALL = CT::N_V_CHUNKS * HPB * sizeof(float);
+-  static constexpr size_t SMEM_W_SC_ALL = CT::N_V_CHUNKS * HPB * sizeof(float);
 -  static constexpr size_t SMEM_W_FP8_ONE = HPB * (BI + 16);
+-  static constexpr size_t SMEM_W_FP8 = SMEM_W_FP8_ONE * CT::N_V_CHUNKS;
++  //
++  // On a SPLIT_QK_XV tile (TILE_MATH_WARPS * 8 != TILE_BI, e.g. DOTS3_SWA) the
++  // math warps run a QK-producer / XV-consumer pipeline, so the handoff
++  // buffers (w_fp8, w_head_sc_all) are double-buffered by tile parity and a
++  // small alpha array carries the softmax rescale factor between the groups.
++  static constexpr bool SPLIT_PC = (TILE_MATH_WARPS * 8 != TILE_BI);
++  static constexpr size_t SMEM_W_SC_ONE = CT::N_V_CHUNKS * HPB * sizeof(float);
++  static constexpr size_t SMEM_W_SC_ALL = SMEM_W_SC_ONE * (SPLIT_PC ? 2 : 1);
 +  static constexpr size_t SMEM_W_FP8_ONE = HPB * (TILE_BI + 16);
-   static constexpr size_t SMEM_W_FP8 = SMEM_W_FP8_ONE * CT::N_V_CHUNKS;
++  static constexpr size_t SMEM_W_FP8_ONE_PARITY = SMEM_W_FP8_ONE * CT::N_V_CHUNKS;
++  static constexpr size_t SMEM_W_FP8 = SMEM_W_FP8_ONE_PARITY * (SPLIT_PC ? 2 : 1);
++  static constexpr size_t SMEM_ALPHA = SPLIT_PC ? 2 * HPB * sizeof(float) : 0;
  
    // Mbarrier (double-buffered)
-@@ -99,31 +101,33 @@ struct SmemLayout {
+   static constexpr size_t SMEM_MBAR_KV = 2 * sizeof(uint64_t);
+@@ -92,38 +103,41 @@ struct SmemLayout {
+   static constexpr size_t OFF_L = OFF_M + SMEM_M;
+   static constexpr size_t OFF_W_SC_ALL = OFF_L + SMEM_L;
+   static constexpr size_t OFF_W_FP8 = OFF_W_SC_ALL + SMEM_W_SC_ALL;
+-  static constexpr size_t OFF_MBAR_KV = (OFF_W_FP8 + SMEM_W_FP8 + 7) / 8 * 8;
++  static constexpr size_t OFF_ALPHA = OFF_W_FP8 + SMEM_W_FP8;
++  static constexpr size_t OFF_MBAR_KV = (OFF_ALPHA + SMEM_ALPHA + 7) / 8 * 8;
+   static constexpr size_t TOTAL = OFF_MBAR_KV + SMEM_MBAR_KV;
+ 
+   static_assert(TOTAL <= 101376, "SG smem exceeds 99KB per-block limit");
  };
  
  // MG (multi-group) layout: 2 head groups, shared reduce/sum_reduce buffer.
@@ -7142,7 +7414,7 @@ index 8d8a50d7..93fdab87 100644
    static constexpr size_t SMEM_SCRATCH = 0;
    static constexpr size_t SMEM_MBAR_KV = 2 * sizeof(uint64_t);
  
-@@ -149,16 +153,16 @@ struct SmemLayoutMG {
+@@ -149,16 +163,16 @@ struct SmemLayoutMG {
  };
  
  // MG convenience accessor
@@ -7164,7 +7436,7 @@ index 8d8a50d7..93fdab87 100644
    // Stride between W_FP8 ping-pong parities.
    static constexpr int WFP8_PARITY_STRIDE = LMG::N_HG * WFP8_GRP_SIZE;
  
-@@ -184,7 +188,7 @@ struct SmemPtrsMG {
+@@ -184,7 +198,7 @@ struct SmemPtrsMG {
      return reinterpret_cast<uint8_t*>(base + LMG::OFF_KV0 + i * LMG::SMEM_KV_BUF);
    }
    __device__ __forceinline__ uint8_t* kv_scale_buf(int i) const {
@@ -7173,7 +7445,7 @@ index 8d8a50d7..93fdab87 100644
        return reinterpret_cast<uint8_t*>(base + LMG::OFF_KV_SC0 + i * LMG::SMEM_KV_SCALE_BUF);
      } else {
        return nullptr;
-@@ -210,10 +214,92 @@ struct SmemPtrsMG {
+@@ -210,10 +224,92 @@ struct SmemPtrsMG {
    }
  };
  
@@ -7268,6 +7540,24 @@ index 8d8a50d7..93fdab87 100644
  
    // q_nope_fp8 / q_nope_bf16 alias the same OFF_Q_NOPE region; one is used
    // per ComputeMode. q_nope_sc is empty under CM=BF16.
+@@ -228,7 +324,8 @@ struct SmemPtrs {
+   float* m_smem;
+   float* l_smem;
+   float* w_head_sc_all;
+-  uint8_t* w_fp8;  // base, index by vc * SMEM_W_FP8_ONE
++  uint8_t* w_fp8;    // base, index by vc * SMEM_W_FP8_ONE
++  float* alpha_buf;  // 2*HPB on SPLIT_PC tiles, empty otherwise
+   uint64_t* mbar_kv;
+ 
+   __device__ static SmemPtrs init(char* base) {
+@@ -252,6 +349,7 @@ struct SmemPtrs {
+     s.l_smem = (float*)(base + L::OFF_L);
+     s.w_head_sc_all = (float*)(base + L::OFF_W_SC_ALL);
+     s.w_fp8 = (uint8_t*)(base + L::OFF_W_FP8);
++    s.alpha_buf = (float*)(base + L::OFF_ALPHA);
+     s.mbar_kv = (uint64_t*)(base + L::OFF_MBAR_KV);
+     return s;
+   }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
 index f9ba123a..dd54a0c9 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
@@ -8497,10 +8787,10 @@ index cdc6c24f..250ade9a 100644
  
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
 new file mode 100644
-index 00000000..ab1e63a9
+index 00000000..d02b2c18
 --- /dev/null
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,207 @@
 +// Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +// SPDX-License-Identifier: BSD-3-Clause
 +//
@@ -8591,24 +8881,26 @@ index 00000000..ab1e63a9
 +//               lane holds 4 of the 128 outputs either way. MATH_WARPS is the
 +//               only lever on accumulator registers.
 +//
-+// Tying the two together is what hurts DOTS3_SWA: BI=32 forces 4 warps, and at
-+// 4 warps D_V=1024 puts 128 floats of accumulator in every thread. Splitting
-+// them lets 4 warps do QK while 8 share the XV MMA and the epilogue, halving
-+// `acc_o` to 64 and halving XV wall time. The split is nearly free because the
-+// XV MMA sub-loop already reads only smem (`w_fp8`, `w_head_sc_all`, `kv_smem`)
-+// and is already separated from the register-dependent W-quantize by a barrier.
++// Tying the two together is what hurts DOTS3_SWA: BI=32 forces QK_WARPS=4,
++// and D_V=1024 accumulators bound MATH_WARPS from below. On a split tile the
++// kernel therefore runs a producer/consumer pipeline (see
++// sparse_mla_prefill_math_pc): the QK_WARPS warps produce w_fp8 + scales +
++// alpha per tile while the remaining MATH_WARPS - QK_WARPS warps run the XV
++// MMA a tile behind out of the other parity buffer, so the XV warps no longer
++// idle through QK+softmax+W-quant. Handoff buffers are double-buffered in
++// smem (SmemLayout::SPLIT_PC).
 +//
 +// Going to 12 warps also re-enables setmaxnreg: at 384 threads nvcc's baseline
 +// is capped near 65536/384 = 170, so the math warps have something real to
 +// claim from the IO warps. At 256 threads it could already allocate 255 on its
 +// own and a `.inc` to 232 would have been an invalid decrease.
 +//
-+// Measured on RTX PRO 6000 (sm120), DOTS3_SWA prefill, coupled 4/4 -> split
-+// 4 QK / 8 XV: spill 240 B -> 152 B, smem unchanged at 93584 B, and 2-6% faster
-+// across (num_heads, num_tokens) in {16,64} x {256,1024}. The gain is well
-+// under the 2x the XV split alone implies, because the kernel is bound on the
-+// KV gather (each token pulls window * 1152 B, and NUM_HEADS > 16 re-reads it
-+// once per 16-head CTA) rather than on the XV MMA.
++// Measured on RTX PRO 6000 (sm120), DOTS3_SWA prefill at H=64, 1024 tokens:
++// the pipeline is ~5% faster than the serial split loop. With the overlap in
++// place the kernel is bound by the per-tile latency skeleton (KV gather
++// refill, the gmem rope prefetch, and the handshake round trips), not by MMA
++// throughput — ablating the QK or XV MMAs individually does not move the
++// wall clock further.
 +//
 +// MG is deliberately not parameterized. Its per-group Q and KV buffers put a
 +// D_NOPE=1024 model over the cap at any BI that still satisfies the k=32 floor,
@@ -8707,13 +8999,13 @@ index 00000000..ab1e63a9
 +  }
 +}
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
-similarity index 76%
+similarity index 61%
 rename from include/flashinfer/attention/sparse_mla_sm120/prefill_kernel.cuh
 rename to include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
-index 9b0e8ac4..c6500bd8 100644
+index 9b0e8ac4..140d1c06 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/prefill_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
-@@ -28,55 +28,28 @@
+@@ -28,202 +28,152 @@
  
  #pragma once
  
@@ -8775,17 +9067,45 @@ index 9b0e8ac4..c6500bd8 100644
 -
 -template <ModelType MT, ComputeMode CM, int NUM_HEADS, int TOPK, int PAGE_BLOCK_SIZE>
 -__global__ void __launch_bounds__(BLOCK_THREADS, 1)
-+template <ModelType MT, ComputeMode CM, int NUM_HEADS, int PAGE_BLOCK_SIZE>
-+__global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
-     sparse_mla_prefill_kernel(const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
-                               const int32_t* __restrict__ indices,
-                               const float* __restrict__ attn_sink,  // [NUM_HEADS], nullable
-@@ -84,15 +57,13 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
-                               __grid_constant__ const PrefillColdParams cold) {
-   const float sm_scale = cold.sm_scale;
-   const int num_tokens = cold.num_tokens;
+-    sparse_mla_prefill_kernel(const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
+-                              const int32_t* __restrict__ indices,
+-                              const float* __restrict__ attn_sink,  // [NUM_HEADS], nullable
+-                              bf16* __restrict__ output, float* __restrict__ out_lse,
+-                              __grid_constant__ const PrefillColdParams cold) {
+-  const float sm_scale = cold.sm_scale;
+-  const int num_tokens = cold.num_tokens;
 -  constexpr int page_block_size = PAGE_BLOCK_SIZE;
-   const size_t stride_kv_block = cold.stride_kv_block;
+-  const size_t stride_kv_block = cold.stride_kv_block;
++// ── Producer/consumer math path (SPLIT_QK_XV tiles: DOTS3_SWA) ─────────────
++// The serial loop below alternates QK (QK_WARPS warps) and XV (all math
++// warps) per tile, which parks the non-QK warps at barriers through
++// QK+softmax+W-quant; at BI=32 that idle time is ~45% of all warp samples.
++// Here the two halves pipeline instead: the QK warps produce w_fp8 +
++// w_head_sc + alpha for tile ti+1 into one parity buffer while the remaining
++// warps run the XV MMA for tile ti out of the other.
++//
++// Handoffs (named barriers; alternating id pairs per the #3700 rule):
++//   w_ready  (ids 6/7):  producer arrives, consumer syncs — w_fp8/w_sc/alpha
++//                        for the tile are visible. Implies the tile's KV smem
++//                        landed (the producer waited mbar_kv before QK).
++//   w_free   (ids 8/9):  consumer arrives, producer syncs before reusing the
++//                        parity buffer two tiles later.
++//   KV release (ids 1/5): both math groups arrive (the consumer for its XV
++//                        reads, the producer for its QK/vsc reads of the same
++//                        buffer), IO syncs before refilling the KV buffer.
++// Softmax state (m, row sums) stays in producer registers; the consumer
++// receives only the per-head alpha. The epilogue hands l_smem/m_smem across
++// once (id 4) so the consumer can normalize and store the output. Producer
++// internals use barrier id 2 with QK_THREADS, the consumer's staging
++// readback uses id 10 with XV_THREADS — distinct ids because the two groups
++// sync independently.
++template <ModelType MT, ComputeMode CM, int NUM_HEADS, int PAGE_BLOCK_SIZE>
++__device__ __forceinline__ void sparse_mla_prefill_math_pc(
++    SmemPtrs<MT, CM, PrefillTileCfg<MT>::BI, PrefillTileCfg<MT>::MATH_WARPS> sm,
++    const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
++    const int32_t* __restrict__ indices, const float* __restrict__ attn_sink,
++    bf16* __restrict__ output, float* __restrict__ out_lse, const PrefillColdParams& cold, int s_i,
++    int h_start, int topk_len) {
    using KV = KVCacheTraits<MT>;
 +  using Cfg = PrefillTileCfg<MT>;
    // CT pinned to FP8: XV always uses FP8 W; CM only flips the QK side.
@@ -8793,19 +9113,546 @@ index 9b0e8ac4..c6500bd8 100644
 -  using L = SmemLayout<MT, CM>;
 -  using IO = KVIOTraits<MT>;
 +  using CT = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS>;
++  using CT_XV = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS - Cfg::QK_WARPS>;
 +  using L = SmemLayout<MT, CM, Cfg::BI, Cfg::MATH_WARPS>;
++  static_assert(Cfg::SPLIT_QK_XV, "the producer/consumer path requires a QK/XV warp split");
++  static_assert(!KV::V_HAS_ROPE, "the producer/consumer path has no XV rope MMA");
++  static_assert(KV::SCALE_FORMAT != ScaleFormat::ARBITRARY_FP32,
++                "the producer/consumer path implements only the batched W quantization");
  
 -  static constexpr int NI = TOPK / BI;
-   // Ceil-div so NUM_HEADS < HPB (small-TP shards) still launches 1 CTA per token.
-   static constexpr int REPLICATE_H = (NUM_HEADS + HPB - 1) / HPB;
-   static constexpr int QK_NOPE_KSTEPS = KV::QUANT_TILE / 32;
-@@ -106,28 +77,38 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
-   const int h_start = h_tile * HPB;
-   if (s_i >= num_tokens) return;
+-  // Ceil-div so NUM_HEADS < HPB (small-TP shards) still launches 1 CTA per token.
+-  static constexpr int REPLICATE_H = (NUM_HEADS + HPB - 1) / HPB;
+-  static constexpr int QK_NOPE_KSTEPS = KV::QUANT_TILE / 32;
+-  // smem layout always allocates HPB heads (zero-padded for invalid slots);
+-  // Q load and BF16 output / LSE write-back are gated by VALID_HPB to avoid
+-  // reading/writing past the caller's [num_tokens, NUM_HEADS, ...] buffers.
+   constexpr int VALID_HPB = (NUM_HEADS < HPB) ? NUM_HEADS : HPB;
++  constexpr int QK_WARPS = Cfg::QK_WARPS;
++  constexpr int QK_THREADS = Cfg::QK_THREADS;
++  constexpr int XV_WARPS = Cfg::MATH_WARPS - QK_WARPS;
++  constexpr int XV_THREADS = XV_WARPS * 32;
++  constexpr int QK_NOPE_KSTEPS = KV::QUANT_TILE / 32;
  
+-  const int s_i = blockIdx.x / REPLICATE_H;
+-  const int h_tile = blockIdx.x % REPLICATE_H;
+-  const int h_start = h_tile * HPB;
+-  if (s_i >= num_tokens) return;
+-
 -  int topk_len = cold.topk_length ? __ldg(cold.topk_length + s_i) : TOPK;
 -  topk_len = topk_len < 0 ? 0 : (topk_len > TOPK ? TOPK : topk_len);
 -  const int actual_ni = (topk_len + BI - 1) / BI;
++  const float sm_scale = cold.sm_scale;
++  const size_t stride_kv_block = cold.stride_kv_block;
++  const int topk = cold.topk;
++  const int actual_ni = (topk_len + Cfg::BI - 1) / Cfg::BI;
+ 
+   const int warp_rank = threadIdx.x / 32;
+-  const int wy = warp_rank / 4;
+-
+-  extern __shared__ char smem_raw[];
+-  auto sm = SmemPtrs<MT, CM>::init(smem_raw);
+-
+-  if (threadIdx.x == 0) {
+-    mbarrier_init(sm.mbar_kv + 0, 1);
+-    mbarrier_init(sm.mbar_kv + 1, 1);
+-  }
+-  bar_sync_t<3, BLOCK_THREADS>();
+-
+-  // ── IO warps ────────────────────────────────────────────────────
+-  if (wy == 2) {
+-    asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" ::"n"(32));
+-
+-    const int io_tid = threadIdx.x - N_MATH_WARPS * 32;
+-    const int32_t* idx_base = indices + (size_t)s_i * TOPK;
+-    const uint64_t kv_l2_policy = create_l2_evict_first_policy();
+-
+-    // Prologue: gather tile 0. Scales first (plain stores, no mbar signal),
+-    // then bulk gather (cp.async.bulk signals mbar_kv on completion). Math
+-    // warps wake on mbar_kv, so reversing the order would race scales vs
+-    // math reads. threadfence_block ensures scale stores are visible to all
+-    // threads before the bulk completion event.
+-    if (actual_ni > 0) {
+-      io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_bufs[0], idx_base, KV_cache, io_tid,
+-                                            stride_kv_block);
+-      __threadfence_block();
+-      io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(
+-          sm.kv_bufs[0], idx_base, KV_cache, sm.mbar_kv + 0, io_tid, stride_kv_block, kv_l2_policy);
+-    }
+-
+-#pragma unroll 1
+-    for (int ti = 0; ti < actual_ni; ti++) {
+-      if (ti + 1 < actual_ni) {
+-        io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_bufs[(ti + 1) & 1],
+-                                              idx_base + (ti + 1) * BI, KV_cache, io_tid,
+-                                              stride_kv_block);
+-        __threadfence_block();
+-        io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(
+-            sm.kv_bufs[(ti + 1) & 1], idx_base + (ti + 1) * BI, KV_cache,
+-            sm.mbar_kv + ((ti + 1) & 1), io_tid, stride_kv_block, kv_l2_policy);
+-      }
+-      bar_sync_alt<1, 5, BLOCK_THREADS>(ti & 1);
+-    }
+-
+-    // ── Math warps ──────────────────────────────────────────────────
+-  } else {
+-    asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" ::"n"(232));
+-
+-    const int lane = threadIdx.x & 31;
+-    const int mwarp = warp_rank;
+-    const int gid = lane >> 2, tid = lane & 3;
+-    const float sm_scale_log2e = sm_scale * LOG2E;
++  const int lane = threadIdx.x & 31;
++  const int mwarp = warp_rank;
++  const int gid = lane >> 2, tid = lane & 3;
++  const float sm_scale_log2e = sm_scale * LOG2E;
++  const int32_t* idx_base = indices + (size_t)s_i * topk;
++
++  if (mwarp < QK_WARPS) {
++    // ── Producer: QK + softmax + W quant ─────────────────────────
++    const int qk_nb = mwarp * Cfg::ENTRIES_PER_WARP;
+     const bf16* q_base = Q + (size_t)s_i * NUM_HEADS * KV::D_QK + (size_t)h_start * KV::D_QK;
+-    const int32_t* idx_base = indices + (size_t)s_i * TOPK;
+ 
+     if constexpr (CM == ComputeMode::BF16) {
+-      load_q_bf16_to_smem<MT, MATH_THREADS>(sm.q_nope_bf16, sm.q_rope, q_base, VALID_HPB);
++      load_q_bf16_to_smem<MT, QK_THREADS>(sm.q_nope_bf16, sm.q_rope, q_base, VALID_HPB);
+     } else {
+-      quantize_q_to_smem<MT, MATH_THREADS>(sm.q_nope_fp8, sm.q_nope_sc, sm.q_rope, q_base,
+-                                           sm.reduce_buf, VALID_HPB);
++      quantize_q_to_smem<MT, QK_THREADS>(sm.q_nope_fp8, sm.q_nope_sc, sm.q_rope, q_base, VALID_HPB);
+     }
+-    QRopeRegs q_rope_regs = preload_q_rope_regs(sm.q_rope, lane);
+-
+-    for (int h = threadIdx.x; h < HPB; h += MATH_THREADS) sm.m_smem[h] = -1e30f;
++    QRopeRegs<MT> q_rope_regs = preload_q_rope_regs<MT>(sm.q_rope, lane);
+ 
+-    float acc_o[CT::ACC_TILES][4];
+-#pragma unroll
+-    for (int t = 0; t < CT::ACC_TILES; t++)
+-      acc_o[t][0] = acc_o[t][1] = acc_o[t][2] = acc_o[t][3] = 0.f;
++    // BI=32 tiles are too short to cover the index->rope address-chain
++    // latency, so the three per-tile index reads run one tile ahead in
++    // registers.
++    static_assert(Cfg::BI < 64, "a BI=64 split tile should re-examine staging");
++    int idx_rope_cur = 0, mask0_cur = 0, mask1_cur = 0;
++    if (actual_ni > 0) {
++      idx_rope_cur = idx_base[qk_nb + gid];
++      mask0_cur = idx_base[qk_nb + tid * 2];
++      mask1_cur = idx_base[qk_nb + tid * 2 + 1];
++    }
+ 
+-    float acc_rope[4] = {0.f, 0.f, 0.f, 0.f};
+     float warp_l[2] = {0.f, 0.f};
++    float m0 = -1e30f, m1 = -1e30f;
+ 
+-    bar_sync_t<2, MATH_THREADS>();
++    bar_sync_t<2, QK_THREADS>();
+     if (actual_ni > 0) mbarrier_wait_parity(sm.mbar_kv + 0, 0);
+ 
+-// ── Main loop — QK + softmax + XV ───────────────────────────
+ #pragma unroll 1
+     for (int ti = 0; ti < actual_ni; ti++) {
+-      uint8_t* kv_smem = sm.kv_bufs[ti & 1];
+-      const int32_t* ib = idx_base + ti * BI;
+-      const int qk_nb = mwarp * ENTRIES_PER_WARP;
++      const int buf = ti & 1;
++      uint8_t* kv_smem = sm.kv_bufs[buf];
++      uint8_t* wfp8_buf = sm.w_fp8 + buf * L::SMEM_W_FP8_ONE_PARITY;
++      float* wsc_buf = sm.w_head_sc_all + buf * (CT::N_V_CHUNKS * HPB);
++      float* alpha_buf = sm.alpha_buf + buf * HPB;
+       uint8_t* kv_warp_base = kv_smem + qk_nb * KV::KV_SMEM_STRIDE;
+ 
+-      const uint8_t* entry_base[ENTRIES_PER_WARP];
+-      if constexpr (KV::V_HAS_ROPE) {
+-#pragma unroll
+-        for (int e = 0; e < ENTRIES_PER_WARP; e++) {
+-          int idx = ib[qk_nb + e];
+-          idx = (idx >= 0) ? idx : 0;
+-          int bi_e = idx / page_block_size;
+-          int li_e = idx % page_block_size;
+-          entry_base[e] = KV_cache + (size_t)bi_e * stride_kv_block + (size_t)li_e * IO::IO_STRIDE;
+-        }
+-      } else {
+-        int idx = ib[qk_nb + gid];
+-        idx = (idx >= 0) ? idx : 0;
+-        entry_base[gid] = KV_cache + (size_t)idx * IO::IO_STRIDE;
++      // Advance the staged index reads (issue ti+1's loads, consume ti's).
++      int idx_rope_nxt = 0, mask0_nxt = 0, mask1_nxt = 0;
++      if (ti + 1 < actual_ni) {
++        const int32_t* ibn = idx_base + (ti + 1) * Cfg::BI;
++        idx_rope_nxt = ibn[qk_nb + gid];
++        mask0_nxt = ibn[qk_nb + tid * 2];
++        mask1_nxt = ibn[qk_nb + tid * 2 + 1];
+       }
++      const int idx_rope = idx_rope_cur, mask0 = mask0_cur, mask1 = mask1_cur;
++      idx_rope_cur = idx_rope_nxt;
++      mask0_cur = mask0_nxt;
++      mask1_cur = mask1_nxt;
++
++      const uint8_t* entry_base_gid =
++          prefill_kv_entry_base<MT, PAGE_BLOCK_SIZE>(KV_cache, idx_rope, stride_kv_block);
++      KVRopePrefetch<MT> rope_pf = prefetch_kv_rope<MT>(
++          reinterpret_cast<const bf16*>(entry_base_gid + KV::KV_ROPE_GMEM_OFFSET), lane);
+ 
+-      for (int i = threadIdx.x; i < CT::N_V_CHUNKS * HPB; i += MATH_THREADS)
+-        sm.w_head_sc_all[i] = 0.f;
+-
+-      KVRopePrefetch rope_pf = prefetch_kv_rope(
+-          reinterpret_cast<const bf16*>(entry_base[gid] + KV::KV_ROPE_GMEM_OFFSET), lane);
++      // The handoff buffers were last consumed by tile ti-2; the wait sits
++      // after the QK MMA's operand setup so a fast consumer is not on the
++      // critical path.
++      if (ti >= 2) bar_sync_alt<8, 9, Cfg::MATH_THREADS>(buf);
++      for (int i = threadIdx.x; i < CT::N_V_CHUNKS * HPB; i += QK_THREADS) wsc_buf[i] = 0.f;
+ 
+       // ── QK nope MMA ─────────────────────
+       float qk[4] = {0.f, 0.f, 0.f, 0.f};
+       const uint8_t* kv_gid_base = kv_warp_base + gid * KV::KV_SMEM_STRIDE;
+       if constexpr (CM == ComputeMode::BF16) {
+-        // BF16 m16n8k16 with per-thread FP8→BF16 dequant on KV.
+ #pragma unroll
+         for (int blk = 0; blk < KV::NUM_SCALES; blk++) {
+           float scale_f;
+@@ -231,7 +181,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+             scale_f = reinterpret_cast<const float*>(kv_gid_base + KV::D_NOPE)[blk];
+           } else {
+             scale_f = ue8m0_to_fp32(
+-                sm.kv_scale_bufs[ti & 1][(qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN + blk]);
++                sm.kv_scale_bufs[buf][(qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN + blk]);
+           }
+ #pragma unroll
+           for (int ks = 0; ks < KV::QUANT_TILE / 16; ks++) {
+@@ -267,10 +217,9 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+           if constexpr (KV::SCALE_IN_KV_SMEM) {
+             k_scale_base = kv_gid_base + KV::D_NOPE;
+           } else {
+-            k_scale_base = sm.kv_scale_bufs[ti & 1] + (qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN;
++            k_scale_base = sm.kv_scale_bufs[buf] + (qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN;
+           }
+           uint8_t sfb = qk_k_scale_selector<KV>(k_scale_base, blk);
+-
+ #pragma unroll
+           for (int ks = 0; ks < QK_NOPE_KSTEPS; ks++) {
+             int ko = blk * KV::QUANT_TILE + ks * 32;
+@@ -291,22 +240,21 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+         }
+       }
+ 
+-      // ── QK rope (BF16 MMA, uses prefetched B operands) ──────
+-      compute_qk_rope(qk, q_rope_regs, rope_pf);
++      compute_qk_rope<MT>(qk, q_rope_regs, rope_pf);
+ 
+-      // ── Invalid index masking + topk_length overflow ─────
++      // Invalid index masking + topk_length overflow.
+       {
+         int e0 = qk_nb + tid * 2, e1 = e0 + 1;
+-        if (ib[e0] < 0) {
++        if (mask0 < 0) {
+           qk[0] = -1e30f;
+           qk[2] = -1e30f;
+         }
+-        if (ib[e1] < 0) {
++        if (mask1 < 0) {
+           qk[1] = -1e30f;
+           qk[3] = -1e30f;
+         }
+-        if (cold.topk_length != nullptr) {
+-          int a0 = ti * BI + e0, a1 = ti * BI + e1;
++        if (Cfg::HAS_WINDOW || cold.topk_length != nullptr) {
++          int a0 = ti * Cfg::BI + e0, a1 = ti * Cfg::BI + e1;
+           if (a0 >= topk_len) {
+             qk[0] = -1e30f;
+             qk[2] = -1e30f;
+@@ -318,33 +266,566 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+         }
+       }
+ 
+-      // ── Online softmax (deferred sum, conditional rescale) ──
+       float s[4] = {qk[0] * sm_scale_log2e, qk[1] * sm_scale_log2e, qk[2] * sm_scale_log2e,
+                     qk[3] * sm_scale_log2e};
+-
+       float lm0, lm1;
+       softmax_warp_max(s, lm0, lm1);
+       if (tid == 0) {
+         sm.reduce_buf[mwarp * HPB + gid] = lm0;
+         sm.reduce_buf[mwarp * HPB + gid + 8] = lm1;
+       }
+-      bar_sync_t<2, MATH_THREADS>();
++      bar_sync_t<2, QK_THREADS>();
+ 
+-      if (threadIdx.x < HPB) {
+-        int h = threadIdx.x;
+-        float old_m = sm.m_smem[h], tm = -1e30f;
++      // Redundant per-thread reduction over the producer warps' row maxima;
++      // identical ops on identical inputs as the serial path's reduction.
++      float tm0 = -1e30f, tm1 = -1e30f;
+ #pragma unroll
+-        for (int w = 0; w < N_MATH_WARPS; w++) tm = fmaxf(tm, sm.reduce_buf[w * HPB + h]);
+-        float nm = fmaxf(old_m, tm);
+-        float alpha = exp2f(old_m - nm);
+-        sm.m_smem[h] = nm;
+-        sm.reduce_buf[h] = alpha;
+-        sm.reduce_buf[HPB + h] = nm;
++      for (int w = 0; w < QK_WARPS; w++) {
++        tm0 = fmaxf(tm0, sm.reduce_buf[w * HPB + gid]);
++        tm1 = fmaxf(tm1, sm.reduce_buf[w * HPB + gid + 8]);
+       }
+-      bar_sync_t<2, MATH_THREADS>();
++      float nm0 = fmaxf(m0, tm0), nm1 = fmaxf(m1, tm1);
++      float alpha0 = exp2f(m0 - nm0), alpha1 = exp2f(m1 - nm1);
++      m0 = nm0;
++      m1 = nm1;
++      alpha_buf[gid] = alpha0;
++      alpha_buf[gid + 8] = alpha1;
++
++      float w0 = exp2f(s[0] - nm0), w1 = exp2f(s[1] - nm0);
++      float w2 = exp2f(s[2] - nm1), w3 = exp2f(s[3] - nm1);
++      float ls0, ls1;
++      softmax_warp_sum(w0, w1, w2, w3, ls0, ls1);
++      warp_l[0] = warp_l[0] * alpha0 + ls0;
++      warp_l[1] = warp_l[1] * alpha1 + ls1;
++
++      // V scale cache + atomicMax.
++      const int e0i = qk_nb + tid * 2, e1i = e0i + 1;
++      const uint8_t* e0_base = kv_smem + (size_t)e0i * KV::KV_SMEM_STRIDE;
++      const uint8_t* e1_base = e0_base + KV::KV_SMEM_STRIDE;
++      float vsc_cache[CT::N_V_CHUNKS][2];
++#pragma unroll
++      for (int vc = 0; vc < CT::N_V_CHUNKS; vc++) {
++        if constexpr (KV::SCALE_IN_KV_SMEM) {
++          vsc_cache[vc][0] = reinterpret_cast<const float*>(e0_base + KV::D_NOPE)[vc];
++          vsc_cache[vc][1] = reinterpret_cast<const float*>(e1_base + KV::D_NOPE)[vc];
++        } else {
++          vsc_cache[vc][0] =
++              ue8m0_to_fp32(sm.kv_scale_bufs[buf][e0i * KV::SCALE_BYTES_PER_TOKEN + vc]);
++          vsc_cache[vc][1] =
++              ue8m0_to_fp32(sm.kv_scale_bufs[buf][e1i * KV::SCALE_BYTES_PER_TOKEN + vc]);
++        }
++        float ws00 = w0 * vsc_cache[vc][0], ws01 = w1 * vsc_cache[vc][1];
++        float ws10 = w2 * vsc_cache[vc][0], ws11 = w3 * vsc_cache[vc][1];
++        atomicMax(reinterpret_cast<int*>(&wsc_buf[vc * HPB + gid]),
++                  __float_as_int(fmaxf(ws00, ws01)));
++        atomicMax(reinterpret_cast<int*>(&wsc_buf[vc * HPB + gid + 8]),
++                  __float_as_int(fmaxf(ws10, ws11)));
++      }
++      bar_sync_t<2, QK_THREADS>();
++
++      for (int i = threadIdx.x; i < CT::N_V_CHUNKS * HPB; i += QK_THREADS)
++        wsc_buf[i] = fmaxf(wsc_buf[i], 1e-10f) / FP8_MAX;
++      bar_sync_t<2, QK_THREADS>();
++
++      // ── Batch W quant for all chunks ──────────────────────
++#pragma unroll
++      for (int vc = 0; vc < CT::N_V_CHUNKS; vc++) {
++        float* vc_sc = wsc_buf + vc * HPB;
++        uint8_t* wfp8 = wfp8_buf + vc * L::SMEM_W_FP8_ONE;
++        float si0 = 1.f / vc_sc[gid], si1 = 1.f / vc_sc[gid + 8];
++        float vsc0 = vsc_cache[vc][0], vsc1 = vsc_cache[vc][1];
++        float ws00 = w0 * vsc0, ws01 = w1 * vsc1;
++        float ws10 = w2 * vsc0, ws11 = w3 * vsc1;
++        __nv_fp8_e4m3 f00(fmaxf(-FP8_MAX, fminf(FP8_MAX, ws00 * si0)));
++        __nv_fp8_e4m3 f01(fmaxf(-FP8_MAX, fminf(FP8_MAX, ws01 * si0)));
++        __nv_fp8_e4m3 f10(fmaxf(-FP8_MAX, fminf(FP8_MAX, ws10 * si1)));
++        __nv_fp8_e4m3 f11(fmaxf(-FP8_MAX, fminf(FP8_MAX, ws11 * si1)));
++        wfp8[gid * CT::W_FP8_STRIDE + e0i] = f00.__x;
++        wfp8[gid * CT::W_FP8_STRIDE + e1i] = f01.__x;
++        wfp8[(gid + 8) * CT::W_FP8_STRIDE + e0i] = f10.__x;
++        wfp8[(gid + 8) * CT::W_FP8_STRIDE + e1i] = f11.__x;
++      }
++      bar_arrive_alt<6, 7, Cfg::MATH_THREADS>(buf);  // w_ready
++      // The producer's QK/vsc reads of this buffer join the release too.
++      bar_arrive_alt<1, 5, Cfg::BLOCK_THREADS>(buf);
++
++      if (ti + 1 < actual_ni) {
++        const int next_phase = ((ti + 1) >> 1) & 1;
++        mbarrier_wait_parity(sm.mbar_kv + ((ti + 1) & 1), next_phase);
++      }
++    }
++
++    // ── Producer epilogue: row sums, m/l publish, LSE ────────────
++    if (tid == 0) {
++      sm.reduce_buf[mwarp * HPB + gid] = warp_l[0];
++      sm.reduce_buf[mwarp * HPB + gid + 8] = warp_l[1];
++    }
++    bar_sync_t<2, QK_THREADS>();
++    if (threadIdx.x < HPB) {
++      int h = threadIdx.x;
++      float ts = 0.f;
++#pragma unroll
++      for (int w = 0; w < QK_WARPS; w++) ts += sm.reduce_buf[w * HPB + h];
++      sm.l_smem[h] = ts;
++    }
++    if (tid == 0) {
++      sm.m_smem[gid] = m0;
++      sm.m_smem[gid + 8] = m1;
++    }
++    bar_sync_t<2, QK_THREADS>();
++
++    if (threadIdx.x < VALID_HPB) {
++      int h = threadIdx.x;
++      float lse = softmax_lse(sm.m_smem[h], sm.l_smem[h]);
++      if (attn_sink != nullptr) {
++        float sink_log2 = __ldg(attn_sink + h_start + h) * LOG2E;
++        if (lse != -1e30f)
++          lse += log2f(1.f + exp2f(sink_log2 - lse));
++        else
++          lse = sink_log2;
++      }
++      size_t lse_idx = (size_t)s_i * cold.stride_out_lse + h_start + h;
++      out_lse[lse_idx] = lse;
++    }
++    // Publish l_smem/m_smem to the consumer group for the output normalizer.
++    bar_sync_t<4, Cfg::MATH_THREADS>();
++
++  } else {
++    // ── Consumer: XV MMA + output epilogue ───────────────────────
++    const int xw = mwarp - QK_WARPS;
++
++    float acc_o[CT_XV::ACC_TILES][4];
++#pragma unroll
++    for (int t = 0; t < CT_XV::ACC_TILES; t++)
++      acc_o[t][0] = acc_o[t][1] = acc_o[t][2] = acc_o[t][3] = 0.f;
++
++#pragma unroll 1
++    for (int ti = 0; ti < actual_ni; ti++) {
++      const int buf = ti & 1;
++      const uint8_t* kv_smem = sm.kv_bufs[buf];
++      const uint8_t* wfp8_buf = sm.w_fp8 + buf * L::SMEM_W_FP8_ONE_PARITY;
++      const float* wsc_buf = sm.w_head_sc_all + buf * (CT::N_V_CHUNKS * HPB);
++      const float* alpha_buf = sm.alpha_buf + buf * HPB;
++
++      bar_sync_alt<6, 7, Cfg::MATH_THREADS>(buf);  // w_ready
++
++      const float alpha0 = alpha_buf[gid], alpha1 = alpha_buf[gid + 8];
++      if (alpha0 < 1.0f || alpha1 < 1.0f) {
++#pragma unroll
++        for (int t = 0; t < CT_XV::ACC_TILES; t++) {
++          acc_o[t][0] *= alpha0;
++          acc_o[t][1] *= alpha0;
++          acc_o[t][2] *= alpha1;
++          acc_o[t][3] *= alpha1;
++        }
++      }
++
++#pragma unroll
++      for (int vc = 0; vc < CT::N_V_CHUNKS; vc++) {
++        const float* vc_sc = wsc_buf + vc * HPB;
++        const uint8_t* wfp8 = wfp8_buf + vc * L::SMEM_W_FP8_ONE;
++#pragma unroll
++        for (int nt = 0; nt < CT_XV::NT_PER_WARP_XV; nt++) {
++          int ti_acc = vc * CT_XV::NT_PER_WARP_XV + nt;
++          int dim = vc * CT::V_CHUNK + xw * (CT_XV::NT_PER_WARP_XV * 8) + nt * 8;
++          float xv[4] = {0.f, 0.f, 0.f, 0.f};
++#pragma unroll
++          for (int kstep = 0; kstep < CT_XV::XV_KSTEPS; kstep++) {
++            int ko = kstep * 32;
++            uint32_t a0, a1, a2, a3, b0, b1;
++            ldmatrix_load_A_fp8(a0, a1, a2, a3, wfp8 + ko, CT::W_FP8_STRIDE, lane);
++            d2_load_b_fp8<KV::KV_SMEM_STRIDE>(b0, b1, kv_smem, kstep * 32, dim, lane);
++            MmaFp8Result r = mma_fp8_m16n8k32(a0, a1, a2, a3, b0, b1, xv[0], xv[1], xv[2], xv[3]);
++            xv[0] = r.d0;
++            xv[1] = r.d1;
++            xv[2] = r.d2;
++            xv[3] = r.d3;
++          }
++          float sc0 = vc_sc[gid], sc1 = vc_sc[gid + 8];
++          acc_o[ti_acc][0] += xv[0] * sc0;
++          acc_o[ti_acc][1] += xv[1] * sc0;
++          acc_o[ti_acc][2] += xv[2] * sc1;
++          acc_o[ti_acc][3] += xv[3] * sc1;
++        }
++      }
++      bar_arrive_alt<8, 9, Cfg::MATH_THREADS>(buf);   // w_free
++      bar_arrive_alt<1, 5, Cfg::BLOCK_THREADS>(buf);  // KV release to IO
++    }
++
++    // ── Consumer epilogue: normalize + BF16 store ────────────────
++    bar_sync_t<4, Cfg::MATH_THREADS>();
++
++    float il0, il1;
++    if (attn_sink != nullptr) {
++      float s0 = __ldg(attn_sink + h_start + gid) * LOG2E;
++      float denom0 = sm.l_smem[gid] + exp2f(s0 - sm.m_smem[gid]);
++      il0 = (denom0 > 0.f) ? (1.f / denom0) : 0.f;
++      if constexpr (VALID_HPB > 8) {
++        float s1 = __ldg(attn_sink + h_start + gid + 8) * LOG2E;
++        float denom1 = sm.l_smem[gid + 8] + exp2f(s1 - sm.m_smem[gid + 8]);
++        il1 = (denom1 > 0.f) ? (1.f / denom1) : 0.f;
++      } else {
++        il1 = 0.f;
++      }
++    } else {
++      il0 = (sm.l_smem[gid] > 0.f) ? (1.f / sm.l_smem[gid]) : 0.f;
++      il1 = (sm.l_smem[gid + 8] > 0.f) ? (1.f / sm.l_smem[gid + 8]) : 0.f;
++    }
++
++    // The main loop is done with the KV double buffer; reuse its first half
++    // to stage the BF16 output (same fit argument as the serial path).
++    bf16* staging_bf16 = reinterpret_cast<bf16*>(sm.kv_bufs[0]);
++    constexpr int BF16_STAGING_STRIDE = KV::D_V;
++    static_assert(HPB * BF16_STAGING_STRIDE * sizeof(bf16) <= L::SMEM_KV_BUF,
++                  "BF16 output staging overruns the KV buffer it reuses");
++
++#pragma unroll
++    for (int t = 0; t < CT_XV::ACC_TILES; t++) {
++      constexpr int _NT8 = CT_XV::NT_PER_WARP_XV * 8;
++      int c = t / CT_XV::NT_PER_WARP_XV, lnt = t % CT_XV::NT_PER_WARP_XV;
++      int d0 = c * CT::V_CHUNK + xw * _NT8 + lnt * 8 + tid * 2;
++      staging_bf16[gid * BF16_STAGING_STRIDE + d0] = __float2bfloat16(acc_o[t][0] * il0);
++      staging_bf16[gid * BF16_STAGING_STRIDE + d0 + 1] = __float2bfloat16(acc_o[t][1] * il0);
++      staging_bf16[(gid + 8) * BF16_STAGING_STRIDE + d0] = __float2bfloat16(acc_o[t][2] * il1);
++      staging_bf16[(gid + 8) * BF16_STAGING_STRIDE + d0 + 1] = __float2bfloat16(acc_o[t][3] * il1);
++    }
++    bar_sync_t<10, XV_THREADS>();
++
++    // Coalesced BF16 write: uint4 = 128-bit = 8 bf16 per store.
++    {
++      constexpr size_t h_stride = KV::D_V;
++      constexpr size_t token_stride = (size_t)NUM_HEADS * KV::D_V;
++      const size_t out_base = (size_t)s_i * token_stride + (size_t)h_start * h_stride;
++      constexpr int BF16_PER_STORE = 8;
++      constexpr int STORES_PER_HEAD = KV::D_V / BF16_PER_STORE;
++      for (int idx = threadIdx.x - QK_THREADS; idx < VALID_HPB * STORES_PER_HEAD;
++           idx += XV_THREADS) {
++        int h = idx / STORES_PER_HEAD;
++        int d8 = (idx - h * STORES_PER_HEAD) * BF16_PER_STORE;
++        uint4 v = *reinterpret_cast<const uint4*>(&staging_bf16[h * BF16_STAGING_STRIDE + d8]);
++        *reinterpret_cast<uint4*>(&output[out_base + h * h_stride + d8]) = v;
++      }
++    }
++  }
++}
++
++template <ModelType MT, ComputeMode CM, int NUM_HEADS, int PAGE_BLOCK_SIZE>
++__global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
++    sparse_mla_prefill_kernel(const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
++                              const int32_t* __restrict__ indices,
++                              const float* __restrict__ attn_sink,  // [NUM_HEADS], nullable
++                              bf16* __restrict__ output, float* __restrict__ out_lse,
++                              __grid_constant__ const PrefillColdParams cold) {
++  const float sm_scale = cold.sm_scale;
++  const int num_tokens = cold.num_tokens;
++  const size_t stride_kv_block = cold.stride_kv_block;
++  using KV = KVCacheTraits<MT>;
++  using Cfg = PrefillTileCfg<MT>;
++  // CT pinned to FP8: XV always uses FP8 W; CM only flips the QK side.
++  using CT = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS>;
++  using L = SmemLayout<MT, CM, Cfg::BI, Cfg::MATH_WARPS>;
++
++  // Ceil-div so NUM_HEADS < HPB (small-TP shards) still launches 1 CTA per token.
++  static constexpr int REPLICATE_H = (NUM_HEADS + HPB - 1) / HPB;
++  static constexpr int QK_NOPE_KSTEPS = KV::QUANT_TILE / 32;
++  // smem layout always allocates HPB heads (zero-padded for invalid slots);
++  // Q load and BF16 output / LSE write-back are gated by VALID_HPB to avoid
++  // reading/writing past the caller's [num_tokens, NUM_HEADS, ...] buffers.
++  constexpr int VALID_HPB = (NUM_HEADS < HPB) ? NUM_HEADS : HPB;
++
++  const int s_i = blockIdx.x / REPLICATE_H;
++  const int h_tile = blockIdx.x % REPLICATE_H;
++  const int h_start = h_tile * HPB;
++  if (s_i >= num_tokens) return;
++
 +  const int topk = cold.topk;
 +  int topk_len = cold.topk_length ? __ldg(cold.topk_length + s_i) : topk;
 +  topk_len = topk_len < 0 ? 0 : (topk_len > topk ? topk : topk_len);
@@ -8818,87 +9665,91 @@ index 9b0e8ac4..c6500bd8 100644
 +    topk_len = topk_len > Cfg::WINDOW ? Cfg::WINDOW : topk_len;
 +  }
 +  const int actual_ni = (topk_len + Cfg::BI - 1) / Cfg::BI;
- 
-   const int warp_rank = threadIdx.x / 32;
--  const int wy = warp_rank / 4;
- 
-   extern __shared__ char smem_raw[];
--  auto sm = SmemPtrs<MT, CM>::init(smem_raw);
++
++  const int warp_rank = threadIdx.x / 32;
++
++  extern __shared__ char smem_raw[];
 +  auto sm = SmemPtrs<MT, CM, Cfg::BI, Cfg::MATH_WARPS>::init(smem_raw);
- 
-   if (threadIdx.x == 0) {
-     mbarrier_init(sm.mbar_kv + 0, 1);
-     mbarrier_init(sm.mbar_kv + 1, 1);
-   }
--  bar_sync_t<3, BLOCK_THREADS>();
++
++  if (threadIdx.x == 0) {
++    mbarrier_init(sm.mbar_kv + 0, 1);
++    mbarrier_init(sm.mbar_kv + 1, 1);
++  }
 +  bar_sync_t<3, Cfg::BLOCK_THREADS>();
- 
-   // ── IO warps ────────────────────────────────────────────────────
--  if (wy == 2) {
--    asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" ::"n"(32));
++
++  // ── IO warps ────────────────────────────────────────────────────
 +  if (warp_rank >= Cfg::MATH_WARPS) {
 +    if constexpr (Cfg::REG_REALLOC) {
 +      asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" ::"n"(32));
 +    }
- 
--    const int io_tid = threadIdx.x - N_MATH_WARPS * 32;
--    const int32_t* idx_base = indices + (size_t)s_i * TOPK;
++
 +    const int io_tid = threadIdx.x - Cfg::MATH_THREADS;
 +    const int32_t* idx_base = indices + (size_t)s_i * topk;
-     const uint64_t kv_l2_policy = create_l2_evict_first_policy();
++    const uint64_t kv_l2_policy = create_l2_evict_first_policy();
  
-     // Prologue: gather tile 0. Scales first (plain stores, no mbar signal),
-@@ -136,212 +117,268 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
-     // math reads. threadfence_block ensures scale stores are visible to all
-     // threads before the bulk completion event.
-     if (actual_ni > 0) {
--      io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_bufs[0], idx_base, KV_cache, io_tid,
--                                            stride_kv_block);
+-      float alpha0 = sm.reduce_buf[gid], alpha1 = sm.reduce_buf[gid + 8];
+-      float nm0 = sm.reduce_buf[HPB + gid], nm1 = sm.reduce_buf[HPB + gid + 8];
++    // This thread's candidate index for tile t, staged a tile ahead of use so
++    // the index LDG latency is hidden behind the previous tile's gather.
++    auto load_idx = [&](int t) -> int {
++      return (t < actual_ni && io_tid < Cfg::BI) ? __ldg(idx_base + t * Cfg::BI + io_tid) : -1;
++    };
++    // Scales first (plain stores, no mbar signal), then bulk gather
++    // (cp.async.bulk signals mbar_kv on completion). Math warps wake on
++    // mbar_kv, so reversing the order would race scales vs math reads.
++    // threadfence_block ensures scale stores are visible to all threads before
++    // the bulk completion event.
++    auto issue_tile = [&](int t, int staged) {
++      const int buf = t & 1;
 +      io_gather_scales<MT, PAGE_BLOCK_SIZE, Cfg::BI, Cfg::IO_THREADS>(
-+          sm.kv_scale_bufs[0], idx_base, KV_cache, io_tid, stride_kv_block);
-       __threadfence_block();
--      io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(
++          sm.kv_scale_bufs[buf], staged, KV_cache, io_tid, stride_kv_block);
++      __threadfence_block();
 +      io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, Cfg::L2_EVICT_FIRST, Cfg::BI, Cfg::IO_THREADS>(
-           sm.kv_bufs[0], idx_base, KV_cache, sm.mbar_kv + 0, io_tid, stride_kv_block, kv_l2_policy);
-     }
- 
- #pragma unroll 1
-     for (int ti = 0; ti < actual_ni; ti++) {
-       if (ti + 1 < actual_ni) {
--        io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_bufs[(ti + 1) & 1],
--                                              idx_base + (ti + 1) * BI, KV_cache, io_tid,
--                                              stride_kv_block);
-+        io_gather_scales<MT, PAGE_BLOCK_SIZE, Cfg::BI, Cfg::IO_THREADS>(
-+            sm.kv_scale_bufs[(ti + 1) & 1], idx_base + (ti + 1) * Cfg::BI, KV_cache, io_tid,
-+            stride_kv_block);
-         __threadfence_block();
--        io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(
--            sm.kv_bufs[(ti + 1) & 1], idx_base + (ti + 1) * BI, KV_cache,
-+        io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, Cfg::L2_EVICT_FIRST, Cfg::BI, Cfg::IO_THREADS>(
-+            sm.kv_bufs[(ti + 1) & 1], idx_base + (ti + 1) * Cfg::BI, KV_cache,
-             sm.mbar_kv + ((ti + 1) & 1), io_tid, stride_kv_block, kv_l2_policy);
-       }
--      bar_sync_alt<1, 5, BLOCK_THREADS>(ti & 1);
++          sm.kv_bufs[buf], staged, KV_cache, sm.mbar_kv + buf, io_tid, stride_kv_block,
++          kv_l2_policy);
++    };
++
++    int staged = load_idx(0);
++    if (actual_ni > 0) {
++      issue_tile(0, staged);
++      staged = load_idx(1);
++    }
++    int pf = load_idx(2);
++
++#pragma unroll 1
++    for (int ti = 0; ti < actual_ni; ti++) {
++      if (ti + 1 < actual_ni) {
++        const int next = load_idx(ti + 3);
++        // Warm L2 for tile ti+2; its index LDG was issued an iteration ago.
++        io_bulk_prefetch_l2<MT, PAGE_BLOCK_SIZE, Cfg::L2_EVICT_FIRST, Cfg::BI, Cfg::IO_THREADS>(
++            pf, KV_cache, io_tid, stride_kv_block, kv_l2_policy);
++        issue_tile(ti + 1, staged);
++        staged = pf;
++        pf = next;
++      }
 +      bar_sync_alt<1, 5, Cfg::BLOCK_THREADS>(ti & 1);
-     }
- 
-     // ── Math warps ──────────────────────────────────────────────────
-   } else {
--    asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" ::"n"(232));
++    }
++
++    // ── Math warps ──────────────────────────────────────────────────
++  } else {
 +    if constexpr (Cfg::REG_REALLOC) {
 +      asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" ::"n"(Cfg::MATH_MAXNREG));
 +    }
- 
-     const int lane = threadIdx.x & 31;
-     const int mwarp = warp_rank;
-+    // Warps [QK_WARPS, MATH_WARPS) carry no candidates: they sit out QK,
-+    // softmax and the W quantization, and join for the XV MMA and epilogue,
-+    // both of which read only smem. Compile-time true when the counts match.
++
++    if constexpr (Cfg::SPLIT_QK_XV) {
++      sparse_mla_prefill_math_pc<MT, CM, NUM_HEADS, PAGE_BLOCK_SIZE>(
++          sm, Q, KV_cache, indices, attn_sink, output, out_lse, cold, s_i, h_start, topk_len);
++      return;
++    }
++
++    const int lane = threadIdx.x & 31;
++    const int mwarp = warp_rank;
++    // The serial path only runs on non-split tiles (SPLIT_QK_XV dispatches to
++    // the producer/consumer path above), so every math warp is a QK warp here.
 +    const bool qk_warp = !Cfg::SPLIT_QK_XV || mwarp < Cfg::QK_WARPS;
-     const int gid = lane >> 2, tid = lane & 3;
-     const float sm_scale_log2e = sm_scale * LOG2E;
-     const bf16* q_base = Q + (size_t)s_i * NUM_HEADS * KV::D_QK + (size_t)h_start * KV::D_QK;
--    const int32_t* idx_base = indices + (size_t)s_i * TOPK;
++    const int gid = lane >> 2, tid = lane & 3;
++    const float sm_scale_log2e = sm_scale * LOG2E;
++    const bf16* q_base = Q + (size_t)s_i * NUM_HEADS * KV::D_QK + (size_t)h_start * KV::D_QK;
 +    const int32_t* idx_base = indices + (size_t)s_i * topk;
 +
 +    // Candidate slice of this warp. Meaningful only for a QK warp: past
@@ -8906,72 +9757,38 @@ index 9b0e8ac4..c6500bd8 100644
 +    // row, so everything derived from it stays inside `if (qk_warp)`.
 +    const int qk_nb = mwarp * Cfg::ENTRIES_PER_WARP;
 +
-+    // BI=32 tiles (DOTS3_SWA: the 1040B KV stride caps the smem double buffer)
-+    // are too short to cover the index→rope address-chain latency, and with a
-+    // runtime topk the compiler does not pipeline these reads across the
-+    // loop's barriers — so stage the three per-tile index reads one tile ahead
-+    // in registers. BI=64 tiles are long enough that the staging is pure
-+    // overhead there (measured +2.3% on DSv3.2 SG at H=8/16, topk=2048 when
-+    // applied unconditionally), so it compiles out for them.
-+    constexpr bool STAGE_IDX = Cfg::BI < 64;
-+    int idx_rope_cur = 0, mask0_cur = 0, mask1_cur = 0;
-+    if constexpr (STAGE_IDX) {
-+      if (qk_warp && actual_ni > 0) {
-+        idx_rope_cur = idx_base[qk_nb + gid];
-+        mask0_cur = idx_base[qk_nb + tid * 2];
-+        mask1_cur = idx_base[qk_nb + tid * 2 + 1];
-+      }
-+    }
- 
-     if constexpr (CM == ComputeMode::BF16) {
--      load_q_bf16_to_smem<MT, MATH_THREADS>(sm.q_nope_bf16, sm.q_rope, q_base, VALID_HPB);
++    if constexpr (CM == ComputeMode::BF16) {
 +      load_q_bf16_to_smem<MT, Cfg::MATH_THREADS>(sm.q_nope_bf16, sm.q_rope, q_base, VALID_HPB);
-     } else {
--      quantize_q_to_smem<MT, MATH_THREADS>(sm.q_nope_fp8, sm.q_nope_sc, sm.q_rope, q_base,
--                                           sm.reduce_buf, VALID_HPB);
++    } else {
 +      quantize_q_to_smem<MT, Cfg::MATH_THREADS>(sm.q_nope_fp8, sm.q_nope_sc, sm.q_rope, q_base,
 +                                                VALID_HPB);
-     }
--    QRopeRegs q_rope_regs = preload_q_rope_regs(sm.q_rope, lane);
++    }
 +    QRopeRegs<MT> q_rope_regs = preload_q_rope_regs<MT>(sm.q_rope, lane);
- 
--    for (int h = threadIdx.x; h < HPB; h += MATH_THREADS) sm.m_smem[h] = -1e30f;
-+    for (int h = threadIdx.x; h < HPB; h += Cfg::MATH_THREADS) sm.m_smem[h] = -1e30f;
- 
-     float acc_o[CT::ACC_TILES][4];
- #pragma unroll
-     for (int t = 0; t < CT::ACC_TILES; t++)
-       acc_o[t][0] = acc_o[t][1] = acc_o[t][2] = acc_o[t][3] = 0.f;
- 
--    float acc_rope[4] = {0.f, 0.f, 0.f, 0.f};
++
++    float acc_o[CT::ACC_TILES][4];
++#pragma unroll
++    for (int t = 0; t < CT::ACC_TILES; t++)
++      acc_o[t][0] = acc_o[t][1] = acc_o[t][2] = acc_o[t][3] = 0.f;
++
 +    // Only V_HAS_ROPE models accumulate a rope tail in the output; sized to 1
 +    // otherwise so a D_V == D_NOPE model does not carry four dead registers.
 +    constexpr bool V_ROPE = KV::V_HAS_ROPE;
 +    float acc_rope[V_ROPE ? 4 : 1] = {0.f};
-     float warp_l[2] = {0.f, 0.f};
- 
--    bar_sync_t<2, MATH_THREADS>();
++    float warp_l[2] = {0.f, 0.f};
++    // Running row max for this thread's two heads, kept in registers: every
++    // math thread redundantly reduces the QK warps' per-warp maxima each tile,
++    // which removes one math-group barrier per tile vs a smem round-trip.
++    float m0 = -1e30f, m1 = -1e30f;
++
 +    bar_sync_t<2, Cfg::MATH_THREADS>();
-     if (actual_ni > 0) mbarrier_wait_parity(sm.mbar_kv + 0, 0);
- 
- // ── Main loop — QK + softmax + XV ───────────────────────────
- #pragma unroll 1
-     for (int ti = 0; ti < actual_ni; ti++) {
-       uint8_t* kv_smem = sm.kv_bufs[ti & 1];
--      const int32_t* ib = idx_base + ti * BI;
--      const int qk_nb = mwarp * ENTRIES_PER_WARP;
--      uint8_t* kv_warp_base = kv_smem + qk_nb * KV::KV_SMEM_STRIDE;
++    if (actual_ni > 0) mbarrier_wait_parity(sm.mbar_kv + 0, 0);
++
++// ── Main loop — QK + softmax + XV ───────────────────────────
++#pragma unroll 1
++    for (int ti = 0; ti < actual_ni; ti++) {
++      uint8_t* kv_smem = sm.kv_bufs[ti & 1];
 +      const int32_t* ib = idx_base + ti * Cfg::BI;
- 
--      const uint8_t* entry_base[ENTRIES_PER_WARP];
--      if constexpr (KV::V_HAS_ROPE) {
--#pragma unroll
--        for (int e = 0; e < ENTRIES_PER_WARP; e++) {
--          int idx = ib[qk_nb + e];
--          idx = (idx >= 0) ? idx : 0;
--          int bi_e = idx / page_block_size;
--          int li_e = idx % page_block_size;
--          entry_base[e] = KV_cache + (size_t)bi_e * stride_kv_block + (size_t)li_e * IO::IO_STRIDE;
++
 +      for (int i = threadIdx.x; i < CT::N_V_CHUNKS * HPB; i += Cfg::MATH_THREADS)
 +        sm.w_head_sc_all[i] = 0.f;
 +
@@ -8979,65 +9796,24 @@ index 9b0e8ac4..c6500bd8 100644
 +      if (qk_warp) {
 +        uint8_t* kv_warp_base = kv_smem + qk_nb * KV::KV_SMEM_STRIDE;
 +
-+        int idx_rope, mask0, mask1;
-+        if constexpr (STAGE_IDX) {
-+          // Issue the next tile's index loads before consuming the staged ones
-+          // (see the prologue above the loop).
-+          int idx_rope_nxt = 0, mask0_nxt = 0, mask1_nxt = 0;
-+          if (ti + 1 < actual_ni) {
-+            const int32_t* ibn = idx_base + (ti + 1) * Cfg::BI;
-+            idx_rope_nxt = ibn[qk_nb + gid];
-+            mask0_nxt = ibn[qk_nb + tid * 2];
-+            mask1_nxt = ibn[qk_nb + tid * 2 + 1];
-+          }
-+          idx_rope = idx_rope_cur;
-+          mask0 = mask0_cur;
-+          mask1 = mask1_cur;
-+          idx_rope_cur = idx_rope_nxt;
-+          mask0_cur = mask0_nxt;
-+          mask1_cur = mask1_nxt;
-+        } else {
-+          idx_rope = ib[qk_nb + gid];
-+          mask0 = ib[qk_nb + tid * 2];
-+          mask1 = ib[qk_nb + tid * 2 + 1];
-         }
--      } else {
--        int idx = ib[qk_nb + gid];
--        idx = (idx >= 0) ? idx : 0;
--        entry_base[gid] = KV_cache + (size_t)idx * IO::IO_STRIDE;
--      }
- 
--      for (int i = threadIdx.x; i < CT::N_V_CHUNKS * HPB; i += MATH_THREADS)
--        sm.w_head_sc_all[i] = 0.f;
++        const int idx_rope = ib[qk_nb + gid];
++        const int mask0 = ib[qk_nb + tid * 2];
++        const int mask1 = ib[qk_nb + tid * 2 + 1];
++
 +        // Only this lane's own entry is needed for the QK rope prefetch — the
 +        // XV rope MMA re-derives its addresses from `ib` inside xv_rope_mma.
 +        const uint8_t* entry_base_gid =
 +            prefill_kv_entry_base<MT, PAGE_BLOCK_SIZE>(KV_cache, idx_rope, stride_kv_block);
- 
--      KVRopePrefetch rope_pf = prefetch_kv_rope(
--          reinterpret_cast<const bf16*>(entry_base[gid] + KV::KV_ROPE_GMEM_OFFSET), lane);
++
 +        KVRopePrefetch<MT> rope_pf = prefetch_kv_rope<MT>(
 +            reinterpret_cast<const bf16*>(entry_base_gid + KV::KV_ROPE_GMEM_OFFSET), lane);
- 
--      // ── QK nope MMA ─────────────────────
--      float qk[4] = {0.f, 0.f, 0.f, 0.f};
--      const uint8_t* kv_gid_base = kv_warp_base + gid * KV::KV_SMEM_STRIDE;
--      if constexpr (CM == ComputeMode::BF16) {
--        // BF16 m16n8k16 with per-thread FP8→BF16 dequant on KV.
++
 +        // ── QK nope MMA ─────────────────────
 +        float qk[4] = {0.f, 0.f, 0.f, 0.f};
 +        const uint8_t* kv_gid_base = kv_warp_base + gid * KV::KV_SMEM_STRIDE;
 +        if constexpr (CM == ComputeMode::BF16) {
 +          // BF16 m16n8k16 with per-thread FP8→BF16 dequant on KV.
- #pragma unroll
--        for (int blk = 0; blk < KV::NUM_SCALES; blk++) {
--          float scale_f;
--          if constexpr (KV::SCALE_IN_KV_SMEM) {
--            scale_f = reinterpret_cast<const float*>(kv_gid_base + KV::D_NOPE)[blk];
--          } else {
--            scale_f = ue8m0_to_fp32(
--                sm.kv_scale_bufs[ti & 1][(qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN + blk]);
--          }
++#pragma unroll
 +          for (int blk = 0; blk < KV::NUM_SCALES; blk++) {
 +            float scale_f;
 +            if constexpr (KV::SCALE_IN_KV_SMEM) {
@@ -9046,28 +9822,7 @@ index 9b0e8ac4..c6500bd8 100644
 +              scale_f = ue8m0_to_fp32(
 +                  sm.kv_scale_bufs[ti & 1][(qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN + blk]);
 +            }
- #pragma unroll
--          for (int ks = 0; ks < KV::QUANT_TILE / 16; ks++) {
--            int ko = blk * KV::QUANT_TILE + ks * 16;
--            uint32_t a0, a1, a2, a3;
--            ldmatrix_load_A_bf16(a0, a1, a2, a3, sm.q_nope_bf16 + ko, KV::Q_NOPE_BF16_STRIDE, lane);
--            uint16_t p0 = *reinterpret_cast<const uint16_t*>(kv_gid_base + ko + 2 * tid);
--            uint16_t p1 = *reinterpret_cast<const uint16_t*>(kv_gid_base + ko + 2 * tid + 8);
--            uint32_t f16x2_0, f16x2_1;
--            asm("cvt.rn.f16x2.e4m3x2 %0, %1;" : "=r"(f16x2_0) : "h"(p0));
--            asm("cvt.rn.f16x2.e4m3x2 %0, %1;" : "=r"(f16x2_1) : "h"(p1));
--            __half2 h2_0 = *reinterpret_cast<__half2*>(&f16x2_0);
--            __half2 h2_1 = *reinterpret_cast<__half2*>(&f16x2_1);
--            float fk0 = __low2float(h2_0) * scale_f, fk1 = __high2float(h2_0) * scale_f;
--            float fk2 = __low2float(h2_1) * scale_f, fk3 = __high2float(h2_1) * scale_f;
--            uint32_t b0, b1;
--            asm("cvt.rn.bf16x2.f32 %0, %1, %2;" : "=r"(b0) : "f"(fk1), "f"(fk0));
--            asm("cvt.rn.bf16x2.f32 %0, %1, %2;" : "=r"(b1) : "f"(fk3), "f"(fk2));
--            MmaBf16Result r = mma_bf16_m16n8k16(a0, a1, a2, a3, b0, b1, qk[0], qk[1], qk[2], qk[3]);
--            qk[0] = r.d0;
--            qk[1] = r.d1;
--            qk[2] = r.d2;
--            qk[3] = r.d3;
++#pragma unroll
 +            for (int ks = 0; ks < KV::QUANT_TILE / 16; ks++) {
 +              int ko = blk * KV::QUANT_TILE + ks * 16;
 +              uint32_t a0, a1, a2, a3;
@@ -9092,22 +9847,9 @@ index 9b0e8ac4..c6500bd8 100644
 +              qk[2] = r.d2;
 +              qk[3] = r.d3;
 +            }
-           }
--        }
--      } else {
++          }
 +        } else {
- #pragma unroll
--        for (int blk = 0; blk < KV::NUM_SCALES; blk++) {
--          uint8_t sfa = fp32_to_ue8m0(sm.q_nope_sc[(gid + (lane & 1) * 8) * KV::NUM_SCALES + blk]);
--          float acc0, acc1, acc2, acc3;
--          init_qk_acc<KV::SCALE_FORMAT>(qk, acc0, acc1, acc2, acc3);
--          const uint8_t* k_scale_base;
--          if constexpr (KV::SCALE_IN_KV_SMEM) {
--            k_scale_base = kv_gid_base + KV::D_NOPE;
--          } else {
--            k_scale_base = sm.kv_scale_bufs[ti & 1] + (qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN;
--          }
--          uint8_t sfb = qk_k_scale_selector<KV>(k_scale_base, blk);
++#pragma unroll
 +          for (int blk = 0; blk < KV::NUM_SCALES; blk++) {
 +            uint8_t sfa =
 +                fp32_to_ue8m0(sm.q_nope_sc[(gid + (lane & 1) * 8) * KV::NUM_SCALES + blk]);
@@ -9120,19 +9862,8 @@ index 9b0e8ac4..c6500bd8 100644
 +              k_scale_base = sm.kv_scale_bufs[ti & 1] + (qk_nb + gid) * KV::SCALE_BYTES_PER_TOKEN;
 +            }
 +            uint8_t sfb = qk_k_scale_selector<KV>(k_scale_base, blk);
- 
- #pragma unroll
--          for (int ks = 0; ks < QK_NOPE_KSTEPS; ks++) {
--            int ko = blk * KV::QUANT_TILE + ks * 32;
--            uint32_t a0, a1, a2, a3, b0, b1;
--            ldmatrix_load_A_fp8(a0, a1, a2, a3, sm.q_nope_fp8 + ko, KV::Q_NOPE_STRIDE, lane);
--            ldmatrix_load_B_fp8(b0, b1, kv_warp_base + ko, KV::KV_SMEM_STRIDE, lane);
--            MmaFp8Result r = mma_fp8_block_scaled_m16n8k32(a0, a1, a2, a3, b0, b1, acc0, acc1, acc2,
--                                                           acc3, sfa, sfb);
--            acc0 = r.d0;
--            acc1 = r.d1;
--            acc2 = r.d2;
--            acc3 = r.d3;
++
++#pragma unroll
 +            for (int ks = 0; ks < QK_NOPE_KSTEPS; ks++) {
 +              int ko = blk * KV::QUANT_TILE + ks * 32;
 +              uint32_t a0, a1, a2, a3, b0, b1;
@@ -9149,46 +9880,23 @@ index 9b0e8ac4..c6500bd8 100644
 +            const uint8_t* e1_base = e0_base + KV::KV_SMEM_STRIDE;
 +            commit_qk_acc<KV>(qk, acc0, acc1, acc2, acc3, e0_base + KV::D_NOPE,
 +                              e1_base + KV::D_NOPE, blk);
-           }
--          const uint8_t* e0_base = kv_warp_base + (size_t)(tid * 2) * KV::KV_SMEM_STRIDE;
--          const uint8_t* e1_base = e0_base + KV::KV_SMEM_STRIDE;
--          commit_qk_acc<KV>(qk, acc0, acc1, acc2, acc3, e0_base + KV::D_NOPE, e1_base + KV::D_NOPE,
--                            blk);
--        }
--      }
++          }
 +        }  // closes the FP8/BF16 QK branch
- 
--      // ── QK rope (BF16 MMA, uses prefetched B operands) ──────
--      compute_qk_rope(qk, q_rope_regs, rope_pf);
++
 +        // ── QK rope (BF16 MMA, uses prefetched B operands) ──────
 +        compute_qk_rope<MT>(qk, q_rope_regs, rope_pf);
- 
--      // ── Invalid index masking + topk_length overflow ─────
--      {
--        int e0 = qk_nb + tid * 2, e1 = e0 + 1;
--        if (ib[e0] < 0) {
--          qk[0] = -1e30f;
--          qk[2] = -1e30f;
--        }
--        if (ib[e1] < 0) {
--          qk[1] = -1e30f;
--          qk[3] = -1e30f;
--        }
--        if (cold.topk_length != nullptr) {
--          int a0 = ti * BI + e0, a1 = ti * BI + e1;
--          if (a0 >= topk_len) {
++
 +        // ── Invalid index masking + topk_length overflow ─────
 +        {
 +          int e0 = qk_nb + tid * 2, e1 = e0 + 1;
 +          if (mask0 < 0) {
-             qk[0] = -1e30f;
-             qk[2] = -1e30f;
-           }
--          if (a1 >= topk_len) {
++            qk[0] = -1e30f;
++            qk[2] = -1e30f;
++          }
 +          if (mask1 < 0) {
-             qk[1] = -1e30f;
-             qk[3] = -1e30f;
-           }
++            qk[1] = -1e30f;
++            qk[3] = -1e30f;
++          }
 +          // HAS_WINDOW makes topk_len a real bound even when the caller passes no
 +          // topk_length, so the mask has to run. For the unbounded models this
 +          // folds back to the original pointer test (and with topk_length null,
@@ -9204,20 +9912,8 @@ index 9b0e8ac4..c6500bd8 100644
 +              qk[3] = -1e30f;
 +            }
 +          }
-         }
--      }
--
--      // ── Online softmax (deferred sum, conditional rescale) ──
--      float s[4] = {qk[0] * sm_scale_log2e, qk[1] * sm_scale_log2e, qk[2] * sm_scale_log2e,
--                    qk[3] * sm_scale_log2e};
- 
--      float lm0, lm1;
--      softmax_warp_max(s, lm0, lm1);
--      if (tid == 0) {
--        sm.reduce_buf[mwarp * HPB + gid] = lm0;
--        sm.reduce_buf[mwarp * HPB + gid + 8] = lm1;
--      }
--      bar_sync_t<2, MATH_THREADS>();
++        }
++
 +        // ── Online softmax, warp-local half ──────────────────
 +        s[0] = qk[0] * sm_scale_log2e;
 +        s[1] = qk[1] * sm_scale_log2e;
@@ -9232,26 +9928,25 @@ index 9b0e8ac4..c6500bd8 100644
 +        }
 +      }  // qk_warp
 +      bar_sync_t<2, Cfg::MATH_THREADS>();
++
++      // Redundant per-thread reduction over the QK warps' row maxima. Every
++      // math thread holds heads gid and gid+8, so each reads QK_WARPS pairs
++      // and updates its own running max; identical ops on identical inputs
++      // keep this bitwise-equal to the old single-warp reduction.
++      float tm0 = -1e30f, tm1 = -1e30f;
++#pragma unroll
++      for (int w = 0; w < Cfg::QK_WARPS; w++) {
++        tm0 = fmaxf(tm0, sm.reduce_buf[w * HPB + gid]);
++        tm1 = fmaxf(tm1, sm.reduce_buf[w * HPB + gid + 8]);
++      }
++      float nm0 = fmaxf(m0, tm0), nm1 = fmaxf(m1, tm1);
++      float alpha0 = exp2f(m0 - nm0), alpha1 = exp2f(m1 - nm1);
++      m0 = nm0;
++      m1 = nm1;
  
-       if (threadIdx.x < HPB) {
-         int h = threadIdx.x;
-         float old_m = sm.m_smem[h], tm = -1e30f;
-+        // Only the QK warps wrote a row max; slots past QK_WARPS are stale.
+       if (alpha0 < 1.0f || alpha1 < 1.0f) {
  #pragma unroll
--        for (int w = 0; w < N_MATH_WARPS; w++) tm = fmaxf(tm, sm.reduce_buf[w * HPB + h]);
-+        for (int w = 0; w < Cfg::QK_WARPS; w++) tm = fmaxf(tm, sm.reduce_buf[w * HPB + h]);
-         float nm = fmaxf(old_m, tm);
-         float alpha = exp2f(old_m - nm);
-         sm.m_smem[h] = nm;
-         sm.reduce_buf[h] = alpha;
-         sm.reduce_buf[HPB + h] = nm;
-       }
--      bar_sync_t<2, MATH_THREADS>();
-+      bar_sync_t<2, Cfg::MATH_THREADS>();
- 
-       float alpha0 = sm.reduce_buf[gid], alpha1 = sm.reduce_buf[gid + 8];
-       float nm0 = sm.reduce_buf[HPB + gid], nm1 = sm.reduce_buf[HPB + gid + 8];
-@@ -354,7 +391,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -354,7 +835,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
            acc_o[t][2] *= alpha1;
            acc_o[t][3] *= alpha1;
          }
@@ -9260,7 +9955,7 @@ index 9b0e8ac4..c6500bd8 100644
            acc_rope[0] *= alpha0;
            acc_rope[1] *= alpha0;
            acc_rope[2] *= alpha1;
-@@ -364,19 +401,25 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -364,19 +845,25 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
          warp_l[1] *= alpha1;
        }
  
@@ -9296,7 +9991,7 @@ index 9b0e8ac4..c6500bd8 100644
          const uint8_t* e1_base = e0_base + KV::KV_SMEM_STRIDE;
  #pragma unroll
          for (int vc = 0; vc < CT::N_V_CHUNKS; vc++) {
-@@ -397,17 +440,23 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -397,17 +884,23 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
                      __float_as_int(fmaxf(ws10, ws11)));
          }
        }
@@ -9323,7 +10018,7 @@ index 9b0e8ac4..c6500bd8 100644
  #pragma unroll
            for (int vc = 0; vc < CT::N_V_CHUNKS; vc++) {
              float* vc_sc = sm.w_head_sc_all + vc * HPB;
-@@ -419,14 +468,14 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -419,14 +912,14 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
              float xv_acc[CT::NT_PER_WARP_XV][4] = {0};
  #pragma unroll
              for (int wpass = 0; wpass < 2; ++wpass) {
@@ -9344,7 +10039,7 @@ index 9b0e8ac4..c6500bd8 100644
  
  #pragma unroll
                for (int nt = 0; nt < CT::NT_PER_WARP_XV; nt++) {
-@@ -435,7 +484,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -435,7 +928,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
                  for (int kstep = 0; kstep < CT::XV_KSTEPS; kstep++) {
                    int ko = kstep * 32;
                    uint32_t a0, a1, a2, a3, b0, b1;
@@ -9353,7 +10048,7 @@ index 9b0e8ac4..c6500bd8 100644
                    d2_load_b_fp8<KV::KV_SMEM_STRIDE>(b0, b1, kv_smem, kstep * 32, dim, lane);
                    MmaFp8Result r = mma_fp8_m16n8k32(a0, a1, a2, a3, b0, b1, xv_acc[nt][0],
                                                      xv_acc[nt][1], xv_acc[nt][2], xv_acc[nt][3]);
-@@ -457,25 +506,30 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -457,25 +950,30 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
              }
            }
          } else {
@@ -9401,7 +10096,7 @@ index 9b0e8ac4..c6500bd8 100644
  
  // Batch MMA for all chunks
  #pragma unroll
-@@ -491,7 +545,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -491,7 +989,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
                for (int kstep = 0; kstep < CT::XV_KSTEPS; kstep++) {
                  int ko = kstep * 32;
                  uint32_t a0, a1, a2, a3, b0, b1;
@@ -9410,7 +10105,7 @@ index 9b0e8ac4..c6500bd8 100644
                  d2_load_b_fp8<KV::KV_SMEM_STRIDE>(b0, b1, kv_smem, kstep * 32, dim, lane);
                  MmaFp8Result r =
                      mma_fp8_m16n8k32(a0, a1, a2, a3, b0, b1, xv[0], xv[1], xv[2], xv[3]);
-@@ -510,16 +564,22 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -510,36 +1008,51 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
          }
        }
  
@@ -9437,11 +10132,18 @@ index 9b0e8ac4..c6500bd8 100644
        if (ti + 1 < actual_ni) {
          const int next_phase = ((ti + 1) >> 1) & 1;
          mbarrier_wait_parity(sm.mbar_kv + ((ti + 1) & 1), next_phase);
-@@ -527,19 +587,21 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+       }
      }
  
-     // ── Finalize deferred row_sum ────────────────────────────────
--    if (tid == 0) {
+-    // ── Finalize deferred row_sum ────────────────────────────────
++    // Publish the register-resident row max for the sink-aware normalizer in
++    // the epilogue. Threads sharing a gid computed identical values.
+     if (tid == 0) {
++      sm.m_smem[gid] = m0;
++      sm.m_smem[gid + 8] = m1;
++    }
++
++    // ── Finalize deferred row_sum ────────────────────────────────
 +    // Only the QK warps carry a partial row sum; warps past QK_WARPS never
 +    // touched warp_l and must not write a slot the reduction below reads.
 +    if (qk_warp && tid == 0) {
@@ -9463,7 +10165,7 @@ index 9b0e8ac4..c6500bd8 100644
  
      // ── Write BF16 output and LSE ────────────────────────────────
      // attn_sink convention (FlashMLA V4): output[h] *= sigmoid(lse_h - sink_h)
-@@ -565,8 +627,14 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -565,8 +1078,14 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
        il1 = (sm.l_smem[gid + 8] > 0.f) ? (1.f / sm.l_smem[gid + 8]) : 0.f;
      }
  
@@ -9479,7 +10181,7 @@ index 9b0e8ac4..c6500bd8 100644
  
  #pragma unroll
      for (int t = 0; t < CT::ACC_TILES; t++) {
-@@ -579,24 +647,28 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -579,24 +1098,28 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
        staging_bf16[(gid + 8) * BF16_STAGING_STRIDE + d0 + 1] = __float2bfloat16(acc_o[t][3] * il1);
      }
  
@@ -9514,7 +10216,7 @@ index 9b0e8ac4..c6500bd8 100644
          int h = idx / STORES_PER_HEAD;
          int d8 = (idx - h * STORES_PER_HEAD) * BF16_PER_STORE;
          uint4 v = *reinterpret_cast<const uint4*>(&staging_bf16[h * BF16_STAGING_STRIDE + d8]);
-@@ -615,7 +687,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -615,7 +1138,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
          else
            lse = sink_log2;
        }
@@ -9523,7 +10225,7 @@ index 9b0e8ac4..c6500bd8 100644
        out_lse[lse_idx] = lse;
      }
    }
-@@ -636,24 +708,10 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -636,24 +1159,10 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
  static constexpr int MG_N_HG_DEFAULT = 2;
  static constexpr int MG_HEADS_PER_CTA_DEFAULT = MG_N_HG_DEFAULT * HPB;  // 32
  
@@ -9551,7 +10253,7 @@ index 9b0e8ac4..c6500bd8 100644
  __device__ __forceinline__ void prefill_mg_impl(
      const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
      const int32_t* __restrict__ indices,
-@@ -676,7 +734,6 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -676,7 +1185,6 @@ __device__ __forceinline__ void prefill_mg_impl(
    using LMG = SmemLayoutMG<MT, CM>;
    using SMG = SmemPtrsMG<MT, CM>;
  
@@ -9559,7 +10261,7 @@ index 9b0e8ac4..c6500bd8 100644
    static_assert(NUM_HEADS % MG_HEADS_PER_CTA == 0 || (MG_N_HG_T == 1 && NUM_HEADS < HPB),
                  "NUM_HEADS must fill MG_HEADS_PER_CTA, except a single padded head group");
    static constexpr int REPLICATE_H = (NUM_HEADS + MG_HEADS_PER_CTA - 1) / MG_HEADS_PER_CTA;
-@@ -689,10 +746,13 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -689,10 +1197,13 @@ __device__ __forceinline__ void prefill_mg_impl(
    const int h_start = h_tile * MG_HEADS_PER_CTA;
    if (s_i >= num_tokens) return;
  
@@ -9575,7 +10277,7 @@ index 9b0e8ac4..c6500bd8 100644
    }
    const int actual_ni = ASSUME_FULL_TILES ? NI : ((topk_len + BI - 1) / BI);
    const int main_ni = ASSUME_FULL_TILES ? NI : actual_ni;
-@@ -736,7 +796,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -736,95 +1247,71 @@ __device__ __forceinline__ void prefill_mg_impl(
      asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" ::"n"(32));
  
      const int io_tid = threadIdx.x - N_MATH_WARPS * 32;
@@ -9584,7 +10286,143 @@ index 9b0e8ac4..c6500bd8 100644
      [[maybe_unused]] const int32_t* idx_base_extra = nullptr;
      if constexpr (DUAL_CACHE) {
        idx_base_extra = indices_extra + (size_t)s_i * topk_extra_declared;
-@@ -835,7 +895,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+     }
+     const uint64_t kv_l2_policy = create_l2_evict_first_policy();
+ 
+-    if constexpr (ASSUME_FULL_TILES) {
+-      io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf(0), idx_base, KV_cache, io_tid,
+-                                            stride_kv_block);
+-      __threadfence_block();
+-      io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(
+-          sm.kv_buf(0), idx_base, KV_cache, sm.mbar_kv(0), io_tid, stride_kv_block, kv_l2_policy);
+-#pragma unroll 1
+-      for (int ti = 0; ti < loop_bound; ti++) {
+-        if (ti + 1 < loop_bound) {
+-          if constexpr (DUAL_CACHE) {
+-            const bool next_main = (ti + 1) < NI;
+-            const int32_t* next_idx =
+-                next_main ? (idx_base + (ti + 1) * BI) : (idx_base_extra + (ti + 1 - NI) * BI);
+-            if (next_main) {
+-              io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf((ti + 1) & 1), next_idx,
+-                                                    KV_cache, io_tid, stride_kv_block);
+-              __threadfence_block();
+-              io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(sm.kv_buf((ti + 1) & 1), next_idx,
+-                                                             KV_cache, sm.mbar_kv((ti + 1) & 1),
+-                                                             io_tid, stride_kv_block, kv_l2_policy);
+-            } else {
+-              io_gather_scales<MT, PAGE_BLOCK_SIZE_EXTRA>(sm.kv_scale_buf((ti + 1) & 1), next_idx,
+-                                                          KV_cache_extra, io_tid,
+-                                                          stride_kv_block_extra);
+-              __threadfence_block();
+-              io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE_EXTRA, true>(
+-                  sm.kv_buf((ti + 1) & 1), next_idx, KV_cache_extra, sm.mbar_kv((ti + 1) & 1),
+-                  io_tid, stride_kv_block_extra, kv_l2_policy);
+-            }
+-          } else {
+-            const int32_t* next_idx = idx_base + (ti + 1) * BI;
+-            io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf((ti + 1) & 1), next_idx, KV_cache,
+-                                                  io_tid, stride_kv_block);
+-            __threadfence_block();
+-            io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(sm.kv_buf((ti + 1) & 1), next_idx,
+-                                                           KV_cache, sm.mbar_kv((ti + 1) & 1),
+-                                                           io_tid, stride_kv_block, kv_l2_policy);
+-          }
+-        }
+-        bar_sync_alt<1, 5, BLOCK_THREADS>(ti & 1);
++    // This thread's candidate index for logical tile t, staged a tile ahead of
++    // use so the index LDG latency is hidden behind the previous tile's
++    // gather. main_ni equals NI under ASSUME_FULL_TILES, so the main/extra
++    // split needs no branch on the tile-length mode.
++    auto load_idx = [&](int t) -> int {
++      if (t >= loop_bound || io_tid >= BI) return -1;
++      if constexpr (DUAL_CACHE) {
++        const bool is_main = t < main_ni;
++        const int32_t* p = is_main ? (idx_base + t * BI) : (idx_base_extra + (t - main_ni) * BI);
++        return __ldg(p + io_tid);
++      } else {
++        return __ldg(idx_base + t * BI + io_tid);
+       }
+-    } else {
+-      auto issue_tile = [&](int logical_ti, int buf) {
+-        if constexpr (DUAL_CACHE) {
+-          const bool is_main_tile = logical_ti < main_ni;
+-          const int32_t* tile_idx = is_main_tile ? (idx_base + logical_ti * BI)
+-                                                 : (idx_base_extra + (logical_ti - main_ni) * BI);
+-          if (is_main_tile) {
+-            io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf(buf), tile_idx, KV_cache, io_tid,
+-                                                  stride_kv_block);
+-            __threadfence_block();
+-            io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(sm.kv_buf(buf), tile_idx, KV_cache,
+-                                                           sm.mbar_kv(buf), io_tid, stride_kv_block,
+-                                                           kv_l2_policy);
+-          } else {
+-            io_gather_scales<MT, PAGE_BLOCK_SIZE_EXTRA>(
+-                sm.kv_scale_buf(buf), tile_idx, KV_cache_extra, io_tid, stride_kv_block_extra);
+-            __threadfence_block();
+-            io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE_EXTRA, true>(
+-                sm.kv_buf(buf), tile_idx, KV_cache_extra, sm.mbar_kv(buf), io_tid,
+-                stride_kv_block_extra, kv_l2_policy);
+-          }
+-        } else {
+-          const int32_t* tile_idx = idx_base + logical_ti * BI;
+-          io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf(buf), tile_idx, KV_cache, io_tid,
++    };
++    // Scales first (plain stores, no mbar signal), then bulk gather
++    // (cp.async.bulk signals mbar_kv on completion); threadfence_block makes
++    // the scale stores visible before the bulk completion event wakes math.
++    auto issue_tile = [&](int logical_ti, int buf, int staged) {
++      if constexpr (DUAL_CACHE) {
++        if (logical_ti < main_ni) {
++          io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf(buf), staged, KV_cache, io_tid,
+                                                 stride_kv_block);
+           __threadfence_block();
+-          io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(sm.kv_buf(buf), tile_idx, KV_cache,
++          io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(sm.kv_buf(buf), staged, KV_cache,
+                                                          sm.mbar_kv(buf), io_tid, stride_kv_block,
+                                                          kv_l2_policy);
++        } else {
++          io_gather_scales<MT, PAGE_BLOCK_SIZE_EXTRA>(sm.kv_scale_buf(buf), staged, KV_cache_extra,
++                                                      io_tid, stride_kv_block_extra);
++          __threadfence_block();
++          io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE_EXTRA, true>(
++              sm.kv_buf(buf), staged, KV_cache_extra, sm.mbar_kv(buf), io_tid,
++              stride_kv_block_extra, kv_l2_policy);
+         }
+-      };
++      } else {
++        io_gather_scales<MT, PAGE_BLOCK_SIZE>(sm.kv_scale_buf(buf), staged, KV_cache, io_tid,
++                                              stride_kv_block);
++        __threadfence_block();
++        io_bulk_gather_tile<MT, PAGE_BLOCK_SIZE, true>(sm.kv_buf(buf), staged, KV_cache,
++                                                       sm.mbar_kv(buf), io_tid, stride_kv_block,
++                                                       kv_l2_policy);
++      }
++    };
+ 
+-      if (loop_bound > 0) issue_tile(0, 0);
++    int staged = load_idx(0);
++    if (loop_bound > 0) {
++      issue_tile(0, 0, staged);
++      staged = load_idx(1);
++    }
+ 
+ #pragma unroll 1
+-      for (int ti = 0; ti < loop_bound; ti++) {
+-        if (ti + 1 < loop_bound) {
+-          issue_tile(ti + 1, (ti + 1) & 1);
+-        }
+-        bar_sync_alt<1, 5, BLOCK_THREADS>(ti & 1);
++    for (int ti = 0; ti < loop_bound; ti++) {
++      if (ti + 1 < loop_bound) {
++        const int next = load_idx(ti + 2);
++        issue_tile(ti + 1, (ti + 1) & 1, staged);
++        staged = next;
+       }
++      bar_sync_alt<1, 5, BLOCK_THREADS>(ti & 1);
+     }
+ 
+     // ── Math warps ──────────────────────────────────────────────────
+@@ -835,7 +1322,7 @@ __device__ __forceinline__ void prefill_mg_impl(
      const int mwarp = warp_rank;
      const int gid = lane >> 2, tid = lane & 3;
      const float sm_scale_log2e = sm_scale * LOG2E;
@@ -9593,7 +10431,7 @@ index 9b0e8ac4..c6500bd8 100644
      [[maybe_unused]] const int32_t* idx_base_extra = nullptr;
      if constexpr (DUAL_CACHE) {
        idx_base_extra = indices_extra + (size_t)s_i * topk_extra_declared;
-@@ -847,20 +907,20 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -847,20 +1334,20 @@ __device__ __forceinline__ void prefill_mg_impl(
        const bf16* q_base_g =
            Q + (size_t)s_i * NUM_HEADS * KV::D_QK + (size_t)(h_start + g * HPB) * KV::D_QK;
        if constexpr (CM == ComputeMode::BF16) {
@@ -9619,7 +10457,7 @@ index 9b0e8ac4..c6500bd8 100644
  
      for (int i = threadIdx.x; i < MG_N_HG * HPB; i += MATH_THREADS) sm.m_smem()[i] = -1e30f;
  
-@@ -928,7 +988,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -928,7 +1415,7 @@ __device__ __forceinline__ void prefill_mg_impl(
          }
        }
  
@@ -9628,7 +10466,7 @@ index 9b0e8ac4..c6500bd8 100644
            reinterpret_cast<const bf16*>(entry_base_gid + KV::KV_ROPE_GMEM_OFFSET), lane);
  
        // Init per-group w_head_sc_all
-@@ -995,7 +1055,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -995,7 +1482,7 @@ __device__ __forceinline__ void prefill_mg_impl(
  #pragma unroll
          for (int g = 0; g < 2; g++) {
            float* qk = qk_grp[g];
@@ -9637,7 +10475,7 @@ index 9b0e8ac4..c6500bd8 100644
  
            {
              int e0 = qk_nb + tid * 2, e1 = e0 + 1;
-@@ -1138,7 +1198,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1138,7 +1625,7 @@ __device__ __forceinline__ void prefill_mg_impl(
            }
  
            // QK rope (reuses prefetched B operands)
@@ -9646,7 +10484,7 @@ index 9b0e8ac4..c6500bd8 100644
  
            // Invalid index masking + topk_length overflow. Dual splits per phase
            // (main: absolute ti*BI+e vs topk_len; extra: relative
-@@ -1545,9 +1605,9 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1545,9 +2032,9 @@ __device__ __forceinline__ void prefill_mg_impl(
      // ── Epilogue: BF16 output for both groups (serial) ─────────
      // Reuse kv_bufs[0] for BF16 staging (16KB needed, 29-33KB available)
      bf16* staging_bf16 = reinterpret_cast<bf16*>(sm.kv_buf(0));
@@ -9659,7 +10497,7 @@ index 9b0e8ac4..c6500bd8 100644
  
  #pragma unroll
      for (int g = 0; g < MG_N_HG; g++) {
-@@ -1609,7 +1669,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1609,7 +2096,7 @@ __device__ __forceinline__ void prefill_mg_impl(
          const int g_h_start = h_start + g * HPB;
          const size_t out_base = (size_t)s_i * token_stride + (size_t)g_h_start * h_stride;
          constexpr int BF16_PER_STORE = 8;
@@ -9668,7 +10506,7 @@ index 9b0e8ac4..c6500bd8 100644
          for (int idx = threadIdx.x; idx < VALID_HPB * STORES_PER_HEAD; idx += MATH_THREADS) {
            int h = idx / STORES_PER_HEAD;
            int d8 = (idx - h * STORES_PER_HEAD) * BF16_PER_STORE;
-@@ -1630,7 +1690,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1630,7 +2117,7 @@ __device__ __forceinline__ void prefill_mg_impl(
            else
              lse = sink_log2;
          }
@@ -9677,7 +10515,7 @@ index 9b0e8ac4..c6500bd8 100644
          out_lse[lse_idx] = lse;
        }
  
-@@ -1640,7 +1700,7 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1640,7 +2127,7 @@ __device__ __forceinline__ void prefill_mg_impl(
  }
  
  // Single-cache __global__ wrapper.
@@ -9686,7 +10524,7 @@ index 9b0e8ac4..c6500bd8 100644
            int MG_N_HG_T = MG_N_HG_DEFAULT>
  __global__ void __launch_bounds__(BLOCK_THREADS, 1)
      sparse_mla_prefill_mg_kernel(const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
-@@ -1648,15 +1708,15 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -1648,15 +2135,15 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
                                   float* __restrict__ out_lse,
                                   const float* __restrict__ attn_sink,  // [NUM_HEADS], nullable
                                   __grid_constant__ const PrefillColdParams cold) {
@@ -9706,7 +10544,7 @@ index 9b0e8ac4..c6500bd8 100644
            int PAGE_BLOCK_SIZE_EXTRA, int MG_N_HG_T = MG_N_HG_DEFAULT>
  __global__ void __launch_bounds__(BLOCK_THREADS, 1)
      sparse_mla_prefill_mg_dual_kernel(const bf16* __restrict__ Q,
-@@ -1667,13 +1727,13 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -1667,13 +2154,13 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
                                        bf16* __restrict__ output, float* __restrict__ out_lse,
                                        const float* __restrict__ attn_sink,  // [NUM_HEADS], nullable
                                        __grid_constant__ const PrefillColdParams cold) {
@@ -9724,7 +10562,7 @@ index 9b0e8ac4..c6500bd8 100644
            int MG_N_HG_T = MG_N_HG_DEFAULT>
  __global__ void __launch_bounds__(BLOCK_THREADS, 1) sparse_mla_prefill_mg_dual_fulltile_kernel(
      const bf16* __restrict__ Q, const uint8_t* __restrict__ KV_cache,
-@@ -1681,7 +1741,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1) sparse_mla_prefill_mg_dual_f
+@@ -1681,7 +2168,7 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1) sparse_mla_prefill_mg_dual_f
      const int32_t* __restrict__ indices_extra, bf16* __restrict__ output,
      float* __restrict__ out_lse, const float* __restrict__ attn_sink,
      __grid_constant__ const PrefillColdParams cold) {
@@ -9735,10 +10573,10 @@ index 9b0e8ac4..c6500bd8 100644
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
 new file mode 100644
-index 00000000..251ee3c8
+index 00000000..3e956b6e
 --- /dev/null
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
-@@ -0,0 +1,456 @@
+@@ -0,0 +1,480 @@
 +// Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +// SPDX-License-Identifier: BSD-3-Clause
 +//
@@ -9791,21 +10629,32 @@ index 00000000..251ee3c8
 +
 +// Unlike io_bulk_gather_tile this copies the whole gmem row, rope included, so
 +// the inline-scale ABI needs no rope buffer and the smem stride matches gmem.
++// `idx` is this IO thread's candidate index, staged in a register by the caller
++// one tile ahead of use; with BI <= IO_THREADS the thread's slot is io_tid.
 +template <ModelType MT>
-+__device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, const int32_t* indices,
++__device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, int idx,
 +                                                           const uint8_t* __restrict__ kv_ptr,
 +                                                           uint64_t* mbar, int io_tid,
 +                                                           uint64_t cache_policy) {
 +  constexpr int STRIDE = SmemLayoutSwapAB<MT>::KV_STRIDE;
++  static_assert(BI <= IO_THREADS, "per-thread index staging assumes one candidate per IO thread");
 +
 +  if (io_tid == 0) mbarrier_arrive_expect_tx(mbar, BI * STRIDE);
++  if (io_tid >= BI) return;
 +
-+#pragma unroll 1
-+  for (int bi = io_tid; bi < BI; bi += IO_THREADS) {
-+    const int idx = indices[bi];
-+    const uint8_t* src = kv_ptr + (size_t)(idx >= 0 ? idx : 0) * STRIDE;
-+    cp_async_bulk_g2s_l2hint(dst + bi * STRIDE, src, STRIDE, mbar, cache_policy);
-+  }
++  const uint8_t* src = kv_ptr + (size_t)(idx >= 0 ? idx : 0) * STRIDE;
++  cp_async_bulk_g2s_l2hint(dst + io_tid * STRIDE, src, STRIDE, mbar, cache_policy);
++}
++
++// Warm L2 for a tile gathered one iteration later; addressing matches
++// io_bulk_gather_tile_swapab. Pure hint, padding indices skipped.
++template <ModelType MT>
++__device__ __forceinline__ void io_bulk_prefetch_l2_swapab(int idx,
++                                                           const uint8_t* __restrict__ kv_ptr,
++                                                           int io_tid, uint64_t cache_policy) {
++  constexpr int STRIDE = SmemLayoutSwapAB<MT>::KV_STRIDE;
++  if (io_tid >= BI || idx < 0) return;
++  cp_async_bulk_prefetch_l2_hint(kv_ptr + (size_t)idx * STRIDE, STRIDE, cache_policy);
 +}
 +
 +template <ModelType MT, int NUM_HEADS>
@@ -9856,13 +10705,26 @@ index 00000000..251ee3c8
 +    const int io_tid = threadIdx.x - MATH_THREADS;
 +    const uint64_t kv_l2_policy = create_l2_evict_last_policy();
 +
++    // Stage this thread's candidate index a tile ahead: the LDG for tile ti+2
++    // is issued before the mbar_wr wait so its latency hides behind the wait.
++    // `pf` (tile ti+1) warms L2 after the gather issue: this pipeline is one
++    // tile deep, so the prefetch must not delay the gather the math waits on.
++    auto ld_idx = [&](int t) -> int {
++      return (t < actual_ni && io_tid < BI) ? __ldg(idx_base + t * BI + io_tid) : -1;
++    };
++    int staged = ld_idx(0);
++    int pf = ld_idx(1);
 +    int wr_phase = 1;
 +#pragma unroll 1
 +    for (int ti = 0; ti < actual_ni; ti++) {
 +      const int buf = ti & 1;
++      const int next = ld_idx(ti + 2);
 +      mbarrier_wait_parity(sm.mbar_wr + buf, wr_phase);
-+      io_bulk_gather_tile_swapab<MT>(sm.kv_bufs[buf], idx_base + ti * BI, KV_cache,
-+                                     sm.mbar_kv + buf, io_tid, kv_l2_policy);
++      io_bulk_gather_tile_swapab<MT>(sm.kv_bufs[buf], staged, KV_cache, sm.mbar_kv + buf, io_tid,
++                                     kv_l2_policy);
++      io_bulk_prefetch_l2_swapab<MT>(pf, KV_cache, io_tid, kv_l2_policy);
++      staged = pf;
++      pf = next;
 +      if (buf == 1) wr_phase ^= 1;
 +    }
 +
@@ -10196,7 +11058,7 @@ index 00000000..251ee3c8
 +  }
 +}
 diff --git a/tests/attention/test_sparse_mla_sm120.py b/tests/attention/test_sparse_mla_sm120.py
-index cc55d989..414201b2 100644
+index cc55d989..e334e6f8 100644
 --- a/tests/attention/test_sparse_mla_sm120.py
 +++ b/tests/attention/test_sparse_mla_sm120.py
 @@ -35,12 +35,13 @@ import torch
@@ -11622,7 +12484,7 @@ index cc55d989..414201b2 100644
      sparse_mla_sm120_paged_attention(
          q,
          kv_packed,
-@@ -1096,464 +1423,2145 @@ def test_sparse_mla_sm120_prefill_dsv4_topk_length_truncation(
+@@ -1096,464 +1423,2161 @@ def test_sparse_mla_sm120_prefill_dsv4_topk_length_truncation(
          out_lse,
          sm_scale,
          d_v=d_v,
@@ -11663,29 +12525,29 @@ index cc55d989..414201b2 100644
 -    main_s_kv = main_num_blocks * main_pbs
 -    extra_num_blocks = max((extra_topk + extra_pbs - 1) // extra_pbs * 2, 16)
 -    extra_s_kv = extra_num_blocks * extra_pbs
+-
+-    main_bf16 = (
+-        torch.randn(
+-            main_num_blocks, main_pbs, 1, d_qk, device=device, dtype=torch.bfloat16
+-        )
+-        / 10.0
+-    ).clamp(-1, 1)
+-    main_packed = quantize_kv_dsv4(main_bf16)
+-    main_dequant = dequantize_kv_dsv4(main_packed)
 +    d_qk, d_v = 576, 512
 +    num_tokens, num_heads, topk = 4, 8, 128
 +    page_block_size = 64
 +    num_blocks = 4
 +    s_kv = num_blocks * page_block_size
  
--    main_bf16 = (
+-    extra_bf16 = (
 +    kv_bf16 = (
          torch.randn(
--            main_num_blocks, main_pbs, 1, d_qk, device=device, dtype=torch.bfloat16
+-            extra_num_blocks, extra_pbs, 1, d_qk, device=device, dtype=torch.bfloat16
 +            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
          )
          / 10.0
      ).clamp(-1, 1)
--    main_packed = quantize_kv_dsv4(main_bf16)
--    main_dequant = dequantize_kv_dsv4(main_packed)
--
--    extra_bf16 = (
--        torch.randn(
--            extra_num_blocks, extra_pbs, 1, d_qk, device=device, dtype=torch.bfloat16
--        )
--        / 10.0
--    ).clamp(-1, 1)
 -    extra_packed = quantize_kv_dsv4(extra_bf16)
 -    extra_dequant = dequantize_kv_dsv4(extra_packed)
 +    kv_packed = quantize_kv_dsv3_2(kv_bf16)
@@ -12560,6 +13422,7 @@ index cc55d989..414201b2 100644
 +        1, window + 1, (num_tokens,), device=device, dtype=torch.int32
 +    )
 +    topk_length[0] = window  # pin one token to the full window
++    topk_length[1] = 0  # pin one token to an empty window (zero tiles)
 +
 +    attn_sink = (
 +        torch.randn(num_heads, device=device, dtype=torch.float32) * 2.0
@@ -12597,7 +13460,15 @@ index cc55d989..414201b2 100644
 +    )
 +
 +    torch.testing.assert_close(output, ref_out, atol=1e-2, rtol=5e-3)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-3, rtol=5e-3)
++    if attn_sink is None:
++        # Empty row: kernel emits the -1e30 sentinel, the reference -inf.
++        nonempty = topk_length.bool()
++        torch.testing.assert_close(
++            out_lse[nonempty], ref_lse[nonempty], atol=5e-3, rtol=5e-3
++        )
++        assert (out_lse[1] == -1e30).all()
++    else:
++        torch.testing.assert_close(out_lse, ref_lse, atol=5e-3, rtol=5e-3)
 +
 +
 +@pytest.mark.parametrize("num_heads", [8, 64])
@@ -12857,25 +13728,32 @@ index cc55d989..414201b2 100644
 +    run(_SparseMLAPagedAttentionRunner(device=device), out_lse=wide)
 +
 +
-+_DSV4_PREFILL_DUAL_CONFIGS = [
-+    (128, 64),
-+    (512, 64),
-+    (512, 2),
-+]
-+
 +_DSV4_PREFILL_DUAL_HEADS = [8, 16, 32, 64, 128]
 +
++# (num_heads, topk, extra_topk, extra_pbs). topk=512: DeepSeek V4 Vision
++# primary candidate set (H=32/64 shards, both extra-cache page layouts).
++_DSV4_PREFILL_DUAL_CONFIGS = [
++    (num_heads, 128, extra_topk, extra_pbs)
++    for num_heads in _DSV4_PREFILL_DUAL_HEADS
++    for extra_topk, extra_pbs in [(128, 64), (512, 64), (512, 2)]
++] + [
++    (32, 512, 512, 64),
++    (32, 512, 128, 2),
++    (64, 512, 512, 64),
++    (64, 512, 128, 2),
++]
 +
-+@pytest.mark.parametrize("num_heads", _DSV4_PREFILL_DUAL_HEADS)
-+@pytest.mark.parametrize("extra_topk,extra_pbs", _DSV4_PREFILL_DUAL_CONFIGS)
++
++@pytest.mark.parametrize(
++    "num_heads,topk,extra_topk,extra_pbs", _DSV4_PREFILL_DUAL_CONFIGS
++)
 +def test_sparse_mla_sm120_prefill_dsv4_dual(
-+    num_heads: int, extra_topk: int, extra_pbs: int
++    num_heads: int, topk: int, extra_topk: int, extra_pbs: int
 +) -> None:
 +    """DSv4 dual-cache prefill."""
 +    torch.manual_seed(0)
 +    device = torch.device("cuda")
 +    d_qk, d_v = 512, 512
-+    topk = 128
 +    main_pbs = 64
 +    num_tokens = 128
 +
@@ -14065,10 +14943,10 @@ index cc55d989..414201b2 100644
 +            call()
 diff --git a/tests/attention/test_sparse_mla_sm120_cpb_model.py b/tests/attention/test_sparse_mla_sm120_cpb_model.py
 new file mode 100644
-index 00000000..1a42c71b
+index 00000000..597ffa8f
 --- /dev/null
 +++ b/tests/attention/test_sparse_mla_sm120_cpb_model.py
-@@ -0,0 +1,862 @@
+@@ -0,0 +1,941 @@
 +# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +# SPDX-License-Identifier: BSD-3-Clause
 +#
@@ -14210,11 +15088,13 @@ index 00000000..1a42c71b
 +    cpb_mod._failed.clear()
 +    cpb_mod._crossover.clear()
 +    cpb_mod._crossover_failed.clear()
++    cpb_mod._cpb_overrides.clear()
 +    yield tmp_path
 +    cpb_mod._constants.clear()
 +    cpb_mod._failed.clear()
 +    cpb_mod._crossover.clear()
 +    cpb_mod._crossover_failed.clear()
++    cpb_mod._cpb_overrides.clear()
 +
 +
 +def test_crossover_persistence_round_trip(clean_cpb_state, monkeypatch) -> None:
@@ -14241,6 +15121,31 @@ index 00000000..1a42c71b
 +    assert not cpb_mod.has_crossover(device, "dsv3_2")
 +    cpb_mod.save_crossover(device, {"glm_nsa|64|2048": 8})
 +    assert cpb_mod.has_crossover(device, "dsv3_2")
++
++
++def test_cpb_override_persistence_round_trip(clean_cpb_state, monkeypatch) -> None:
++    """Refined per-shape picks merge into the JSON document alongside the
++    constants and crossover entries, and survive a process-state reload."""
++    device = torch.device("cpu")
++    cpb_mod.save_cpb_override(device, "dsv4", 128, 1024, 64, 12)
++    cpb_mod.save_cpb_override(device, "dsv4", 128, 1024, 8, 3)
++    cpb_mod.save_cpb_override(device, "dsv3_2", 64, 2048, 32, 9)
++    cpb_mod._cpb_overrides.clear()
++    monkeypatch.setattr(cpb_mod, "_cache_mtime", -1.0)
++    assert cpb_mod.get_cpb_override(device, "dsv4", 128, 1024, 64) == 12
++    assert cpb_mod.get_cpb_override(device, "dsv4", 128, 1024, 8) == 3
++    assert cpb_mod.get_cpb_override(device, "dsv3_2", 64, 2048, 32) == 9
++    assert cpb_mod.get_cpb_override(device, "dsv4", 128, 1024, 16) is None
++    # Coexists with constants and crossover entries in the same document.
++    cpb_mod.save_constants(device, "dsv4", _C)
++    cpb_mod.save_crossover(device, {"dsv4|128|1024": 16})
++    cpb_mod._cpb_overrides.clear()
++    cpb_mod._constants.clear()
++    cpb_mod._crossover.clear()
++    monkeypatch.setattr(cpb_mod, "_cache_mtime", -1.0)
++    assert cpb_mod.get_cpb_override(device, "dsv4", 128, 1024, 64) == 12
++    assert cpb_mod.get_constants(device, "dsv4") == _C
++    assert cpb_mod.get_decode_max_tokens(device, "dsv4", 128, 1024) == 16
 +
 +
 +def test_crossover_grid_complete_gates_full_sweep(clean_cpb_state) -> None:
@@ -14376,7 +15281,7 @@ index 00000000..1a42c71b
 +        assert c.l2_cache_bytes == props.L2_cache_size
 +    bw_gbps = 1.0 / c.inv_bw / 1e9
 +    print(f"\ncalibrated {family} constants: {c}")
-+    print(f"implied aggregate HBM bandwidth: {bw_gbps:.0f} GB/s")
++    print(f"implied aggregate DRAM bandwidth: {bw_gbps:.0f} GB/s")
 +    # Loose physical-plausibility band around modern datacenter GPUs.
 +    assert 100 < bw_gbps < 20000
 +
@@ -14387,63 +15292,29 @@ index 00000000..1a42c71b
 +def test_model_cpb_accuracy_guard(
 +    dsv4_constants: CpbConstants, num_tokens, topk
 +) -> None:
-+    """Model-picked cpb is within 1.25x of the best swept cpb."""
++    """Model-picked cpb is within 1.25x of the best swept cpb, measured with
++    the calibration timing protocol (queued batches, L2-cold indices) so the
++    guard certifies the regime production calibration runs in."""
 +    from flashinfer.mla._sparse_mla_sm120 import (
 +        _get_sparse_mla_sm120_decode_module,
 +    )
 +
 +    _skip_if_low_vram(3)  # 2 GiB pool plus headroom
 +    device = torch.device("cuda")
-+    module = _get_sparse_mla_sm120_decode_module()
 +    c = dsv4_constants
-+    d_qk, d_v = 512, 512
 +    num_heads = 128
-+
 +    num_splits = -(-topk // 64)
-+    w = c.bytes_per_chunk
-+    num_blocks = (2 << 30) // w
-+    kv_cache = torch.empty(num_blocks, w, dtype=torch.uint8, device=device)
-+    num_slots = num_blocks * 64
-+
-+    q = (torch.randn(num_tokens, num_heads, d_qk, device=device) / 10.0).to(
-+        torch.bfloat16
++    kv_cache, num_slots = cpb_mod._allocate_kv_pool("dsv4", device)
++    build = cpb_mod._make_decode_call_builder(
++        _get_sparse_mla_sm120_decode_module(), "dsv4", device, kv_cache
 +    )
-+    indices = torch.randint(
-+        0, num_slots, (num_tokens, topk), dtype=torch.int32, device=device
-+    )
-+    mid_out = torch.empty(
-+        num_tokens, num_heads, num_splits, d_v, dtype=torch.bfloat16, device=device
-+    )
-+    mid_lse = torch.empty(
-+        num_tokens, num_heads, num_splits, dtype=torch.float32, device=device
-+    )
-+    output = torch.empty(
-+        num_tokens, num_heads, d_v, dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.empty(num_tokens, num_heads, dtype=torch.float32, device=device)
-+    sm_scale = d_qk**-0.5
 +
 +    def run(cpb_override: int) -> float:
-+        def call() -> None:
-+            module.sparse_mla_sm120_decode_dsv4(
-+                q,
-+                kv_cache,
-+                indices,
-+                mid_out,
-+                mid_lse,
-+                output,
-+                out_lse,
-+                num_splits,
-+                sm_scale,
-+                None,
-+                None,
-+                None,
-+                None,
-+                None,
-+                cpb_override,
-+            )
-+
-+        return cpb_mod._time_call(call)
++        # model_type is unused by the dsv4 FFI branch of the call builder.
++        call = build(num_tokens, num_heads, topk, 0, cpb_override)
++        return cpb_mod._time_call_fresh_indices(
++            call, num_tokens, topk, num_slots, device, c.bytes_per_chunk // 64
++        )
 +
 +    swept = {cpb: run(cpb) for cpb in range(1, num_splits + 1)}
 +    heuristic_t = run(-1)
@@ -14500,9 +15371,6 @@ index 00000000..1a42c71b
 +    q = (torch.randn(num_tokens, num_heads, d_qk, device=device) / 10.0).to(
 +        torch.bfloat16
 +    )
-+    indices = torch.randint(
-+        0, kv_cache.shape[0] * 64, (num_tokens, topk), dtype=torch.int32, device=device
-+    )
 +    extra_indices = torch.randint(
 +        0,
 +        extra_kv_cache.shape[0] * pbs_extra,
@@ -14523,7 +15391,9 @@ index 00000000..1a42c71b
 +    sm_scale = d_qk**-0.5
 +
 +    def run(cpb_override: int) -> float:
-+        def call() -> None:
++        # The timing helper rotates fresh main-cache indices per call; the
++        # extra-cache set stays fixed (within-row uniform across candidates).
++        def call(indices: torch.Tensor) -> None:
 +            module.sparse_mla_sm120_decode_dsv4(
 +                q,
 +                kv_cache,
@@ -14542,7 +15412,9 @@ index 00000000..1a42c71b
 +                cpb_override,
 +            )
 +
-+        return cpb_mod._time_call(call)
++        return cpb_mod._time_call_fresh_indices(
++            call, num_tokens, topk, kv_cache.shape[0] * 64, device, bpt
++        )
 +
 +    swept = {cpb: run(cpb) for cpb in range(1, num_splits + 1)}
 +    heuristic_t = run(-1)
@@ -14561,6 +15433,73 @@ index 00000000..1a42c71b
 +    # Release the pools before the next parametrized case.
 +    kv_cache = extra_kv_cache = None
 +    torch.cuda.empty_cache()
++
++
++@requires_sm12x
++def test_refine_cpb_beats_or_matches_model(
++    monkeypatch, tmp_path, dsv4_constants: CpbConstants
++) -> None:
++    """refine_cpb's measured pick never loses to the model pick under the same
++    timing protocol, persists to disk, and _resolve_cpb serves the override
++    ahead of the model (tuning mode off)."""
++    from flashinfer.mla._sparse_mla_sm120 import (
++        _get_sparse_mla_sm120_decode_module,
++        _resolve_cpb,
++    )
++
++    _skip_if_low_vram(3)  # 2 GiB pool plus headroom
++    monkeypatch.setenv("FLASHINFER_AUTOTUNE_DIR", str(tmp_path))
++    device = torch.device("cuda")
++    c = dsv4_constants
++    num_tokens, num_heads, topk = 64, 128, 1024
++
++    refined = cpb_mod.refine_cpb(
++        _get_sparse_mla_sm120_decode_module,
++        "dsv4",
++        device,
++        c,
++        num_tokens,
++        num_heads,
++        topk,
++    )
++    model_cpb = select_cpb(num_tokens, num_heads, topk, 0, c)
++
++    module = _get_sparse_mla_sm120_decode_module()
++    kv_cache, num_slots = cpb_mod._allocate_kv_pool("dsv4", device)
++    build = cpb_mod._make_decode_call_builder(module, "dsv4", device, kv_cache)
++
++    def timed(cpb: int) -> float:
++        # model_type is unused by the dsv4 FFI branch of the call builder.
++        call = build(num_tokens, num_heads, topk, 0, cpb)
++        return cpb_mod._time_call_fresh_indices(
++            call, num_tokens, topk, num_slots, device, c.bytes_per_chunk // 64
++        )
++
++    t_refined, t_model = timed(refined), timed(model_cpb)
++    print(
++        f"\nrefine: model cpb={model_cpb} {t_model * 1e6:.1f} us | "
++        f"refined cpb={refined} {t_refined * 1e6:.1f} us"
++    )
++    assert t_refined <= t_model * 1.05
++
++    cpb_mod.save_constants(device, "dsv4", c)
++    cpb_mod.save_cpb_override(device, "dsv4", num_heads, topk, num_tokens, refined)
++    cpb_mod._cpb_overrides.clear()
++    monkeypatch.setattr(cpb_mod, "_cache_mtime", -1.0)
++    assert (
++        cpb_mod.get_cpb_override(device, "dsv4", num_heads, topk, num_tokens) == refined
++    )
++    assert _resolve_cpb(device, "dsv4", num_tokens, num_heads, topk, 0) == refined
++    # An unrefined shape still falls through to the model pick.
++    assert _resolve_cpb(
++        device, "dsv4", num_tokens + 1, num_heads, topk, 0
++    ) == select_cpb(num_tokens + 1, num_heads, topk, 0, c)
++
++    # Do not leak process state into later tests.
++    kv_cache = None
++    torch.cuda.empty_cache()
++    cpb_mod._constants.clear()
++    cpb_mod._cpb_overrides.clear()
 +
 +
 +@requires_sm12x
@@ -14725,11 +15664,20 @@ index 00000000..1a42c71b
 +        seen["calibrate_crossover"] = family
 +        return {"dsv3_2|64|2048": 32, "glm_nsa|64|2048": 32}
 +
++    def fake_refine(module_getter, family, dev, c, t, h, k):
++        seen["refine_cpb"] = family
++        return select_cpb(t, h, k, 0, c)
++
 +    monkeypatch.setattr(cpb_mod, "calibrate", fake_calibrate)
 +    monkeypatch.setattr(cpb_mod, "calibrate_crossover", fake_calibrate_crossover)
++    monkeypatch.setattr(cpb_mod, "refine_cpb", fake_refine)
 +    monkeypatch.setattr(AutoTuner.get(), "is_tuning_mode", True)
 +    call()
-+    assert seen == {"calibrate": "dsv3_2", "calibrate_crossover": "dsv3_2"}
++    assert seen == {
++        "calibrate": "dsv3_2",
++        "calibrate_crossover": "dsv3_2",
++        "refine_cpb": "dsv3_2",
++    }
 +    assert recorded["cpb_override"] == expected_cpb
 +
 +
@@ -14916,8 +15864,13 @@ index 00000000..1a42c71b
 +        seen["calibrate_crossover"] = family
 +        return {}
 +
++    def fake_refine(module_getter, family, dev, c, t, h, k):
++        seen["refine_cpb"] = family
++        return 1
++
 +    monkeypatch.setattr(cpb_mod, "calibrate", fake_calibrate)
 +    monkeypatch.setattr(cpb_mod, "calibrate_crossover", fake_calibrate_crossover)
++    monkeypatch.setattr(cpb_mod, "refine_cpb", fake_refine)
 +
 +    def call() -> None:
 +        sm.sparse_mla_sm120_decode_dsv4(
@@ -14930,7 +15883,11 @@ index 00000000..1a42c71b
 +
 +    with autotune(True):
 +        call()
-+    assert seen == {"calibrate": "dsv4", "calibrate_crossover": "dsv4"}
++    assert seen == {
++        "calibrate": "dsv4",
++        "calibrate_crossover": "dsv4",
++        "refine_cpb": "dsv4",
++    }
 diff --git a/tests/attention/test_sparse_mla_sm120_dispatch.py b/tests/attention/test_sparse_mla_sm120_dispatch.py
 new file mode 100644
 index 00000000..66a7b2b1

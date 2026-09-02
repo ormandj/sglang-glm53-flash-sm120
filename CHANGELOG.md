@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.4-rc.1
+
+- Base refresh: SGLang main f8cbf000f4 (2026-09-02; #37477, the GLM-5.3-Flash
+  kernel port, is now in the base) with the GLM-5.3-Flash series at
+  sgl-project/sglang#36507 head 545bd6f839; FlashInfer main c92227fad3 with
+  #4802 round 2 (head 8c765a04c1), #4687 and #4827. All 69 carried commits
+  cherry-pick cleanly. Cache schema v56 (new base kernels; first boot
+  recompiles).
+- Carried since v0.1.3: exhausted-mamba-pool handling now also covers the
+  int8 checkpoint pool, the continuing chunked request and streaming
+  sessions (review fixes for the downstream admission gating).
+- kpool top-k fix is upstream as sgl-project/sglang#37625 (re-filed against
+  main; main's kernel fails 10 of 16 registered cases on clustered rows, the
+  fix passes all).
+- Launcher and docs unchanged from v0.1.3 (pool and context 450,560).
+
 ## v0.1.3 (stable; digest-identical promotion of v0.1.3-rc.1)
 
 - Promoted without a rebuild from the rc.1 candidate built from source

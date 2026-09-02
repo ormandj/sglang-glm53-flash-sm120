@@ -45,7 +45,7 @@ the open pull requests listed under [Carried upstream changes](#carried-upstream
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
    export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.3
-   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v55
+   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v56
    ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
    ```
 
@@ -194,7 +194,7 @@ GLM-5.3-Flash kernels, ported from #36507).
 ## Releases
 
 `v0.1.3` (2026-09-02) is the current release, a digest-identical promotion
-of `v0.1.3-rc.1`. It is the crash-free configuration: pool and context
+of `v0.1.4-rc.1`. It is the crash-free configuration: pool and context
 450,560 tokens, and a scheduler that skips a recurrent-state checkpoint
 instead of asserting when the mamba pool is exhausted (see the limits
 above and `BENCHMARKS.md`). `v0.1.2` (2026-09-02) fixed the scheduler
@@ -221,7 +221,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.3-rc.1 .
+  -t sglang-glm53-flash-sm120:v0.1.4-rc.1 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.
