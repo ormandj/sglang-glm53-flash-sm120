@@ -86,6 +86,22 @@ def _gate(tmp_path):
     return tmp_path
 
 
+def test_accept_rate_accepts_the_bonus_token_excess_and_rejects_more() -> None:
+    from summarize_engine_gate import SummaryError, _finite_unit_interval
+
+    # SGLang's spec_accept_rate gauge can read slightly above 1.0 when a fully
+    # accepted draft counts its bonus token (1.03 observed); that is not a
+    # defect in the cell.
+    assert _finite_unit_interval(1.03, "x") == 1.03
+    assert _finite_unit_interval(0.0, "x") == 0.0
+    for bad in (1.3, -0.1, float("nan"), float("inf")):
+        try:
+            _finite_unit_interval(bad, "x")
+        except SummaryError:
+            continue
+        raise AssertionError(f"{bad} was accepted")
+
+
 def test_summarize_quick_gate_retains_every_repetition(tmp_path) -> None:
     result = summarize(_gate(tmp_path), mode="quick", build_id="rc3")
     c1 = result["decode"]["c1"]

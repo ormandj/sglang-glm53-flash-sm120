@@ -102,13 +102,22 @@ def _finite_positive(value: Any, source: str) -> float:
     return numeric
 
 
+# SGLang's spec_accept_rate gauge counts the bonus token of a fully accepted
+# draft, so a single scrape can read slightly above 1.0 (1.03 observed on
+# GLM-5.3-Flash with 5 draft steps). The statistic is a server cross-check,
+# not a gate quantity; accept that excess, reject anything larger.
+_ACCEPT_RATE_UPPER_BOUND = 1.25
+
+
 def _finite_unit_interval(value: Any, source: str) -> float:
     try:
         numeric = float(value)
     except (TypeError, ValueError) as exc:
         raise SummaryError(f"{source} is not numeric") from exc
-    if not math.isfinite(numeric) or not 0 <= numeric <= 1:
-        raise SummaryError(f"{source} is not finite and within [0, 1]")
+    if not math.isfinite(numeric) or not 0 <= numeric <= _ACCEPT_RATE_UPPER_BOUND:
+        raise SummaryError(
+            f"{source} is not finite and within [0, {_ACCEPT_RATE_UPPER_BOUND}]"
+        )
     return numeric
 
 
