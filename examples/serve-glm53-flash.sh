@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Target TP=2 profile for the local E4M3-K32 W4A16 artifact. The defaults are
-# goals to qualify, not claims that v0.1.1-rc.14 has already achieved them.
+# goals to qualify, not claims that v0.1.1-rc.15 has already achieved them.
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a candidate-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.1-rc.14}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.1-rc.15}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -44,7 +44,7 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.1.1-rc.14 is scoped to TP_SIZE=2" >&2
+  echo "v0.1.1-rc.15 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do
@@ -93,6 +93,7 @@ exec docker run --rm \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
+  --env SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048 \
   "$IMAGE" \
   serve \
   --model-path "$container_model_path" \
@@ -101,6 +102,7 @@ exec docker run --rm \
   --enable-multimodal \
   --warmups serving_coverage \
   --image-processor-backend torchvision \
+  --mm-preprocessing-device cpu \
   --moe-runner-backend flashinfer_cutlass \
   --disable-shared-experts-fusion \
   --disable-custom-all-reduce \

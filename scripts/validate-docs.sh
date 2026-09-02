@@ -34,6 +34,8 @@ critical=(
   'CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-4}'
   '--enable-multimodal'
   '--image-processor-backend torchvision'
+  '--mm-preprocessing-device cpu'
+  '--env SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048'
   '--moe-runner-backend flashinfer_cutlass'
   '--kv-cache-dtype fp8_e4m3'
   '--dsa-prefill-backend flashinfer_sparse_mla'

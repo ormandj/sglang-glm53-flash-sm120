@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.1.1-rc.15 (rebuilt on latest upstream mains with the submitted PR branches; not yet built or qualified)
+
+- SGLang base moved to upstream main 1109e44305 (2026-09-02) with the
+  GLM-5.3-Flash series at the current #36507 head 515e865189 (prefill CP
+  removed upstream; #36884, #36885, #37250 now included from the series).
+  FlashInfer moved to main c5ff6f48 with #4802 at its current head
+  98bcd8501b, #4687 and the rebased #4827. ModelOpt stays at 0.47.0rc0
+  (main has no release tag past it). New lmsysorg base image digest;
+  cache schema v55.
+- Every downstream change that is not upstream is now carried as the
+  submitted PR commit: #37534 (HiCache host row width), #37535 (opt-in
+  token-blocked KDA extend; this deployment sets
+  `SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048`), #37536 (multimodal feature
+  offload), #37537 (`--mm-preprocessing-device cpu` replaces the GLM
+  processor class pin), #37538 (extend memory profiler, stacked on
+  #37169), #37541 (`serving_coverage` warmup), #37539 (vision-tower
+  precompile), #37540 (kpool top-k fix by bold84), plus the rebased
+  #37168 and #37169. The serving-started late-load signal stays as a
+  downstream-only commit.
+- Dropped after review: the hicache layer-load synchronization commits
+  (no reachable defect on upstream main), the node-owned mamba slot helper
+  (inert on the unified cache), and the scheduler Triton prewarm
+  (superseded by the warmup). The #36884 MHC communicator change is no
+  longer excluded.
+- GPU validation of the PR branches on this hardware (rc.14 image): KDA
+  blocked extend exact against the single call including bf16/fp16 pools
+  and padded rows; feature offload CUDA cases; vision precompile cache
+  reuse; kpool fix correct on clustered rows where the base kernel fails
+  10/16, memcheck clean on both, 9% to 48% slower per call on uniform
+  scores at 8k to 128k rows.
+
 ## v0.1.1-rc.14 (offload raw image features after encoding; full extend profiler; not yet built or qualified)
 
 - Validated on quasar (first boot, model-default 8,000 image tokens): a

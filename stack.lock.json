@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.1.1",
-    "candidate": 14,
-    "candidate_tag": "v0.1.1-rc.14",
+    "candidate": 15,
+    "candidate_tag": "v0.1.1-rc.15",
     "stable_tag": "v0.1.1",
-    "cache_schema": "v54"
+    "cache_schema": "v55"
   },
   "image": {
-    "tag": "v0.1.1-rc.14",
+    "tag": "v0.1.1-rc.15",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,15 +49,15 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 14
+      "value": 15
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v54"
+      "value": "v55"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
-      "value": "lmsysorg/sglang@sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"
+      "value": "lmsysorg/sglang@sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165"
     },
     {
       "arg": "GLM53_SGLANG_BASE_TAG",
@@ -65,11 +65,11 @@
     },
     {
       "arg": "GLM53_SGLANG_BASE_INDEX",
-      "value": "sha256:e6f5482505e7502f791fe4615ad1fbec118cbbd6b44e98f2479b16b98b985ad6"
+      "value": "sha256:aa9210e3507fef64ded0c78afc571d9412b53417c6e271721a095fbde754ad40"
     },
     {
       "arg": "GLM53_SGLANG_BASE_AMD64_MANIFEST",
-      "value": "sha256:0836f0160fa785e424e68d13ef88ddd548f87e6e11ad9f0e4de982e4f9188aaf"
+      "value": "sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165"
     },
     {
       "arg": "GLM53_SGLANG_REPOSITORY",
@@ -77,19 +77,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b"
+      "value": "1109e44305e266e7002c0129aec4a2fec8ef0e8c"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "3babfd36d877df796283b229eb96145e7846750f"
+      "value": "ead9238cf1aaff7466c7a1eb7c645d6873eea201"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "9b2b368a6b0ce6726980dab7ac784e1f9f980e36"
+      "value": "92a938aaee06842ccd4a87020d94c66588a80350"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "010a3c9348d4d981cc71878d43a640894177f3803fa81b1aa8c686fcf20e72d0"
+      "value": "a10a26deb48d2adb0230184fe9093b520a313ca36f08369fc9e956a079944d47"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -101,19 +101,19 @@
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "286eee4e2999a825716eab68e597cb1ee0881e1b"
+      "value": "c5ff6f48780f6d24654073cada72f4a6e3af5af8"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "ff920cf35c77ffba88aabf19fc3fe815dd998d93"
+      "value": "669d4687f246edadb952bd063092b3a30585ea2d"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "bdc33c22f0e0c8e16321890ed3ebb2b82f4afdce"
+      "value": "01f993c0690862a5c5e5f66dc239c634f27c0f40"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "05f3b12ae578cb2bfec2951de94c3f63d2f8afc6eb7eed613ca5ebea80db97f6"
+      "value": "b95a24b85f944fb50939503292f4f96dfda0e31f165f54dfc3244aeab0206493"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -147,23 +147,21 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b",
-      "upstream_tree": "3babfd36d877df796283b229eb96145e7846750f",
-      "tree": "9b2b368a6b0ce6726980dab7ac784e1f9f980e36",
+      "head": "1109e44305e266e7002c0129aec4a2fec8ef0e8c",
+      "upstream_tree": "ead9238cf1aaff7466c7a1eb7c645d6873eea201",
+      "tree": "92a938aaee06842ccd4a87020d94c66588a80350",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "010a3c9348d4d981cc71878d43a640894177f3803fa81b1aa8c686fcf20e72d0",
+      "patch_sha256": "a10a26deb48d2adb0230184fe9093b520a313ca36f08369fc9e956a079944d47",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
-      "working_branch": "integration/glm53-main-20260901",
-      "working_head": "64422bf138e4c0ff542fe81abf20cdcfa8f03375",
-      "upstream_main_base": "5ab97c4f441462f3d2adb1ffa954cc92518beece",
+      "working_branch": "integration/glm53-main-20260902",
+      "working_head": "7048e88d800283c8baf891998420197ed00ebb5e",
+      "upstream_main_base": "1109e44305e266e7002c0129aec4a2fec8ef0e8c",
       "included_upstream_work": [
-        "sglang#36507",
+        "sglang#36507 (head 515e865189, merged onto main 1109e44305; includes #37484 prefill-CP removal, #36884, #36885, #37250, #36708, #36755)",
         "sglang#36904",
-        "sglang#36958 request/KV ownership cleanup",
         "sglang#36661 result-owned overlap snapshot lifetime",
         "sglang#36696 Mamba radix child-key consistency",
         "sglang#36821 ReplaySSM fused KDA verify ring writes",
-        "sglang#36798 aligned HiCache host registration",
         "flashinfer#4802 native GLM NoPE integration",
         "native FlashInfer validation scoped to configurations that select it",
         "native NoPE detection from absorbed query geometry",
@@ -177,7 +175,6 @@
         "SM120 W4A16 in-place prepared-weight ownership",
         "kpool ragged MQA-logits Q-row chunking under the shared budget mixin",
         "process-lifetime topk1 chain buffers across adaptive spec tier switches",
-        "node-owned mamba slot preserved across admission rejection (hicache load-back write-after-free fix)",
         "shape-keyed SM120 KDA static tactics and pre-pool long-prefill compilation",
         "pre-pool DSA index gather and multi-regime W4A16 route-pack compilation",
         "debug-gated paged-allocator negative-location attribution",
@@ -193,35 +190,43 @@
         "exact invalid page overwrite extent diagnostics",
         "exact-shape DeepGEMM shared graph-pool lifetime regression",
         "debug-gated allocator-history forensics snapshots at serving readiness and at allocator-corruption detection",
-        "all-producer hicache layer-load waits (batches consuming restores triggered by earlier batches)",
-        "host-side record watermark closing the vacuous cudaStreamWaitEvent race in layer-by-layer hicache loads",
-        "fail-closed load-record timeout and unconditional mamba-COW load wait",
-        "radix top-k value-correct overflow descent and crash-proofed refine rounds in kpool_topk_transform"
+        "sglang#37168 full-CUDA-graph capture owners (rebased)",
+        "sglang#37169 allocator-history forensics (rebased, recorder re-arms after another profiler)",
+        "sglang#37534 HiCache host pool row width for packed DSA rows",
+        "sglang#37535 opt-in token-blocked KDA extend (SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048 in this deployment)",
+        "sglang#37536 multimodal feature offload after encoding",
+        "sglang#37537 --mm-preprocessing-device (cpu in this deployment)",
+        "sglang#37538 extend memory profiler",
+        "sglang#37541 serving_coverage warmup",
+        "sglang#37539 GLM-5-Next vision-tower attention precompile",
+        "sglang#37540 kpool top-k transform fix (bold84)",
+        "downstream-only: Triton late-load diagnostics armed after the HTTP warmups (single-worker form)"
       ],
       "excluded_work": [
-        "DP-attention-only MHC communicator change from sglang#36884",
-        "C4-unsafe process/device-shared DSA indexer compression-gate stream"
+        "C4-unsafe process/device-shared DSA indexer compression-gate stream",
+        "hicache layer-load synchronization commits (no reachable defect on upstream main; dropped)",
+        "node-owned mamba slot admission helper (inert on the unified cache; dropped)",
+        "scheduler Triton kernel prewarm (superseded by the serving_coverage warmup)"
       ]
     },
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
       "package_version": "0.6.18",
-      "head": "286eee4e2999a825716eab68e597cb1ee0881e1b",
-      "upstream_tree": "ff920cf35c77ffba88aabf19fc3fe815dd998d93",
-      "tree": "bdc33c22f0e0c8e16321890ed3ebb2b82f4afdce",
+      "head": "c5ff6f48780f6d24654073cada72f4a6e3af5af8",
+      "upstream_tree": "669d4687f246edadb952bd063092b3a30585ea2d",
+      "tree": "01f993c0690862a5c5e5f66dc239c634f27c0f40",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "05f3b12ae578cb2bfec2951de94c3f63d2f8afc6eb7eed613ca5ebea80db97f6",
+      "patch_sha256": "b95a24b85f944fb50939503292f4f96dfda0e31f165f54dfc3244aeab0206493",
       "working_repository": "https://git.home.corenode.com/homelab/flashinfer.git",
-      "working_branch": "integration/glm53-main-20260830",
-      "working_head": "a41d12bfa2d6691184211c738aa0d56ef114aeaa",
-      "upstream_main_base": "231f70828dfe93f5bbba7f0360a64435a7a846be",
+      "working_branch": "integration/glm53-fi-20260902",
+      "working_head": "938df756d9016b82d0adcff960e499c712259030",
+      "upstream_main_base": "c5ff6f48780f6d24654073cada72f4a6e3af5af8",
       "included_upstream_work": [
-        "flashinfer#4802",
+        "flashinfer#4802 (head 98bcd8501b, merged onto main c5ff6f48)",
         "flashinfer#4687",
-        "native 528-byte GLM NoPE KV rows with padded decode-row compatibility",
-        "SM120 W4A16 TC-decode ultra-tile replay validation",
+        "flashinfer#4827 (rebased)",
         "ModelOpt E2M1/E4M3-K32 W4A16 preparation",
-        "process-lifetime pinning of graph-referenced SM12x MoE workspaces across cache replacement and clear"
+        "SM120 W4A16 TC-decode ultra-tile replay validation"
       ]
     },
     "modelopt": {
@@ -236,18 +241,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "010a3c9348d4d981cc71878d43a640894177f3803fa81b1aa8c686fcf20e72d0",
-      "base_head": "4c2c169e6ba15aee5408b250ce25ff7e73388d9b",
-      "base_tree": "3babfd36d877df796283b229eb96145e7846750f",
-      "result_tree": "9b2b368a6b0ce6726980dab7ac784e1f9f980e36"
+      "sha256": "a10a26deb48d2adb0230184fe9093b520a313ca36f08369fc9e956a079944d47",
+      "base_head": "1109e44305e266e7002c0129aec4a2fec8ef0e8c",
+      "base_tree": "ead9238cf1aaff7466c7a1eb7c645d6873eea201",
+      "result_tree": "92a938aaee06842ccd4a87020d94c66588a80350"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "f5ebdf9ace91c6ac24b0efe94cce7252de1141214899b9c3e2fa83688f78d33f",
-      "base_head": "231f70828dfe93f5bbba7f0360a64435a7a846be",
-      "base_tree": "5bf33e0d8bedac8ab72cea7012326414a45ccd0a",
-      "result_tree": "411d1cb5884621f74d96da6fee1b982b09d9d747"
+      "sha256": "b95a24b85f944fb50939503292f4f96dfda0e31f165f54dfc3244aeab0206493",
+      "base_head": "c5ff6f48780f6d24654073cada72f4a6e3af5af8",
+      "base_tree": "669d4687f246edadb952bd063092b3a30585ea2d",
+      "result_tree": "01f993c0690862a5c5e5f66dc239c634f27c0f40"
     }
   ],
   "runtime_profile": {
@@ -262,9 +267,9 @@
     "target_total_token_pool": 524288,
     "target_concurrency": 4,
     "burst_concurrency_to_measure": 8,
-    "mamba_state_slots_at_c4": 20,
+    "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "outer-compile-safe captured DSA gate and paged-logits lifetime candidate; no performance or capacity claim until exact-candidate evidence exists"
+    "status": "v0.1.1-rc.15: latest upstream mains plus the submitted PR branches; not yet built or qualified"
   },
   "verification": {
     "sglang_source_verifiable": true,
@@ -272,6 +277,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.1-rc.1 is not built or qualified"
+    "claims": "v0.1.1-rc.15 is not built or qualified"
   }
 }
