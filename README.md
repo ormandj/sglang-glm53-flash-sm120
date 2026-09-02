@@ -3,7 +3,7 @@
 A ready-to-run SGLang image and a matching quantized checkpoint for serving
 GLM-5.3-Flash on two NVIDIA RTX PRO 6000 Blackwell (96 GB, SM120) GPUs over
 PCIe. No NVLink, no source build, no patching: download the checkpoint, run
-one command, and you have an OpenAI-compatible server with a 499,712-token
+one command, and you have an OpenAI-compatible server with a 450,560-token
 context, four concurrent requests, speculative decoding, vision input,
 reasoning and tool calling.
 
@@ -114,8 +114,8 @@ tokens; forwards per second is the engine step rate.
 
 | | |
 |---|---|
-| Context and KV pool | 499,712 tokens shared by up to four requests |
-| Largest prompt served | 494,592 tokens at 99.2% pool usage |
+| Context and KV pool | 450,560 tokens shared by up to four requests |
+| Largest prompt served | 436,295 tokens plus an 8K image at 99% pool usage (v0.1.3) |
 | Concurrent long prompts | 4 x 122,880 tokens |
 | HiCache host tier (32 GB) | 2.65M KV tokens plus an 11.2 GB recurrent-state tier |
 | GSM8K, 1,319 questions | 96.9% (v0.1.0: 97.2%, BF16-attention control: 97.0%) |
@@ -124,10 +124,21 @@ tokens; forwards per second is the engine step rate.
 
 **Limits worth knowing.**
 
-- At 99% pool usage the GPUs have no free memory left. The allocator logged
-  four recoverable segment-mapping warnings there and every request
-  completed, but a workload that needs a large transient at that point would
-  fail. Lower `MAX_TOTAL_TOKENS` if you want headroom.
+- Memory is sized to the edge on purpose. Weights take 84.7 GB per GPU and
+  the 450,560-token KV pool only 4.0 GB, so the pool is not the lever
+  people expect: every 100k tokens of pool is 0.88 GB. v0.1.3 moved the
+  pool from 499,712 to 450,560 tokens after two crashes were found at the
+  larger size (a full-budget image encode while three long requests were
+  decoding, and four cold 95k-token prompts at once); at 450,560 every
+  stress shape in `BENCHMARKS.md` passes with about 0.3 GiB to spare. If
+  you need more context, lower the image budget instead: a full-budget
+  image costs 0.85 GiB of transient encode memory, the same as about 97k
+  pool tokens.
+- Images cost 28x28 pixels per token up to `max_image_tokens` = 8,000 in
+  the checkpoint's processor config (6.3 megapixels, so a 3840x2160 frame
+  is scaled to about 3339x1878). A 1080p screenshot is about 2,650 tokens.
+  For agents, send screenshots at 1080p to 1440p and crop-zoom for detail;
+  only sources above 6 megapixels pay the full 8,000 tokens.
 - The numbers are for this GPU pair. Other SM120 cards or a different
   tensor-parallel size are untested.
 

@@ -5,7 +5,8 @@ Two measurement sets are recorded here. The v0.1.1 set was measured on
 `sha256:5e499c5f...`), one host: 2x NVIDIA RTX PRO 6000 Blackwell (96 GB,
 SM120), TP2, PCIe, no NVLink, serving
 `GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO` with the configuration in
-[`RUN.md`](RUN.md) (pool and context 499,712 tokens, chunked prefill 4,096,
+[`RUN.md`](RUN.md) (pool and context 499,712 tokens on v0.1.1 and v0.1.2,
+450,560 on v0.1.3, chunked prefill 4,096,
 one 4,096-token chunk per extend batch, four running requests, mamba pool
 28, native EAGLE MTP 5/1/6 adaptive, FP8 E4M3 KV, HiCache 32 GB, KDA
 extend block 2,048, CPU image preprocessing). The v0.1.0 set (2026-08-31,
@@ -17,13 +18,13 @@ did not re-measure a row and is marked as such. Raw receipts live in
 
 | Probe | Result |
 |---|---|
-| KV/token pool | 499,712 tokens (equals the declared context limit) |
+| KV/token pool | 499,712 tokens on v0.1.1 and v0.1.2; 450,560 on v0.1.3 (equals the declared context limit) |
 | Largest single prefill served | 494,592-token prompt; pool usage peaked at 495,616 tokens (99.2%) |
 | Cold single-request prefill | 204,800 tokens in 34.1 s TTFT, 6,000 prompt tok/s |
 | 358,400 and 494,592-token prompts | served (they extend the 200k prompt's prefix, so 153k and 136k new tokens on a cached prefix; not a cold rate) |
 | C4 fill | 4 x 122,880-token prompts concurrently, TTFT 2.4 s on cached prefixes |
 | Sustained C4 | 8/8 distinct-prefix waves (4 x 29,551 tokens each), 255 to 269 aggregate output tok/s, zero restarts, zero errors |
-| Device headroom at 99% pool usage | effectively zero: four recoverable allocator segment-mapping warnings (`expandable_segments: memory mapping failed with OOM ... 2097152 bytes`, 1.7 MB free) during the 350k and 494k prefills and the GSM8K start; the allocator released cached blocks and every request completed, no `OutOfMemoryError`, no restart |
+| Device headroom | see "Memory headroom" below; the v0.1.1 ladder logged four recoverable `expandable_segments` mapping warnings at 99% usage |
 | Peak mamba pool usage | 0.93 of 28 slots |
 | HiCache host tier | 2,648,320 KV tokens (20.85 GB, packed MTP layers) + 11.16 GB mamba tier (page-first) at the 32 GB setting |
 
@@ -107,6 +108,44 @@ Vision: 3840x2160 and 7680x4320 images at the model's 8,000-token budget
 (7,994 prompt tokens) answer in 3.4 s and 3.0 s through the
 OpenAI-compatible image input; the v0.1.0 bar-chart read-back check was
 not repeated.
+
+## Memory headroom (v0.1.3, 2026-09-02)
+
+Measured with the engine's extend memory profiler (`SGLANG_EXTEND_MEM_PROFILE=1`,
+caching-allocator counters on TP0) and a stress script that fills the pool
+with long prompts and then sends a memory-hungry request (raw log in
+`evidence/v0.1.3-headroom-study-20260902.txt`).
+
+| Quantity | Value |
+|---|---:|
+| Weights per GPU (target + MTP draft) | 84.7 GB |
+| KV pool, 499,712 tokens (FP8 DSA rows) | 4.40 GB |
+| Mamba pool, 28 slots | 2.16 GB |
+| Decode CUDA graphs | 1.5 GB |
+| Live allocator memory at idle, pool 499,712 / 450,560 / 393,216 | 92.04 / 91.4 / 90.95 GiB |
+| Allocator ceiling observed (64 MiB block failed) | 92.9 GiB |
+| Text prefill chunk (4,096 tokens) peak transient | 727 MiB |
+| Full-budget image encode (7,995 tokens) peak transient | 854 MiB |
+| Three long requests resident | +0.2 GiB |
+
+Stress shapes (all on v0.1.3-rc.1; "pass" = every request completes, no allocator warning, no restart):
+
+| Shape | 499,712 (v0.1.2) | 393,216 | 450,560 |
+|---|---|---|---|
+| 3 long prompts resident + full-budget image | scheduler OOM in the vision encoder | pass | pass (x3) |
+| 3 long prompts resident + cold 4k text | not run | pass | pass |
+| single prompt at 97% of the pool + image | not run | pass | pass |
+| 4 cold prompts at a quarter of the pool each | mamba assert (see below) | pass (x2) | pass |
+| 3 long prompts + two images back to back | not run | pass | pass (x2) |
+| 10 images with mixed text (42k tokens), alone and with 3 long prompts | not run | pass | pass |
+
+The second crash at 499,712 was not memory: `AssertionError: Can not alloc
+mamba cache` in `stash_chunked_request`. A cold long prefill ends with a
+burst of about half a second in which every cached mamba state is
+non-evictable (one slot per prefill chunk, all 28 in use), and a concurrent
+chunk-boundary checkpoint found no slot. v0.1.3 skips that checkpoint and
+gates admission on free plus evictable slots instead of asserting; the
+skip fired twice across the whole study.
 
 ## Artifact reconstruction quality (producer receipts, unchanged)
 

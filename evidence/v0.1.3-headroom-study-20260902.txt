@@ -1,0 +1,29 @@
+Memory headroom study and crash-free configuration, 2026-09-02 13:40-15:20 UTC
+images: v0.1.2-rc.1 (9f65221e, = v0.1.2) and v0.1.3-rc.1 (0c9d080b, container commit 13eefe8, sglang head 36e337ea0f)
+profiler: SGLANG_EXTEND_MEM_PROFILE=1 (extend-mem-profile lines, TP0); stress script /tmp/headroom_stress.py (V1..V6), slot trace /tmp/spike_trace.py
+
+Boot accounting (identical on every pod): weights 81.51 + 3.19 GB (MTP draft), mamba 28 slots 2.16 GB,
+KV 4.03 + 0.37 GB at 499,712 tokens, "Memory pool end avail mem" 2.62 GB, CUDA graphs -> 1.73 GB avail;
+mem-fraction-static 0.98 gives the same avail (max-total-tokens below the profiled capacity).
+Live allocator at idle: 92.04 GiB (499,712), 91.4 (450,560), 90.95 (393,216). Ceiling ~92.9 GiB (crash below).
+
+Crash 1, v0.1.2 at 499,712 (13:58 UTC): V1 = 3 x 160k resident + 7680x4320 image ->
+  torch.OutOfMemoryError in _batch_encode_per_image_misses (vision encoder), 64 MiB block, 92.92 GiB allocated,
+  321 MiB reserved-unallocated, 21 MiB free; all four requests HTTP 500; scheduler died.
+Transients (profiler): text chunk 4096 -> 727 MiB (kda:extend 274, mla:sparse-attn 162, kda:conv 96);
+  full-budget image (7,995 tokens) -> 854 MiB (mm-embed:image); 3 x 160k resident -> live_at_entry +0.2 GiB.
+  A lone 3840x2160 image on an idle pool already triggered 8 expandable_segments mapping warnings (13:13).
+
+Crash 2, v0.1.2-rc.1 at 393,216 (14:23 UTC): V4 = 4 cold 95k prompts -> AssertionError: Can not alloc mamba cache
+  (stash_chunked_request -> cache_unfinished_req -> mamba_component._alloc_mamba_slot). Slot trace of one cold
+  prompt: used 4 during prefill, then at prefill end used jumps to 4 + (chunks-1) for ~0.5 s with evictable 0
+  (16k: 7, 38k: 13, 64k: 19, 95k: 26 of 28); no burst on a cache hit. py-spy cannot attach in the pod.
+
+v0.1.3-rc.1 fix: unfinished-request checkpoint skipped when no free/evictable slot (throttled log line),
+  PrefillAdder static-pool gating on free+evictable, admission loop stops before the prefix match at zero.
+
+Results (pass = all requests OK, 0 OOM/assert/mapping-warning lines, 0 restarts):
+  393,216: V4 x2 pass (1 checkpoint skipped), V1 V2 V3 V5 V6 pass, 4x18k probe 4 running x2; max live 91.16 GiB.
+  450,560: V1 x3, V3, V4 (4 x 109k), V5 x2, V6, V2-equivalent pass; 2 checkpoints skipped; max live 91.76 GiB,
+           min device free 0.32 GiB; V3 served a 436,295-token prompt plus an 8K image at 99% pool.
+Image budget: processor max_image_tokens 8000 = 6.3 MP (28x28 px/token); 3840x2160 and 7680x4320 both -> 7,995 tokens.

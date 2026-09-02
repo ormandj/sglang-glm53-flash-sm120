@@ -12,7 +12,7 @@ export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v55
 ```
 
 The launcher defaults are the measured TP2 profile: vision, adaptive MTP
-5/1/6, FlashInfer SM120 DSA with packed FP8 KV, a 499,712-token shared pool,
+5/1/6, FlashInfer SM120 DSA with packed FP8 KV, a 450,560-token shared pool,
 four running requests, 28 BF16 recurrent-state slots, and decode CUDA graphs
 at batch sizes 1 through 4. HiCache is opt-in (`ENABLE_HICACHE=1`); the
 numbers in `README.md` and `BENCHMARKS.md` were measured with it on.

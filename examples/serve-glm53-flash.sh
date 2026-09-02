@@ -11,8 +11,8 @@ IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.3-rc.1}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
-CONTEXT_LENGTH=${CONTEXT_LENGTH:-499712}
-MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-499712}
+CONTEXT_LENGTH=${CONTEXT_LENGTH:-450560}
+MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-450560}
 MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}
 # GLM's hybrid recurrent state uses up to five slots per live request (four
 # in steady decode plus MTP intermediates). Recurrent-state slots are model
