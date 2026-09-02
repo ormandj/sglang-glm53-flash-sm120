@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.1-rc.10 (fixes rc.9 boot crash; not yet built or qualified)
+
+- rc.9's profiler module imported the environ module instead of its `envs`
+  accessor and crashed both schedulers at the first extend. rc.9 never
+  served; do not use it.
+
 ## v0.1.1-rc.9 (extend memory profiler; not yet built or qualified)
 
 - Adds `SGLANG_EXTEND_MEM_PROFILE=1`: per-phase device-memory peaks for

@@ -24812,7 +24812,7 @@ index 04b04eb9c0..3fa988331d 100644
  
 diff --git a/python/sglang/srt/utils/extend_mem_profile.py b/python/sglang/srt/utils/extend_mem_profile.py
 new file mode 100644
-index 0000000000..f47928dbc3
+index 0000000000..a5ce3ae15e
 --- /dev/null
 +++ b/python/sglang/srt/utils/extend_mem_profile.py
 @@ -0,0 +1,88 @@
@@ -24838,7 +24838,7 @@ index 0000000000..f47928dbc3
 +
 +import torch
 +
-+from sglang.srt import environ as envs
++from sglang.srt.environ import envs
 +
 +logger = logging.getLogger(__name__)
 +
