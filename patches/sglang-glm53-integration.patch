@@ -20887,10 +20887,10 @@ index 65c880d48e..6c8ca7efa1 100644
              ),
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
 new file mode 100644
-index 0000000000..14ed4325cd
+index 0000000000..0754dad135
 --- /dev/null
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -0,0 +1,1801 @@
+@@ -0,0 +1,1859 @@
 +import logging
 +from contextlib import nullcontext
 +from functools import partial
@@ -22071,6 +22071,7 @@ index 0000000000..14ed4325cd
 +    def precompile_kernels_after_loading(self) -> None:
 +        """Load GLM's long-prefill kernels before memory pools are committed."""
 +        self._precompile_vision_attention_kernel()
++        self._precompile_vision_mlp_kernel()
 +        if self.encoder_only or self.model is None:
 +            return
 +
@@ -22207,6 +22208,63 @@ index 0000000000..14ed4325cd
 +            logger.warning(
 +                "Vision-tower attention precompile failed; the kernel will be "
 +                "loaded on the first image request instead",
++                exc_info=True,
++            )
++
++    def _precompile_vision_mlp_kernel(self) -> None:
++        """Compile the vision MLP's ``torch.compile``d activation before pools exist.
++
++        ``swiglu_clamped`` is compiled with dynamo's default shape policy: the
++        first call compiles a static-shape kernel, and a second, different
++        token count recompiles a dynamic-shape one. Each compile runs
++        inductor's Triton autotuning, which allocates benchmark buffers on the
++        device. Without this hook the first image whose token count differs
++        from the warmup image's (a 3840x2160 image at the 8,000-token budget
++        after a 64x64 warmup) triggers that autotune during serving with the
++        memory pools already allocated, and it fails with CUDA OOM at
++        ``mem_fraction_static`` 0.99. Running the MLP at two token counts here
++        settles dynamo on the dynamic kernel while memory is free; the
++        inductor cache then serves later boots.
++        """
++        if self.visual is None or not self.pp_group.is_first_rank:
++            return
++        # Both callers of swiglu_clamped: the block MLP and the patch merger,
++        # whose gate_up widths differ and therefore compile separately.
++        targets = []
++        for cls, first_linear in (
++            (Glm5NextVisionMLP, "gate_up_proj"),
++            (Glm5NextVisionPatchMerger, "proj"),
++        ):
++            module = next(
++                (m for m in self.visual.modules() if isinstance(m, cls)), None
++            )
++            if module is not None:
++                targets.append((module, getattr(module, first_linear).input_size))
++        if not targets:
++            return
++        try:
++            device = self.visual.device
++            dtype = self.visual.dtype
++            with torch.no_grad():
++                for module, in_features in targets:
++                    for tokens in (64, 4096):
++                        module(
++                            torch.zeros(
++                                (tokens, in_features), dtype=dtype, device=device
++                            )
++                        )
++            if device.type == "cuda":
++                torch.cuda.synchronize(device)
++            log_info_on_rank0(
++                logger,
++                "Precompiled the vision-tower MLP and patch-merger activation "
++                "kernels (static and dynamic token counts) before memory-pool "
++                "allocation.",
++            )
++        except Exception:
++            logger.warning(
++                "Vision-tower MLP precompile failed; the activation will be "
++                "compiled on the first image request instead",
 +                exc_info=True,
 +            )
 +

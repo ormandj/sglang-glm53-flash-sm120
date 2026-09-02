@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.1-rc.16 (precompile the vision MLP and patch-merger activations; not yet built or qualified)
+
+- rc.15 first boot: the first 3840x2160 image request OOMed both ranks
+  (128 MiB allocation with 127 MiB free) inside inductor's Triton autotune
+  for the vision tower's `torch.compile`d `swiglu_clamped`. The warmup's
+  64x64 image compiled the static-shape kernel; the first different token
+  count recompiled a dynamic-shape kernel at serving time, and on the fresh
+  v55 inductor cache that autotune had no headroom. The precompile hook now
+  runs the block MLP and the patch merger at two token counts before the
+  memory pools are allocated, so dynamo settles on the dynamic kernel and
+  the inductor cache carries it into later boots. Text, sampled chat and
+  the warmup phases were otherwise clean on rc.15 (zero late loads at
+  ready, 14 min first boot on the fresh cache).
+
 ## v0.1.1-rc.15 (rebuilt on latest upstream mains with the submitted PR branches; not yet built or qualified)
 
 - SGLang base moved to upstream main 1109e44305 (2026-09-02) with the
