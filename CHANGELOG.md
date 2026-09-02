@@ -2,6 +2,13 @@
 
 ## v0.1.1-rc.14 (offload raw image features after encoding; full extend profiler; not yet built or qualified)
 
+- Validated on quasar (first boot, model-default 8,000 image tokens): a
+  3840x2160 image prefills as 7,994 tokens across two chunks in 0.97 s
+  steady-state, a 7680x4320 image in 1.33 s, and four simultaneous cold
+  4k-token requests still complete afterwards with no OOM. The rc.8
+  `max_image_tokens: 3072` cap is removed from the documented profile;
+  `--max-prefill-tokens 4096` stays (it bounds batched cold prefills,
+  which are per-token activations the KDA blocking cannot shrink).
 - Raw image features (pixel patches) return to host memory as soon as the
   vision encoder has consumed them. The embedding is cached; a chunked
   prefill otherwise kept the per-image device copies alive through every

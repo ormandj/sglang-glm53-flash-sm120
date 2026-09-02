@@ -124,7 +124,6 @@ docker run --rm --name glm53-flash --entrypoint sglang --gpus all \
   --served-model-name glm-5.3-flash --host 0.0.0.0 --port 8000 \
   --tp 2 --quantization modelopt_mixed \
   --enable-multimodal --image-processor-backend torchvision --warmups serving_coverage \
-  --mm-process-config '{"image": {"max_image_tokens": 3072}}' \
   --moe-runner-backend flashinfer_cutlass --disable-shared-experts-fusion \
   --disable-custom-all-reduce \
   --attention-backend dsa --linear-attn-backend triton \
