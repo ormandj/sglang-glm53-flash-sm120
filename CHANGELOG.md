@@ -2,8 +2,12 @@
 
 ## v0.1.1 (stable; digest-identical promotion of v0.1.1-rc.16)
 
-- Digest `sha256:5e499c5fde911ca20345431fb25d70202eefaed662beb1fec27887d99abd33d0`,
-  promoted internally and on ghcr without a rebuild.
+- Promoted without a rebuild from the rc.16 candidate built from source
+  revision 6e5498b: internal registry digest
+  `sha256:5e499c5fde911ca20345431fb25d70202eefaed662beb1fec27887d99abd33d0`
+  (the deployment that was validated), ghcr digest
+  `sha256:66eb45f044ba26a47433992b788fa12f3f84fe65067dba8d9c938630f95f2eb4`
+  (GitHub's independent build of the same pinned sources).
 - Fixes since v0.1.0: the no-restore Xid 31 fault in
   `kpool_topk_transform_kernel<512>` (issue #3, PR #4 by @bold84,
   reported by @bold84 and @sousekd; upstream sgl-project/sglang#37540);
