@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Target TP=2 profile for the local E4M3-K32 W4A16 artifact. The defaults are
-# goals to qualify, not claims that v0.1.1-rc.16 has already achieved them.
+# The TP=2 serving profile for the W4A16 NVFP4 K32 checkpoint, identical to
+# the configuration the README and BENCHMARKS numbers were measured with
+# (HiCache is the one opt-in, see ENABLE_HICACHE below).
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
@@ -13,8 +14,9 @@ TP_SIZE=${TP_SIZE:-2}
 CONTEXT_LENGTH=${CONTEXT_LENGTH:-499712}
 MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-499712}
 MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}
-# GLM's hybrid recurrent state consumes five physical slots per live request.
-# C4 therefore needs 20 slots; this is model state, not ordinary KV cache.
+# GLM's hybrid recurrent state uses up to five slots per live request (four
+# in steady decode plus MTP intermediates). Recurrent-state slots are model
+# state, not ordinary KV cache; 28 is the qualified value for four requests.
 MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}
 
 # HiCache: host-RAM prefix cache tier, DISABLED by default. Reuse of long
@@ -22,9 +24,8 @@ MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}
 # tok/s cold at chunk 4096). To enable it:
 #   ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
 # Size the pinned host tier in GB with HICACHE_SIZE_GB (default 32, about
-# 3.4M cached tokens; the machine needs that much free host RAM). This
-# image carries fixes for hybrid-mamba hicache load-back defects that are
-# not yet upstream; the conservative default stands until they land.
+# 2.65M cached KV tokens plus the recurrent-state tier; the machine needs
+# that much free host RAM). The measured configuration runs with it on.
 ENABLE_HICACHE=${ENABLE_HICACHE:-0}
 HICACHE_SIZE_GB=${HICACHE_SIZE_GB:-32}
 HICACHE_ARGS=""
@@ -90,6 +91,9 @@ exec docker run --rm \
   --env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
   --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  --env CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8 \
+  --env SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1 \
+  --env SGLANG_PCIE_IPC_MAX_NUMEL=786432 \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
@@ -103,10 +107,12 @@ exec docker run --rm \
   --warmups serving_coverage \
   --image-processor-backend torchvision \
   --mm-preprocessing-device cpu \
+  --quantization modelopt_mixed \
   --moe-runner-backend flashinfer_cutlass \
   --disable-shared-experts-fusion \
   --disable-custom-all-reduce \
   --attention-backend dsa \
+  --linear-attn-backend triton \
   --context-length "$CONTEXT_LENGTH" \
   --max-total-tokens "$MAX_TOTAL_TOKENS" \
   --kv-cache-dtype fp8_e4m3 \
@@ -116,7 +122,9 @@ exec docker run --rm \
   --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
   --mamba-ssm-dtype bfloat16 \
   $HICACHE_ARGS \
-  --cuda-graph-max-bs-decode "$CUDA_GRAPH_MAX_BS" \
+  --cuda-graph-backend-prefill disabled \
+  --cuda-graph-backend-decode full \
+  --cuda-graph-bs-decode $(seq -s ' ' 1 "$CUDA_GRAPH_MAX_BS") \
   --dsa-prefill-backend flashinfer_sparse_mla \
   --dsa-decode-backend flashinfer_sparse_mla \
   --speculative-algorithm EAGLE \
