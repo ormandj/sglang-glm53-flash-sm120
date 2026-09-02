@@ -168,7 +168,7 @@ SGLang (base `main` 1109e44305, 2026-09-02):
 | [sgl-project/sglang#37537](https://github.com/sgl-project/sglang/pull/37537) | `--mm-preprocessing-device` for the base visual preprocessing path |
 | [sgl-project/sglang#37538](https://github.com/sgl-project/sglang/pull/37538) | env-gated extend memory profiler |
 | [sgl-project/sglang#37539](https://github.com/sgl-project/sglang/pull/37539) | GLM-5-Next vision-tower attention and compiled-activation precompile at startup |
-| [sgl-project/sglang#37540](https://github.com/sgl-project/sglang/pull/37540) | kpool top-k transform: clipped stage-1 bins and bounded selection stores (by @bold84) |
+| [sgl-project/sglang#37625](https://github.com/sgl-project/sglang/pull/37625) | kpool top-k transform: clipped stage-1 bins and bounded selection stores (by @bold84; re-filed against main after #37477 merged and closed #37540) |
 | [sgl-project/sglang#37541](https://github.com/sgl-project/sglang/pull/37541) | opt-in `serving_coverage` request warmup |
 | [sgl-project/sglang#37612](https://github.com/sgl-project/sglang/pull/37612) | prefill admission re-evaluated every round on hybrid SSM radix caches (the v0.1.2 C4 fix) |
 | [sgl-project/sglang#37619](https://github.com/sgl-project/sglang/pull/37619) | unfinished-request mamba checkpoint skipped when the pool is exhausted (the v0.1.3 crash fix) |
@@ -187,7 +187,9 @@ adaptive-MTP chain-buffer pinning, and the Triton late-load diagnostic
 armed after the serving warmup. Already merged upstream and in the base:
 [sgl-project/sglang#37317](https://github.com/sgl-project/sglang/pull/37317),
 [#36958](https://github.com/sgl-project/sglang/pull/36958),
-[#36798](https://github.com/sgl-project/sglang/pull/36798).
+[#36798](https://github.com/sgl-project/sglang/pull/36798), and since
+2026-09-02 [#37477](https://github.com/sgl-project/sglang/pull/37477) (the
+GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
