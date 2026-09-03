@@ -1,5 +1,5 @@
 diff --git a/CLAUDE.md b/CLAUDE.md
-index 58e5e716..9640b10e 100644
+index 58e5e716a0d6849d97e9a45f866cd3eac24b55df..9640b10e07be441794ede3dcd763b8576955314b 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
 @@ -583,7 +583,7 @@ Used by `flashinfer.trace` / `fi_trace`.
@@ -12,7 +12,7 @@ index 58e5e716..9640b10e 100644
  | `FLASHINFER_CUTILE_AUTOTUNE_DISABLED` | `0` | `flashinfer/quantization/kernels/cutile/rope_quantize_fp8_cutile.py` | Non-zero skips exhaustive cuTile RoPE-FP8 tuning and uses the built-in token-count heuristic. |
  | `FLASHINFER_CONFIDENTIAL_COMPUTE` | unset | `flashinfer/utils.py` | Override NVIDIA Confidential Computing (CC) auto-detection used by `is_confidential_compute()` (which drives the autotuner timer above): `1` forces CC, `0` forces non-CC. Useful for CI or hosts without `pynvml`. |
 diff --git a/benchmarks/bench_sparse_mla_sm120.py b/benchmarks/bench_sparse_mla_sm120.py
-index f27bc7dc..7a3b3a60 100644
+index f27bc7dc6515d6e0bc643c2db66df9dae2848499..7a3b3a60cefa31d56f32bb02f033127597a437c7 100644
 --- a/benchmarks/bench_sparse_mla_sm120.py
 +++ b/benchmarks/bench_sparse_mla_sm120.py
 @@ -307,11 +307,15 @@ def bench_sparse_mla_sm120_dsv4_dual(
@@ -62,7 +62,7 @@ index f27bc7dc..7a3b3a60 100644
 +                f"{h:>10}  {2048:>6}  {t:>11}  {lat_us:>10.1f}  {kvbw:>13.1f}  {tfl:>12.2f}"
 +            )
 diff --git a/csrc/sparse_mla_sm120.cu b/csrc/sparse_mla_sm120.cu
-index 2d24432b..598199dc 100644
+index 2d24432b4a949a0e27ee4c8e99001e4bf39c8ecb..598199dc93e6d997034f70d05c8f8ee59f0faf1b 100644
 --- a/csrc/sparse_mla_sm120.cu
 +++ b/csrc/sparse_mla_sm120.cu
 @@ -45,14 +45,15 @@ using tvm::ffi::Optional;
@@ -291,7 +291,7 @@ index 2d24432b..598199dc 100644
  
  }  // namespace flashinfer::sparse_mla_sm120
 diff --git a/csrc/sparse_mla_sm120_decode_dsv3_2.cu b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
-index 74214924..368fdbb4 100644
+index 742149245cff1acccd2d87c2e3c688e38501227f..368fdbb49904b31f8abc9565db82da6d0f13adc9 100644
 --- a/csrc/sparse_mla_sm120_decode_dsv3_2.cu
 +++ b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
 @@ -6,11 +6,11 @@
@@ -508,7 +508,7 @@ index 74214924..368fdbb4 100644
    return false;
  }
 diff --git a/csrc/sparse_mla_sm120_decode_dsv4.cu b/csrc/sparse_mla_sm120_decode_dsv4.cu
-index 55fc7ecf..5efe99bc 100644
+index 55fc7ecfd2cb490952044ffde0ecf138a9f6550e..5efe99bc5211c3b67427c079c904311e914f30f5 100644
 --- a/csrc/sparse_mla_sm120_decode_dsv4.cu
 +++ b/csrc/sparse_mla_sm120_decode_dsv4.cu
 @@ -18,51 +18,65 @@ namespace flashinfer::sparse_mla_sm120 {
@@ -809,7 +809,7 @@ index 55fc7ecf..5efe99bc 100644
  }
  
 diff --git a/csrc/sparse_mla_sm120_jit_binding.cu b/csrc/sparse_mla_sm120_jit_binding.cu
-index 5d59d0a4..d506f690 100644
+index 5d59d0a42030ecaefb5ef29c72c594b6d721d067..d506f690ab37c8b51049e8e6fe2594d6535d8464 100644
 --- a/csrc/sparse_mla_sm120_jit_binding.cu
 +++ b/csrc/sparse_mla_sm120_jit_binding.cu
 @@ -17,34 +17,40 @@ using bf16 = __nv_bfloat16;
@@ -1071,7 +1071,7 @@ index 5d59d0a4..d506f690 100644
  }
  
 diff --git a/csrc/sparse_mla_sm120_prefill.cu b/csrc/sparse_mla_sm120_prefill.cu
-index 0c988caa..82bfda29 100644
+index 0c988caaae3e45056cc4acf8a0ce43e39b370af9..82bfda29b298fed027ee242beff0614d500353d1 100644
 --- a/csrc/sparse_mla_sm120_prefill.cu
 +++ b/csrc/sparse_mla_sm120_prefill.cu
 @@ -26,13 +26,22 @@
@@ -1776,7 +1776,7 @@ index 0c988caa..82bfda29 100644
  
  }  // namespace flashinfer::sparse_mla_sm120
 diff --git a/docs/api/attention.rst b/docs/api/attention.rst
-index 3062fa98..d036c74e 100644
+index 3062fa98a23c284fac11d2b8fcc56b57a60516cf..d036c74ebb70b6b59b2a81d5f99f0109fbaca7fc 100644
 --- a/docs/api/attention.rst
 +++ b/docs/api/attention.rst
 @@ -262,6 +262,8 @@ PageAttention for MLA
@@ -1789,7 +1789,7 @@ index 3062fa98..d036c74e 100644
  .. note::
  
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index 7b368af7..2c85b66d 100644
+index 7b368af7ff083598a38a31b9d561761fe71ed969..2c85b66da7658a76d78107df74ce7e4c48539ff7 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -1417,6 +1417,9 @@ class B12xW4A16Config:
@@ -1803,7 +1803,7 @@ index 7b368af7..2c85b66d 100644
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
          """
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
-index fe7b4c47..b6a9e219 100644
+index fe7b4c47f0ba833fde985f02f54a87c7edacc4a1..b6a9e219cad0ec47e0efcb3fdca9dfec8c9cd77b 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 @@ -11,6 +11,7 @@ from .moe_dispatch import (
@@ -1823,7 +1823,7 @@ index fe7b4c47..b6a9e219 100644
      "launch_sm120_dynamic_moe",
      "launch_sm120_moe",
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-index fbefa788..f8fd9885 100644
+index fbefa788b2637d6130440a50558929baae08ed78..f8fd988561a3e6a5b8862db8ad13c23424906501 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 @@ -9,6 +9,7 @@ from __future__ import annotations
@@ -1984,7 +1984,7 @@ index fbefa788..f8fd9885 100644
  
  # ==========================================================================
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
-index 021bd5af..613eecde 100644
+index 021bd5af61858af8f51ff5083c36a73bd50c65e1..613eecded2f3ace8ce4d79550de9e9f82506d850 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 @@ -117,6 +117,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -2300,7 +2300,7 @@ index 021bd5af..613eecde 100644
          activated,
          fc2_out,
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
-index ce043109..205f064f 100644
+index ce043109ab9b6f1c666c7da782a6f2b2266481f0..205f064f8e5e6b7041b71299cbc5692e7a01a0cb 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 @@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -2512,7 +2512,7 @@ index ce043109..205f064f 100644
          return prepare_w4a16_compressed_tensors_weights(
              *args, w13_layout=w13_layout, **kwargs
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 603807d4..f340eab1 100644
+index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e4382dd0ccbe 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
 @@ -2471,8 +2471,8 @@ def prepare_b12x_w4a16_weights(
@@ -2549,7 +2549,7 @@ index 603807d4..f340eab1 100644
      return {
          "w1_weight": w1_fp4,
 diff --git a/flashinfer/mla/__init__.py b/flashinfer/mla/__init__.py
-index 6a1f9390..e9c40c2f 100644
+index 6a1f93901bafc264ea0abe891bb29ad7de3eb748..e9c40c2f14f27c1c5c82a58373ad4e0b78c4f790 100644
 --- a/flashinfer/mla/__init__.py
 +++ b/flashinfer/mla/__init__.py
 @@ -22,9 +22,19 @@ _PRIMS_TS_LAZY_EXPORTS = frozenset(
@@ -2593,7 +2593,7 @@ index 6a1f9390..e9c40c2f 100644
 +        set(globals()) | _PRIMS_TS_LAZY_EXPORTS | _SPARSE_MLA_SM120_LAZY_EXPORTS
 +    )
 diff --git a/flashinfer/mla/_core.py b/flashinfer/mla/_core.py
-index 5701cc86..d4c64f91 100644
+index 5701cc8635e5e5eb5b5890769c4fabbd9e021e1f..d4c64f913a4d0c30520fe3ea90fbc54dbf9e7fc4 100644
 --- a/flashinfer/mla/_core.py
 +++ b/flashinfer/mla/_core.py
 @@ -176,7 +176,7 @@ def _normalize_sparse_mla_indices_and_lens(
@@ -2715,7 +2715,7 @@ index 5701cc86..d4c64f91 100644
          Latent KV rank. TRTLLM-GEN and SM120/SM121 sparse v32/GLM use ``512``.
      qk_rope_head_dim : int
 diff --git a/flashinfer/mla/_sparse_mla_sm120.py b/flashinfer/mla/_sparse_mla_sm120.py
-index 67849b90..4eb1679b 100644
+index 67849b902d105ff210a22c29f100226389e667aa..4eb1679b609a000870bde77031be780c405ed656 100644
 --- a/flashinfer/mla/_sparse_mla_sm120.py
 +++ b/flashinfer/mla/_sparse_mla_sm120.py
 @@ -28,9 +28,20 @@
@@ -4510,7 +4510,7 @@ index 67849b90..4eb1679b 100644
      return output
 diff --git a/flashinfer/mla/_sparse_mla_sm120_cpb.py b/flashinfer/mla/_sparse_mla_sm120_cpb.py
 new file mode 100644
-index 00000000..38fc16e1
+index 0000000000000000000000000000000000000000..38fc16e1b6b9f1a5fcc31aa5c468b98c6fac6fd2
 --- /dev/null
 +++ b/flashinfer/mla/_sparse_mla_sm120_cpb.py
 @@ -0,0 +1,1455 @@
@@ -5971,7 +5971,7 @@ index 00000000..38fc16e1
 +    )
 diff --git a/flashinfer/mla/_sparse_mla_sm120_plan.py b/flashinfer/mla/_sparse_mla_sm120_plan.py
 new file mode 100644
-index 00000000..eb9e22a9
+index 0000000000000000000000000000000000000000..eb9e22a98346be71e9aa827b04e35aec66631ed5
 --- /dev/null
 +++ b/flashinfer/mla/_sparse_mla_sm120_plan.py
 @@ -0,0 +1,655 @@
@@ -6631,7 +6631,7 @@ index 00000000..eb9e22a9
 +        return KernelVariant.DECODE_SPLITK
 +    return pf
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/arch/common.cuh b/include/flashinfer/attention/sparse_mla_sm120/arch/common.cuh
-index f4d9b940..ac35f429 100644
+index f4d9b940f849664ce92c95f575ff38aa85aa1f9e..ac35f4295fed7991da5ef816c595a54bc0317267 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/arch/common.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/arch/common.cuh
 @@ -84,6 +84,41 @@ __device__ __forceinline__ float warp_reduce_sum(float val) {
@@ -6677,7 +6677,7 @@ index f4d9b940..ac35f429 100644
  #define CUDA_CHECK(call)                                                                         \
    do {                                                                                           \
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh b/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh
-index ff1d1066..a72ee93c 100644
+index ff1d106605a548fe36a43ae940e9edcd785da8e6..a72ee93c13d7ffcf247055e3370f739348541214 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/arch/cp_async.cuh
 @@ -83,6 +83,23 @@ __device__ __forceinline__ void cp_async_bulk_g2s_l2hint(void* smem_dst, const v
@@ -6719,7 +6719,7 @@ index ff1d1066..a72ee93c 100644
  // L2::evict_last requires .v8.b32 or .v4.b64 — 128-bit stores are not supported.
  __device__ __forceinline__ void store_8f_evict_last(float* addr, float4 v0, float4 v1) {
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/arch/ldmatrix_sm120.cuh b/include/flashinfer/attention/sparse_mla_sm120/arch/ldmatrix_sm120.cuh
-index 49fe233a..6446ba4d 100644
+index 49fe233a77b8e22dfc99b9e7458be1040d07ced6..6446ba4d1970bb899c5e470e163d65f7aa37108a 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/arch/ldmatrix_sm120.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/arch/ldmatrix_sm120.cuh
 @@ -102,3 +102,20 @@ __device__ __forceinline__ void ldmatrix_load_A_bf16(uint32_t& a0, uint32_t& a1,
@@ -6745,7 +6745,7 @@ index 49fe233a..6446ba4d 100644
 +}
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/arch/stmatrix_sm120.cuh b/include/flashinfer/attention/sparse_mla_sm120/arch/stmatrix_sm120.cuh
 new file mode 100644
-index 00000000..06aa0ea9
+index 0000000000000000000000000000000000000000..06aa0ea9c6ac57a255a8f4d9bd20b64cf8f92eb8
 --- /dev/null
 +++ b/include/flashinfer/attention/sparse_mla_sm120/arch/stmatrix_sm120.cuh
 @@ -0,0 +1,56 @@
@@ -6806,7 +6806,7 @@ index 00000000..06aa0ea9
 +  }
 +};
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/fp8_quant.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/fp8_quant.cuh
-index 8260f87a..443cde5a 100644
+index 8260f87af521a39a7361f7c70dfc295d7244ae32..443cde5a21c84679ba7caea2abda1901f777b5b7 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/fp8_quant.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/fp8_quant.cuh
 @@ -34,11 +34,18 @@
@@ -7052,7 +7052,7 @@ index 8260f87a..443cde5a 100644
 +  bar_sync_t<2, _MATH_THREADS>();
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
-index 86ae07cc..12268e94 100644
+index 86ae07cc6b02fa35e72923b96875af8e33ea955f..12268e945ee6ff95625d1308569586dd688271b3 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
 @@ -53,14 +53,20 @@ struct KVIOTraits {
@@ -7197,7 +7197,7 @@ index 86ae07cc..12268e94 100644
 +      __ldg(reinterpret_cast<const uint64_t*>(src));
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh
-index 9ce8e2de..524d8c0f 100644
+index 9ce8e2de3d918c89dcd4f23db86f1038ae638416..524d8c0fb8944d12539d4bff0575e7763934841e 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/q_rope.cuh
 @@ -41,28 +41,37 @@
@@ -7293,7 +7293,7 @@ index 9ce8e2de..524d8c0f 100644
 +  qk[3] += ra[3];
 +}
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
-index 8d8a50d7..4c7c9d69 100644
+index 8d8a50d7bbb528364e71c53feb1a94fd519a53d1..4c7c9d692737f7283e57e06b5a9524c26db0fd84 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
 @@ -29,6 +29,7 @@
@@ -7559,7 +7559,7 @@ index 8d8a50d7..4c7c9d69 100644
      return s;
    }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
-index f9ba123a..dd54a0c9 100644
+index f9ba123a55ebc8596f2a4e3b9b98e605ccfbd8af..dd54a0c9362922af825fd647d75aa4f5b1572bd7 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
 @@ -28,6 +28,7 @@ namespace flashinfer::sparse_mla_sm120 {
@@ -7731,7 +7731,7 @@ index f9ba123a..dd54a0c9 100644
      if constexpr (VALID_HPB > 8) {
        mid_lse[lse_base + (size_t)(gid + 8) * num_splits + split_idx] = lse1;
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh
-index 851214d9..e0ffeb2b 100644
+index 851214d9eb2468f02f530f9094422f146fd4727e..e0ffeb2b865c4579de87061cdcb416d45e4fe620 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh
 @@ -31,43 +31,95 @@ namespace flashinfer::sparse_mla_sm120 {
@@ -8532,7 +8532,7 @@ index 851214d9..e0ffeb2b 100644
  }
  
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh b/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh
-index 3bdc6a69..4aaf4c9f 100644
+index 3bdc6a69fad8e70d323c6a7de0fa1344fa273d10..4aaf4c9ffafad63d844dbdabb574128f005734a5 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh
 @@ -36,7 +36,9 @@
@@ -8736,7 +8736,7 @@ index 3bdc6a69..4aaf4c9f 100644
 +  static_assert(NT_PER_WARP_XV >= 1, "V chunk too narrow for this math-warp count");
  };
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
-index cdc6c24f..250ade9a 100644
+index cdc6c24fea74b78e854c2294efbc2c03b8c6cd40..250ade9a46db58a36589a5e47a9bfd7d1129306b 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
 +++ b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
 @@ -28,11 +28,43 @@
@@ -8787,7 +8787,7 @@ index cdc6c24f..250ade9a 100644
  
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
 new file mode 100644
-index 00000000..d02b2c18
+index 0000000000000000000000000000000000000000..d02b2c18f90ceb5ce6e59137d404e2db7162df13
 --- /dev/null
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
 @@ -0,0 +1,207 @@
@@ -9002,7 +9002,7 @@ diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_kernel.cuh b/
 similarity index 61%
 rename from include/flashinfer/attention/sparse_mla_sm120/prefill_kernel.cuh
 rename to include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
-index 9b0e8ac4..140d1c06 100644
+index 9b0e8ac49c3f0af59dd7acc49bd5dd82e63eb293..140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/prefill_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
 @@ -28,202 +28,152 @@
@@ -10573,7 +10573,7 @@ index 9b0e8ac4..140d1c06 100644
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
 new file mode 100644
-index 00000000..3e956b6e
+index 0000000000000000000000000000000000000000..3e956b6e3c0e717350a2b265f0e21ca3a0af69f3
 --- /dev/null
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
 @@ -0,0 +1,480 @@
@@ -11058,7 +11058,7 @@ index 00000000..3e956b6e
 +  }
 +}
 diff --git a/tests/attention/test_sparse_mla_sm120.py b/tests/attention/test_sparse_mla_sm120.py
-index cc55d989..e334e6f8 100644
+index cc55d9890fc548e14a25f7ddd01c943ad67aef31..e334e6f8d8dd48294473fe9c8b2acc511964884a 100644
 --- a/tests/attention/test_sparse_mla_sm120.py
 +++ b/tests/attention/test_sparse_mla_sm120.py
 @@ -35,12 +35,13 @@ import torch
@@ -14943,7 +14943,7 @@ index cc55d989..e334e6f8 100644
 +            call()
 diff --git a/tests/attention/test_sparse_mla_sm120_cpb_model.py b/tests/attention/test_sparse_mla_sm120_cpb_model.py
 new file mode 100644
-index 00000000..597ffa8f
+index 0000000000000000000000000000000000000000..597ffa8f9f00538e5b3256474aa6d34eed2c59e3
 --- /dev/null
 +++ b/tests/attention/test_sparse_mla_sm120_cpb_model.py
 @@ -0,0 +1,941 @@
@@ -15890,7 +15890,7 @@ index 00000000..597ffa8f
 +    }
 diff --git a/tests/attention/test_sparse_mla_sm120_dispatch.py b/tests/attention/test_sparse_mla_sm120_dispatch.py
 new file mode 100644
-index 00000000..66a7b2b1
+index 0000000000000000000000000000000000000000..66a7b2b1035c27033f9742ec8527a49cbe441d52
 --- /dev/null
 +++ b/tests/attention/test_sparse_mla_sm120_dispatch.py
 @@ -0,0 +1,853 @@
@@ -16748,7 +16748,7 @@ index 00000000..66a7b2b1
 +    assert SparseMLASm120Wrapper is _SparseMLAPagedAttentionRunner
 +    assert "SparseMLASm120Wrapper" in dir(flashinfer.mla)
 diff --git a/tests/autotuner/test_autotuner_core.py b/tests/autotuner/test_autotuner_core.py
-index 7ed97e99..30511bda 100644
+index 7ed97e99da95224c64eb4ceb7e7029106208ca5b..30511bda8f84e09c7adf0beb4b7033b57ecd880a 100644
 --- a/tests/autotuner/test_autotuner_core.py
 +++ b/tests/autotuner/test_autotuner_core.py
 @@ -18,10 +18,6 @@ from flashinfer.mla._core import (
@@ -16783,7 +16783,7 @@ index 7ed97e99..30511bda 100644
      """Regression test: rebuilt MLA-decode configs must collapse to a single
      _find_nearest_profile cache entry.
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
-index 7d822ce3..0808b9ab 100644
+index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cff8c7ebd4 100644
 --- a/tests/moe/test_b12x_fused_moe.py
 +++ b/tests/moe/test_b12x_fused_moe.py
 @@ -220,6 +220,29 @@ def test_w4a16_static_tiler_uses_64_when_intermediate_not_128_aligned():
@@ -16883,7 +16883,7 @@ index 7d822ce3..0808b9ab 100644
      methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
-index 00000000..ccc8836c
+index 0000000000000000000000000000000000000000..ccc8836c306ad4674dcc9c0ef6bd95ce65b8b41a
 --- /dev/null
 +++ b/tests/moe/test_b12x_workspace_graph_pinning.py
 @@ -0,0 +1,206 @@

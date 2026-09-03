@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.2.1",
-    "candidate": 4,
-    "candidate_tag": "v0.2.1-rc.4",
+    "candidate": 5,
+    "candidate_tag": "v0.2.1-rc.5",
     "stable_tag": "v0.2.1",
-    "cache_schema": "v59"
+    "cache_schema": "v60"
   },
   "image": {
-    "tag": "v0.2.1-rc.4",
+    "tag": "v0.2.1-rc.5",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,11 +49,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 4
+      "value": 5
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v59"
+      "value": "v60"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -77,19 +77,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "d0c95f6c911addde7d21a62df5f8ad06709d9ae8"
+      "value": "05dbe64dffab51af8f4b21063cd6a616b16cf6b5"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "238ed39df2b785d5f78481e1a1ab413677ccaad8"
+      "value": "08cc768b41770258bccc26105e8139899d467807"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "cbc0efd7d7a84da101b13e454c388618a5d24844"
+      "value": "1d25adf931083808bc42eb6a4c92f6263aa5e3d5"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "69db40c53c367f60d6958d4e833b2bce30a453f539125e41bf39b490d2ec9c3d"
+      "value": "7371a870a85300c44cf87e906cc2246aa46f1e029e3e52198d209a7044bf3a5d"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -101,19 +101,19 @@
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "2c9e6b1350f1f816a25ca19c767ad268c6df3eac"
+      "value": "7a3c04f0156f1a1913d3f1a2928372c214322316"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "be5083224ba5f4d1ccaeef9ae5eb3a4c345b05cd"
+      "value": "76d82c4bced3d0b6d1b3062bfd881052ef1795bd"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "a89ec9282d1dac3d60e1236bc923979cd08ae175"
+      "value": "6d1af632bfec32cf809498de60dceee328ac7935"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "d248a33460c4b7eb7e32f3ba8762cc3d634cf928f689631fd9b844c3a3bf47c1"
+      "value": "71cff716bfea211e7eb4f026e47954c65d96644badcdedb747c6dcc0082667a1"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -147,17 +147,17 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "d0c95f6c911addde7d21a62df5f8ad06709d9ae8",
-      "upstream_tree": "238ed39df2b785d5f78481e1a1ab413677ccaad8",
-      "tree": "cbc0efd7d7a84da101b13e454c388618a5d24844",
+      "head": "05dbe64dffab51af8f4b21063cd6a616b16cf6b5",
+      "upstream_tree": "08cc768b41770258bccc26105e8139899d467807",
+      "tree": "1d25adf931083808bc42eb6a4c92f6263aa5e3d5",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "69db40c53c367f60d6958d4e833b2bce30a453f539125e41bf39b490d2ec9c3d",
+      "patch_sha256": "7371a870a85300c44cf87e906cc2246aa46f1e029e3e52198d209a7044bf3a5d",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260903-r3",
-      "working_head": "e3d51a61637b869edf53b3f4fccf078b253e07e6",
-      "upstream_main_base": "d0c95f6c911addde7d21a62df5f8ad06709d9ae8",
+      "working_head": "c621c00f9e52f556b7166fbe826f31820a81b004",
+      "upstream_main_base": "05dbe64dffab51af8f4b21063cd6a616b16cf6b5",
       "included_upstream_work": [
-        "sglang#36507 (open head cdfc224b0e, applied to main d0c95f6c91; includes the issue #37548 NextN first-request multimodal embedding fix)",
+        "sglang#36507 (open head cdfc224b0e, applied to main 05dbe64dff; includes the issue #37548 NextN first-request multimodal embedding fix)",
         "sglang#36904 TileLang FP8 KV cache on CUDA (open head 436a89b06f)",
         "sglang#36661 result-owned overlap snapshot lifetime (open head cc78c41a14)",
         "sglang#36696 Mamba radix child-key consistency (open head 1ff8934369)",
@@ -200,7 +200,7 @@
         "sglang#37541 serving_coverage warmup (open head ade49acbb3)",
         "sglang#37539 GLM-5-Next vision-tower attention precompile (open head 00cc3e8dc9)",
         "sglang#37625 kpool top-k transform fix (open public head 1436d19a9a; bold84)",
-        "downstream follow-up to sglang#37625: exact at-or-above-capacity fallback across AOT CUDA and ROCm, kpool JIT, and CUDA JIT v1/v2/ragged variants, with deterministic boundary and clipping regressions",
+        "downstream follow-up to sglang#37625: exact at-or-above-capacity fallback for the legacy AOT CUDA/ROCm and kpool JIT selectors, plus independent oversized-bin recovery for CUDA JIT v1/v2/ragged variants, with deterministic boundary and clipping regressions",
         "sglang#37744 per-layer quantization-aware qkvbfg fusion gate (open head ebe935c116), plus a concrete-class dispatch follow-up and ModelOpt mixed-precision regression",
         "sglang#37375 mHC pipeline-proxy contract (open head b6478a7400)",
         "downstream-only: Triton late-load diagnostics armed after the HTTP warmups (single-worker form)",
@@ -228,17 +228,17 @@
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
       "package_version": "0.6.18",
-      "head": "2c9e6b1350f1f816a25ca19c767ad268c6df3eac",
-      "upstream_tree": "be5083224ba5f4d1ccaeef9ae5eb3a4c345b05cd",
-      "tree": "a89ec9282d1dac3d60e1236bc923979cd08ae175",
+      "head": "7a3c04f0156f1a1913d3f1a2928372c214322316",
+      "upstream_tree": "76d82c4bced3d0b6d1b3062bfd881052ef1795bd",
+      "tree": "6d1af632bfec32cf809498de60dceee328ac7935",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "d248a33460c4b7eb7e32f3ba8762cc3d634cf928f689631fd9b844c3a3bf47c1",
+      "patch_sha256": "71cff716bfea211e7eb4f026e47954c65d96644badcdedb747c6dcc0082667a1",
       "working_repository": "https://git.home.corenode.com/homelab/flashinfer.git",
       "working_branch": "integration/glm53-fi-20260903-r3",
-      "working_head": "c0eba03af1038548fcfd639620ab315604bdd886",
-      "upstream_main_base": "2c9e6b1350f1f816a25ca19c767ad268c6df3eac",
+      "working_head": "d1c952453b93b7a66b3c0c9ec405af86cb906efb",
+      "upstream_main_base": "7a3c04f0156f1a1913d3f1a2928372c214322316",
       "included_upstream_work": [
-        "flashinfer#4802 (open head ffa47d54ac, applied to main 2c9e6b1350; its current-main merge leaves the substantive PR patch unchanged)",
+        "flashinfer#4802 (open head ffa47d54ac, applied to main 7a3c04f015; its current-main merge leaves the substantive PR patch unchanged)",
         "flashinfer#4687 (open head b75d6bfff7)",
         "flashinfer#4827 (open head 21fb169ff2, rebased)",
         "ModelOpt E2M1/E4M3-K32 W4A16 preparation",
@@ -257,18 +257,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "69db40c53c367f60d6958d4e833b2bce30a453f539125e41bf39b490d2ec9c3d",
-      "base_head": "d0c95f6c911addde7d21a62df5f8ad06709d9ae8",
-      "base_tree": "238ed39df2b785d5f78481e1a1ab413677ccaad8",
-      "result_tree": "cbc0efd7d7a84da101b13e454c388618a5d24844"
+      "sha256": "7371a870a85300c44cf87e906cc2246aa46f1e029e3e52198d209a7044bf3a5d",
+      "base_head": "05dbe64dffab51af8f4b21063cd6a616b16cf6b5",
+      "base_tree": "08cc768b41770258bccc26105e8139899d467807",
+      "result_tree": "1d25adf931083808bc42eb6a4c92f6263aa5e3d5"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "d248a33460c4b7eb7e32f3ba8762cc3d634cf928f689631fd9b844c3a3bf47c1",
-      "base_head": "2c9e6b1350f1f816a25ca19c767ad268c6df3eac",
-      "base_tree": "be5083224ba5f4d1ccaeef9ae5eb3a4c345b05cd",
-      "result_tree": "a89ec9282d1dac3d60e1236bc923979cd08ae175"
+      "sha256": "71cff716bfea211e7eb4f026e47954c65d96644badcdedb747c6dcc0082667a1",
+      "base_head": "7a3c04f0156f1a1913d3f1a2928372c214322316",
+      "base_tree": "76d82c4bced3d0b6d1b3062bfd881052ef1795bd",
+      "result_tree": "6d1af632bfec32cf809498de60dceee328ac7935"
     }
   ],
   "runtime_profile": {
@@ -285,7 +285,7 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.2.1-rc.4: integration rebased without conflict onto SGLang main d0c95f6c91 and FlashInfer main 2c9e6b1350; all carried PR heads rechecked; exact-capacity DSA top-k bins use the full-row fallback after the rc.3 GPU rejection; not yet built or qualified",
+    "status": "v0.2.1-rc.5: integration rebased without conflict onto SGLang main 05dbe64dff and FlashInfer main 7a3c04f015; all carried PR heads rechecked; exact-capacity DSA top-k bins use the full-row fallback with positive, negative, input-order, output-offset, and below-capacity regressions; not yet built or qualified",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
@@ -299,6 +299,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.2.1-rc.4 is not built or qualified"
+    "claims": "v0.2.1-rc.5 is not built or qualified"
   }
 }

@@ -15,11 +15,13 @@ reasoning and tool calling.
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
 The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.4`, an unbuilt source candidate rebased onto the official
+builds `v0.2.1-rc.5`, an unbuilt source candidate rebased onto the official
 SGLang and FlashInfer `main` heads fetched on 2026-09-03. It has no performance,
 quality, stability, or capacity claims. Its immediate predecessor,
-`v0.2.1-rc.3`, was built internally but rejected by its exact-image top-k GPU
-gate; `v0.2.1-rc.2` remains the last internally qualified v0.2.1 candidate.
+`v0.2.1-rc.4`, was built internally and passed startup, a sampled chat, and the
+focused CPU suite, but was superseded before GPU qualification when both
+upstream mains advanced. `v0.2.1-rc.3` was rejected by its exact-image top-k
+GPU gate; `v0.2.1-rc.2` remains the last internally qualified v0.2.1 candidate.
 
 The checkpoint keeps the routed experts in W4A16 NVFP4 (K32 blocks) and the
 attention, shared experts and MTP draft layer in FP8 or BF16. Upstream SGLang
@@ -184,7 +186,7 @@ the exact head below. General follow-up work that is not yet filed upstream is
 identified explicitly as downstream pending upstream rather than presented as
 upstream provenance.
 
-SGLang (base `main` `d0c95f6c91`, 2026-09-03):
+SGLang (base `main` `05dbe64dff`, 2026-09-03):
 
 | PR | State and head | What it carries |
 |---|---|---|
@@ -208,7 +210,7 @@ SGLang (base `main` `d0c95f6c91`, 2026-09-03):
 | [sgl-project/sglang#37744](https://github.com/sgl-project/sglang/pull/37744) | Open, `ebe935c116` | qkvbfg fusion gated by each source layer's resolved quantization method |
 | [sgl-project/sglang#37375](https://github.com/sgl-project/sglang/pull/37375) | Open, `b6478a7400` | mHC pipeline stages hand off the flattened hidden state without a separate residual |
 
-FlashInfer (base `main` `2c9e6b1350`, 2026-09-03):
+FlashInfer (base `main` `7a3c04f015`, 2026-09-03):
 
 | PR | State and head | What it carries |
 |---|---|---|
@@ -219,11 +221,12 @@ FlashInfer (base `main` `2c9e6b1350`, 2026-09-03):
 Downstream-only in the patches (no upstream PR): the SM120 W4A16 MoE and
 NoPE-row integration, the ModelOpt E4M3-K32 W4A16 weight preparation, the
 adaptive-MTP chain-buffer pinning, and the Triton late-load diagnostic
-armed after the serving warmup. Pending-upstream follow-ups cover exact top-k
-at-or-above-capacity recovery across all kernel variants, GLM video CPU
-placement and EPD decoder lifecycle, DP video sampling parity, collision-safe
-media ordering, and stricter NextN multimodal failure handling. Already merged
-upstream and in the base:
+armed after the serving warmup. Pending-upstream follow-ups cover exact
+at-or-above-capacity recovery for the legacy AOT and kpool selectors,
+independent oversized-bin recovery for the CUDA JIT v1/v2/ragged selectors,
+GLM video CPU placement and EPD decoder lifecycle, DP video sampling parity,
+collision-safe media ordering, and stricter NextN multimodal failure handling.
+Already merged upstream and in the base:
 [sgl-project/sglang#37317](https://github.com/sgl-project/sglang/pull/37317),
 [#36958](https://github.com/sgl-project/sglang/pull/36958),
 [#36798](https://github.com/sgl-project/sglang/pull/36798), and since
@@ -232,12 +235,19 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.4` (2026-09-03) is the current unbuilt source candidate. It rebases
+`v0.2.1-rc.5` (2026-09-03) is the current unbuilt source candidate. It rebases
 the complete v0.2.1 integration without conflict onto SGLang main
-`d0c95f6c91` and FlashInfer main `2c9e6b1350`, rechecks every carried PR head,
-routes exact-capacity DSA top-k bins through the allocation-free exact fallback,
-and advances the cache schema to `v59`. It has no performance, quality,
-stability, or capacity claims until its exact image is built and qualified.
+`05dbe64dff` and FlashInfer main `7a3c04f015`, rechecks every carried PR head,
+retains the allocation-free exact fallback for exact-capacity DSA top-k bins,
+and strengthens the boundary regression with negative keys and already-emitted
+higher values. It advances the cache schema to `v60` and has no performance,
+quality, stability, or capacity claims until its exact image is built and
+qualified. `v0.2.1-rc.4` (2026-09-03) was built internally at
+`sha256:7a64f03935c0d862cd1352ee276016a45eb627ed2e1e3f2576353fe933a95e0a`.
+It reached Ready with zero restarts, served the first sampled thinking-mode
+chat, and passed 196 focused CPU tests plus 75 subtests with the GPUs hidden
+from pytest. It was superseded before GPU-kernel or quality qualification when
+both upstream mains advanced and was not promoted or published.
 `v0.2.1-rc.3` (2026-09-03) was built internally at
 `sha256:5f362c4c6621ef2e420870b749cb123255ce214a51c77e2f24695cebfe614c8a`
 but its exact-image GPU gate found an unfilled top-k slot at the shared-stash
@@ -286,7 +296,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.2.1-rc.4 .
+  -t sglang-glm53-flash-sm120:v0.2.1-rc.5 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

@@ -1,6 +1,26 @@
 # Changelog
 
-## v0.2.1-rc.4 (current-main refresh and exact-capacity top-k fallback; not yet built or qualified)
+## v0.2.1-rc.5 (latest-main refresh and stronger top-k boundary coverage; not yet built or qualified)
+
+- Rebase the complete integration without conflict onto official SGLang main
+  `05dbe64dffab51af8f4b21063cd6a616b16cf6b5` and FlashInfer main
+  `7a3c04f0156f1a1913d3f1a2928372c214322316`, fetched immediately before
+  patch generation. This adds SGLang #37788, #37729, and #37567 plus
+  FlashInfer #4937 while preserving every carried change; FlashInfer's carry
+  has the same stable patch ID, and SGLang's allocator diagnostic adapts to
+  #37729's newly merged page-aligned `free_segment` contract.
+- Recheck all 22 carried PRs. Every PR remains open and non-draft at the same
+  head recorded by rc.4.
+- Keep the exact-capacity fallback itself unchanged and strengthen its focused
+  regression with a negative-key row and a mixed-bin row that enters the
+  equality fallback after higher values have already filled part of the output.
+  Correct the pre-existing 4,097-candidate test comment. The boundary test now
+  covers positive and negative key transforms, three input orders, nonzero
+  output offset, and the 4,095-entry stash-side neighbor for both kpool sizes.
+- Advance the compiled-cache schema to `v60`. This immutable candidate is not
+  built or qualified and inherits no claims from earlier candidates.
+
+## v0.2.1-rc.4 (current-main refresh and exact-capacity top-k fallback; built, superseded before GPU qualification)
 
 - Rebase the complete integration without conflict onto official SGLang main
   `d0c95f6c911addde7d21a62df5f8ad06709d9ae8` and FlashInfer main
@@ -15,8 +35,13 @@
   regression pins the one-bin premise and covers the exact 4,096-entry boundary
   in multiple input orders plus 4,095 entries, the largest remaining stash-path
   population, for both production and default kpool top-k sizes.
-- Advance the compiled-cache schema to `v59`. This immutable candidate is not
-  built or qualified and inherits no claims from earlier candidates.
+- Advance the compiled-cache schema to `v59`. The exact image was built
+  internally as
+  `sha256:7a64f03935c0d862cd1352ee276016a45eb627ed2e1e3f2576353fe933a95e0a`.
+  It reached Ready with zero restarts, served its first sampled thinking-mode
+  chat, and passed 196 focused CPU tests plus 75 subtests with the GPUs hidden
+  from pytest. It was superseded before the GPU-kernel and quality gates when
+  both upstream mains advanced, and it was not promoted or published.
 
 ## v0.2.1-rc.3 (current-main refresh; built, rejected by exact-image GPU gate)
 
