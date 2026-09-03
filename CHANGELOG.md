@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.0 (stable; digest-identical promotion of v0.2.0-rc.1)
+
+- Promoted on 2026-09-03 without a rebuild: internal
+  `sha256:020d252ab9754346cce2f3ae7f869e857ead1b0663387d16c958e03cfd1e3bdb`,
+  ghcr (built by GitHub from the same sources)
+  `sha256:837a3f12220da4f66f081831e519e60156a0eb3fb61f6a5e39442aa0242bfe4b`.
+- Concurrency-1 engine step rate 56 -> 67 forwards/s (130 -> 154 tok/s at
+  2.3 accepted tokens per forward) on the soaked ledger probe; four-request
+  gate 28.8 -> 31.3 forwards/s (372 -> 386 tok/s); cold prefill within 0.6%;
+  GSM8K-300 296/300 on both images; pool, context and recurrent slots
+  unchanged (cross-boot noise on these rates is about 3%). Full numbers in README "What to expect" and `BENCHMARKS.md`.
+
 ## v0.2.0-rc.1
 
 - Performance candidate: the v0.1.4 bases (SGLang main f8cbf000f4 with the
@@ -15,7 +27,7 @@
     under the quantized config the way the all-BF16 path already fused them;
   - `SGLANG_LM_HEAD_FP8`: the lm_head is quantized in place at load to FP8
     with 128x128 block scales and shared by target and draft (no re-quant of
-    the checkpoint, 300 MB per rank freed);
+    the checkpoint, about 302 MiB per rank freed);
   - `SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1` (upstream env) builds the
     DSA kpool decode/verify metadata on device.
 - The image sets those four environment defaults; the launcher passes them
@@ -25,7 +37,9 @@
   `sha256:020d252ab9754346cce2f3ae7f869e857ead1b0663387d16c958e03cfd1e3bdb`):
   C1-C4 engine gates and the cold prefill panel, GSM8K-300 296/300, the
   vision and out-of-memory shapes, first-boot acceptance; zero restarts, zero
-  allocator warnings. Numbers and receipts are in the primary repository
+  allocator warnings on those workloads (a request for input logprobs over a
+  long prompt can still OOM the scheduler and restart the container, a
+  hazard shared with v0.1.4). Numbers and receipts are in the primary repository
   (`evidence/v0.2.0-rc.1-validation-20260903.txt`) and summarized in this
   repository's `BENCHMARKS.md` and README.
 - Clarification for a report on v0.1.4: the scheduler's "Triton kernel ...

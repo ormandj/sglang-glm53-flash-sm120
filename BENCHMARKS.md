@@ -1,6 +1,6 @@
 # Measured results
 
-Two measurement sets are recorded here. The v0.1.1 set was measured on
+Three measurement sets are recorded here: the v0.2.0-rc.1 set below, then the earlier two. The v0.1.1 set was measured on
 2026-09-02 on the released `v0.1.1` image (internal digest
 `sha256:5e499c5f...`), one host: 2x NVIDIA RTX PRO 6000 Blackwell (96 GB,
 SM120), TP2, PCIe, no NVLink, serving
@@ -18,7 +18,8 @@ did not re-measure a row and is marked as such. Raw receipts live in
 
 Internal digest `sha256:020d252ab9754346cce2f3ae7f869e857ead1b0663387d16c958e03cfd1e3bdb`,
 pool and context 450,560, mamba 28, HiCache 32 GB, cache schema v56. Changes: PCIe IPC
-all-reduce wired in, KDA gate-projection fusion, device-side DSA kpool metadata, in-place FP8
+all-reduce wired in, KDA gate-projection fusion, upstream's experimental device-side DSA kpool
+metadata, in-place FP8
 blockwise lm_head shared by target and draft. Method notes and every kept or dropped experiment
 are in the primary repository (`evidence/v0.1.4-c1-perf-experiments-20260902.md`, receipt
 `evidence/v0.2.0-rc.1-validation-20260903.txt`).
@@ -46,6 +47,11 @@ Concurrency-1 probe (`benchmarks/profile/c1_bench.py` in the primary repository:
 
 The engine-gate rates above are synthetic fixed-window signals with path-dependent acceptance;
 repetitions are prompt-path subsamples, not independent replicates or an application throughput.
+At C1-C3 the accepted column (a mean) depends on where each greedy answer ends inside the fixed
+4,096-token `ignore_eos` window: past the end token the drafter accepts 5.8-6.0 of 6. The
+like-for-like engine comparison is the step rate at equal acceptance, measured at concurrency 1
+only (the probe above, +19% with about 3% cross-boot noise); no equal-acceptance estimate was
+measured for two or three requests.
 
 ### Prefill (five cold requests per length, C1)
 
@@ -63,14 +69,14 @@ v0.1.4-rc.2 on the same panel the same night: 8k 5,228 / 32k 5,867 / 64k 5,609 /
 | Check | Result |
 |---|---|
 | GSM8K 300-question subset, greedy, C4, shipped profile | 296/300 regraded (v0.1.4-rc.2 on the same run: 296/300) |
-| FP8 lm_head vs BF16 head, first-token top-10 logprobs, 300 cold prompts | at the BF16-vs-BF16 noise floor (top-1 agreement 89.0% vs 89.7%, KL 0.020 vs 0.022 nats; measured on the pre-build overlay of the same code; on the immutable images: LOGPROB_IMAGES_PLACEHOLDER) |
+| FP8 lm_head vs BF16 head, first-token top-10 logprobs, 300 cold prompts | at the BF16-vs-BF16 noise floor (top-1 agreement 89.0% vs 89.7%, KL 0.020 vs 0.022 nats; measured on the pre-build overlay of the same code; on the immutable images, rc.1 FP8 head vs the v0.1.4 image's BF16 head: 79.7% and 0.054, against a control of the v0.1.4 image's BF16 head vs the pre-build overlay's BF16 head (different code) at 82.7% and 0.054: KL equal, top-1 3.0 points lower, consistent with the control) |
 | 4 x 18k distinct concurrent (x2) | 4 decode together |
 | 3 x 146k concurrent + full-budget 3840x2160 image | pass |
 | 4 x 111.6k cold concurrent (cache flushed first) | pass, TTFT 19.3 s |
 | 10 x 4K images alone; 10 x 4K images with 3 x 128k resident | pass, 2.3-3.5 s each |
 | image then four cold 4k prompts | pass |
 | First sampled thinking chat after ready | 1.4 s |
-| Restarts, OOM, allocator warnings | 0 / 0 / 0 |
+| Restarts, OOM, allocator warnings | 0 / 0 / 0 on these workloads. Known hazard (also on v0.1.4): a `/generate` request with input logprobs over a long prompt OOMs the scheduler's fp32 logits and restarts the container; keep such requests short or off |
 
 ## Capacity (v0.1.1)
 

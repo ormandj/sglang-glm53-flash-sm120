@@ -21,7 +21,7 @@ probes (benchmarks/qualify_openai.py from the workstation, evidence/profiles-raw
 concurrency-1 probe (benchmarks/profile/c1_bench.py, 150 s soak, 6 reps, ledger prompt, 2,048 output tokens, thinking on):
   1k context: 67.09 +- 0.39 fwd/s, 154.4 tok/s, 2.31 accepted tok/fwd
   19k context: 66.46 +- 0.33 fwd/s, 154.8 tok/s, 2.34 accepted
-  v0.1.4 on the same soaked protocol (run 2026-09-03, see below): V014_SOAK_PLACEHOLDER; the earlier v0.1.4 figure of 56.5 / 56.2 was a cold boot
+  v0.1.4 on the same soaked protocol (run 2026-09-03, see below): 56.15 +- 0.86 fwd/s, 129.6 tok/s, 2.35 accepted at 1k; 56.09 +- 0.74 fwd/s, 132.0 tok/s, 2.37 at 19k (evidence/profiles-raw/bench-v0.1.4-rc.2-soaked/); the earlier v0.1.4 figure of 56.5 / 56.2 was a cold boot
 C4 cohort gate (repeat-c4, 5 reps, all analyzer-valid; evidence/v0.2.0-engine-gates/v020rc1-c4-summary.md):
   r01 366.5 tok/s 32.0 fwd/s 2.83 | r02 409.9 31.5 3.32 | r03 380.5 31.6 3.02 | r04 389.3 30.4 3.08 | r05 385.8 31.2 3.07
   mean 386.4 (median 385.8) tok/s, 31.3 (31.5) fwd/s, accepted 3.06 mean / 3.07 median (v0.1.4-rc.2 same gate: 371.9 (360.6) at 28.8 (28.5), 3.26 mean / 3.13 median)
@@ -30,11 +30,27 @@ glm-qualification gate (C1/C2/C3 cohort cells x5 + cold prefill panel x5; eviden
   C2: 306.9 (306.9), 39.1 (38.1) fwd/s, 3.92; per rep 306.9/38.1 271.6/41.3 348.1/37.3 278.9/42.1 329.0/36.9
   C3: 415.7 (387.1), 31.1 (30.9) fwd/s, 4.46; per rep 387.1/29.8 349.5/33.6 522.1/31.0 372.3/30.9 447.6/30.1
   prefill (5 cold requests per length, C1): 8k 5,245 tok/s TTFT 1.56 s | 32k 5,871 / 5.60 s | 64k 5,890 / 11.13 s | 128k 5,893 / 22.22 s
-  v0.1.4-rc.2 on the same gate, run 2026-09-03 for the comparison: see evidence/v0.2.0-engine-gates/v014rc2-qual-summary.md (V014_QUAL_PLACEHOLDER)
+  v0.1.4-rc.2 on the same gate, run 2026-09-03 04:17-04:37 UTC on the same pod config (evidence/v0.2.0-engine-gates/v014rc2-qual-summary.md):
+    C1: 156.6 tok/s mean (153.2 median), 54.5 (55.4) fwd/s, 2.90 accepted; per rep 150.1/55.4/2.70 153.2/55.4/2.73 162.7/53.1/3.01 145.8/56.4/2.61 171.1/52.2/3.45
+    C2: 237.1 (235.0), 39.2 (39.7) fwd/s, 3.04; per rep 256.8/36.9 236.5/38.6 223.7/41.0 233.6/39.9 235.0/39.7
+    C3: 319.0 (322.4), 30.6 (31.4) fwd/s, 3.46; per rep 341.9/27.9 322.4/31.4 304.0/32.0 300.2/31.5 326.7/30.3
+    prefill: 8k 5,228 tok/s TTFT 1.56 s | 32k 5,867 / 5.55 s | 64k 5,609 / 11.80 s | 128k 5,891 / 22.15 s
+  Reading: at C1-C3 the engine step rate is the same on both images (54.5 vs 54.6, 39.2 vs 39.1, 30.6 vs 31.1 fwd/s) while the
+  accepted tokens per forward rose from 2.90/3.04/3.46 to 4.88/3.92/4.46. Attributed 2026-09-03 05:00-05:45 UTC
+  (evidence/v0.2.0-rc.1-gate-acceptance-attribution-20260903.md): the gate decodes a fixed 4,096-token window with ignore_eos, and
+  once the greedy answer ends the tail is predicted at 5.8-6.0 of 6 draft tokens; rc.1's answers ended inside the window on 4/5 C1
+  prompts (v0.1.4: 0/5), a greedy-path difference at 16k context, not an engine property. glm-c1 on rc.1 with the kpool metadata
+  fusion env set to 0: 206.6 tok/s at 58.1 fwd/s, 3.65 accepted (v0.1.4 54.5 fwd/s at the same tier: +6.6% step rate). The fused
+  decode path scores 768 generated tokens within 0.006-0.035 mean |delta logprob| of the prefill path (97.0-99.5% argmax agreement,
+  no growth with position), so it stays on. Both configurations' replayed outputs are coherent and loop-free.
 GSM8K 300-question subset, greedy, concurrency 4: 296/300 regraded, 89.7% pinned grader (raw evidence/v0.2.0-rc.1-gsm8k-300-20260903.jsonl);
-  v0.1.4-rc.2 same run on the shipped profile (2026-09-03): V014_GSM8K_PLACEHOLDER (its earlier 295/300 was the C3 padded-graph diagnostic; 98/100 on the C4 100-question subset)
+  v0.1.4-rc.2 same run on the shipped profile (2026-09-03): 296/300 regraded, 88.0% pinned (raw evidence/v0.1.4-rc.2-gsm8k-300-c4-20260903.jsonl) (its earlier 295/300 was the C3 padded-graph diagnostic; 98/100 on the C4 100-question subset)
 FP8 lm_head quality: first-token top-10 logprobs on 300 cold prompts (benchmarks/profile/lmhead_logprob_probe.py --flush-each).
   On the perf overlay before the build (same code): FP8 vs BF16 at the BF16-vs-BF16 noise floor (top-1 agreement 89.0% vs 89.7%, KL 0.020 vs 0.022 nats).
-  On the immutable images (rc.1 FP8 head vs v0.1.4-rc.2 BF16 head): LOGPROB_IMAGES_PLACEHOLDER
+  On the immutable images (rc.1 FP8 head vs v0.1.4-rc.2 BF16 head): top-1 agreement 79.7%, KL 0.054 nats, against the cross-image
+  BF16-vs-BF16 control (v0.1.4 image vs the overlay, both BF16 heads) 82.7% / 0.054; rc.1 FP8 vs the overlay's BF16 run 88.8% / 0.021
+  (its BF16-vs-BF16 control 89.7% / 0.022). Raw: evidence/profiles-raw/logprobs-{fp8-rc1-image,bf16-v014-image}.json
 Interpretation: the engine-gate rates are synthetic fixed-window signals with path-dependent acceptance; repetitions are prompt-path
   subsamples, not independent deployment replicates, and not an expected application throughput.
+Pod restarts: the rc.1 deployment's container restarted once (05:35 UTC) when a diagnostic /generate request asked for input logprobs
+  over a 16k prompt (OOM in logits.float(); documented hazard, same exposure on v0.1.4); the serving pod was rebooted fresh afterwards.

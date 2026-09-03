@@ -9,7 +9,7 @@ reasoning and tool calling.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.4` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.0` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
@@ -44,7 +44,7 @@ the open pull requests listed under [Carried upstream changes](#carried-upstream
    ```bash
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.1.4
+   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.0
    export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v56
    ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
    ```
@@ -104,15 +104,21 @@ measurements on synthetic prompts, not a promise of application throughput.
 | 3 | 415.7 (387.1) | 31.1 (30.9) | 4.5 | 319.0 at 30.6, 3.5 |
 | 4 | 386.4 (385.8) | 31.3 (31.5) | 3.1 | 371.9 at 28.8, 3.3 |
 
-At one to three requests the gain is in accepted tokens per forward (the
-drafter's proposals survive longer on these prompts); at four requests the
-engine step rate is up 9%.
+At four requests the engine step rate is up 9%. At one to three requests the
+step rate is the same on both images and the difference is in the accepted
+column (a mean): the harness decodes a fixed 4,096-token window with
+`ignore_eos`, and once the greedy answer ends the drafter predicts the tail
+at 5.8-6.0 of 6, so that column depends on where each answer ended. The
+like-for-like engine comparison is the step rate at equal acceptance, which
+was measured at concurrency 1 only (the probe below); no equal-acceptance
+estimate exists for two or three requests.
 
-For a lower-acceptance workload (a repetitive ledger prompt, 1k or 19k of
+On a fixed-acceptance workload (a repetitive ledger prompt, 1k or 19k of
 context, 2,048 output tokens, six runs after a 150 s thermal soak), the
 engine step rate at concurrency 1 is 67 forwards/s and 154 tok/s at 2.3
-accepted tokens per forward; v0.1.4 measured 56 forwards/s and 130 tok/s on
-the same probe and protocol.
+accepted tokens per forward; v0.1.4 measured 56 forwards/s and 130 tok/s at
+the same acceptance on the same probe and protocol (+19%; run-to-run noise
+across boots is about 3%).
 
 **Prefill.** Five cold, cache-busted requests per length, one at a time
 (within 0.6% of the v0.1.1 panel).
@@ -135,7 +141,7 @@ the same probe and protocol.
 | HiCache host tier (32 GB) | 2.55M KV tokens (packed MTP layers) plus the recurrent-state tier |
 | GSM8K | 296/300 on the v0.2.0-rc.1 300-question subset, greedy, four concurrent (v0.1.4 on the same run: 296/300); 96.9% on 1,319 questions on v0.1.1 |
 | Images | 3840x2160 in 2.3-3.5 s, alone and with three 128k prompts resident; ten in a row |
-| Stability | zero restarts and zero OOM errors across the decode, prefill, capacity, vision and GSM8K runs |
+| Stability | zero restarts and zero OOM errors across the decode, prefill, capacity, vision and GSM8K runs; a request for input logprobs over a long prompt can still OOM the scheduler and restart the container (shared with v0.1.4, see `BENCHMARKS.md`) |
 
 **Limits worth knowing.**
 
@@ -213,7 +219,14 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.1.4` (2026-09-02) is the current release, a digest-identical promotion
+`v0.2.0` (2026-09-03) is the current release, a digest-identical promotion
+of its rc.1 candidate: the v0.1.4 bases and serving configuration with four
+decode-path changes (PCIe IPC all-reduce wired in, fused KDA gate
+projections under the quantized config, upstream's experimental device-side
+DSA kpool metadata, an FP8 lm_head shared by target and draft), +19% engine step rate at
+concurrency 1 on the fixed-acceptance probe and +9% on the four-request
+gate, same pool, same GSM8K score (see "What to expect"). `v0.1.4`
+(2026-09-02) was a digest-identical promotion
 of its rc.2 candidate: the same serving configuration as v0.1.3 on refreshed
 upstream bases (SGLang main f8cbf000f4 with the merged #37477 kernel port,
 FlashInfer main c92227fad3 with #4802 round 2), with every carried pull
