@@ -15,13 +15,14 @@ reasoning and tool calling.
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
 The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.5`, an unbuilt source candidate rebased onto the official
-SGLang and FlashInfer `main` heads fetched on 2026-09-03. It has no performance,
-quality, stability, or capacity claims. Its immediate predecessor,
+builds `v0.2.1-rc.5`, internally built and qualified on quasar at
+`sha256:289e83c983fb951ed5265de80cca3dc0412cc0cd43cf2190296a7f8190c38f69`.
+It is rebased onto the official SGLang and FlashInfer `main` heads fetched on
+2026-09-03 and has not been promoted or published. Its immediate predecessor,
 `v0.2.1-rc.4`, was built internally and passed startup, a sampled chat, and the
 focused CPU suite, but was superseded before GPU qualification when both
 upstream mains advanced. `v0.2.1-rc.3` was rejected by its exact-image top-k
-GPU gate; `v0.2.1-rc.2` remains the last internally qualified v0.2.1 candidate.
+GPU gate; `v0.2.1-rc.2` was the preceding internally qualified candidate.
 
 The checkpoint keeps the routed experts in W4A16 NVFP4 (K32 blocks) and the
 attention, shared experts and MTP draft layer in FP8 or BF16. Upstream SGLang
@@ -235,14 +236,17 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.5` (2026-09-03) is the current unbuilt source candidate. It rebases
+`v0.2.1-rc.5` (2026-09-03) is the current internally qualified candidate. It rebases
 the complete v0.2.1 integration without conflict onto SGLang main
 `05dbe64dff` and FlashInfer main `7a3c04f015`, rechecks every carried PR head,
 retains the allocation-free exact fallback for exact-capacity DSA top-k bins,
 and strengthens the boundary regression with negative keys and already-emitted
-higher values. It advances the cache schema to `v60` and has no performance,
-quality, stability, or capacity claims until its exact image is built and
-qualified. `v0.2.1-rc.4` (2026-09-03) was built internally at
+higher values. It advances the cache schema to `v60` and was built internally
+at `sha256:289e83c983fb951ed5265de80cca3dc0412cc0cd43cf2190296a7f8190c38f69`.
+The exact image passed the source, isolated GPU, first-boot, crash, full quality,
+and analyzer-validated engine gates on quasar. The primary qualification
+repository holds the measured receipts. It was not promoted or published.
+`v0.2.1-rc.4` (2026-09-03) was built internally at
 `sha256:7a64f03935c0d862cd1352ee276016a45eb627ed2e1e3f2576353fe933a95e0a`.
 It reached Ready with zero restarts, served the first sampled thinking-mode
 chat, and passed 196 focused CPU tests plus 75 subtests with the GPUs hidden

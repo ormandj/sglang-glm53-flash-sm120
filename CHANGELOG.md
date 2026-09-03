@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.1-rc.5 (latest-main refresh and stronger top-k boundary coverage; not yet built or qualified)
+## v0.2.1-rc.5 (latest-main refresh and stronger top-k boundary coverage; internally qualified)
 
 - Rebase the complete integration without conflict onto official SGLang main
   `05dbe64dffab51af8f4b21063cd6a616b16cf6b5` and FlashInfer main
@@ -17,8 +17,14 @@
   Correct the pre-existing 4,097-candidate test comment. The boundary test now
   covers positive and negative key transforms, three input orders, nonzero
   output offset, and the 4,095-entry stash-side neighbor for both kpool sizes.
-- Advance the compiled-cache schema to `v60`. This immutable candidate is not
-  built or qualified and inherits no claims from earlier candidates.
+- Advance the compiled-cache schema to `v60`. The immutable candidate was built
+  internally as
+  `sha256:289e83c983fb951ed5265de80cca3dc0412cc0cd43cf2190296a7f8190c38f69`.
+  The exact image passed the focused source suite, isolated top-k GPU suite,
+  first-boot sampled chat, image-plus-cold-C4 crash gate, full GSM8K quality
+  gate, and every analyzer-validated engine-gate cell on quasar. It was not
+  promoted or published; measured receipts remain in the primary qualification
+  repository.
 
 ## v0.2.1-rc.4 (current-main refresh and exact-capacity top-k fallback; built, superseded before GPU qualification)
 
