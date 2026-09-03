@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "release": {
-    "version": "0.1.4",
-    "candidate": 2,
-    "candidate_tag": "v0.1.4-rc.2",
-    "stable_tag": "v0.1.4",
+    "version": "0.2.0",
+    "candidate": 1,
+    "candidate_tag": "v0.2.0-rc.1",
+    "stable_tag": "v0.2.0",
     "cache_schema": "v56"
   },
   "image": {
-    "tag": "v0.1.4-rc.2",
+    "tag": "v0.2.0-rc.1",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -45,11 +45,11 @@
   "pins": [
     {
       "arg": "GLM53_RELEASE_VERSION",
-      "value": "0.1.4"
+      "value": "0.2.0"
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 2
+      "value": 1
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "eb76dfb879027bb100f2788694fb363549ff600b"
+      "value": "628989cb906995191e1275e896004ebff18aa34e"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "3bc36d1b12a34b79d948b7d7a1cdd856fd5f2a6a933529719443ad76e7f82a7f"
+      "value": "6b2bcce397edf382bda55ef1cd7c6c5ab72dc895b2bc15da7d80882ae3a09425"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,12 +149,12 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "f8cbf000f4a5bfd86d3fb7c1e2d6c8fb12339d0e",
       "upstream_tree": "cd741effe043b2b6e8c335638320634be58cf89d",
-      "tree": "eb76dfb879027bb100f2788694fb363549ff600b",
+      "tree": "628989cb906995191e1275e896004ebff18aa34e",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "3bc36d1b12a34b79d948b7d7a1cdd856fd5f2a6a933529719443ad76e7f82a7f",
+      "patch_sha256": "6b2bcce397edf382bda55ef1cd7c6c5ab72dc895b2bc15da7d80882ae3a09425",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
-      "working_branch": "integration/glm53-main-20260902c",
-      "working_head": "0ee9b629d1e0d16b17369a124873fee6025dc515",
+      "working_branch": "integration/glm53-perf-20260902",
+      "working_head": "90fb15de9744fe7d37e702d7ab10ebf158829fe3",
       "upstream_main_base": "f8cbf000f4a5bfd86d3fb7c1e2d6c8fb12339d0e",
       "included_upstream_work": [
         "sglang#36507 (head 545bd6f839, merged onto main f8cbf000f4; #37477 kernel port is in the base)",
@@ -205,7 +205,11 @@
         "sglang#37612 per-round prefill admission retry on Mamba-aware hybrid SSM caches (PR head)",
         "sglang#37619 unfinished-request mamba checkpoint skip on an exhausted unified pool (PR head)",
         "downstream-only: static mamba pool admission gating and pre-match admission stop (companion to #37619)",
-        "PR heads used for every PR of ours; #37534 and #37538 are the rebased copies because their heads conflict with the #36507 series"
+        "PR heads used for every PR of ours; #37534 and #37538 are the rebased copies because their heads conflict with the #36507 series",
+        "downstream-only (0.2.0): FlashInfer PCIe IPC all-reduce wired into GroupCoordinator.all_reduce (SGLANG_ENABLE_PCIE_IPC_ALLREDUCE, rank-agreed enablement, workspace teardown)",
+        "downstream-only (0.2.0): GLM-5 KDA b/f_a/g_a and f_b/g_b BF16 gate-projection fusion under the quantized config (fuses only when the gate projections resolve to unquantized methods)",
+        "downstream-only (0.2.0): optional in-place FP8 128x128 blockwise lm_head shared by target and draft (SGLANG_LM_HEAD_FP8) and a draft-only variant (SGLANG_SPEC_DRAFT_LM_HEAD_FP8, off)",
+        "downstream-only (0.2.0): SGLANG_KDA_RECURRENT_BV validated override of the recurrent decode tile (default 32, unchanged behaviour)"
       ],
       "excluded_work": [
         "C4-unsafe process/device-shared DSA indexer compression-gate stream",
@@ -246,10 +250,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "3bc36d1b12a34b79d948b7d7a1cdd856fd5f2a6a933529719443ad76e7f82a7f",
+      "sha256": "6b2bcce397edf382bda55ef1cd7c6c5ab72dc895b2bc15da7d80882ae3a09425",
       "base_head": "f8cbf000f4a5bfd86d3fb7c1e2d6c8fb12339d0e",
       "base_tree": "cd741effe043b2b6e8c335638320634be58cf89d",
-      "result_tree": "eb76dfb879027bb100f2788694fb363549ff600b"
+      "result_tree": "628989cb906995191e1275e896004ebff18aa34e"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -274,7 +278,13 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.1.1-rc.16: rc.15 plus the vision MLP/merger precompile; not yet built or qualified"
+    "status": "v0.2.0-rc.1: v0.1.4 serving profile plus the concurrency-1 performance work (PCIe IPC all-reduce, KDA gate fusion, device-side DSA kpool metadata, FP8 lm_head); not yet built or qualified",
+    "image_env_defaults": {
+      "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
+      "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
+      "SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION": "1",
+      "SGLANG_LM_HEAD_FP8": "1"
+    }
   },
   "verification": {
     "sglang_source_verifiable": true,
@@ -282,6 +292,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.1.1-rc.16 is not built or qualified"
+    "claims": "v0.2.0-rc.1 is not built or qualified"
   }
 }

@@ -227,7 +227,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.1.4-rc.2 .
+  -t sglang-glm53-flash-sm120:v0.2.0-rc.1 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

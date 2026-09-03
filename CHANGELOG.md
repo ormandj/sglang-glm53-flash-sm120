@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.2.0-rc.1
+
+- Performance candidate: the v0.1.4 bases (SGLang main f8cbf000f4 with the
+  #36507 series and every carried PR from its head, FlashInfer main
+  c92227fad3 with #4802/#4687/#4827) plus the concurrency-1 decode work from
+  the `integration/glm53-perf-20260902` branch (working head 90fb15de97):
+  - the FlashInfer PCIe IPC all-reduce is wired into
+    `GroupCoordinator.all_reduce` for the tp/attention_tp/moe_tp groups
+    (`SGLANG_ENABLE_PCIE_IPC_ALLREDUCE`, contiguous bf16/fp16 tensors up to
+    `SGLANG_PCIE_IPC_MAX_NUMEL` elements; enablement agreed across ranks,
+    workspace destroyed before the device group);
+  - the GLM-5 KDA gate projections (`b_proj`, `f_a/g_a`, `f_b/g_b`) are fused
+    under the quantized config the way the all-BF16 path already fused them;
+  - `SGLANG_LM_HEAD_FP8`: the lm_head is quantized in place at load to FP8
+    with 128x128 block scales and shared by target and draft (no re-quant of
+    the checkpoint, 300 MB per rank freed);
+  - `SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1` (upstream env) builds the
+    DSA kpool decode/verify metadata on device.
+- The image sets those four environment defaults; the launcher passes them
+  explicitly. Pool and context stay 450,560, mamba 28, cache schema v56
+  (the JIT modules are the ones v0.1.4 already built).
+- Measured results live in the primary repository
+  (`evidence/v0.1.4-c1-perf-experiments-20260902.md`); this candidate is not
+  qualified until its own gates run.
+
 ## v0.1.4 (stable; digest-identical promotion of v0.1.4-rc.2)
 
 - Promoted without a rebuild from the rc.2 candidate built from source

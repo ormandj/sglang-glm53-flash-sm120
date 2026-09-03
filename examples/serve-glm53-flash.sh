@@ -7,7 +7,7 @@ set -euo pipefail
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a candidate-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.1.4-rc.2}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.2.0-rc.1}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -45,7 +45,7 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.1.4-rc.2 is scoped to TP_SIZE=2" >&2
+  echo "v0.2.0-rc.1 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do
@@ -94,6 +94,8 @@ exec docker run --rm \
   --env CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8 \
   --env SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1 \
   --env SGLANG_PCIE_IPC_MAX_NUMEL=786432 \
+  --env SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1 \
+  --env SGLANG_LM_HEAD_FP8=1 \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \

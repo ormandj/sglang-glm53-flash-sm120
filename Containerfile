@@ -5,8 +5,8 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from exact
 # official bases plus checksummed project patches. No rc.14 vendor-byte patches
 # are carried forward.
-ARG GLM53_RELEASE_VERSION=0.1.4
-ARG GLM53_RELEASE_CANDIDATE=2
+ARG GLM53_RELEASE_VERSION=0.2.0
+ARG GLM53_RELEASE_CANDIDATE=1
 ARG GLM53_CACHE_SCHEMA=v56
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
@@ -15,8 +15,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:3c084d27b90118351c6b586615a586fc9f25
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=f8cbf000f4a5bfd86d3fb7c1e2d6c8fb12339d0e
 ARG GLM53_SGLANG_UPSTREAM_TREE=cd741effe043b2b6e8c335638320634be58cf89d
-ARG GLM53_SGLANG_TREE=eb76dfb879027bb100f2788694fb363549ff600b
-ARG GLM53_SGLANG_PATCH_SHA256=3bc36d1b12a34b79d948b7d7a1cdd856fd5f2a6a933529719443ad76e7f82a7f
+ARG GLM53_SGLANG_TREE=628989cb906995191e1275e896004ebff18aa34e
+ARG GLM53_SGLANG_PATCH_SHA256=6b2bcce397edf382bda55ef1cd7c6c5ab72dc895b2bc15da7d80882ae3a09425
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=c92227fad382073503169fb53f1aee659462c327
@@ -65,7 +65,11 @@ ENV SGLANG_SOURCE_ROOT=/opt/sglang-source \
     PYTHONPATH=/opt/sglang-source/python \
     FLASHINFER_NO_DOWNLOAD=1 \
     FLASHINFER_CUDA_ARCH_LIST=12.0f \
-    CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8
+    CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8 \
+    SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1 \
+    SGLANG_PCIE_IPC_MAX_NUMEL=786432 \
+    SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1 \
+    SGLANG_LM_HEAD_FP8=1
 
 # Project-owned integration deltas remain in this internal build repository.
 # Each patch is applied to an exact official-upstream tree and the resulting
@@ -94,6 +98,7 @@ RUN set -eux; \
       python/sglang/srt/models/glm5_next_nextn.py \
       python/sglang/srt/models/deepseek_nextn.py \
       python/sglang/srt/speculative/eagle_worker_v2.py \
+      python/sglang/srt/distributed/parallel_state.py \
       python/sglang/srt/arg_groups/model_hook.py \
       python/sglang/kernels/ops/attention/fla/chunk_intra.py \
       python/sglang/kernels/ops/attention/fla/kda.py \

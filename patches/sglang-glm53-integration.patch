@@ -4797,6 +4797,150 @@ index 9309b3b6a9..3ca8d8fd28 100644
  
      if is_npu() and isinstance(token_to_kv_pool, DSV4NPUTokenToKVPool):
          from sglang.srt.disaggregation.ascend.conn import AscendStateType
+diff --git a/python/sglang/srt/distributed/parallel_state.py b/python/sglang/srt/distributed/parallel_state.py
+index 4d7c64e409..108ffab801 100644
+--- a/python/sglang/srt/distributed/parallel_state.py
++++ b/python/sglang/srt/distributed/parallel_state.py
+@@ -467,6 +467,18 @@ class GroupCoordinator:
+                 device=self.device,
+             )
+ 
++        # FlashInfer PCIe IPC all-reduce (opt-in, PCIe-only two-to-eight GPU
++        # boards). One workspace per model-parallel group; the tp, attention_tp
++        # and moe_tp groups alias the same coordinator when their sizes match.
++        self.pcie_ipc_ws: Optional[Any] = None
++        self._pcie_ipc_stream: Optional[torch.cuda.Stream] = None
++        if (
++            self.world_size > 1
++            and is_cuda()
++            and group_name in ("tp", "attention_tp", "moe_tp")
++        ):
++            self._maybe_init_pcie_ipc_allreduce(group_name)
++
+         self.ca_comm: Optional[Any] = None
+         self.qr_comm: Optional[QuickAllReduce] = None
+         if use_custom_allreduce and self.world_size > 1:
+@@ -647,6 +659,94 @@ class GroupCoordinator:
+             with maybe_pynccl_context, maybe_pymscclpp_context:
+                 yield graph_capture_context
+ 
++    def _maybe_init_pcie_ipc_allreduce(self, group_name: str) -> None:
++        """Build the FlashInfer PCIe IPC all-reduce workspace for this group.
++
++        The workspace constructor is a strict collective, so the decision to
++        enter it is agreed over the group's CPU group first: every rank gathers
++        its local verdict (env flag, CUDA + NCCL, supported world size,
++        importable kernel) and the workspace is built only when all ranks say
++        yes. A rank-local "no" therefore disables the path everywhere instead
++        of leaving its peers blocked in the constructor.
++        """
++        max_numel = envs.SGLANG_PCIE_IPC_MAX_NUMEL.get()
++        reason = None
++        ws_cls = None
++        if not envs.SGLANG_ENABLE_PCIE_IPC_ALLREDUCE.get():
++            reason = "disabled"
++        elif self.world_size not in (2, 4, 8):
++            reason = f"world_size {self.world_size} not in (2, 4, 8)"
++        elif torch.distributed.get_backend(self.device_group) != "nccl":
++            reason = f"device group backend {torch.distributed.get_backend(self.device_group)} is not nccl"
++        else:
++            try:
++                from flashinfer.comm import PcieIpcAllReduceWorkspace as ws_cls
++            except ImportError as e:
++                reason = f"flashinfer.comm has no PcieIpcAllReduceWorkspace ({e})"
++        tune = bool(envs.SGLANG_PCIE_IPC_TUNE.get())
++        tune_hidden = int(envs.SGLANG_PCIE_IPC_TUNE_HIDDEN.get())
++        local = (reason, max_numel, tune, tune_hidden)
++        verdicts: List[Optional[tuple]] = [None] * self.world_size
++        torch.distributed.all_gather_object(verdicts, local, group=self.cpu_group)
++        if any(v[0] is not None for v in verdicts):
++            if any(v[0] != "disabled" for v in verdicts):
++                logger.info(
++                    f"PCIe IPC all-reduce not enabled for group={group_name}: "
++                    f"{[v[0] for v in verdicts]}"
++                )
++            return
++        if any(v != local for v in verdicts):
++            # tune() and the workspace constructor are collectives; ranks
++            # that disagree on their arguments must all stay on the default path.
++            logger.warning(
++                f"PCIe IPC all-reduce not enabled for group={group_name}: ranks "
++                f"disagree on SGLANG_PCIE_IPC_MAX_NUMEL/TUNE settings {verdicts}"
++            )
++            return
++        with torch.cuda.device(self.device):
++            # The workspace reduces a CUDA verdict tensor on its group, so it
++            # needs the device (NCCL) group; its object gathers work there too.
++            # Tuning's timing reduction wants a gloo group of exactly these
++            # ranks, which is this coordinator's cpu_group.
++            ws = ws_cls(
++                group=self.device_group,
++                max_numel=max_numel,
++                dtype=torch.bfloat16,
++            )
++            if tune:
++                logger.info(
++                    f"PCIe IPC all-reduce: tuning group={group_name} hidden={tune_hidden} "
++                    "(collective, once per machine)"
++                )
++                ws.tune([tune_hidden], tune_group=self.cpu_group)
++        self.pcie_ipc_ws = ws
++        logger.info(
++            f"PCIe IPC all-reduce enabled for group={group_name} world_size={self.world_size} "
++            f"max_numel={max_numel} profile={ws.profile!r} tuned_cache={ws._tune_cache!r}"
++        )
++
++    def _can_use_pcie_ipc_allreduce(self, input_: torch.Tensor) -> bool:
++        """Rank-invariant admission: shape, dtype, contiguity and capacity only."""
++        ws = self.pcie_ipc_ws
++        if ws is None or input_.dim() != 2:
++            return False
++        return ws.supports(input_)
++
++    def _pcie_ipc_all_reduce(self, input_: torch.Tensor) -> torch.Tensor:
++        ws = self.pcie_ipc_ws
++        if not torch.cuda.is_current_stream_capturing():
++            # The workspace serves one stream at a time. SGLang moves between
++            # the forward stream and the graph-capture stream at init; order
++            # the new stream after the old one before rebinding.
++            current = torch.cuda.current_stream(self.device)
++            if self._pcie_ipc_stream is None:
++                self._pcie_ipc_stream = current
++            elif current != self._pcie_ipc_stream:
++                current.wait_stream(self._pcie_ipc_stream)
++                ws.rebind_stream()
++                self._pcie_ipc_stream = current
++        return ws.all_reduce(input_)
++
+     def all_reduce(self, input_: torch.Tensor) -> torch.Tensor:
+         """
+         User-facing all-reduce function before we actually call the
+@@ -693,6 +793,9 @@ class GroupCoordinator:
+         if self.npu_communicator is not None and not self.npu_communicator.disabled:
+             return self.npu_communicator.all_reduce(input_)
+ 
++        if not torch.compiler.is_compiling() and self._can_use_pcie_ipc_allreduce(input_):
++            return self._pcie_ipc_all_reduce(input_)
++
+         if torch.compiler.is_compiling():
+             if self._can_use_flashinfer_allreduce(input_):
+                 return flashinfer_allreduce(input_, group_name=self.unique_name)
+@@ -1843,6 +1946,15 @@ class GroupCoordinator:
+         return tensor
+ 
+     def destroy(self):
++        if self.pcie_ipc_ws is not None:
++            # Collective teardown; must run while the device group is alive.
++            # The tp/attention_tp/moe_tp names can alias one coordinator, so
++            # a second destroy() finds this already cleared.
++            ws, self.pcie_ipc_ws = self.pcie_ipc_ws, None
++            try:
++                ws.destroy()
++            except Exception as e:  # noqa: BLE001
++                logger.warning(f"PCIe IPC all-reduce workspace destroy failed: {e}")
+         if self.device_group is not None:
+             torch.distributed.destroy_process_group(self.device_group)
+             self.device_group = None
 diff --git a/python/sglang/srt/entrypoints/engine.py b/python/sglang/srt/entrypoints/engine.py
 index b103775b04..91843a664e 100644
 --- a/python/sglang/srt/entrypoints/engine.py
@@ -5597,10 +5741,32 @@ index 2608621f6a..a8b41b59ff 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index d858de8854..3f230c7e73 100644
+index d858de8854..1a5a506b58 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
-@@ -552,6 +552,16 @@ class Envs:
+@@ -446,6 +446,21 @@ class Envs:
+     # precedence when both are set.
+     SGLANG_GRAPH_BATCH_CAPTURE = EnvBool(False)
+     SGLANG_TORCH_PROFILER_DIR = EnvStr("/tmp")
++    # FlashInfer PCIe IPC all-reduce for small TP collectives on PCIe-only
++    # boards (no NVLink). Serves contiguous bf16/fp16 tensors up to
++    # SGLANG_PCIE_IPC_MAX_NUMEL elements; larger tensors and every other
++    # dtype keep the regular path. SGLANG_PCIE_IPC_TUNE runs the collective
++    # autotune at group init (persisted under FLASHINFER_AUTOTUNE_DIR).
++    SGLANG_ENABLE_PCIE_IPC_ALLREDUCE = EnvBool(False)
++    SGLANG_PCIE_IPC_MAX_NUMEL = EnvInt(786432)
++    SGLANG_PCIE_IPC_TUNE = EnvBool(False)
++    SGLANG_PCIE_IPC_TUNE_HIDDEN = EnvInt(4096)
++    # EAGLE/MTP: give the draft model an FP8 blockwise copy of the shared lm_head
++    # (halves the draft's per-forward head read; the target head stays as is).
++    SGLANG_SPEC_DRAFT_LM_HEAD_FP8 = EnvBool(False)
++    # Quantize the (shared) lm_head to FP8 blockwise in place for target and draft:
++    # no extra memory, halves every head read, changes the served logits slightly.
++    SGLANG_LM_HEAD_FP8 = EnvBool(False)
+     # Allocator-history buffer for /start_profile activities=["MEM"]; the
+     # default truncates long windows (each entry is one alloc/free event).
+     SGLANG_MEM_PROFILE_MAX_ENTRIES = EnvInt(100000)
+@@ -552,6 +567,16 @@ class Envs:
      SGLANG_AITER_UNIFIED_DRAFT_EXTEND = EnvBool(True)
      # size the KV pool after CUDA-graph capture
      SGLANG_ENABLE_POST_CAPTURE_KV_SIZING = EnvBool(False)
@@ -5617,7 +5783,7 @@ index d858de8854..3f230c7e73 100644
  
      # ===================================================================
      # Scheduler token budgeting and admission
-@@ -1018,9 +1028,10 @@ class Envs:
+@@ -1018,9 +1043,10 @@ class Envs:
      # (parity with flash-attn's ragged-aware launch). The feature checks _is_hip
      # explicitly in code; this env var allows override (0=force off, 1=force on).
      SGLANG_TRITON_COMPACT_EXTEND_ATTENTION = EnvBool(True)
@@ -5631,7 +5797,7 @@ index d858de8854..3f230c7e73 100644
      SGLANG_CRASH_ON_TRITON_LOAD_AFTER_READY = EnvBool(False)
      SGLANG_TRITON_SLOW_COMPILE_THRESHOLD_SECS = EnvFloat(1.0)
      SGLANG_TRITON_LOAD_WARNING_THRESHOLD_GB = EnvFloat(1.0)
-@@ -1299,6 +1310,14 @@ class Envs:
+@@ -1299,6 +1325,14 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -5646,7 +5812,7 @@ index d858de8854..3f230c7e73 100644
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1468,6 +1487,12 @@ class Envs:
+@@ -1468,6 +1502,12 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -17652,10 +17818,10 @@ index 65c880d48e..6c8ca7efa1 100644
              ),
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
 new file mode 100644
-index 0000000000..2e3a88130e
+index 0000000000..a6c3541fa7
 --- /dev/null
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -0,0 +1,1858 @@
+@@ -0,0 +1,1921 @@
 +import logging
 +from contextlib import nullcontext
 +from functools import partial
@@ -17708,6 +17874,7 @@ index 0000000000..2e3a88130e
 +    is_shared_experts_fusion_disabled,
 +)
 +from sglang.srt.layers.quantization.base_config import QuantizationConfig
++from sglang.srt.layers.quantization.unquant import UnquantizedLinearMethod
 +from sglang.srt.layers.radix_linear_attention import RadixLinearAttention
 +from sglang.srt.layers.rotary_embedding import get_rope
 +from sglang.srt.layers.utils.common import PPMissingLayer
@@ -17996,6 +18163,7 @@ index 0000000000..2e3a88130e
 +        self.conv_size = config.linear_attn_config["short_conv_kernel_size"]
 +
 +        self.do_fuse_qkvbfg = quant_config is None and head_shard_size == self.tp_size
++        self.do_fuse_bfg = False
 +        if self.do_fuse_qkvbfg:
 +            self.qkvb_sizes = [
 +                projection_size,
@@ -18083,6 +18251,54 @@ index 0000000000..2e3a88130e
 +                tp_size=head_shard_size,
 +            )
 +
++            # Mixed-precision checkpoints quantize qkv/o but leave the gate
++            # projections in BF16; those still fuse: b/f_a/g_a share the input
++            # and f_b/g_b share the input shape, so two GEMMs replace six (the
++            # standalone N=32-per-rank b_proj otherwise lands on a two-CTA
++            # cuBLAS kernel that serializes K=4096, ~24 us per layer at decode).
++            # Fuse only when every gate projection resolved to the unquantized
++            # method: the fused modules carry no quantization state.
++            gate_projs = (
++                self.b_proj,
++                self.f_a_proj,
++                self.g_a_proj,
++                self.f_b_proj,
++                self.g_b_proj,
++            )
++            self.do_fuse_bfg = head_shard_size == self.tp_size and all(
++                isinstance(m.quant_method, UnquantizedLinearMethod) for m in gate_projs
++            )
++            del gate_projs
++            if self.do_fuse_bfg:
++                for name in ("b_proj", "f_a_proj", "g_a_proj", "f_b_proj", "g_b_proj"):
++                    delattr(self, name)
++                self.bfg_split_sizes = [
++                    self.num_heads // head_shard_size,
++                    2 * self.head_dim,
++                ]
++                fused_dtype = (
++                    getattr(config, "dtype", None)
++                    or getattr(config, "torch_dtype", None)
++                    or torch.get_default_dtype()
++                )
++                self.fused_bfg_a_proj = MergedColumnParallelRepeatedLinear(
++                    self.hidden_size,
++                    [self.num_heads],
++                    [self.head_dim, self.head_dim],
++                    quant_config=None,
++                    prefix=f"{prefix}.fused_bfg_a_proj",
++                    tp_rank=head_shard_rank,
++                    tp_size=head_shard_size,
++                )
++                self.fused_fg_b_proj = ColumnParallelBatchedLinear(
++                    2,
++                    self.head_dim,
++                    projection_size,
++                    dtype=fused_dtype,
++                    tp_rank=head_shard_rank,
++                    tp_size=head_shard_size,
++                )
++
 +        self.dt_bias = nn.Parameter(
 +            torch.empty(divide(projection_size, head_shard_size), dtype=torch.float32)
 +        )
@@ -18148,6 +18364,14 @@ index 0000000000..2e3a88130e
 +
 +    def forward_qkvbfg(self, hidden_states: torch.Tensor, forward_batch: ForwardBatch):
 +        qkv, _ = self.qkv_proj(hidden_states)
++
++        if self.do_fuse_bfg:
++            bfg = self.fused_bfg_a_proj(hidden_states)
++            beta, fg_a_states = torch.split(bfg, self.bfg_split_sizes, dim=-1)
++            forget_gate, g_proj_states = self.fused_fg_b_proj(
++                fg_a_states.view(-1, 2, self.head_dim).transpose(0, 1)
++            )
++            return qkv, beta, forget_gate, g_proj_states
 +
 +        beta = self.b_proj(hidden_states)[0]
 +        forget_gate = self.f_b_proj(self.f_a_proj(hidden_states)[0])[0]
@@ -18747,6 +18971,7 @@ index 0000000000..2e3a88130e
 +            "g_a_proj",
 +        ],
 +        "fused_fg_b_proj": ["f_b_proj", "g_b_proj"],
++        "fused_bfg_a_proj": ["b_proj", "f_a_proj", "g_a_proj"],
 +        "qkv_proj": ["q_proj", "k_proj", "v_proj"],
 +        "qkv_conv1d": ["q_conv1d", "k_conv1d", "v_conv1d"],
 +        "gate_up_proj": ["gate_proj", "up_proj"],
@@ -19256,6 +19481,9 @@ index 0000000000..2e3a88130e
 +            (".fused_qkvbfg_a_proj", ".g_a_proj", 5),
 +            (".fused_fg_b_proj", ".f_b_proj", 0),
 +            (".fused_fg_b_proj", ".g_b_proj", 1),
++            (".fused_bfg_a_proj", ".b_proj", 0),
++            (".fused_bfg_a_proj", ".f_a_proj", 1),
++            (".fused_bfg_a_proj", ".g_a_proj", 2),
 +            (".qkv_proj", ".q_proj", "q"),
 +            (".qkv_proj", ".k_proj", "k"),
 +            (".qkv_proj", ".v_proj", "v"),
@@ -19357,6 +19585,7 @@ index 0000000000..2e3a88130e
 +                    in {
 +                        ".fused_qkvbfg_a_proj",
 +                        ".fused_fg_b_proj",
++                        ".fused_bfg_a_proj",
 +                        ".qkv_proj",
 +                        ".qkv_conv1d",
 +                    }
@@ -21023,7 +21252,7 @@ index 91ce8a1476..14e0dd5073 100644
          logits_output=logits_output,
          next_token_ids=predict,
 diff --git a/python/sglang/srt/speculative/eagle_worker_v2.py b/python/sglang/srt/speculative/eagle_worker_v2.py
-index 875c81688c..aca626b1bf 100644
+index 875c81688c..255bd83e67 100644
 --- a/python/sglang/srt/speculative/eagle_worker_v2.py
 +++ b/python/sglang/srt/speculative/eagle_worker_v2.py
 @@ -7,6 +7,7 @@ from typing import List, Optional
@@ -21042,7 +21271,39 @@ index 875c81688c..aca626b1bf 100644
      renorm_draft_probs,
      sample_draft_proposal,
      select_top_k_tokens,
-@@ -194,7 +196,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -130,6 +132,31 @@ _is_xpu = is_xpu()
+ logger = logging.getLogger(__name__)
+ 
+ 
++def _block_quant_fp8_chunked(
++    weight: torch.Tensor, block: int = 128, rows_per_chunk: int = 1024
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """128x128 blockwise FP8 quantization of a [N, K] weight, N and K multiples of
++    the block, done in row chunks: this runs after the KV pool is allocated,
++    where a full-size FP32 copy would OOM. Peak scratch per chunk is about
++    9 * rows_per_chunk * K bytes (FP32 copy, abs/div temporaries, FP8 cast),
++    36 MiB at the default for K=4096.
++    Returns (fp8 weight [N, K], fp32 scale_inv [N/block, K/block])."""
++    n, k = weight.shape
++    assert n % block == 0 and k % block == 0 and rows_per_chunk % block == 0
++    fp8_max = torch.finfo(torch.float8_e4m3fn).max
++    q = torch.empty((n, k), dtype=torch.float8_e4m3fn, device=weight.device)
++    scale = torch.empty((n // block, k // block), dtype=torch.float32, device=weight.device)
++    for r0 in range(0, n, rows_per_chunk):
++        r1 = min(n, r0 + rows_per_chunk)
++        x = weight[r0:r1].to(torch.float32).view((r1 - r0) // block, block, k // block, block)
++        amax = x.abs().amax(dim=(1, 3), keepdim=True).clamp_(min=1e-4)
++        s = amax / fp8_max
++        q[r0:r1] = (x / s).view(r1 - r0, k).to(torch.float8_e4m3fn)
++        scale[r0 // block : r1 // block] = s.view((r1 - r0) // block, k // block)
++        del x, amax, s
++    return q, scale
++
++
+ class EagleDraftWorker(EagleDraftWorkerBase):
+     def __init__(
+         self,
+@@ -194,7 +221,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
          )
          self.tree_mask_mode = default_tree_mask_mode()
  
@@ -21051,7 +21312,7 @@ index 875c81688c..aca626b1bf 100644
  
      def alloc_memory_pool(
          self,
-@@ -265,8 +267,13 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -265,8 +292,13 @@ class EagleDraftWorker(EagleDraftWorkerBase):
          # GLM-5.2 MTP IndexShare: seed reused indexer top-k from draft-extend
          # (last verified token), not draft-decode step 0.
          self.dsa_index_topk = getattr(hf_config, "index_topk", None)
@@ -21066,7 +21327,140 @@ index 875c81688c..aca626b1bf 100644
          )
  
      def init_token_map(self):
-@@ -556,7 +563,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -326,6 +358,132 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+             # Share the embedding and lm_head
+             self.draft_runner.model.set_embed_and_head(embed, head)
+             maybe_share_target_lm_head()
++            if envs.SGLANG_LM_HEAD_FP8.get() and self.hot_token_id is None:
++                self._quantize_shared_lm_head_fp8(embed)
++            elif envs.SGLANG_SPEC_DRAFT_LM_HEAD_FP8.get() and self.hot_token_id is None:
++                self._quantize_draft_lm_head_fp8()
++
++    def _quantize_shared_lm_head_fp8(self, embed: torch.Tensor) -> None:
++        """Quantize the target lm_head to FP8 128x128 blockwise in place and share
++        the quantized tensors with the draft: no extra memory (the BF16 head is
++        freed), every head read per step (verify + drafts) halves, and the served
++        distribution changes by the head's quantization error (measure it)."""
++        from torch.nn import Parameter
++
++        from sglang.srt.layers.quantization.fp8 import Fp8Config, Fp8LinearMethod
++
++        target_head = getattr(self.target_worker.model_runner.model, "lm_head", None)
++        draft_head = getattr(self.draft_runner.model, "lm_head", None)
++        if target_head is None or draft_head is None:
++            logger.warning("SGLANG_LM_HEAD_FP8: no lm_head module on target or draft; skipped")
++            return
++        if any(hasattr(h, "base_layer") or hasattr(h, "apply_lora") for h in (target_head, draft_head)):
++            # A LoRA wrapper routes logits through its own forward (raw F.linear),
++            # bypassing the quant method; leave the head alone.
++            logger.warning("SGLANG_LM_HEAD_FP8: lm_head is LoRA-wrapped; skipped")
++            return
++        # Limitation: the quantized parameters carry no vocab-sharded weight loader,
++        # so a later weight reload/update that includes lm_head.weight is not
++        # supported with this env (the served head is static for this deployment).
++        weight = target_head.weight.data
++        if embed is not None and embed.data_ptr() == weight.data_ptr():
++            logger.warning("SGLANG_LM_HEAD_FP8: lm_head is tied to the embedding; skipped")
++            return
++        n, k = weight.shape
++        if weight.dtype not in (torch.bfloat16, torch.float16) or n % 128 or k % 128:
++            logger.warning(
++                f"SGLANG_LM_HEAD_FP8: unsupported head {weight.dtype} {tuple(weight.shape)}; skipped"
++            )
++            return
++        method = Fp8LinearMethod(
++            Fp8Config(
++                is_checkpoint_fp8_serialized=True,
++                activation_scheme="dynamic",
++                weight_block_size=[128, 128],
++            )
++        )
++        if method.use_marlin or method.use_mxfp8:
++            logger.warning("SGLANG_LM_HEAD_FP8: FP8 GEMM backend needs prepared weights; skipped")
++            return
++        q_weight, scale_inv = _block_quant_fp8_chunked(weight)
++        q_param = Parameter(q_weight, requires_grad=False)
++        s_param = Parameter(scale_inv, requires_grad=False)
++        for head in (target_head, draft_head):
++            del head.weight
++            head.weight = q_param
++            head.weight_scale_inv = s_param
++            head.quant_method = method
++        del weight
++        torch.cuda.empty_cache()
++        logger.info(
++            f"lm_head quantized to FP8 128x128 blockwise and shared by target and draft: "
++            f"{tuple(q_weight.shape)} ({q_weight.numel() / 2**20:.0f} MiB per rank)"
++        )
++
++    def _quantize_draft_lm_head_fp8(self) -> None:
++        """Give the draft model its own FP8 (128x128 blockwise) copy of the lm_head.
++
++        Every draft forward (num_steps - 1 draft steps plus draft-extend per
++        decode step) reads the whole vocab-parallel head; at decode batch sizes
++        that read is memory-bound, so an FP8 copy halves it. The target keeps its
++        BF16 head, so verification and the served token distribution are
++        unchanged; only the draft proposals (hence acceptance) can move. Costs
++        one FP8 copy of the head per rank.
++        """
++        from torch.nn import Parameter
++
++        from sglang.srt.layers.quantization.fp8 import Fp8Config, Fp8LinearMethod
++
++        lm_head = getattr(self.draft_runner.model, "lm_head", None)
++        target_lm_head = getattr(self.target_worker.model_runner.model, "lm_head", None)
++        if lm_head is None or lm_head is target_lm_head:
++            logger.warning(
++                "SGLANG_SPEC_DRAFT_LM_HEAD_FP8: draft has no lm_head of its own; skipped"
++            )
++            return
++        weight = lm_head.weight.data
++        if weight.dtype not in (torch.bfloat16, torch.float16) or weight.dim() != 2:
++            logger.warning(
++                f"SGLANG_SPEC_DRAFT_LM_HEAD_FP8: unsupported head dtype/shape "
++                f"{weight.dtype} {tuple(weight.shape)}; skipped"
++            )
++            return
++        n, k = weight.shape
++        if n % 128 != 0 or k % 128 != 0:
++            logger.warning(
++                f"SGLANG_SPEC_DRAFT_LM_HEAD_FP8: head shape {tuple(weight.shape)} is not "
++                "a multiple of the 128x128 block; skipped"
++            )
++            return
++        method = Fp8LinearMethod(
++            Fp8Config(
++                is_checkpoint_fp8_serialized=True,
++                activation_scheme="dynamic",
++                weight_block_size=[128, 128],
++            )
++        )
++        if method.use_marlin or method.use_mxfp8:
++            # Those backends expect weights prepared by process_weights_after_loading.
++            logger.warning(
++                "SGLANG_SPEC_DRAFT_LM_HEAD_FP8: FP8 block GEMM backend is not the "
++                "direct cutlass/triton path on this platform; skipped"
++            )
++            return
++        q_weight, scale_inv = _block_quant_fp8_chunked(weight)
++        # Replace the attribute, not the data: the target module still owns the
++        # BF16 parameter and keeps serving verify from it. Weight updates through
++        # update_weights_from_tensor refresh the target head only; a refreshed
++        # draft copy would need re-quantization (not wired: the served head is
++        # static for this deployment).
++        del lm_head.weight
++        lm_head.weight = Parameter(q_weight, requires_grad=False)
++        lm_head.weight_scale_inv = Parameter(scale_inv, requires_grad=False)
++        lm_head.quant_method = method
++        torch.cuda.empty_cache()
++        logger.info(
++            f"Draft lm_head quantized to FP8 128x128 blockwise: {tuple(q_weight.shape)} "
++            f"({q_weight.numel() / 2**20:.0f} MiB per rank), target head stays {weight.dtype}"
++        )
+ 
+     def init_attention_backend(self):
+         # Create multi-step attn backends and cuda graph runners
+@@ -556,7 +714,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
                      self.draft_forward(forward_batch)
                  )
  
@@ -21075,7 +21469,7 @@ index 875c81688c..aca626b1bf 100644
              batch,
              draft_input,
              parent_list,
-@@ -570,6 +577,11 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -570,6 +728,11 @@ class EagleDraftWorker(EagleDraftWorkerBase):
              tree_mask_mode=self.tree_mask_mode,
              device=self.device,
          )
@@ -21087,7 +21481,7 @@ index 875c81688c..aca626b1bf 100644
  
      def draft_forward(self, forward_batch: ForwardBatch):
          # Parse args
-@@ -893,11 +905,10 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -893,11 +1056,10 @@ class EagleDraftWorker(EagleDraftWorkerBase):
          )
  
      def _get_dsa_extend_topk_buf(self, num_tokens: int) -> torch.Tensor:
@@ -21100,7 +21494,7 @@ index 875c81688c..aca626b1bf 100644
                  -1,
                  dtype=torch.int32,
                  device=self.device,
-@@ -908,6 +919,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -908,6 +1070,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
      def _draft_extend_for_decode(
          self, batch: ScheduleBatch, batch_result: GenerationBatchResult
      ):
@@ -21108,7 +21502,7 @@ index 875c81688c..aca626b1bf 100644
          # Batch 2: Draft extend
          draft_extend_input = EagleDraftExtendInput(
              hidden_states=batch_result.logits_output.hidden_states,
-@@ -933,9 +945,14 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -933,9 +1096,14 @@ class EagleDraftWorker(EagleDraftWorkerBase):
          # Cast to int64 before entering plan stream to avoid cross-stream
          # synchronization issues with .to() inside the plan stream context.
          next_token_ids = batch_result.next_token_ids.to(torch.int64)
@@ -21123,7 +21517,7 @@ index 875c81688c..aca626b1bf 100644
              forward_batch = prepare_for_draft_extend(
                  draft_extend_input,
                  batch,
-@@ -946,10 +963,27 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -946,10 +1114,27 @@ class EagleDraftWorker(EagleDraftWorkerBase):
                  return_hidden_states_before_norm=False,
              )
  
@@ -21154,7 +21548,7 @@ index 875c81688c..aca626b1bf 100644
  
          # Run draft extend batch in the main compute stream
          can_run_decode_cuda_graph = (
-@@ -1238,6 +1272,13 @@ class EAGLEWorkerV2(BaseSpecWorker):
+@@ -1238,6 +1423,13 @@ class EAGLEWorkerV2(BaseSpecWorker):
                  # Drafting disabled (high batch size). _draft_extend below still
                  # runs, keeping draft KV warm for when the batch shrinks.
                  verify_input = self._build_trivial_verify_input(batch)
@@ -21168,7 +21562,7 @@ index 875c81688c..aca626b1bf 100644
              else:
                  with (
                      self.draft_worker.draft_tp_context(
-@@ -1568,6 +1609,9 @@ class EAGLEWorkerV2(BaseSpecWorker):
+@@ -1568,6 +1760,9 @@ class EAGLEWorkerV2(BaseSpecWorker):
              dw._rebuild_topk1_chain_buffers()
  
      def verify(self, batch: ScheduleBatch, grammar_barrier=None):
@@ -21178,7 +21572,7 @@ index 875c81688c..aca626b1bf 100644
          return run_eagle_verify(
              batch,
              target_worker=self.target_worker,
-@@ -1581,6 +1625,7 @@ class EAGLEWorkerV2(BaseSpecWorker):
+@@ -1581,6 +1776,7 @@ class EAGLEWorkerV2(BaseSpecWorker):
              metadata_ready_pre_pad=False,
              finalize_tree_path=True,
              grammar_barrier=grammar_barrier,
