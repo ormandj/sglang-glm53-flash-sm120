@@ -84,34 +84,39 @@ profile. Two settings matter more than they look:
 
 ## What to expect
 
-Measured on 2026-09-02 with the launcher configuration plus HiCache, using
-the vendored harness in [`bench/`](bench/) on a warm server. The four-request
-row is from `v0.1.4` at the 450,560-token pool; the other rows were measured
-on `v0.1.1` at 499,712 (same kernels, earlier upstream base and no scheduler
-fixes).
-Full tables and method notes are in [`BENCHMARKS.md`](BENCHMARKS.md); raw
-receipts are in [`evidence/`](evidence/).
+Measured on 2026-09-03 on `v0.2.0-rc.1` with the launcher configuration plus
+HiCache, using the vendored harness in [`bench/`](bench/) on a warm server,
+at the 450,560-token pool. Full tables, per-repetition numbers and method
+notes are in [`BENCHMARKS.md`](BENCHMARKS.md); raw receipts are in
+[`evidence/`](evidence/).
 
 **Decode.** Coding prompts of about 19k tokens, 4,096 output tokens, greedy,
 five repetitions per cell. Tokens per second counts accepted speculative
-tokens; forwards per second is the engine step rate.
+tokens; forwards per second is the engine step rate; the last column is how
+many tokens each request accepted per engine forward.
 
-| Concurrent requests | Output tok/s, mean (median) | Forwards/s | Accepted tok/forward/request |
+| Concurrent requests | Output tok/s, mean (median) | Forwards/s, mean (median) | Accepted tok/forward/request |
 |---|---:|---:|---:|
-| 1 | 174.4 (175.1) | 52.7 | 3.5 |
-| 2 | 252.1 (244.5) | 38.4 | 3.2 |
-| 3 | 298.8 (297.7) | 33.0 | 3.0 |
-| 4 | 371.9 (360.6) | 28.8 | 3.1 |
+| 1 | 264.1 (283.1) | 54.6 (52.3) | 4.9 |
+| 2 | 306.9 (306.9) | 39.1 (38.1) | 3.9 |
+| 3 | 415.7 (387.1) | 31.1 (30.9) | 4.5 |
+| 4 | 386.4 (385.8) | 31.3 (31.5) | 3.1 |
 
-**Prefill.** Five cold, cache-busted requests per length, one at a time.
+For a lower-acceptance workload (a repetitive ledger prompt, 1k or 19k of
+context, 2,048 output tokens, six soaked runs), the engine step rate at
+concurrency 1 is 67 forwards/s and 154 tok/s at 2.3 accepted tokens per
+forward; v0.1.4 measured 56.5 forwards/s and 131 tok/s on the same probe.
+
+**Prefill.** Five cold, cache-busted requests per length, one at a time
+(unchanged from v0.1.1).
 
 | Prompt | Prompt tok/s | Time to first token |
 |---|---:|---:|
-| 8k | 5,263 | 1.6 s |
-| 32k | 5,903 | 5.6 s |
-| 64k | 5,918 | 11.1 s |
-| 128k | 5,918 | 22.2 s |
-| 200k | 6,000 | 34.1 s |
+| 8k | 5,245 | 1.6 s |
+| 32k | 5,871 | 5.6 s |
+| 64k | 5,890 | 11.1 s |
+| 128k | 5,893 | 22.2 s |
+| 200k | 6,000 (v0.1.1) | 34.1 s |
 
 **Capacity and quality.**
 
@@ -119,11 +124,11 @@ tokens; forwards per second is the engine step rate.
 |---|---|
 | Context and KV pool | 450,560 tokens shared by up to four requests |
 | Largest prompt served | 436,295 tokens plus a full-budget image at 99% pool usage (v0.1.3) |
-| Concurrent long prompts | 4 x 122,880 tokens |
+| Concurrent long prompts | 4 x 111,616 tokens cold at once (19.3 s to first token); 3 x 146,460 plus a full-budget 3840x2160 image |
 | HiCache host tier (32 GB) | 2.65M KV tokens plus an 11.2 GB recurrent-state tier |
-| GSM8K, 1,319 questions | 96.9% on v0.1.1 (v0.1.0: 97.2%, BF16-attention control: 97.0%); 98/100 on the v0.1.4 100-question subset |
-| Images | 3840x2160 in 3.4 s, 7680x4320 in 3.0 s |
-| Stability | zero restarts and zero OOM errors across the decode, prefill, capacity and GSM8K runs |
+| GSM8K | 296/300 on the v0.2.0-rc.1 300-question subset (v0.1.4: 295/300); 96.9% on 1,319 questions on v0.1.1 |
+| Images | 3840x2160 in 2.3-3.5 s, alone and with three 128k prompts resident; ten in a row |
+| Stability | zero restarts and zero OOM errors across the decode, prefill, capacity, vision and GSM8K runs |
 
 **Limits worth knowing.**
 
@@ -144,6 +149,12 @@ tokens; forwards per second is the engine step rate.
   only sources above 6 megapixels pay the full 8,000 tokens.
 - The numbers are for this GPU pair. Other SM120 cards or a different
   tensor-parallel size are untested.
+
+After boot, the scheduler may log `Triton kernel ... device-loaded after serving started`
+for a handful of small bookkeeping kernels (route packing, kpool layout and tail scatter,
+slot copy). Those are alignment-specialized cubin variants loading from the persistent cache
+in milliseconds, not compiles, and they carry no memory risk; they are expected under
+traffic. A load that takes seconds would be a compile and is worth reporting.
 
 ## Carried upstream changes
 

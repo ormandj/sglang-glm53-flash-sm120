@@ -14,6 +14,56 @@ pool 507,904, chunk 2,048, mamba 20, HiCache 128 GB) is kept where v0.1.1
 did not re-measure a row and is marked as such. Raw receipts live in
 [`evidence/`](evidence/); the harness is in [`bench/`](bench/).
 
+## v0.2.0-rc.1 (2026-09-03): performance candidate on the v0.1.4 bases
+
+Internal digest `sha256:020d252ab9754346cce2f3ae7f869e857ead1b0663387d16c958e03cfd1e3bdb`,
+pool and context 450,560, mamba 28, HiCache 32 GB, cache schema v56. Changes: PCIe IPC
+all-reduce wired in, KDA gate-projection fusion, device-side DSA kpool metadata, in-place FP8
+blockwise lm_head shared by target and draft. Method notes and every kept or dropped experiment
+are in the primary repository (`evidence/v0.1.4-c1-perf-experiments-20260902.md`, receipt
+`evidence/v0.2.0-rc.1-validation-20260903.txt`).
+
+### Decode (engine gates, five analyzer-valid repetitions per cell)
+
+| Cell | OLS tok/s per repetition | Mean tok/s | Median tok/s | Forwards/s per repetition | Mean fwd/s | Accepted tok/fwd/req (mean) |
+|---|---|---:|---:|---|---:|---:|
+| C1 | 283.1 / 290.4 / 296.6 / 174.2 / 276.2 | 264.1 | 283.1 | 52.4 / 51.6 / 50.6 / 66.0 / 52.3 | 54.6 | 4.9 |
+| C2 | 306.9 / 271.6 / 348.1 / 278.9 / 329.0 | 306.9 | 306.9 | 38.1 / 41.3 / 37.3 / 42.1 / 36.9 | 39.1 | 3.9 |
+| C3 | 387.1 / 349.5 / 522.1 / 372.3 / 447.6 | 415.7 | 387.1 | 29.8 / 33.6 / 31.0 / 30.9 / 30.1 | 31.1 | 4.5 |
+| C4 | 366.5 / 409.9 / 380.5 / 389.3 / 385.8 | 386.4 | 385.8 | 32.0 / 31.5 / 31.6 / 30.4 / 31.2 | 31.3 | 3.1 |
+| C4 (v0.1.4, same gate) | 352.6 / 417.6 / 360.6 / 341.2 / 387.7 | 371.9 | 360.6 | 28.5 / 27.7 / 29.5 / 31.0 / 27.2 | 28.8 | 3.1 |
+
+Concurrency-1 probe (`benchmarks/profile/c1_bench.py` in the primary repository: ledger prompt,
+2,048 output tokens, 150 s thermal soak, six runs, SM clock/power/temperature logged):
+
+| Context | v0.1.4 fwd/s | v0.2.0-rc.1 fwd/s | tok/s | Accepted tok/fwd |
+|---|---:|---:|---:|---:|
+| 1k | 56.5 | 67.1 +- 0.4 | 154 | 2.31 |
+| 19k | 56.2 | 66.5 +- 0.3 | 155 | 2.34 |
+
+### Prefill (five cold requests per length, C1)
+
+| Shape | Rate | Median TTFT |
+|---|---:|---:|
+| 8k | 5,245 tok/s | 1.56 s |
+| 32k | 5,871 tok/s | 5.60 s |
+| 64k | 5,890 tok/s | 11.13 s |
+| 128k | 5,893 tok/s | 22.22 s |
+
+### Quality and stability
+
+| Check | Result |
+|---|---|
+| GSM8K 300-question subset, greedy, C4 | 296/300 regraded (v0.1.4-rc.2: 295/300) |
+| FP8 lm_head vs BF16 head, first-token top-10 logprobs, 300 cold prompts | at the BF16-vs-BF16 noise floor (top-1 agreement 89.0% vs 89.7%, KL 0.020 vs 0.022 nats) |
+| 4 x 18k distinct concurrent (x2) | 4 decode together |
+| 3 x 146k concurrent + full-budget 3840x2160 image | pass |
+| 4 x 111.6k cold concurrent (cache flushed) | pass, TTFT 19.3 s |
+| 10 x 4K images alone; 10 x 4K images with 3 x 128k resident | pass, 2.3-3.5 s each |
+| image then four cold 4k prompts | pass |
+| First sampled thinking chat after ready | 1.4 s |
+| Restarts, OOM, allocator warnings | 0 / 0 / 0 |
+
 ## Capacity (v0.1.1)
 
 | Probe | Result |

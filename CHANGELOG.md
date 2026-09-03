@@ -21,9 +21,20 @@
 - The image sets those four environment defaults; the launcher passes them
   explicitly. Pool and context stay 450,560, mamba 28, cache schema v56
   (the JIT modules are the ones v0.1.4 already built).
-- Measured results live in the primary repository
-  (`evidence/v0.1.4-c1-perf-experiments-20260902.md`); this candidate is not
-  qualified until its own gates run.
+- Validated on quasar on 2026-09-03 (internal digest
+  `sha256:020d252ab9754346cce2f3ae7f869e857ead1b0663387d16c958e03cfd1e3bdb`):
+  C1-C4 engine gates and the cold prefill panel, GSM8K-300 296/300, the
+  vision and out-of-memory shapes, first-boot acceptance; zero restarts, zero
+  allocator warnings. Numbers and receipts are in the primary repository
+  (`evidence/v0.2.0-rc.1-validation-20260903.txt`) and summarized in this
+  repository's `BENCHMARKS.md` and README.
+- Clarification for a report on v0.1.4: the scheduler's "Triton kernel ...
+  device-loaded after serving started" line for small bookkeeping kernels
+  (route packing, kpool layout, `_scatter_kpool_tail_updates_kernel`) is an
+  alignment-specialized cubin variant loading from the persistent cache in
+  milliseconds, not a compile; it is expected under traffic and carries no
+  memory risk. Earlier entries that say "zero late kernel loads at ready"
+  mean zero compiles at ready. The wording of that log line is on the list.
 
 ## v0.1.4 (stable; digest-identical promotion of v0.1.4-rc.2)
 
