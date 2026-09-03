@@ -1574,10 +1574,10 @@ index 7dedd89a56..8ebe5f7904 100644
  };
 diff --git a/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh b/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh
 new file mode 100644
-index 0000000000..4a80334f7d
+index 0000000000..f438a5b71f
 --- /dev/null
 +++ b/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,256 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -1606,11 +1606,11 @@ index 0000000000..4a80334f7d
 +// Exact, allocation-free radix selection for the legacy DSA kernels.
 +//
 +// The normal path preserves the original two-stash algorithm. Its threshold
-+// bin is safe to materialize because the entire bin fits in shared memory. If
-+// the coarse threshold bin is larger than the stash, we instead rescan that
-+// bin while descending the four bytes of the ordered FP32 key. No candidate is
-+// discarded before the full key is known; at byte zero, clipping is exact
-+// because every remaining candidate has the same FP32 value.
++// bin is safe to materialize because it fits below the shared-memory capacity.
++// At or above that capacity, we instead rescan the coarse bin while descending
++// the four bytes of the ordered FP32 key. No candidate is discarded before the
++// full key is known; at byte zero, clipping is exact because every remaining
++// candidate has the same FP32 value.
 +//
 +// Scores must be finite. For valid input (length > topk > 0), every output slot
 +// is filled with a distinct index in [0, length). Defensive initialization and
@@ -1684,9 +1684,9 @@ index 0000000000..4a80334f7d
 +  }
 +
 +  const int coarse_population = histogram[coarse_threshold] - histogram[coarse_threshold + 1];
-+  if (coarse_population > StashEntries) {
++  if (coarse_population >= StashEntries) {
 +    // Emit the values above the coarse threshold once, then refine only the
-+    // oversized coarse bin by exact FP32 key bytes.
++    // capacity-bound coarse bin by exact FP32 key bytes.
 +    for (int idx = tx; idx < length; idx += BlockSize) {
 +      if (coarse_key(input[row_start + idx]) > coarse_threshold) {
 +        const int pos = atomicAdd(&counter, 1);
@@ -1755,8 +1755,9 @@ index 0000000000..4a80334f7d
 +    return;
 +  }
 +
-+  // The complete coarse threshold bin fits: keep the original stash/refine
-+  // path, now with unconditional state initialization and bounded emissions.
++  // The complete coarse threshold bin fits below capacity: keep the original
++  // stash/refine path, now with unconditional state initialization and bounded
++  // emissions.
 +  if (tx < kRadix + 1) histogram[tx] = 0;
 +  __syncthreads();
 +  for (int idx = tx; idx < length; idx += BlockSize) {
@@ -6968,7 +6969,7 @@ index 2608621f6a..a8b41b59ff 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 646b74f1b6..f4ddf8c56d 100644
+index a2bb9274fc..91be48923d 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -446,6 +446,21 @@ class Envs:
@@ -14911,7 +14912,7 @@ index 5aa27c38e4..aae82357f1 100644
                      storage_hit_len=req.storage_hit_length,
                  )
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 9c61510a6c..c1f8feed7c 100644
+index 128ba41ee4..780f67cd2f 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -15028,7 +15029,7 @@ index 9c61510a6c..c1f8feed7c 100644
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3343,6 +3379,11 @@ class Scheduler(
+@@ -3344,6 +3380,11 @@ class Scheduler(
              # it. Drop the marker once the request is actually gone.
              if req.finished() or not req.kv.holds_kv:
                  self._pending_chunked_abort_req = None
@@ -15040,7 +15041,7 @@ index 9c61510a6c..c1f8feed7c 100644
              return
  
          prepare_abort(req, "Aborted")
-@@ -3495,6 +3536,7 @@ class Scheduler(
+@@ -3496,6 +3537,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -15048,7 +15049,7 @@ index 9c61510a6c..c1f8feed7c 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3623,8 +3665,16 @@ class Scheduler(
+@@ -3624,8 +3666,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -15067,7 +15068,7 @@ index 9c61510a6c..c1f8feed7c 100644
              running_batch.batch_is_full = False
  
          if (
-@@ -3725,6 +3775,9 @@ class Scheduler(
+@@ -3726,6 +3776,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -15077,7 +15078,7 @@ index 9c61510a6c..c1f8feed7c 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3760,6 +3813,17 @@ class Scheduler(
+@@ -3761,6 +3814,17 @@ class Scheduler(
                  if loaded_tokens > 0:
                      req.storage_hit_length = loaded_tokens
  
@@ -15095,7 +15096,7 @@ index 9c61510a6c..c1f8feed7c 100644
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4031,20 +4095,27 @@ class Scheduler(
+@@ -4032,20 +4096,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -15137,7 +15138,7 @@ index 9c61510a6c..c1f8feed7c 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4057,12 +4128,11 @@ class Scheduler(
+@@ -4058,12 +4129,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -15155,7 +15156,7 @@ index 9c61510a6c..c1f8feed7c 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4077,12 +4147,11 @@ class Scheduler(
+@@ -4078,12 +4148,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -15171,7 +15172,7 @@ index 9c61510a6c..c1f8feed7c 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4138,7 +4207,7 @@ class Scheduler(
+@@ -4139,7 +4208,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -15180,7 +15181,7 @@ index 9c61510a6c..c1f8feed7c 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4164,13 +4233,12 @@ class Scheduler(
+@@ -4165,13 +4234,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -15200,7 +15201,7 @@ index 9c61510a6c..c1f8feed7c 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4292,7 +4360,11 @@ class Scheduler(
+@@ -4293,7 +4361,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -15213,7 +15214,7 @@ index 9c61510a6c..c1f8feed7c 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4304,7 +4376,11 @@ class Scheduler(
+@@ -4305,7 +4377,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -15225,7 +15226,7 @@ index 9c61510a6c..c1f8feed7c 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4427,9 +4503,11 @@ class Scheduler(
+@@ -4428,9 +4504,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -15240,7 +15241,7 @@ index 9c61510a6c..c1f8feed7c 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4452,31 +4530,42 @@ class Scheduler(
+@@ -4453,31 +4531,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -15304,7 +15305,7 @@ index 9c61510a6c..c1f8feed7c 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4511,7 +4600,7 @@ class Scheduler(
+@@ -4512,7 +4601,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -15313,7 +15314,7 @@ index 9c61510a6c..c1f8feed7c 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5464,6 +5553,38 @@ class Scheduler(
+@@ -5465,6 +5554,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -25241,19 +25242,20 @@ index 0000000000..c580051b6c
 +    unittest.main()
 diff --git a/test/registered/kernels/test_dsa_kpool_topk_transform.py b/test/registered/kernels/test_dsa_kpool_topk_transform.py
 new file mode 100644
-index 0000000000..3057f0a565
+index 0000000000..510f8819d2
 --- /dev/null
 +++ b/test/registered/kernels/test_dsa_kpool_topk_transform.py
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,348 @@
 +"""CUDA regressions for the DSA kpool pooled radix top-k transform.
 +
 +The kernel (``kernels/jit/csrc/dsa/kpool_topk_transform.cuh``) selects the
-+top ``group_topk`` pool groups of a score row with a two-stage radix select
-+whose stage-1 threshold bin is stashed in a 4096-entry shared-memory buffer.
-+These tests build rows whose stage-1 bin exceeds that stash (tight clusters,
-+all-equal rows, clusters that only separate at a deeper key byte), rows at
-+the stage-1 exact-fill boundary, and the minimal ``length == K + 1`` row, and
-+compare the selected groups against ``torch.topk``.
++top ``group_topk`` pool groups of a score row with a two-stage radix select.
++Stage-1 threshold bins below a 4096-entry shared-memory capacity use a stash;
++bins at or above capacity use an allocation-free exact rescan. These tests
++build rows on both sides of that boundary (tight clusters, all-equal rows,
++clusters that only separate at a deeper key byte), the stage-1 direct-fill
++boundary, and the minimal ``length == K + 1`` row, and compare the selected
++groups against ``torch.topk``.
 +
 +Comparison is by value multiset: when the K-th value is tied, any subset of
 +the tied groups is a valid selection, so the sorted selected values must equal
@@ -25296,6 +25298,17 @@ index 0000000000..3057f0a565
 +    assert bool(((keys >> 31) & 1).all()), "positive-float keys have bit 31 set"
 +    bits = (keys & 0x7FFFFFFF).to(torch.int32)
 +    return bits.view(torch.float32)
++
++
++def _coarse_keys(values: torch.Tensor) -> torch.Tensor:
++    """Mirror the kernel's high-byte ordered-FP16 key on the CPU."""
++    bits = values.to(torch.float16).view(torch.int16).to(torch.int32) & 0xFFFF
++    ordered = torch.where(
++        (bits & 0x8000) != 0,
++        (~bits) & 0xFFFF,
++        bits | 0x8000,
++    )
++    return ordered >> 8
 +
 +
 +@unittest.skipUnless(torch.cuda.is_available(), "Test requires CUDA")
@@ -25485,10 +25498,20 @@ index 0000000000..3057f0a565
 +            self._check_rows([row], group_topk)
 +
 +    def test_stash_capacity_boundary(self):
-+        # Exactly one stash worth of threshold candidates stays on the normal
-+        # path; STASH_ENTRIES + 1 above covers the fallback boundary.
++        # The exact-capacity case is part of the fallback boundary. Different
++        # input orders protect against an arrival-order subset being selected.
++        row = self._tight_cluster(STASH_ENTRIES)
++        self.assertEqual(torch.unique(_coarse_keys(row)).numel(), 1)
++        rows = [
++            row,
++            row.flip(0),
++            row[torch.randperm(row.numel(), generator=self.generator)],
++        ]
++        below_capacity = self._tight_cluster(STASH_ENTRIES - 1)
++        self.assertEqual(torch.unique(_coarse_keys(below_capacity)).numel(), 1)
 +        for group_topk in GROUP_TOPKS:
-+            self._check_rows([self._tight_cluster(STASH_ENTRIES)], group_topk)
++            self._check_rows(rows, group_topk)
++            self._check_rows([below_capacity], group_topk)
 +
 +    def test_minimal_radix_length(self):
 +        # length == K + 1 is the shortest row that takes the radix path.
@@ -30841,10 +30864,10 @@ index 7d90e77ef6..20829388a2 100644
  
  
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index 9637ba6e79..a05f24434b 100644
+index 0ec3d265c5..c89b1debe8 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-@@ -7706,6 +7706,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
+@@ -7699,6 +7699,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
              [mock.call(first), mock.call(second)]
          )
  

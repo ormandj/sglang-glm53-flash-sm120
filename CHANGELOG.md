@@ -1,6 +1,24 @@
 # Changelog
 
-## v0.2.1-rc.3 (current-main refresh; not yet built or qualified)
+## v0.2.1-rc.4 (current-main refresh and exact-capacity top-k fallback; not yet built or qualified)
+
+- Rebase the complete integration without conflict onto official SGLang main
+  `d0c95f6c911addde7d21a62df5f8ad06709d9ae8` and FlashInfer main
+  `2c9e6b1350f1f816a25ca19c767ad268c6df3eac`, fetched after the rc.3 GPU
+  rejection and immediately before patch generation. Stable patch IDs and
+  range-diff confirm that all carried commits survive both rebases exactly.
+- Recheck all 22 carried PRs. Every PR remains open and non-draft at the same
+  head recorded by rc.3; FlashInfer #4802 remains at `ffa47d54ac` with the same
+  substantive patch.
+- Route a coarse DSA top-k threshold bin through the allocation-free exact
+  fallback when its population is at or above the shared-stash capacity. The
+  regression pins the one-bin premise and covers the exact 4,096-entry boundary
+  in multiple input orders plus 4,095 entries, the largest remaining stash-path
+  population, for both production and default kpool top-k sizes.
+- Advance the compiled-cache schema to `v59`. This immutable candidate is not
+  built or qualified and inherits no claims from earlier candidates.
+
+## v0.2.1-rc.3 (current-main refresh; built, rejected by exact-image GPU gate)
 
 - Rebase the complete v0.2.1 integration without conflict onto official
   SGLang main `2da5802bfaf499aef0742a59a8d2ddbec2191c21` and FlashInfer main
@@ -13,8 +31,13 @@
   head, so the integration content is unchanged.
 - Retain the reviewed top-k, multimodal, quantization-gate, NextN, and mHC
   fixes from v0.2.1-rc.2. Advance the compiled-cache schema to `v58` for the
-  new upstream source trees. This immutable candidate is not built or
-  qualified and inherits no claims from v0.2.1-rc.2.
+  new upstream source trees.
+- Built internally as
+  `sha256:5f362c4c6621ef2e420870b749cb123255ce214a51c77e2f24695cebfe614c8a`.
+  Startup and focused CPU validation passed, but the first exact-image GPU suite
+  found an unfilled slot for a 4,096-entry coarse top-k bin at `group_topk=256`.
+  The candidate was rejected immediately; later GPU suites did not run, and it
+  was not promoted or published.
 
 ## v0.2.1-rc.2 (focused-test contract repair; internally qualified)
 
