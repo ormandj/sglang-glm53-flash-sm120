@@ -3,26 +3,26 @@
 # The vendor image supplies the CUDA/PyTorch dependency stack only. Its
 # SGLang tree has no git provenance, so this candidate puts an exact, verifiable
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from exact
-# official bases plus checksummed project patches. No rc.14 vendor-byte patches
-# are carried forward.
-ARG GLM53_RELEASE_VERSION=0.2.0
+# official bases plus checksummed project patches. No vendor-byte patches are
+# carried forward.
+ARG GLM53_RELEASE_VERSION=0.2.1
 ARG GLM53_RELEASE_CANDIDATE=1
-ARG GLM53_CACHE_SCHEMA=v56
+ARG GLM53_CACHE_SCHEMA=v57
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:aa9210e3507fef64ded0c78afc571d9412b53417c6e271721a095fbde754ad40
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
-ARG GLM53_SGLANG_HEAD=f8cbf000f4a5bfd86d3fb7c1e2d6c8fb12339d0e
-ARG GLM53_SGLANG_UPSTREAM_TREE=cd741effe043b2b6e8c335638320634be58cf89d
-ARG GLM53_SGLANG_TREE=628989cb906995191e1275e896004ebff18aa34e
-ARG GLM53_SGLANG_PATCH_SHA256=6b2bcce397edf382bda55ef1cd7c6c5ab72dc895b2bc15da7d80882ae3a09425
+ARG GLM53_SGLANG_HEAD=54cadad151e55c7cfef357da77061812eb893b96
+ARG GLM53_SGLANG_UPSTREAM_TREE=6513c7e7c6410a7fa90172ebb057b13a78e0b3cf
+ARG GLM53_SGLANG_TREE=e2a2e5a5e45b7146a915b725dac17342ae08fe39
+ARG GLM53_SGLANG_PATCH_SHA256=f4d6ba94214e8e164330be7127566ac24b2e6c02f7a2893a74e5fc0da502bff2
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
-ARG GLM53_FLASHINFER_HEAD=c92227fad382073503169fb53f1aee659462c327
-ARG GLM53_FLASHINFER_UPSTREAM_TREE=907b1fa0d3510ff2394a405635b93cb62945f89a
-ARG GLM53_FLASHINFER_TREE=e0d6f969066f9fa54a183e750c02a30cb501e4c7
-ARG GLM53_FLASHINFER_PATCH_SHA256=c8ef95a393b5f8acb392423f656c758b3276d008309565d03d12d5f1bfc877ea
+ARG GLM53_FLASHINFER_HEAD=1dff49bcb36299546e81bd12c6e967e2b0e3578c
+ARG GLM53_FLASHINFER_UPSTREAM_TREE=13e0b4d1528d87cc27a8ce090902fb2df0a8d737
+ARG GLM53_FLASHINFER_TREE=121fed48a43c253387985351c15727bc9c80638e
+ARG GLM53_FLASHINFER_PATCH_SHA256=d248a33460c4b7eb7e32f3ba8762cc3d634cf928f689631fd9b844c3a3bf47c1
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -97,6 +97,7 @@ RUN set -eux; \
       python/sglang/srt/models/glm5_next.py \
       python/sglang/srt/models/glm5_next_nextn.py \
       python/sglang/srt/models/deepseek_nextn.py \
+      python/sglang/srt/configs/glm5_next.py \
       python/sglang/srt/speculative/eagle_worker_v2.py \
       python/sglang/srt/distributed/parallel_state.py \
       python/sglang/srt/arg_groups/model_hook.py \
@@ -107,6 +108,7 @@ RUN set -eux; \
       python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py \
       python/sglang/kernels/ops/layernorm/mhc.py \
       python/sglang/srt/layers/attention/dsa_backend.py \
+      python/sglang/srt/layers/communicator_mhc.py \
       python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py \
       python/sglang/srt/layers/attention/linear/kda_backend.py \
       python/sglang/srt/layers/attention/dsa/kpool_fp8_index.py \
@@ -115,7 +117,13 @@ RUN set -eux; \
       python/sglang/srt/mem_cache/unified_radix_cache.py \
       python/sglang/srt/mem_cache/unified_cache/components/full_component.py \
       python/sglang/srt/utils/async_probe.py \
+      python/sglang/srt/utils/video_decoder.py \
       python/sglang/srt/layers/quantization/modelopt_quant.py \
+      python/sglang/srt/layers/quantization/utils.py \
+      python/sglang/srt/entrypoints/openai/serving_chat.py \
+      python/sglang/srt/multimodal/processors/base_processor.py \
+      python/sglang/srt/multimodal/processors/glm4v.py \
+      python/sglang/srt/parser/jinja_template_utils.py \
       python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 
 # Build FlashInfer from the exact SM120 integration tree. It contains

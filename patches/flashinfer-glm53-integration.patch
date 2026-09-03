@@ -1789,10 +1789,10 @@ index 3062fa98..d036c74e 100644
  .. note::
  
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index b8eb9962..357f0c6d 100644
+index 7b368af7..2c85b66d 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
-@@ -1311,6 +1311,9 @@ class B12xW4A16Config:
+@@ -1417,6 +1417,9 @@ class B12xW4A16Config:
      ):
          """Build the ``b12x_w4a16`` weight view from checkpoint fp4 weights.
  
@@ -2512,10 +2512,10 @@ index ce043109..205f064f 100644
          return prepare_w4a16_compressed_tensors_weights(
              *args, w13_layout=w13_layout, **kwargs
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 87019c09..73f3adca 100644
+index 603807d4..f340eab1 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
-@@ -2473,8 +2473,8 @@ def prepare_b12x_w4a16_weights(
+@@ -2471,8 +2471,8 @@ def prepare_b12x_w4a16_weights(
      activation : str
          Kernel activation name: ``"silu"`` or ``"relu2"``.
      source_format : str
@@ -2526,7 +2526,7 @@ index 87019c09..73f3adca 100644
  
      Returns
      -------
-@@ -2488,12 +2488,9 @@ def prepare_b12x_w4a16_weights(
+@@ -2486,12 +2486,9 @@ def prepare_b12x_w4a16_weights(
      )
      from .cute_dsl.blackwell_sm12x.moe_w4a16_prepare import (
          _normalize_source_format,
@@ -2539,7 +2539,7 @@ index 87019c09..73f3adca 100644
      _get_w4a16_packed_weights(
          w1_weight=w1_fp4,
          w1_weight_sf=w1_blockscale,
-@@ -2503,7 +2500,7 @@ def prepare_b12x_w4a16_weights(
+@@ -2501,7 +2498,7 @@ def prepare_b12x_w4a16_weights(
          w2_alpha=w2_global_scale,
          activation=activation,
          params_dtype=torch.bfloat16,

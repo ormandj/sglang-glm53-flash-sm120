@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.2.1-rc.1 (current-main rebase and correctness follow-ups; not yet built or qualified)
+
+- Rebase the integration patches onto official SGLang main
+  `54cadad151e55c7cfef357da77061812eb893b96` and FlashInfer main
+  `1dff49bcb36299546e81bd12c6e967e2b0e3578c`. The resulting trees are
+  `e2a2e5a5e45b7146a915b725dac17342ae08fe39` and
+  `121fed48a43c253387985351c15727bc9c80638e`; `stack.lock.json` records the
+  exact bases, trees and patch checksums.
+- Recheck every carried pull request and fold the two GLM series follow-ups
+  required at this base refresh. All 22 carried PRs remain open and non-draft;
+  the README records every current head. The SGLang carry now includes
+  #36507 at `cdfc224b0e` with issue #37548's first-request multimodal NextN
+  fix, #37744 at `ebe935c116`, and #37375 at `b6478a7400`.
+- Extend #37625's bounded top-k recovery beyond its current public head to the
+  AOT CUDA and ROCm kernels, kpool JIT, and CUDA JIT v1, v2 and ragged
+  variants. Each path falls back to exact selection only when a stage-1 bin
+  actually overflows; deterministic zero-tolerance regressions exercise the
+  old clipping failure without multiplying redundant cases.
+- Harden the rebased multimodal integration: keep GLM video preprocessing and
+  its allocator on CPU, dispatch mixed EPD frame-list/decoded-video batches
+  per item, wait for every decoder worker before cleanup, scale both sides of
+  the DP frame budget, preserve odd HF samples for pair sharding, and use a
+  request-unique media-order sentinel for tool-result templates.
+- Turn missing NextN multimodal embeddings into an optimization-safe runtime
+  error and strengthen the regression to execute the completed draft forward
+  path. Add focused CPU coverage for the mHC pipeline handoff and for
+  quantization-aware qkvbfg fusion, including real ModelOpt mixed precision
+  and concrete-class dispatch.
+- Keep the v0.2.0 serving profile unchanged and use fresh cache schema `v57`.
+  This is a source bundle only. It has no v0.2.1 performance, quality,
+  stability or capacity claims until the exact image is built and qualified.
+
 ## v0.2.0 (stable; digest-identical promotion of v0.2.0-rc.1)
 
 - Promoted on 2026-09-03 without a rebuild: internal
