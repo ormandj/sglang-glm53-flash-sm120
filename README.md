@@ -15,8 +15,10 @@ reasoning and tool calling.
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
 The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.2`, a source candidate that has not yet been built or
-qualified; none of the measurements below are claims about that candidate.
+builds `v0.2.1-rc.3`, an unbuilt source candidate rebased onto the official
+SGLang and FlashInfer `main` heads fetched on 2026-09-03. It has no performance,
+quality, stability, or capacity claims. Its immediate predecessor,
+`v0.2.1-rc.2`, was qualified internally but was not promoted or published.
 
 The checkpoint keeps the routed experts in W4A16 NVFP4 (K32 blocks) and the
 attention, shared experts and MTP draft layer in FP8 or BF16. Upstream SGLang
@@ -181,7 +183,7 @@ the exact head below. General follow-up work that is not yet filed upstream is
 identified explicitly as downstream pending upstream rather than presented as
 upstream provenance.
 
-SGLang (base `main` `54cadad151`, 2026-09-03):
+SGLang (base `main` `2da5802bfa`, 2026-09-03):
 
 | PR | State and head | What it carries |
 |---|---|---|
@@ -205,11 +207,11 @@ SGLang (base `main` `54cadad151`, 2026-09-03):
 | [sgl-project/sglang#37744](https://github.com/sgl-project/sglang/pull/37744) | Open, `ebe935c116` | qkvbfg fusion gated by each source layer's resolved quantization method |
 | [sgl-project/sglang#37375](https://github.com/sgl-project/sglang/pull/37375) | Open, `b6478a7400` | mHC pipeline stages hand off the flattened hidden state without a separate residual |
 
-FlashInfer (base `main` `1dff49bcb3`, 2026-09-03):
+FlashInfer (base `main` `03d8b2cd33`, 2026-09-03):
 
 | PR | State and head | What it carries |
 |---|---|---|
-| [flashinfer-ai/flashinfer#4802](https://github.com/flashinfer-ai/flashinfer/pull/4802) | Open, `8c765a04c1` | native SM120 sparse-MLA runner with GLM NoPE rows |
+| [flashinfer-ai/flashinfer#4802](https://github.com/flashinfer-ai/flashinfer/pull/4802) | Open, `ffa47d54ac` | native SM120 sparse-MLA runner with GLM NoPE rows; current `main` merged into the PR branch without changing its substantive patch |
 | [flashinfer-ai/flashinfer#4687](https://github.com/flashinfer-ai/flashinfer/pull/4687) | Open, `b75d6bfff7` | W4A16 large weight bank addressing |
 | [flashinfer-ai/flashinfer#4827](https://github.com/flashinfer-ai/flashinfer/pull/4827) | Open, `21fb169ff2` | SM12x MoE workspaces kept alive while captured CUDA graphs reference them |
 
@@ -229,14 +231,17 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.2` (2026-09-03) is the current source candidate: the `v0.2.0`
-serving profile rebased onto SGLang main `54cadad151` and FlashInfer main
-`1dff49bcb3`, with the current GLM branch follow-ups and the correctness
-hardening described above. It supersedes v0.2.1-rc.1 with corrected focused
-tests; the runtime sources and cache schema are unchanged. It is not built or
-qualified, and has no new performance or quality claims. `v0.2.0` (2026-09-03)
-is the current published
-release, a digest-identical promotion
+`v0.2.1-rc.3` (2026-09-03) is the current unbuilt source candidate. It rebases
+the complete v0.2.1 integration without conflict onto SGLang main
+`2da5802bfa` and FlashInfer main `03d8b2cd33`, rechecks every carried PR head,
+and advances the cache schema to `v58`. It has no performance, quality,
+stability, or capacity claims until its exact image is built and qualified.
+`v0.2.1-rc.2` (2026-09-03) was built and qualified internally at
+`sha256:39bbf5b178ed90cfabc2f76636c3e707e5bafcc1861be3665c8777b3433dff4a`.
+It was not promoted or published and is superseded by the current-main rebase.
+The complete receipt remains in the primary qualification repository under
+`evidence/v0.2.1-rc.2-validation-20260903.md`. `v0.2.0` (2026-09-03) is the
+current published release, a digest-identical promotion
 of its rc.1 candidate: the v0.1.4 bases and serving configuration with four
 decode-path changes (PCIe IPC all-reduce wired in, fused KDA gate
 projections under the quantized config, upstream's experimental device-side
@@ -275,7 +280,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.2.1-rc.2 .
+  -t sglang-glm53-flash-sm120:v0.2.1-rc.3 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

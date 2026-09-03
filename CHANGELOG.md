@@ -1,6 +1,22 @@
 # Changelog
 
-## v0.2.1-rc.2 (focused-test contract repair; not yet built or qualified)
+## v0.2.1-rc.3 (current-main refresh; not yet built or qualified)
+
+- Rebase the complete v0.2.1 integration without conflict onto official
+  SGLang main `2da5802bfaf499aef0742a59a8d2ddbec2191c21` and FlashInfer main
+  `03d8b2cd33459b5dc66c6187a2b47e02f83a2fe3`, fetched immediately before
+  patch generation. Patch IDs confirm that both upstream base deltas are
+  preserved exactly through the rebases.
+- Recheck all 22 carried PRs. The 19 SGLang PR heads and FlashInfer #4687/#4827
+  are unchanged. FlashInfer #4802 moved to `ffa47d54ac` by merging current
+  `main`; its substantive PR patch has the same stable patch ID as the prior
+  head, so the integration content is unchanged.
+- Retain the reviewed top-k, multimodal, quantization-gate, NextN, and mHC
+  fixes from v0.2.1-rc.2. Advance the compiled-cache schema to `v58` for the
+  new upstream source trees. This immutable candidate is not built or
+  qualified and inherits no claims from v0.2.1-rc.2.
+
+## v0.2.1-rc.2 (focused-test contract repair; internally qualified)
 
 - Keep the v0.2.1-rc.1 runtime sources and cache schema `v57` unchanged, while fixing
   two focused tests exposed by the exact built image: compare tool-result media
@@ -12,8 +28,13 @@
 - Re-fetched SGLang and FlashInfer `main` immediately before regenerating the
   patch and rechecked all 22 carried PRs. Both bases and every carried PR head
   remain unchanged from v0.2.1-rc.1.
-- This candidate is not yet built or qualified. It inherits no performance,
-  quality, stability or capacity claims from v0.2.1-rc.1 or v0.2.0.
+- Built internally as
+  `sha256:39bbf5b178ed90cfabc2f76636c3e707e5bafcc1861be3665c8777b3433dff4a`
+  and qualified on quasar with exact-image source tests, the image-plus-cold-C4
+  crash gate, full GSM8K, and an analyzer-valid engine gate. The detailed
+  measurements and raw receipts remain in the primary qualification repository
+  under `evidence/v0.2.1-rc.2-*`; this repository makes no new performance or
+  quality claims. The candidate has not been promoted or published.
 
 ## v0.2.1-rc.1 (current-main rebase and correctness follow-ups; superseded)
 

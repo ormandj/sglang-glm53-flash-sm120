@@ -14509,7 +14509,7 @@ index 7df1969e77..df86ad404c 100755
              return self.runner.run(dispatch_output, quant_info)
  
 diff --git a/python/sglang/srt/layers/quantization/utils.py b/python/sglang/srt/layers/quantization/utils.py
-index 5a130d6e67..c07428e0ba 100644
+index 7aa3d018d8..bf9d44dc4a 100644
 --- a/python/sglang/srt/layers/quantization/utils.py
 +++ b/python/sglang/srt/layers/quantization/utils.py
 @@ -7,7 +7,7 @@ from __future__ import annotations
@@ -14911,7 +14911,7 @@ index 5aa27c38e4..aae82357f1 100644
                      storage_hit_len=req.storage_hit_length,
                  )
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 00a6844f09..a9073269b3 100644
+index 9c61510a6c..c1f8feed7c 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -14939,7 +14939,7 @@ index 00a6844f09..a9073269b3 100644
  from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
  from sglang.srt.utils.numa_utils import get_numa_node_if_available, numa_bind_to_node
  from sglang.srt.utils.nvtx_utils import scheduler_nvtx_method
-@@ -667,9 +671,14 @@ class Scheduler(
+@@ -670,9 +674,14 @@ class Scheduler(
  
          # Init prefill kv split size when deterministic inference is enabled with various attention backends
          self.init_deterministic_inference_config()
@@ -14954,7 +14954,7 @@ index 00a6844f09..a9073269b3 100644
          # Init request dispatcher
          self.init_request_dispatcher()
  
-@@ -1622,12 +1631,6 @@ class Scheduler(
+@@ -1625,12 +1634,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -14967,7 +14967,7 @@ index 00a6844f09..a9073269b3 100644
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1657,6 +1660,28 @@ class Scheduler(
+@@ -1660,6 +1663,28 @@ class Scheduler(
              get_int_env_var(env_var, default_size) if env_var else None
          )
  
@@ -14996,7 +14996,7 @@ index 00a6844f09..a9073269b3 100644
      def init_request_dispatcher(self):
          self._request_dispatcher = TypeBasedDispatcher(
              [
-@@ -1732,6 +1757,7 @@ class Scheduler(
+@@ -1735,6 +1760,7 @@ class Scheduler(
                  (ShutdownReq, self.handle_shutdown),
                  (GetInternalStateReq, self.get_internal_state),
                  (SetInternalStateReq, self.set_internal_state),
@@ -15004,7 +15004,7 @@ index 00a6844f09..a9073269b3 100644
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1804,10 +1830,20 @@ class Scheduler(
+@@ -1807,10 +1833,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -15028,7 +15028,7 @@ index 00a6844f09..a9073269b3 100644
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3335,6 +3371,11 @@ class Scheduler(
+@@ -3343,6 +3379,11 @@ class Scheduler(
              # it. Drop the marker once the request is actually gone.
              if req.finished() or not req.kv.holds_kv:
                  self._pending_chunked_abort_req = None
@@ -15040,7 +15040,7 @@ index 00a6844f09..a9073269b3 100644
              return
  
          prepare_abort(req, "Aborted")
-@@ -3488,6 +3529,7 @@ class Scheduler(
+@@ -3495,6 +3536,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -15048,7 +15048,7 @@ index 00a6844f09..a9073269b3 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3612,8 +3654,16 @@ class Scheduler(
+@@ -3623,8 +3665,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -15067,7 +15067,7 @@ index 00a6844f09..a9073269b3 100644
              running_batch.batch_is_full = False
  
          if (
-@@ -3714,6 +3764,9 @@ class Scheduler(
+@@ -3725,6 +3775,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -15077,7 +15077,7 @@ index 00a6844f09..a9073269b3 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3749,6 +3802,17 @@ class Scheduler(
+@@ -3760,6 +3813,17 @@ class Scheduler(
                  if loaded_tokens > 0:
                      req.storage_hit_length = loaded_tokens
  
@@ -15095,7 +15095,7 @@ index 00a6844f09..a9073269b3 100644
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4017,20 +4081,27 @@ class Scheduler(
+@@ -4031,20 +4095,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -15137,7 +15137,7 @@ index 00a6844f09..a9073269b3 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4043,12 +4114,11 @@ class Scheduler(
+@@ -4057,12 +4128,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -15155,7 +15155,7 @@ index 00a6844f09..a9073269b3 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4063,12 +4133,11 @@ class Scheduler(
+@@ -4077,12 +4147,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -15171,7 +15171,7 @@ index 00a6844f09..a9073269b3 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4124,7 +4193,7 @@ class Scheduler(
+@@ -4138,7 +4207,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -15180,7 +15180,7 @@ index 00a6844f09..a9073269b3 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4150,13 +4219,12 @@ class Scheduler(
+@@ -4164,13 +4233,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -15200,7 +15200,7 @@ index 00a6844f09..a9073269b3 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4278,7 +4346,11 @@ class Scheduler(
+@@ -4292,7 +4360,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -15213,7 +15213,7 @@ index 00a6844f09..a9073269b3 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4290,7 +4362,11 @@ class Scheduler(
+@@ -4304,7 +4376,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -15225,7 +15225,7 @@ index 00a6844f09..a9073269b3 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4413,9 +4489,11 @@ class Scheduler(
+@@ -4427,9 +4503,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -15240,7 +15240,7 @@ index 00a6844f09..a9073269b3 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4438,31 +4516,42 @@ class Scheduler(
+@@ -4452,31 +4530,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -15304,7 +15304,7 @@ index 00a6844f09..a9073269b3 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4497,7 +4586,7 @@ class Scheduler(
+@@ -4511,7 +4600,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -15313,7 +15313,7 @@ index 00a6844f09..a9073269b3 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5454,6 +5543,38 @@ class Scheduler(
+@@ -5464,6 +5553,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -16187,7 +16187,7 @@ index b3ed6f84d3..44b2dbd284 100644
          mtp_draft_device_pools=mtp_draft_device_pools,
      )
 diff --git a/python/sglang/srt/mem_cache/kv_cache_builder.py b/python/sglang/srt/mem_cache/kv_cache_builder.py
-index e0a806670d..a085567c71 100644
+index ac030ac0e2..55a2232678 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_builder.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_builder.py
 @@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
@@ -16246,7 +16246,7 @@ index e0a806670d..a085567c71 100644
      # Decode-side radix cache supports SWA only through the unified tree, whose
      # component pools preserve the full-attention prefix while transferring the
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index 3cb24e1434..675393f997 100644
+index 6ac0bfe1f1..6e465d5b08 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,13 +12,14 @@ import torch
@@ -16265,7 +16265,7 @@ index 3cb24e1434..675393f997 100644
      get_minimax_sparse_attention_config,
      get_minimax_sparse_disable_value_layer_ids,
      get_minimax_sparse_layer_ids,
-@@ -359,6 +360,12 @@ class KVCacheConfigurator:
+@@ -364,6 +365,12 @@ class KVCacheConfigurator:
      def pool_page_size(self) -> int:
          return get_schedule().page_size * self.loc_space_scale
  
@@ -16278,7 +16278,7 @@ index 3cb24e1434..675393f997 100644
      def _derive_pool_sizes(self, *, config: MemoryPoolConfig) -> _PoolSizes:
          max_total_num_tokens = config.max_total_num_tokens
          max_running_requests = config.max_running_requests
-@@ -983,6 +990,30 @@ class KVCacheConfigurator:
+@@ -997,6 +1004,30 @@ class KVCacheConfigurator:
              )
          return req_to_token_pool
  
@@ -16309,7 +16309,7 @@ index 3cb24e1434..675393f997 100644
      def _build_hybrid_mamba_decode_req_pool(
          self,
          *,
-@@ -1000,13 +1031,7 @@ class KVCacheConfigurator:
+@@ -1014,13 +1045,7 @@ class KVCacheConfigurator:
              device=self.device,
              enable_memory_saver=get_exec().features.enable_memory_saver,
              cache_params=self.mambaish_config.mamba2_cache_params,
@@ -16324,7 +16324,7 @@ index 3cb24e1434..675393f997 100644
              speculative_num_draft_tokens=max_speculative_num_draft_tokens(),
              speculative_eagle_topk=get_spec().speculative_eagle_topk,
              enable_mamba_extra_buffer=mamba_extra_buffer_enabled(),
-@@ -1022,10 +1047,7 @@ class KVCacheConfigurator:
+@@ -1036,10 +1061,7 @@ class KVCacheConfigurator:
              # flag set stays byte-identical to flag-off.
              enable_linear_replayssm_spec=(
                  get_exec().mamba.enable_linear_replayssm_spec
@@ -16336,7 +16336,7 @@ index 3cb24e1434..675393f997 100644
              ),
          )
          return req_to_token_pool
-@@ -1065,7 +1087,7 @@ class KVCacheConfigurator:
+@@ -1079,7 +1101,7 @@ class KVCacheConfigurator:
          if (
              get_exec().mamba.enable_linear_replayssm_spec
              and _algo in ("DSPARK", "DFLASH")
@@ -16345,7 +16345,7 @@ index 3cb24e1434..675393f997 100644
          ):
              raise ValueError(
                  "--enable-linear-replayssm-spec with DSPARK/DFLASH requires a KDA "
-@@ -1079,13 +1101,7 @@ class KVCacheConfigurator:
+@@ -1093,13 +1115,7 @@ class KVCacheConfigurator:
              device=self.device,
              enable_memory_saver=get_exec().features.enable_memory_saver,
              cache_params=self.mambaish_config.mamba2_cache_params,
@@ -16360,7 +16360,7 @@ index 3cb24e1434..675393f997 100644
              enable_mamba_extra_buffer=mamba_extra_buffer_enabled(),
              enable_mamba_extra_buffer_lazy=mamba_extra_buffer_lazy_enabled(),
              # A PD prefill server never runs TARGET_VERIFY, so skip the
-@@ -1108,10 +1124,7 @@ class KVCacheConfigurator:
+@@ -1122,10 +1138,7 @@ class KVCacheConfigurator:
              # flag set stays byte-identical to flag-off.
              enable_linear_replayssm_spec=(
                  get_exec().mamba.enable_linear_replayssm_spec
@@ -16372,7 +16372,7 @@ index 3cb24e1434..675393f997 100644
              ),
          )
          return req_to_token_pool
-@@ -1214,9 +1227,10 @@ class KVCacheConfigurator:
+@@ -1228,9 +1241,10 @@ class KVCacheConfigurator:
                  swa_max_total_num_tokens=sizes.swa_max_total_num_tokens,
                  is_dsa_model=is_dsa_model,
              )
@@ -16384,7 +16384,7 @@ index 3cb24e1434..675393f997 100644
              )
          elif self.use_mla_backend and not self.mambaish_config:
              assert not is_dsa_model
-@@ -1505,9 +1519,14 @@ class KVCacheConfigurator:
+@@ -1519,9 +1533,14 @@ class KVCacheConfigurator:
          )
          return token_to_kv_pool
  
@@ -16400,7 +16400,7 @@ index 3cb24e1434..675393f997 100644
          (
              dsa_cp_layer_shard_rank,
              dsa_cp_layer_shard_size,
-@@ -1540,7 +1559,7 @@ class KVCacheConfigurator:
+@@ -1554,7 +1573,7 @@ class KVCacheConfigurator:
              ]
          token_to_kv_pool = PoolCls(
              max_total_num_tokens,
@@ -16409,7 +16409,7 @@ index 3cb24e1434..675393f997 100644
              dtype=self.kv_cache_dtype,
              kv_lora_rank=self.model_config.kv_lora_rank,
              qk_rope_head_dim=self.model_config.qk_rope_head_dim,
-@@ -1554,6 +1573,12 @@ class KVCacheConfigurator:
+@@ -1568,6 +1587,12 @@ class KVCacheConfigurator:
              start_layer=self.layer_info.start_layer,
              end_layer=self.layer_info.end_layer,
              index_head_dim=get_dsa_index_head_dim(self.model_config.hf_config),
@@ -16422,7 +16422,7 @@ index 3cb24e1434..675393f997 100644
              **pool_kwargs,
          )
          return token_to_kv_pool
-@@ -1744,12 +1769,6 @@ class KVCacheConfigurator:
+@@ -1758,12 +1783,6 @@ class KVCacheConfigurator:
          req_to_token_pool: ReqToTokenPool,
          mha_pool_class: type,
      ) -> KVCache:
@@ -16435,7 +16435,7 @@ index 3cb24e1434..675393f997 100644
          full_attention_layer_ids = (
              [0]
              if self.is_draft_worker
-@@ -1759,6 +1778,39 @@ class KVCacheConfigurator:
+@@ -1773,6 +1792,39 @@ class KVCacheConfigurator:
                  if self.layer_info.start_layer <= i < self.layer_info.end_layer
              ]
          )
@@ -16475,7 +16475,7 @@ index 3cb24e1434..675393f997 100644
          quant_method = self._build_mha_quant_method(
              num_layers=len(full_attention_layer_ids)
          )
-@@ -2258,15 +2310,15 @@ class KVCacheConfigurator:
+@@ -2278,15 +2330,15 @@ class KVCacheConfigurator:
          # freed ~9GB turns into higher max_running.
          # The ring is allocated per slot but is not part of mamba_cache_per_req;
          # the solve must charge it too or num_slots is over-provisioned.
@@ -16495,7 +16495,7 @@ index 3cb24e1434..675393f997 100644
                  record_len = get_exec().mamba.linear_replayssm_cache_len
              elif max_draft_tokens is not None:
                  record_len = max_draft_tokens
-@@ -2408,15 +2460,39 @@ def calculate_mla_kv_cache_dim(
+@@ -2428,15 +2480,39 @@ def calculate_mla_kv_cache_dim(
      if not is_dsa_model:
          return kv_cache_dim
  
@@ -16542,7 +16542,7 @@ index 3cb24e1434..675393f997 100644
  
      # On HIP, TileLang and AITER DSA kernels consume the raw MLA KV layout:
      # nope(512 fp8) + rope(64 fp8), without extra per-block scales.
-@@ -2426,6 +2502,16 @@ def calculate_mla_kv_cache_dim(
+@@ -2446,6 +2522,16 @@ def calculate_mla_kv_cache_dim(
      ):
          return kv_cache_dim
  
@@ -17506,7 +17506,7 @@ index fb05c77cd8..1206168478 100644
          # Load SWA KV cache if it exists
          if swa_kv_cpu is not None and self.full_to_swa_index_mapping is not None:
 diff --git a/python/sglang/srt/mem_cache/unified_cache/components/full_component.py b/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
-index 95fecb2ab2..be96632586 100644
+index e761086151..03bc7f266a 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/components/full_component.py
 @@ -27,6 +27,7 @@ from sglang.srt.mem_cache.unified_cache.components.tree_component import (
@@ -17693,7 +17693,7 @@ index 7dc939be49..15f6114d34 100644
          self, component_type: ComponentType
      ) -> torch.Tensor:
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
-index 213e7f3faf..eb9ae089db 100644
+index 57bc54b8c3..267e69206f 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
 @@ -356,6 +356,16 @@ class UnifiedTreeCoreInterface(ABC):
@@ -17752,7 +17752,7 @@ index 5952534c07..bd185a75ec 100644
              assert self._swa_allocator is not None
              swa_phys = self._virt_tokens_to_phys_tokens(indices, self._swa_allocator)
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 77e556914f..ae6d418973 100644
+index 1c603cac39..9b6696e522 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -92,6 +92,7 @@ from sglang.srt.runtime_context import (
@@ -17783,7 +17783,7 @@ index 77e556914f..ae6d418973 100644
  class UnifiedRadixCache(BasePrefixCache):
      def __init__(
          self,
-@@ -548,9 +562,12 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -551,9 +565,12 @@ class UnifiedRadixCache(BasePrefixCache):
          assert not self.tree_core.has_ongoing_insert(), "re-entrant insert"
          # Pump the resumable insert, applying each step's actions at its barrier.
          try:
@@ -17796,7 +17796,7 @@ index 77e556914f..ae6d418973 100644
                  if step.result is not None:
                      # Walk actions flow through the steps; the result is action-free.
                      assert not step.result.cache_actions
-@@ -891,6 +908,26 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -894,6 +911,26 @@ class UnifiedRadixCache(BasePrefixCache):
              page_aligned_len = len(radix_key)
              values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -17823,7 +17823,7 @@ index 77e556914f..ae6d418973 100644
              insert_params.key = radix_key
              insert_params.value = values
              result = self.insert(insert_params)
-@@ -988,6 +1025,24 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -991,6 +1028,24 @@ class UnifiedRadixCache(BasePrefixCache):
          page_aligned_len = len(radix_key)
          values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -17848,7 +17848,7 @@ index 77e556914f..ae6d418973 100644
          insert_params.key = radix_key
          insert_params.value = values
          result = self.insert(insert_params)
-@@ -1058,10 +1113,155 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1061,10 +1116,155 @@ class UnifiedRadixCache(BasePrefixCache):
          actions.reverse()
          try:
              while actions:
@@ -18005,7 +18005,7 @@ index 77e556914f..ae6d418973 100644
      def _apply_cache_action(self, action: CacheAction | ComponentAction) -> None:
          # Component actions route to their component class; the rest are
          # cache-owned and handled here by type.
-@@ -1532,6 +1732,24 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1535,6 +1735,24 @@ class UnifiedRadixCache(BasePrefixCache):
              )
          )
  
@@ -18302,10 +18302,10 @@ index eb1028a415..e2771a0ddf 100644
  
  def _resolve_dflash_aux_hidden_state(
 diff --git a/python/sglang/srt/model_executor/pool_configurator.py b/python/sglang/srt/model_executor/pool_configurator.py
-index 305225d9de..c927371357 100644
+index dac5dd010f..8930372197 100644
 --- a/python/sglang/srt/model_executor/pool_configurator.py
 +++ b/python/sglang/srt/model_executor/pool_configurator.py
-@@ -113,6 +113,23 @@ def _dflash_draft_cell_size(kvc: KVCacheConfigurator) -> int:
+@@ -114,6 +114,23 @@ def _dflash_draft_cell_size(kvc: KVCacheConfigurator) -> int:
      return int(cell_size) * get_parallel().attn_dcp_size
  
  
@@ -18329,7 +18329,7 @@ index 305225d9de..c927371357 100644
  def _get_dsv4_compress_state_dtype_sizes() -> tuple[int, int]:
      dtype_name = envs.SGLANG_DSV4_COMPRESS_STATE_DTYPE.get().strip().lower()
      if dtype_name in ("float32", "fp32"):
-@@ -211,16 +228,23 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
+@@ -212,16 +229,23 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
                      target_kv_num_layers = get_glm_dsa_layer_split_effective_num_layers(
                          kvc, num_layers
                      )
@@ -18359,7 +18359,7 @@ index 305225d9de..c927371357 100644
                      self._cell_size = int(
                          self._cell_size * (1 + draft_num_layers / int(num_layers))
                      )
-@@ -258,8 +282,10 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
+@@ -259,8 +283,10 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
              get_glm_dsa_layer_split_effective_num_layers,
          )
  
@@ -18372,7 +18372,7 @@ index 305225d9de..c927371357 100644
          )
  
          kv_size = torch._utils._element_size(kv_cache_dtype)
-@@ -390,18 +416,13 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
+@@ -391,18 +417,13 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
              _should_elide_dsa_index_k,
          )
  
@@ -18395,7 +18395,7 @@ index 305225d9de..c927371357 100644
              from sglang.srt.layers.cp.utils import (
                  get_glm_dsa_cp_layer_shard_info,
                  get_layer_shard_range,
-@@ -409,6 +430,16 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
+@@ -410,6 +431,16 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
  
              _, shard_size = get_glm_dsa_cp_layer_shard_info(kvc)
              if shard_size > 1:
@@ -18412,7 +18412,7 @@ index 305225d9de..c927371357 100644
                  active_set = set(active_indexer_layers)
                  max_owned = 0
                  for rank in range(shard_size):
-@@ -422,7 +453,10 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
+@@ -423,7 +454,10 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
                      )
                  num_indexer_layers = max_owned + 1
              else:
@@ -18424,7 +18424,7 @@ index 305225d9de..c927371357 100644
  
          return int(
              indexer_size_per_token * num_indexer_layers * element_size * indexer_ratio
-@@ -552,6 +586,10 @@ class HybridSWAPoolConfigurator(MemoryPoolConfigurator):
+@@ -554,6 +588,10 @@ class HybridSWAPoolConfigurator(MemoryPoolConfigurator):
                      - self._draft_swa_layers_num
                      - self._draft_swa_full_layers_num
                  )
@@ -21811,10 +21811,10 @@ index dce42ffd81..1a2314d191 100644
          if filter_node.name not in attribute_filters:
              continue
 diff --git a/python/sglang/srt/server_args.py b/python/sglang/srt/server_args.py
-index b534f9d74e..98db47c8e2 100644
+index feec0ab261..5972974520 100644
 --- a/python/sglang/srt/server_args.py
 +++ b/python/sglang/srt/server_args.py
-@@ -2921,6 +2921,15 @@ class ServerArgs:
+@@ -2938,6 +2938,15 @@ class ServerArgs:
          "available backend.",
          NS("mm"),
      ] = "auto"
