@@ -26778,7 +26778,7 @@ index c40cc8b1e1..843fc3eb6d 100644
          mgr.kv_args = SimpleNamespace(engine_rank=0, kv_data_ptrs=[0])
          mgr.exceptions = {}
 diff --git a/test/registered/unit/entrypoints/openai/test_serving_chat.py b/test/registered/unit/entrypoints/openai/test_serving_chat.py
-index 969b44e1e4..0a526ea84e 100644
+index 969b44e1e4..9fefd9f758 100644
 --- a/test/registered/unit/entrypoints/openai/test_serving_chat.py
 +++ b/test/registered/unit/entrypoints/openai/test_serving_chat.py
 @@ -20,6 +20,7 @@ from pathlib import Path
@@ -26883,7 +26883,7 @@ index 969b44e1e4..0a526ea84e 100644
      def test_jinja_path_recovers_tool_result_images_only_when_template_needs_it(self):
          self.template_manager.chat_template_name = None
          self.template_manager.jinja_template_content_format = "openai"
-@@ -351,7 +383,7 @@ class ServingChatTestCase(unittest.TestCase):
+@@ -351,23 +383,58 @@ class ServingChatTestCase(unittest.TestCase):
          self.assertEqual(
              [item.url for item in result.image_data], ["image-a", "image-b"]
          )
@@ -26892,14 +26892,59 @@ index 969b44e1e4..0a526ea84e 100644
          rendered_messages = self.tm.tokenizer.apply_chat_template.call_args[0][0]
          self.assertEqual(
              [m.get("tool_call_id") for m in rendered_messages if "tool_call_id" in m],
-@@ -365,6 +397,7 @@ class ServingChatTestCase(unittest.TestCase):
+             ["call-a", "call-b"],
+         )
+ 
+-        # An already-ordered request must produce the exact same render input.
++        # An already-ordered request must produce the same render input apart from
++        # the per-recovery UUID that keeps sentinel text request-local.
+         ordered_request = ChatCompletionRequest(
+             model="x",
+             messages=request.messages[:2] + request.messages[2:][::-1],
          )
          self.tm.tokenizer.apply_chat_template.reset_mock()
          self.chat._apply_jinja_template(ordered_request, None, is_multimodal=True)
 +        self.assertEqual(self.tm.tokenizer.apply_chat_template.call_count, 2)
++        ordered_rendered_messages = self.tm.tokenizer.apply_chat_template.call_args[0][
++            0
++        ]
++
++        # Keep this aligned with `_MM_ORDER_TAGS` and the request-local prefix in
++        # `_recover_media_order_from_chat_template`.
++        sentinel_pattern = re.compile(
++            r"(\x1e\x1eSGLMM)([0-9a-f]{32})([IVA]\d+\x1e\x1e)"
++        )
++
++        def normalize_sentinel_ids(value, found_ids):
++            if isinstance(value, str):
++
++                def replace_sentinel(match):
++                    found_ids.add(match.group(2))
++                    return f"{match.group(1)}<uuid>{match.group(3)}"
++
++                return sentinel_pattern.sub(replace_sentinel, value)
++            if isinstance(value, list):
++                return [normalize_sentinel_ids(item, found_ids) for item in value]
++            if isinstance(value, dict):
++                return {
++                    key: normalize_sentinel_ids(item, found_ids)
++                    for key, item in value.items()
++                }
++            return value
++
++        first_ids = set()
++        ordered_ids = set()
          self.assertEqual(
-             rendered_messages, self.tm.tokenizer.apply_chat_template.call_args[0][0]
+-            rendered_messages, self.tm.tokenizer.apply_chat_template.call_args[0][0]
++            normalize_sentinel_ids(rendered_messages, first_ids),
++            normalize_sentinel_ids(ordered_rendered_messages, ordered_ids),
          )
++        self.assertEqual(len(first_ids), 1)
++        self.assertEqual(len(ordered_ids), 1)
++        self.assertTrue(first_ids.isdisjoint(ordered_ids))
+ 
+         self.template_manager.jinja_template_may_reorder_tool_results = False
+         self.tm.tokenizer.apply_chat_template.reset_mock()
 diff --git a/test/registered/unit/entrypoints/test_engine_serving_started.py b/test/registered/unit/entrypoints/test_engine_serving_started.py
 new file mode 100644
 index 0000000000..9b47125fed
@@ -32305,7 +32350,7 @@ index 1c488832f8..bef625a727 100644
          manager._dispatch_to_scheduler = MagicMock()
          time_stats = MagicMock()
 diff --git a/test/registered/unit/multimodal/test_processor_device_selection.py b/test/registered/unit/multimodal/test_processor_device_selection.py
-index 2e08ca6add..e0696b9258 100644
+index 2e08ca6add..b97c11d7a1 100644
 --- a/test/registered/unit/multimodal/test_processor_device_selection.py
 +++ b/test/registered/unit/multimodal/test_processor_device_selection.py
 @@ -1,16 +1,19 @@
@@ -32329,7 +32374,8 @@ index 2e08ca6add..e0696b9258 100644
 -from contextlib import nullcontext
 +from contextlib import contextmanager, nullcontext
  from types import SimpleNamespace
- from unittest.mock import patch
+-from unittest.mock import patch
++from unittest.mock import Mock, patch
  
 +from sglang.srt.managers.schedule_batch import Modality
  from sglang.srt.multimodal.processors.base_processor import BaseMultimodalProcessor
@@ -32370,7 +32416,7 @@ index 2e08ca6add..e0696b9258 100644
  
      def test_device_follows_the_instance_base_gpu_id(self):
          self.assertEqual(self._device(_make(base_gpu_id=3)), "cuda:3")
-@@ -75,9 +90,309 @@ class TestFastImageProcessorDevice(CustomTestCase):
+@@ -75,9 +90,310 @@ class TestFastImageProcessorDevice(CustomTestCase):
  
          processor = _make(base_gpu_id=3)
          with patch.multiple(BASE, _is_cpu=False, _is_xpu=False, _is_npu=True):
@@ -32667,8 +32713,8 @@ index 2e08ca6add..e0696b9258 100644
 +                    self._decode(_make(NoGpuDecode, mm_preprocessing_device=setting))
 +                )
 +
-+    def test_load_single_item_uses_the_instance_mode(self):
-+        image = SimpleNamespace(mode="RGB")
++    def test_load_single_item_uses_decode_mode_and_forces_pil_decode(self):
++        image = SimpleNamespace(mode="RGB", load=Mock())
 +        with patch(f"{BASE}.load_image", return_value=(image, None)) as load_image:
 +            _StubProcessor._load_single_item(
 +                "data", Modality.IMAGE, gpu_image_decode=False
@@ -32677,6 +32723,7 @@ index 2e08ca6add..e0696b9258 100644
 +        self.assertEqual(
 +            [call.args[1] for call in load_image.call_args_list], [False, True]
 +        )
++        self.assertEqual(image.load.call_count, 2)
 +
  
  class TestFastImageProcessorMemoryPool(CustomTestCase):

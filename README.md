@@ -15,7 +15,7 @@ reasoning and tool calling.
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
 The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.1`, a source candidate that has not yet been built or
+builds `v0.2.1-rc.2`, a source candidate that has not yet been built or
 qualified; none of the measurements below are claims about that candidate.
 
 The checkpoint keeps the routed experts in W4A16 NVFP4 (K32 blocks) and the
@@ -229,11 +229,13 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.1` (2026-09-03) is the current source candidate: the `v0.2.0`
+`v0.2.1-rc.2` (2026-09-03) is the current source candidate: the `v0.2.0`
 serving profile rebased onto SGLang main `54cadad151` and FlashInfer main
 `1dff49bcb3`, with the current GLM branch follow-ups and the correctness
-hardening described above. It is not built or qualified, and has no new
-performance or quality claims. `v0.2.0` (2026-09-03) is the current published
+hardening described above. It supersedes v0.2.1-rc.1 with corrected focused
+tests; the runtime sources and cache schema are unchanged. It is not built or
+qualified, and has no new performance or quality claims. `v0.2.0` (2026-09-03)
+is the current published
 release, a digest-identical promotion
 of its rc.1 candidate: the v0.1.4 bases and serving configuration with four
 decode-path changes (PCIe IPC all-reduce wired in, fused KDA gate
@@ -273,7 +275,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.2.1-rc.1 .
+  -t sglang-glm53-flash-sm120:v0.2.1-rc.2 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

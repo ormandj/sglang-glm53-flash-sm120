@@ -1,6 +1,27 @@
 # Changelog
 
-## v0.2.1-rc.1 (current-main rebase and correctness follow-ups; not yet built or qualified)
+## v0.2.1-rc.2 (focused-test contract repair; not yet built or qualified)
+
+- Keep the v0.2.1-rc.1 runtime sources and cache schema `v57` unchanged, while fixing
+  two focused tests exposed by the exact built image: compare tool-result media
+  ordering independently of its intentionally request-local sentinel UUID, and
+  assert that both image decode-selection paths force lazy PIL decoding in the
+  I/O worker. The resulting SGLang tree is
+  `b9a863009e95617625859575f05f2be299108a8a`; `stack.lock.json` records the
+  new patch checksum and integration working head.
+- Re-fetched SGLang and FlashInfer `main` immediately before regenerating the
+  patch and rechecked all 22 carried PRs. Both bases and every carried PR head
+  remain unchanged from v0.2.1-rc.1.
+- This candidate is not yet built or qualified. It inherits no performance,
+  quality, stability or capacity claims from v0.2.1-rc.1 or v0.2.0.
+
+## v0.2.1-rc.1 (current-main rebase and correctness follow-ups; superseded)
+
+- Built internally as
+  `sha256:4e0fbb2f9a7332942016d252f4861007a294a53ca1f426593e8e785197276039`.
+  Startup, readiness and the filtered serving log were clean, but the focused
+  CPU suite exposed two stale test contracts. It was not qualified and is
+  superseded by v0.2.1-rc.2.
 
 - Rebase the integration patches onto official SGLang main
   `54cadad151e55c7cfef357da77061812eb893b96` and FlashInfer main

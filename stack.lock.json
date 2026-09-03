@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.2.1",
-    "candidate": 1,
-    "candidate_tag": "v0.2.1-rc.1",
+    "candidate": 2,
+    "candidate_tag": "v0.2.1-rc.2",
     "stable_tag": "v0.2.1",
     "cache_schema": "v57"
   },
   "image": {
-    "tag": "v0.2.1-rc.1",
+    "tag": "v0.2.1-rc.2",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,7 +49,7 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 1
+      "value": 2
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "e2a2e5a5e45b7146a915b725dac17342ae08fe39"
+      "value": "b9a863009e95617625859575f05f2be299108a8a"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "f4d6ba94214e8e164330be7127566ac24b2e6c02f7a2893a74e5fc0da502bff2"
+      "value": "82c0975e5e9a2cf1a1c38d080baae6f1f80e2116f2ce6fb27704693d2b43289e"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,12 +149,12 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "54cadad151e55c7cfef357da77061812eb893b96",
       "upstream_tree": "6513c7e7c6410a7fa90172ebb057b13a78e0b3cf",
-      "tree": "e2a2e5a5e45b7146a915b725dac17342ae08fe39",
+      "tree": "b9a863009e95617625859575f05f2be299108a8a",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "f4d6ba94214e8e164330be7127566ac24b2e6c02f7a2893a74e5fc0da502bff2",
+      "patch_sha256": "82c0975e5e9a2cf1a1c38d080baae6f1f80e2116f2ce6fb27704693d2b43289e",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260903",
-      "working_head": "99eda8c40fd19ae315aea51e081d95b59b99ca70",
+      "working_head": "416f1caaeb1d857ee49c71218ac0ecbcdff87c7c",
       "upstream_main_base": "54cadad151e55c7cfef357da77061812eb893b96",
       "included_upstream_work": [
         "sglang#36507 (open head cdfc224b0e, applied to main 54cadad151; includes the issue #37548 NextN first-request multimodal embedding fix)",
@@ -211,6 +211,7 @@
         "PR heads used for every carried PR; conflict resolutions retain the current upstream APIs and are covered by focused regressions",
         "downstream pending upstream: GLM video preprocessing stays on CPU, mixed EPD video batches dispatch per item, decoder workers settle before cleanup, DP frame budgets scale their minimum and maximum, and odd HF samples preserve pair sharding",
         "downstream pending upstream: collision-safe media-order recovery across tool-result template rendering",
+        "focused test coverage separates request-local media sentinel identity from ordering and forces lazy PIL decode in the I/O worker",
         "downstream follow-up to #36507/#37548: missing multimodal draft embeddings raise RuntimeError and the regression executes the real completion path",
         "downstream-only (0.2.0): FlashInfer PCIe IPC all-reduce wired into GroupCoordinator.all_reduce (SGLANG_ENABLE_PCIE_IPC_ALLREDUCE, rank-agreed enablement, workspace teardown)",
         "downstream-only (0.2.0): GLM-5 KDA b/f_a/g_a and f_b/g_b BF16 gate-projection fusion under the quantized config (fuses only when the gate projections resolve to unquantized methods)",
@@ -256,10 +257,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "f4d6ba94214e8e164330be7127566ac24b2e6c02f7a2893a74e5fc0da502bff2",
+      "sha256": "82c0975e5e9a2cf1a1c38d080baae6f1f80e2116f2ce6fb27704693d2b43289e",
       "base_head": "54cadad151e55c7cfef357da77061812eb893b96",
       "base_tree": "6513c7e7c6410a7fa90172ebb057b13a78e0b3cf",
-      "result_tree": "e2a2e5a5e45b7146a915b725dac17342ae08fe39"
+      "result_tree": "b9a863009e95617625859575f05f2be299108a8a"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -284,7 +285,7 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.2.1-rc.1: v0.2.0 serving profile rebased onto SGLang main 54cadad151 and FlashInfer main 1dff49bcb3 with current GLM follow-ups and top-k/multimodal correctness fixes; not yet built or qualified",
+    "status": "v0.2.1-rc.2: v0.2.1-rc.1 runtime sources on SGLang main 54cadad151 and FlashInfer main 1dff49bcb3 with corrected focused test contracts; not yet built or qualified",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
@@ -298,6 +299,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.2.1-rc.1 is not built or qualified"
+    "claims": "v0.2.1-rc.2 is not built or qualified"
   }
 }
