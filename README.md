@@ -87,28 +87,35 @@ profile. Two settings matter more than they look:
 Measured on 2026-09-03 on `v0.2.0-rc.1` with the launcher configuration plus
 HiCache, using the vendored harness in [`bench/`](bench/) on a warm server,
 at the 450,560-token pool. Full tables, per-repetition numbers and method
-notes are in [`BENCHMARKS.md`](BENCHMARKS.md); raw receipts are in
-[`evidence/`](evidence/).
+notes are in [`BENCHMARKS.md`](BENCHMARKS.md); the raw receipts and gate
+summaries for v0.2.0 are in [`evidence/`](evidence/) (copied from the primary
+repository, which holds every experiment behind them).
 
 **Decode.** Coding prompts of about 19k tokens, 4,096 output tokens, greedy,
 five repetitions per cell. Tokens per second counts accepted speculative
 tokens; forwards per second is the engine step rate; the last column is how
-many tokens each request accepted per engine forward.
+many tokens each request accepted per engine forward. Rates are fixed-window
+measurements on synthetic prompts, not a promise of application throughput.
 
-| Concurrent requests | Output tok/s, mean (median) | Forwards/s, mean (median) | Accepted tok/forward/request |
-|---|---:|---:|---:|
-| 1 | 264.1 (283.1) | 54.6 (52.3) | 4.9 |
-| 2 | 306.9 (306.9) | 39.1 (38.1) | 3.9 |
-| 3 | 415.7 (387.1) | 31.1 (30.9) | 4.5 |
-| 4 | 386.4 (385.8) | 31.3 (31.5) | 3.1 |
+| Concurrent requests | Output tok/s, mean (median) | Forwards/s, mean (median) | Accepted tok/forward/request | v0.1.4 on the same gate (tok/s at fwd/s, accepted) |
+|---|---:|---:|---:|---:|
+| 1 | 264.1 (283.1) | 54.6 (52.3) | 4.9 | 156.6 at 54.5, 2.9 |
+| 2 | 306.9 (306.9) | 39.1 (38.1) | 3.9 | 237.1 at 39.2, 3.0 |
+| 3 | 415.7 (387.1) | 31.1 (30.9) | 4.5 | 319.0 at 30.6, 3.5 |
+| 4 | 386.4 (385.8) | 31.3 (31.5) | 3.1 | 371.9 at 28.8, 3.3 |
+
+At one to three requests the gain is in accepted tokens per forward (the
+drafter's proposals survive longer on these prompts); at four requests the
+engine step rate is up 9%.
 
 For a lower-acceptance workload (a repetitive ledger prompt, 1k or 19k of
-context, 2,048 output tokens, six soaked runs), the engine step rate at
-concurrency 1 is 67 forwards/s and 154 tok/s at 2.3 accepted tokens per
-forward; v0.1.4 measured 56.5 forwards/s and 131 tok/s on the same probe.
+context, 2,048 output tokens, six runs after a 150 s thermal soak), the
+engine step rate at concurrency 1 is 67 forwards/s and 154 tok/s at 2.3
+accepted tokens per forward; v0.1.4 measured 56 forwards/s and 130 tok/s on
+the same probe and protocol.
 
 **Prefill.** Five cold, cache-busted requests per length, one at a time
-(unchanged from v0.1.1).
+(within 0.6% of the v0.1.1 panel).
 
 | Prompt | Prompt tok/s | Time to first token |
 |---|---:|---:|
@@ -124,9 +131,9 @@ forward; v0.1.4 measured 56.5 forwards/s and 131 tok/s on the same probe.
 |---|---|
 | Context and KV pool | 450,560 tokens shared by up to four requests |
 | Largest prompt served | 436,295 tokens plus a full-budget image at 99% pool usage (v0.1.3) |
-| Concurrent long prompts | 4 x 111,616 tokens cold at once (19.3 s to first token); 3 x 146,460 plus a full-budget 3840x2160 image |
-| HiCache host tier (32 GB) | 2.65M KV tokens plus an 11.2 GB recurrent-state tier |
-| GSM8K | 296/300 on the v0.2.0-rc.1 300-question subset (v0.1.4: 295/300); 96.9% on 1,319 questions on v0.1.1 |
+| Concurrent long prompts | 4 x 111,616 tokens cold at once, cache flushed first (19.3 s to first token); 3 x 146,460 plus a full-budget 3840x2160 image |
+| HiCache host tier (32 GB) | 2.55M KV tokens (packed MTP layers) plus the recurrent-state tier |
+| GSM8K | 296/300 on the v0.2.0-rc.1 300-question subset, greedy, four concurrent (v0.1.4 on the same run: 296/300); 96.9% on 1,319 questions on v0.1.1 |
 | Images | 3840x2160 in 2.3-3.5 s, alone and with three 128k prompts resident; ten in a row |
 | Stability | zero restarts and zero OOM errors across the decode, prefill, capacity, vision and GSM8K runs |
 

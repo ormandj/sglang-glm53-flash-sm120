@@ -31,15 +31,21 @@ are in the primary repository (`evidence/v0.1.4-c1-perf-experiments-20260902.md`
 | C2 | 306.9 / 271.6 / 348.1 / 278.9 / 329.0 | 306.9 | 306.9 | 38.1 / 41.3 / 37.3 / 42.1 / 36.9 | 39.1 | 3.9 |
 | C3 | 387.1 / 349.5 / 522.1 / 372.3 / 447.6 | 415.7 | 387.1 | 29.8 / 33.6 / 31.0 / 30.9 / 30.1 | 31.1 | 4.5 |
 | C4 | 366.5 / 409.9 / 380.5 / 389.3 / 385.8 | 386.4 | 385.8 | 32.0 / 31.5 / 31.6 / 30.4 / 31.2 | 31.3 | 3.1 |
-| C4 (v0.1.4, same gate) | 352.6 / 417.6 / 360.6 / 341.2 / 387.7 | 371.9 | 360.6 | 28.5 / 27.7 / 29.5 / 31.0 / 27.2 | 28.8 | 3.1 |
+| C4 (v0.1.4, same gate) | 352.6 / 417.6 / 360.6 / 341.2 / 387.7 | 371.9 | 360.6 | 28.5 / 27.7 / 29.5 / 31.0 / 27.2 | 28.8 | 3.3 (3.1 median) |
+| C1 (v0.1.4, same gate, 2026-09-03) | 150.1 / 153.2 / 162.7 / 145.8 / 171.1 | 156.6 | 153.2 | 55.4 / 55.4 / 53.1 / 56.4 / 52.2 | 54.5 | 2.9 |
+| C2 (v0.1.4, same gate) | 256.8 / 236.5 / 223.7 / 233.6 / 235.0 | 237.1 | 235.0 | 36.9 / 38.6 / 41.0 / 39.9 / 39.7 | 39.2 | 3.0 |
+| C3 (v0.1.4, same gate) | 341.9 / 322.4 / 304.0 / 300.2 / 326.7 | 319.0 | 322.4 | 27.9 / 31.4 / 32.0 / 31.5 / 30.3 | 30.6 | 3.5 |
 
 Concurrency-1 probe (`benchmarks/profile/c1_bench.py` in the primary repository: ledger prompt,
-2,048 output tokens, 150 s thermal soak, six runs, SM clock/power/temperature logged):
+2,048 output tokens, 150 s thermal soak, six runs, SM clock/power/temperature logged; both images on the same protocol):
 
-| Context | v0.1.4 fwd/s | v0.2.0-rc.1 fwd/s | tok/s | Accepted tok/fwd |
-|---|---:|---:|---:|---:|
-| 1k | 56.5 | 67.1 +- 0.4 | 154 | 2.31 |
-| 19k | 56.2 | 66.5 +- 0.3 | 155 | 2.34 |
+| Context | v0.1.4 fwd/s / tok/s | v0.2.0-rc.1 fwd/s / tok/s | Accepted tok/fwd (v0.1.4 / v0.2.0) |
+|---|---:|---:|---:|
+| 1k | 56.2 +- 0.9 / 130 | 67.1 +- 0.4 / 154 | 2.35 / 2.31 |
+| 19k | 56.1 +- 0.7 / 132 | 66.5 +- 0.3 / 155 | 2.37 / 2.34 |
+
+The engine-gate rates above are synthetic fixed-window signals with path-dependent acceptance;
+repetitions are prompt-path subsamples, not independent replicates or an application throughput.
 
 ### Prefill (five cold requests per length, C1)
 
@@ -50,15 +56,17 @@ Concurrency-1 probe (`benchmarks/profile/c1_bench.py` in the primary repository:
 | 64k | 5,890 tok/s | 11.13 s |
 | 128k | 5,893 tok/s | 22.22 s |
 
+v0.1.4-rc.2 on the same panel the same night: 8k 5,228 / 32k 5,867 / 64k 5,609 / 128k 5,891 tok/s.
+
 ### Quality and stability
 
 | Check | Result |
 |---|---|
-| GSM8K 300-question subset, greedy, C4 | 296/300 regraded (v0.1.4-rc.2: 295/300) |
-| FP8 lm_head vs BF16 head, first-token top-10 logprobs, 300 cold prompts | at the BF16-vs-BF16 noise floor (top-1 agreement 89.0% vs 89.7%, KL 0.020 vs 0.022 nats) |
+| GSM8K 300-question subset, greedy, C4, shipped profile | 296/300 regraded (v0.1.4-rc.2 on the same run: 296/300) |
+| FP8 lm_head vs BF16 head, first-token top-10 logprobs, 300 cold prompts | at the BF16-vs-BF16 noise floor (top-1 agreement 89.0% vs 89.7%, KL 0.020 vs 0.022 nats; measured on the pre-build overlay of the same code; on the immutable images: LOGPROB_IMAGES_PLACEHOLDER) |
 | 4 x 18k distinct concurrent (x2) | 4 decode together |
 | 3 x 146k concurrent + full-budget 3840x2160 image | pass |
-| 4 x 111.6k cold concurrent (cache flushed) | pass, TTFT 19.3 s |
+| 4 x 111.6k cold concurrent (cache flushed first) | pass, TTFT 19.3 s |
 | 10 x 4K images alone; 10 x 4K images with 3 x 128k resident | pass, 2.3-3.5 s each |
 | image then four cold 4k prompts | pass |
 | First sampled thinking chat after ready | 1.4 s |
