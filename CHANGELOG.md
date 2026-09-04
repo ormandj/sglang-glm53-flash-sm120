@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.1-rc.8 (exact-tail test stride correction; built and crash-gated)
+## v0.2.1-rc.8 (exact-tail test stride correction; internally qualified)
 
 - Retain the rc.7 kernel implementation unchanged and pad the exact-tail
   regression's backing row so its physical stride satisfies the V2 kernel's
@@ -12,9 +12,10 @@
 - Advance the compiled-cache schema to `v63`. The immutable candidate was built
   internally at
   `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`.
-  Its exact-image GPU gate and deployment crash gate passed. The quality and
-  engine gates have not run, so it is not fully qualified and inherits no
-  performance, quality, or capacity claims from earlier candidates.
+  Its source, exact-image GPU, first-boot, crash, full quality, long-context,
+  and standardized C1-C4 engine gates passed on quasar. The primary
+  qualification repository holds the measured results and exact-candidate
+  receipts. It has not been promoted or published.
 
 ## v0.2.1-rc.7 (oversized DSA cutoff-discovery follow-up; rejected by exact-image GPU gate)
 

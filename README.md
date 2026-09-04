@@ -14,12 +14,13 @@ reasoning and tool calling.
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
-The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.8`, an internally built candidate based on the official
-SGLang and FlashInfer `main` heads fetched on 2026-09-03. Its exact-image GPU
-gate and deployment crash gate passed at
+The published stable image remains `v0.2.0`. This repository currently builds
+`v0.2.1-rc.8`, an internally qualified candidate based on the official SGLang
+and FlashInfer `main` heads fetched on 2026-09-03. Its source, exact-image GPU,
+first-boot, crash, full quality, long-context, and standardized engine gates
+passed at
 `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`.
-It has no performance, quality, or capacity claims and is not fully qualified.
+The primary qualification repository holds the measured results and receipts.
 `v0.2.1-rc.7` was rejected by its
 exact-image GPU gate because one new test violated the kernel's row-stride
 precondition. `v0.2.1-rc.5` was built and qualified internally on quasar at
@@ -238,14 +239,15 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.8` (2026-09-04) is the current internally built candidate at
+`v0.2.1-rc.8` (2026-09-04) is the current internally qualified candidate at
 `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`.
 It retains the rc.7 kernel implementation unchanged and pads the new exact-tail
 test's physical row stride to the V2 kernel's 16-byte vector-load contract
-while preserving the 5,047-element logical row. Its exact-image GPU gate and
-deployment crash gate passed. The cache schema advances to `v63`. The quality
-and engine gates have not run, so this candidate is not fully qualified and
-inherits no performance, quality, or capacity claims from earlier candidates.
+while preserving the 5,047-element logical row. Its source, exact-image GPU,
+first-boot, crash, full quality, long-context, and standardized C1-C4 engine
+gates passed. The cache schema advances to `v63`. The primary qualification
+repository holds the measured results and exact-candidate receipts. The
+candidate has not been promoted or published.
 
 `v0.2.1-rc.7` (2026-09-04) was built internally at
 `sha256:e7945f72cf038ad83a034f2ba1f0d8abf23e977b7576dad7063331c6cb91e16c`
@@ -277,7 +279,7 @@ static-Mamba slot accounting. The cache schema advances to `v61`. This
 candidate is not built or qualified and inherits no claims from earlier
 candidates.
 
-`v0.2.1-rc.5` (2026-09-03) is the latest internally qualified candidate. It rebases
+`v0.2.1-rc.5` (2026-09-03) was an internally qualified candidate. It rebases
 the complete v0.2.1 integration without conflict onto SGLang main
 `05dbe64dff` and FlashInfer main `7a3c04f015`, rechecks every carried PR head,
 retains the allocation-free exact fallback for exact-capacity DSA top-k bins,
