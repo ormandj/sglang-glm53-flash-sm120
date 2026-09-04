@@ -24673,7 +24673,7 @@ index 0000000000000000000000000000000000000000..0841b171194c60c2e2fd223d833c564e
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_topk_v2.py b/test/registered/kernels/ops/attention/test_topk_v2.py
-index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..6fe4c97ca605057facddc265b91bc9c744451a88 100644
+index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..d91ad41394eedbf8cf22d8371150ab9b4e799a07 100644
 --- a/test/registered/kernels/ops/attention/test_topk_v2.py
 +++ b/test/registered/kernels/ops/attention/test_topk_v2.py
 @@ -2,8 +2,8 @@
@@ -24821,7 +24821,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..6fe4c97ca605057facddc265b91bc9c7
      """
      torch.manual_seed(batch * 100003 + seq * 7 + k + 1)
      device = "cuda"
-@@ -270,6 +291,151 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
+@@ -270,6 +291,154 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
      _assert_topk_close(scores.cpu(), ref_raw, our_raw, batch, seq_lens.cpu(), k)
  
  
@@ -24922,12 +24922,15 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..6fe4c97ca605057facddc265b91bc9c7
 +    k, high_count, tie_count = 2048, 2047, 3000
 +    high = 2.0 + torch.arange(high_count, dtype=torch.float32, device="cuda") * 1e-3
 +    tie = torch.full((tie_count,), 0.75, dtype=torch.float32, device="cuda")
-+    scores = torch.cat([tie, high]).unsqueeze(0)
++    values = torch.cat([tie, high])
 +    assert (
-+        int((_coarse_keys_12(scores[0]) == _coarse_keys_12(tie[:1])[0]).sum())
-+        == tie_count
++        int((_coarse_keys_12(values) == _coarse_keys_12(tie[:1])[0]).sum()) == tie_count
 +    )
-+    seq_lens = torch.tensor([scores.shape[1]], dtype=torch.int32, device="cuda")
++    logical_length = values.numel()
++    padded = torch.empty((1, (logical_length + 3) & ~3), device="cuda")
++    padded[0, :logical_length] = values
++    scores = padded[:, :logical_length]
++    seq_lens = torch.tensor([logical_length], dtype=torch.int32, device="cuda")
 +
 +    our_raw = _run_raw(scores, seq_lens, k)
 +    ref_raw = _reference(scores, seq_lens, k)
@@ -24973,7 +24976,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..6fe4c97ca605057facddc265b91bc9c7
  # --- ragged entry point ------------------------------------------------------
  # Rows select inside `[row_start, row_start + seq_len)` of their score row and
  # emit `position + offset`. The window start is an arbitrary token offset, so
-@@ -363,6 +529,33 @@ def test_topk_v2_ragged_window(name: str, rows, k: int, offset_shift: int) -> No
+@@ -363,6 +532,33 @@ def test_topk_v2_ragged_window(name: str, rows, k: int, offset_shift: int) -> No
          assert not stray, f"row {i} ({name}) wrote outside its masked head: {stray[:8]}"
  
  

@@ -1,6 +1,18 @@
 # Changelog
 
-## v0.2.1-rc.7 (oversized DSA cutoff-discovery follow-up; not yet built or qualified)
+## v0.2.1-rc.8 (exact-tail test stride correction; not yet built or qualified)
+
+- Retain the rc.7 kernel implementation unchanged and pad the exact-tail
+  regression's backing row so its physical stride satisfies the V2 kernel's
+  16-byte vector-load contract while preserving the 5,047-element logical row.
+- Record rc.7 as built internally at
+  `sha256:e7945f72cf038ad83a034f2ba1f0d8abf23e977b7576dad7063331c6cb91e16c`
+  and rejected by its exact-image GPU gate at the test precondition before that
+  case launched a kernel.
+- Advance the compiled-cache schema to `v63`. This immutable candidate is not
+  built or qualified and inherits no claims from earlier candidates.
+
+## v0.2.1-rc.7 (oversized DSA cutoff-discovery follow-up; rejected by exact-image GPU gate)
 
 - Retain the exact official SGLang and FlashInfer bases and reviewed
   `sglang#37625` head from rc.6. The internal SGLang integration advances to
@@ -15,8 +27,12 @@
   oversized exact tie after `topk - 1` strict winners, positive and negative
   zero, and identical-row overflow in the legacy selector shared by the AOT
   and JIT copies.
-- Advance the compiled-cache schema to `v62`. This immutable candidate is not
-  built or qualified and inherits no claims from earlier candidates.
+- Advance the compiled-cache schema to `v62`. This immutable candidate was
+  built internally at
+  `sha256:e7945f72cf038ad83a034f2ba1f0d8abf23e977b7576dad7063331c6cb91e16c`
+  and rejected because the exact-tail regression violated the row-stride
+  precondition before launching that kernel case. It inherits no claims from
+  earlier candidates.
 
 ## v0.2.1-rc.6 (latest-main refresh and final upstream top-k patch; not yet built or qualified)
 

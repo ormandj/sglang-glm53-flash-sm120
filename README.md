@@ -15,10 +15,11 @@ reasoning and tool calling.
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
 The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.7`, an unbuilt source candidate based on the official SGLang
+builds `v0.2.1-rc.8`, an unbuilt source candidate based on the official SGLang
 and FlashInfer `main` heads fetched on 2026-09-03. It has no performance,
-quality, stability, or capacity claims. `v0.2.1-rc.6` was superseded before it
-was built. `v0.2.1-rc.5` was built and qualified internally on quasar at
+quality, stability, or capacity claims. `v0.2.1-rc.7` was rejected by its
+exact-image GPU gate because one new test violated the kernel's row-stride
+precondition. `v0.2.1-rc.5` was built and qualified internally on quasar at
 `sha256:289e83c983fb951ed5265de80cca3dc0412cc0cd43cf2190296a7f8190c38f69`
 but was not promoted or published.
 
@@ -234,16 +235,28 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.7` (2026-09-04) is the current unbuilt source candidate. It retains
-the official bases and reviewed #37625 head from rc.6, then adds a downstream
+`v0.2.1-rc.8` (2026-09-04) is the current unbuilt source candidate. It retains
+the rc.7 kernel implementation unchanged and pads the new exact-tail test's
+physical row stride to the V2 kernel's 16-byte vector-load contract while
+preserving the 5,047-element logical row. The cache schema advances to `v63`.
+This candidate is not built or qualified and inherits no claims from earlier
+candidates.
+
+`v0.2.1-rc.7` (2026-09-04) was built internally at
+`sha256:e7945f72cf038ad83a034f2ba1f0d8abf23e977b7576dad7063331c6cb91e16c`
+and rejected by its exact-image GPU gate because the new exact-tail regression
+used a physical row stride outside the kernel contract. Its kpool suite and the
+other selected V2 tests passed before that harness failure; the source kernel
+change itself is retained in rc.8. It otherwise retained
+the official bases and reviewed #37625 head from rc.6, then added a downstream
 overflow follow-up that discovers the exact cutoff before writing output and
 performs one final disjoint write of strict winners and cutoff ties. The
 DeepSeek-V4 path reuses its bounded captured-candidate buffer when every value
 in the oversized bin has one exact key. Focused coverage now exercises cutoff
 separation at each variable key byte, exact ties after an almost-full strict
 prefix, positive and negative zero, and the legacy AOT/JIT copies. The cache
-schema advances to `v62`. This candidate is not built or qualified and inherits
-no claims from earlier candidates.
+schema advanced to `v62`. It was not qualified and inherits no claims from
+earlier candidates.
 
 `v0.2.1-rc.6` (2026-09-03) was superseded before build or qualification. It rebases
 the complete integration onto SGLang main `c1b4d535d7` and FlashInfer main
@@ -323,7 +336,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.2.1-rc.7 .
+  -t sglang-glm53-flash-sm120:v0.2.1-rc.8 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.
