@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.1-rc.8 (exact-tail test stride correction; not yet built or qualified)
+## v0.2.1-rc.8 (exact-tail test stride correction; built and crash-gated)
 
 - Retain the rc.7 kernel implementation unchanged and pad the exact-tail
   regression's backing row so its physical stride satisfies the V2 kernel's
@@ -9,8 +9,12 @@
   `sha256:e7945f72cf038ad83a034f2ba1f0d8abf23e977b7576dad7063331c6cb91e16c`
   and rejected by its exact-image GPU gate at the test precondition before that
   case launched a kernel.
-- Advance the compiled-cache schema to `v63`. This immutable candidate is not
-  built or qualified and inherits no claims from earlier candidates.
+- Advance the compiled-cache schema to `v63`. The immutable candidate was built
+  internally at
+  `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`.
+  Its exact-image GPU gate and deployment crash gate passed. The quality and
+  engine gates have not run, so it is not fully qualified and inherits no
+  performance, quality, or capacity claims from earlier candidates.
 
 ## v0.2.1-rc.7 (oversized DSA cutoff-discovery follow-up; rejected by exact-image GPU gate)
 
