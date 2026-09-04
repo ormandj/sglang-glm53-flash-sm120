@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.2.1-rc.7 (oversized DSA cutoff-discovery follow-up; not yet built or qualified)
+
+- Retain the exact official SGLang and FlashInfer bases and reviewed
+  `sglang#37625` head from rc.6. The internal SGLang integration advances to
+  `54c8e2cb135e814068b63318a168513af4cd409a`; this is working-fork provenance,
+  not a claim that the commit exists upstream.
+- Replace the oversized-bin fallback's intermediate output-emission rescans
+  with histogram-only exact-key refinement followed by one disjoint final
+  write of strict winners and cutoff ties. Add a DeepSeek-V4 fast path that
+  reuses the already bounded captured candidates when the bin contains only
+  one exact key. Preserve the existing primary-CTA full-row cluster fallback.
+- Add focused coverage for cutoff separation at each variable key byte, an
+  oversized exact tie after `topk - 1` strict winners, positive and negative
+  zero, and identical-row overflow in the legacy selector shared by the AOT
+  and JIT copies.
+- Advance the compiled-cache schema to `v62`. This immutable candidate is not
+  built or qualified and inherits no claims from earlier candidates.
+
 ## v0.2.1-rc.6 (latest-main refresh and final upstream top-k patch; not yet built or qualified)
 
 - Rebase the complete integration onto official SGLang main

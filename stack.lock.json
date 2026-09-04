@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.2.1",
-    "candidate": 6,
-    "candidate_tag": "v0.2.1-rc.6",
+    "candidate": 7,
+    "candidate_tag": "v0.2.1-rc.7",
     "stable_tag": "v0.2.1",
-    "cache_schema": "v61"
+    "cache_schema": "v62"
   },
   "image": {
-    "tag": "v0.2.1-rc.6",
+    "tag": "v0.2.1-rc.7",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,11 +49,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 6
+      "value": 7
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v61"
+      "value": "v62"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "b07b098dec709cf834220219477bd51afeb62697"
+      "value": "58d9bbf91523ffd462e7153cca64e5d792e17c27"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "8e0d91a85fd7e34e59d6731d9cad750fc9019fd9897f1f200d783ec9c6c1bc25"
+      "value": "3e1f9efa922ffec01dbd7fa9a0e15216d94d5359da189fe2b22b90932cb39463"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,12 +149,12 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "c1b4d535d772d7bfa89e1f71f91ab65f2f8da876",
       "upstream_tree": "91c2709c526a6f9844628a49402bba3e82506503",
-      "tree": "b07b098dec709cf834220219477bd51afeb62697",
+      "tree": "58d9bbf91523ffd462e7153cca64e5d792e17c27",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "8e0d91a85fd7e34e59d6731d9cad750fc9019fd9897f1f200d783ec9c6c1bc25",
+      "patch_sha256": "3e1f9efa922ffec01dbd7fa9a0e15216d94d5359da189fe2b22b90932cb39463",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260903-r4",
-      "working_head": "791bd2a2fe9e72010fa8dc816ac5856f2812c07d",
+      "working_head": "54c8e2cb135e814068b63318a168513af4cd409a",
       "upstream_main_base": "c1b4d535d772d7bfa89e1f71f91ab65f2f8da876",
       "included_upstream_work": [
         "sglang#36507 (open head 4761b54153, applied to main c1b4d535d7; its 26 substantive commits are unchanged from the prior head and include the issue #37548 NextN first-request multimodal embedding fix)",
@@ -200,6 +200,7 @@
         "sglang#37541 serving_coverage warmup (open head ade49acbb3)",
         "sglang#37539 GLM-5-Next vision-tower attention precompile (open head 00cc3e8dc9)",
         "sglang#37625 oversized DSA radix-bin fix across legacy and DeepSeek-V4 AOT/JIT variants (open head 7ad39a0665; co-authored by bold84)",
+        "downstream pending upstream: oversized DSA cutoff discovery without intermediate emission scans, plus a captured-candidate fast path for a single exact key",
         "sglang#37744 per-layer quantization-aware qkvbfg fusion gate (open head ebe935c116), plus a concrete-class dispatch follow-up and ModelOpt mixed-precision regression",
         "sglang#37375 mHC pipeline-proxy contract (open head b6478a7400)",
         "downstream-only: Triton late-load diagnostics armed after the HTTP warmups (single-worker form)",
@@ -256,10 +257,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "8e0d91a85fd7e34e59d6731d9cad750fc9019fd9897f1f200d783ec9c6c1bc25",
+      "sha256": "3e1f9efa922ffec01dbd7fa9a0e15216d94d5359da189fe2b22b90932cb39463",
       "base_head": "c1b4d535d772d7bfa89e1f71f91ab65f2f8da876",
       "base_tree": "91c2709c526a6f9844628a49402bba3e82506503",
-      "result_tree": "b07b098dec709cf834220219477bd51afeb62697"
+      "result_tree": "58d9bbf91523ffd462e7153cca64e5d792e17c27"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -284,7 +285,7 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.2.1-rc.6: integration rebased onto SGLang main c1b4d535d7 and FlashInfer main 9f5051736e; all 22 tracked PRs rechecked; merged flashinfer#4802 is supplied by main and sglang#37625 is carried at final head 7ad39a0665; not yet built or qualified",
+    "status": "v0.2.1-rc.7: adds downstream oversized DSA cutoff discovery and exact-key fast-path coverage to the reviewed sglang#37625 head; not yet built or qualified",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
@@ -298,6 +299,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.2.1-rc.6 is not built or qualified"
+    "claims": "v0.2.1-rc.7 is not built or qualified"
   }
 }

@@ -733,10 +733,10 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..51f7664d262828702aa304b15b540a0b
  
 diff --git a/python/sglang/kernels/aot/include/sgl_kernel/dsa/legacy_radix_topk.cuh b/python/sglang/kernels/aot/include/sgl_kernel/dsa/legacy_radix_topk.cuh
 new file mode 100644
-index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b6811cb34
+index 0000000000000000000000000000000000000000..181627ac7ee322626e09173f6f0d52e4011ed2e1
 --- /dev/null
 +++ b/python/sglang/kernels/aot/include/sgl_kernel/dsa/legacy_radix_topk.cuh
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,260 @@
 +#pragma once
 +
 +#include <cuda_fp16.h>
@@ -768,9 +768,9 @@ index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b
 +// The normal path preserves the original two-stash algorithm. Its threshold
 +// bin is safe to materialize because it fits below the shared-memory capacity.
 +// At or above that capacity, we instead rescan the coarse bin while descending
-+// the four bytes of the ordered FP32 key. No candidate is discarded before the
-+// full key is known; at byte zero, clipping is exact because every remaining
-+// candidate has the same FP32 value.
++// the four bytes of the ordered FP32 key. No candidate is emitted or discarded
++// before the exact cutoff is known; the final scan then fills disjoint strict
++// and exact-tie output ranges.
 +//
 +// Scores must be finite. For valid input (length > topk > 0), every output slot
 +// is filled with a distinct index in [0, length). Defensive initialization and
@@ -830,7 +830,8 @@ index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b
 +
 +  const int coarse_threshold = threshold_bin_id;
 +  if (coarse_threshold < 0) return;
-+  int remaining = topk - histogram[coarse_threshold + 1];
++  const int coarse_above = histogram[coarse_threshold + 1];
++  int remaining = topk - coarse_above;
 +
 +  if (remaining == 0) {
 +    for (int idx = tx; idx < length; idx += BlockSize) {
@@ -846,8 +847,10 @@ index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b
 +  const int coarse_population = histogram[coarse_threshold] - histogram[coarse_threshold + 1];
 +  __syncthreads();
 +  if (coarse_population >= StashEntries) {
-+    // Emit the values above the coarse threshold once, then refine only the
-+    // capacity-bound coarse bin by exact FP32 key bytes.
++    // Emit the values above the coarse threshold once. The oversized bin is
++    // then refined without intermediate emissions: four histogram passes find
++    // the exact cutoff, and one final pass writes the strictly-greater values
++    // and the required number of exact ties into disjoint output ranges.
 +    for (int idx = tx; idx < length; idx += BlockSize) {
 +      if (coarse_key(input[row_start + idx]) > coarse_threshold) {
 +        const int pos = atomicAdd(&counter, 1);
@@ -857,6 +860,7 @@ index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b
 +    __syncthreads();
 +
 +    uint32_t prefix = 0;
++    int strict_count = 0;
 +#pragma unroll 4
 +    for (int level = 0; level < 4; ++level) {
 +      const int shift = 24 - level * 8;
@@ -870,12 +874,13 @@ index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b
 +        const float value = input[row_start + idx];
 +        if (coarse_key(value) != coarse_threshold) continue;
 +        const uint32_t key = exact_key(value);
-+        if ((key & prefix_mask) == prefix) atomicAdd(&histogram[(key >> shift) & 0xFFu], 1);
++        if ((key & prefix_mask) != prefix) continue;
++        atomicAdd(&histogram[(key >> shift) & 0xFFu], 1);
 +      }
 +      __syncthreads();
 +
 +      run_cumsum();
-+      if (tx < kRadix && histogram[tx] > remaining && histogram[tx + 1] <= remaining) {
++      if (tx < kRadix && histogram[tx] >= remaining && histogram[tx + 1] < remaining) {
 +        threshold_bin_id = tx;
 +      }
 +      __syncthreads();
@@ -883,36 +888,32 @@ index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b
 +      const int threshold = threshold_bin_id;
 +      if (threshold < 0) return;
 +      const int above = histogram[threshold + 1];
-+
-+      for (int idx = tx; idx < length; idx += BlockSize) {
-+        const float value = input[row_start + idx];
-+        if (coarse_key(value) != coarse_threshold) continue;
-+        const uint32_t key = exact_key(value);
-+        if ((key & prefix_mask) != prefix) continue;
-+        if (static_cast<int>((key >> shift) & 0xFFu) > threshold) {
-+          const int pos = atomicAdd(&counter, 1);
-+          if (pos < topk) output[pos] = idx;
-+        }
-+      }
-+      __syncthreads();
-+
++      strict_count += above;
 +      remaining -= above;
 +      prefix |= static_cast<uint32_t>(threshold) << shift;
-+      if (remaining == 0) return;
++      // Every thread consumes the shared threshold/cumulative histogram above;
++      // do not let a faster warp clear them for the next refinement round.
++      __syncthreads();
++    }
 +
-+      if (level == 3) {
-+        for (int idx = tx; idx < length; idx += BlockSize) {
-+          const float value = input[row_start + idx];
-+          if (coarse_key(value) != coarse_threshold) continue;
-+          if (exact_key(value) == prefix) {
-+            const int pos = atomicAdd(&counter, 1);
-+            if (pos < topk) output[pos] = idx;
-+          }
-+        }
-+        __syncthreads();
-+        return;
++    if (tx == 0) {
++      num_input[0] = 0;
++      num_input[1] = 0;
++    }
++    __syncthreads();
++    for (int idx = tx; idx < length; idx += BlockSize) {
++      const float value = input[row_start + idx];
++      if (coarse_key(value) != coarse_threshold) continue;
++      const uint32_t key = exact_key(value);
++      if (key > prefix) {
++        const int pos = atomicAdd(&num_input[0], 1);
++        if (pos < strict_count) output[coarse_above + pos] = idx;
++      } else if (key == prefix) {
++        const int pos = atomicAdd(&num_input[1], 1);
++        if (pos < remaining) output[coarse_above + strict_count + pos] = idx;
 +      }
 +    }
++    __syncthreads();
 +    return;
 +  }
 +
@@ -1637,7 +1638,7 @@ index e2dffd907c36b3b31159ebc10d1e1b0b96600807..b0766e7344acaae638c0aea9b8cecbe3
        dst[col] = transform_kpool_token(raw_token, page_table_entry, topk_indices_offset, offset);
      } else if (append_tail && col < history_len + tail_count) {
 diff --git a/python/sglang/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh b/python/sglang/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh
-index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f1c44b942 100644
+index 7dedd89a56e1a901ab325a3b5b36147028947530..73c0dc0f0c6188d444444b084375fdcac10b857c 100644
 --- a/python/sglang/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh
 +++ b/python/sglang/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh
 @@ -14,7 +14,8 @@
@@ -1650,21 +1651,22 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
  
  #pragma once
  
-@@ -526,6 +527,104 @@ struct TopKRadixBase : TopKConfig {
+@@ -526,6 +527,136 @@ struct TopKRadixBase : TopKConfig {
      }
      __syncthreads();
    }
 +
 +  /// Select the remaining entries directly from an oversized coarse threshold
 +  /// bin. The common path materializes at most kMaxNumTie candidates and calls
-+  /// handle_tie(); this fallback instead rescans the row for each byte of the
-+  /// ordered FP32 key. Candidates are only clipped after all four bytes match,
-+  /// when they are exact-value ties and any subset is valid.
++  /// handle_tie(); this fallback instead discovers the exact ordered-FP32
++  /// cutoff without emitting after each byte, then fills disjoint strictly-
++  /// greater and exact-tie output ranges in one final scan.
 +  SGL_DEVICE static void handle_oversized_bin(
 +      const TopKProblem& problem,
 +      const uint32_t threshold_bin,
 +      const uint32_t above_count,
 +      const uint32_t equal_count,
++      const TieValue* captured,
 +      TieHandleSmem* scratch) {
 +    if (above_count >= problem.topk) return;
 +
@@ -1674,12 +1676,10 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
 +    uint32_t remaining = target;
 +    uint32_t total_active = equal_count;
 +    uint32_t prefix = 0;
++    uint32_t strict_count = 0;
 +    const auto tx = threadIdx.x;
 +    const auto lane_id = tx % kWarpSize;
 +    const auto warp_id = tx / kWarpSize;
-+
-+    if (tx == 0) scratch->counter = 0;
-+    __syncthreads();
 +
 +#pragma unroll
 +    for (int round = 0; round < 4; ++round) {
@@ -1690,14 +1690,52 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
 +      if (tx == 0) scratch->match = {kRadixSize, 0, 0};
 +      __syncthreads();
 +
++      uint32_t local_min = UINT32_MAX;
++      uint32_t local_max = 0;
 +      for_each_input(problem.in, problem.seq_len, [&](float val, uint32_t) {
 +        if (val < v_lo || val >= v_hi) return;
 +        const uint32_t key = extract_exact_bin(val);
 +        if ((key & prefix_mask) == prefix) {
 +          atomicAdd(&scratch->histogram[0][(key >> shift) & 0xFFu], 1);
++          if (round == 0) {
++            local_min = key < local_min ? key : local_min;
++            local_max = key > local_max ? key : local_max;
++          }
 +        }
 +      });
-+      __syncthreads();
++
++      if (round == 0) {
++        local_min = warp::reduce_min(local_min);
++        local_max = warp::reduce_max(local_max);
++        if (lane_id == 0) {
++          scratch->warp_sum[warp_id] = local_min;
++          scratch->histogram[1][warp_id] = local_max;
++        }
++        __syncthreads();
++
++        if (tx < kWarpSize) {
++          const auto min_key = warp::reduce_min(scratch->warp_sum[lane_id]);
++          const auto max_key = warp::reduce_max(scratch->histogram[1][lane_id]);
++          if (tx == 0) {
++            scratch->counter = min_key;
++            scratch->counter_final = max_key;
++          }
++        }
++        __syncthreads();
++
++        if (scratch->counter == scratch->counter_final) {
++          // The collect pass retained kMaxNumTie candidates, and target is at
++          // most kMaxTopK <= kMaxNumTie. With one exact key, any captured
++          // subset of the requested size is a valid top-k tail.
++          for (uint32_t t = tx; t < target; t += kBlockSize) {
++            problem.emit(above_count + t, captured[t].idx);
++          }
++          __syncthreads();
++          return;
++        }
++      } else {
++        __syncthreads();
++      }
 +
 +      uint32_t hist_val = 0;
 +      uint32_t warp_inc = 0;
@@ -1720,42 +1758,37 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
 +      const auto [exact_threshold, above, equal, _] = scratch->match;
 +      if (exact_threshold >= kRadixSize) return;
 +
-+      for_each_input(problem.in, problem.seq_len, [&](float val, uint32_t idx) {
-+        if (val < v_lo || val >= v_hi) return;
-+        const uint32_t key = extract_exact_bin(val);
-+        if ((key & prefix_mask) != prefix) return;
-+        const uint32_t bin = (key >> shift) & 0xFFu;
-+        if (bin > exact_threshold) {
-+          const auto pos = atomicAdd(&scratch->counter, 1);
-+          if (pos < target) problem.emit(above_count + pos, idx);
-+        }
-+      });
-+      __syncthreads();
-+
++      strict_count += above;
 +      remaining -= above;
-+      if (remaining == 0) return;
-+      if (round == 3) {
-+        // Emit exact-value ties only after every strictly greater key has
-+        // reserved its slot; combining the two in one atomic loop could let a
-+        // tie race ahead and displace a greater value at the output bound.
-+        for_each_input(problem.in, problem.seq_len, [&](float val, uint32_t idx) {
-+          if (val < v_lo || val >= v_hi) return;
-+          if (extract_exact_bin(val) == (prefix | exact_threshold)) {
-+            const auto pos = atomicAdd(&scratch->counter, 1);
-+            if (pos < target) problem.emit(above_count + pos, idx);
-+          }
-+        });
-+        __syncthreads();
-+        return;
-+      }
 +      total_active = equal;
 +      prefix |= exact_threshold << shift;
++      // Every thread consumes match/histogram state above; keep faster warps
++      // from clearing it for the next refinement round.
++      __syncthreads();
 +    }
++
++    if (tx == 0) {
++      scratch->counter = 0;
++      scratch->counter_final = 0;
++    }
++    __syncthreads();
++    for_each_input(problem.in, problem.seq_len, [&](float val, uint32_t idx) {
++      if (val < v_lo || val >= v_hi) return;
++      const uint32_t key = extract_exact_bin(val);
++      if (key > prefix) {
++        const auto pos = atomicAdd(&scratch->counter, 1);
++        if (pos < strict_count) problem.emit(above_count + pos, idx);
++      } else if (key == prefix) {
++        const auto pos = atomicAdd(&scratch->counter_final, 1);
++        if (pos < remaining) problem.emit(above_count + strict_count + pos, idx);
++      }
++    });
++    __syncthreads();
 +  }
  };
  
  // ---------------------------------------------------------------------------
-@@ -628,8 +727,11 @@ struct TopKRegister : TopKRadixBase<12> {
+@@ -628,8 +759,11 @@ struct TopKRegister : TopKRadixBase<12> {
      const auto above_count = smem->count_gt;
      const auto equal_count = smem->count_eq;
      const auto remain_topk = above_count < topk ? topk - above_count : 0;
@@ -1764,12 +1797,12 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
 +    if (equal_count <= kMaxNumTie) {
 +      handle_tie(smem->tie.values, problem, above_count, equal_count, remain_topk, &smem->tie.handle);
 +    } else {
-+      handle_oversized_bin(problem, threshold_bin, above_count, equal_count, &smem->tie.handle);
++      handle_oversized_bin(problem, threshold_bin, above_count, equal_count, smem->tie.values, &smem->tie.handle);
 +    }
    }
  };
  
-@@ -700,8 +802,11 @@ struct TopKStreaming : TopKRegister<2> {
+@@ -700,8 +834,11 @@ struct TopKStreaming : TopKRegister<2> {
      const auto above_count = smem->count_gt;
      const auto equal_count = smem->count_eq;
      const auto remain_topk = above_count < topk ? topk - above_count : 0;
@@ -1778,12 +1811,12 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
 +    if (equal_count <= kMaxNumTie) {
 +      handle_tie(smem->tie.values, problem, above_count, equal_count, remain_topk, &smem->tie.handle);
 +    } else {
-+      handle_oversized_bin(problem, threshold_bin, above_count, equal_count, &smem->tie.handle);
++      handle_oversized_bin(problem, threshold_bin, above_count, equal_count, smem->tie.values, &smem->tie.handle);
 +    }
    }
  };
  
-@@ -744,6 +849,7 @@ struct TopKCluster : TopKRadixBase<10> {
+@@ -744,6 +881,7 @@ struct TopKCluster : TopKRadixBase<10> {
      const uint32_t chunk_start = min(this_rank * chunk_size, problem.seq_len);
      const uint32_t chunk_finish = min(chunk_start + chunk_size, problem.seq_len);
      const uint32_t local_seq_len = chunk_finish - chunk_start;
@@ -1791,7 +1824,7 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
      problem.in += chunk_start;
  
      {
-@@ -825,7 +931,8 @@ struct TopKCluster : TopKRadixBase<10> {
+@@ -825,7 +963,8 @@ struct TopKCluster : TopKRadixBase<10> {
        });
        __syncthreads();
        const auto local_above_count = smem->count_gt;
@@ -1801,7 +1834,7 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
        const auto smem_0 = cluster.map_shared_rank(smem, 0);
        if (tx == 0) {
          const auto gt = atomicAdd(&smem_0->count_gt, local_above_count);
-@@ -839,7 +946,7 @@ struct TopKCluster : TopKRadixBase<10> {
+@@ -839,7 +978,7 @@ struct TopKCluster : TopKRadixBase<10> {
  #pragma unroll
        for (uint32_t i = 0; i < kTieItems; ++i) {
          const auto t = tx + i * kBlockSize;
@@ -1810,7 +1843,7 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
            smem_0->tie.values[start_eq_local + t] = smem->tie.values[t];
          }
        }
-@@ -876,8 +983,15 @@ struct TopKCluster : TopKRadixBase<10> {
+@@ -876,8 +1015,16 @@ struct TopKCluster : TopKRadixBase<10> {
        const auto above_count = smem->count_gt;
        const auto equal_count = smem->count_eq;
        const auto remain_topk = above_count < topk ? topk - above_count : 0;
@@ -1823,17 +1856,18 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
 +        // owns the primary role or how chunks are assigned in the future.
 +        auto full_row_problem = problem;
 +        full_row_problem.in = full_row_in;
-+        handle_oversized_bin(full_row_problem, threshold_bin, above_count, equal_count, &smem->tie.handle);
++        handle_oversized_bin(
++            full_row_problem, threshold_bin, above_count, equal_count, smem->tie.values, &smem->tie.handle);
 +      }
      }
    }
  };
 diff --git a/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh b/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh
 new file mode 100644
-index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f9e91b07f
+index 0000000000000000000000000000000000000000..52c06da1a01a4e72bb8920bdc6ac53c4af41c3e0
 --- /dev/null
 +++ b/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,259 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -1864,9 +1898,9 @@ index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f
 +// The normal path preserves the original two-stash algorithm. Its threshold
 +// bin is safe to materialize because it fits below the shared-memory capacity.
 +// At or above that capacity, we instead rescan the coarse bin while descending
-+// the four bytes of the ordered FP32 key. No candidate is discarded before the
-+// full key is known; at byte zero, clipping is exact because every remaining
-+// candidate has the same FP32 value.
++// the four bytes of the ordered FP32 key. No candidate is emitted or discarded
++// before the exact cutoff is known; the final scan then fills disjoint strict
++// and exact-tie output ranges.
 +//
 +// Scores must be finite. For valid input (length > topk > 0), every output slot
 +// is filled with a distinct index in [0, length). Defensive initialization and
@@ -1926,7 +1960,8 @@ index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f
 +
 +  const int coarse_threshold = threshold_bin_id;
 +  if (coarse_threshold < 0) return;
-+  int remaining = topk - histogram[coarse_threshold + 1];
++  const int coarse_above = histogram[coarse_threshold + 1];
++  int remaining = topk - coarse_above;
 +
 +  if (remaining == 0) {
 +    for (int idx = tx; idx < length; idx += BlockSize) {
@@ -1942,8 +1977,10 @@ index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f
 +  const int coarse_population = histogram[coarse_threshold] - histogram[coarse_threshold + 1];
 +  __syncthreads();
 +  if (coarse_population >= StashEntries) {
-+    // Emit the values above the coarse threshold once, then refine only the
-+    // capacity-bound coarse bin by exact FP32 key bytes.
++    // Emit the values above the coarse threshold once. The oversized bin is
++    // then refined without intermediate emissions: four histogram passes find
++    // the exact cutoff, and one final pass writes the strictly-greater values
++    // and the required number of exact ties into disjoint output ranges.
 +    for (int idx = tx; idx < length; idx += BlockSize) {
 +      if (coarse_key(input[row_start + idx]) > coarse_threshold) {
 +        const int pos = atomicAdd(&counter, 1);
@@ -1953,6 +1990,7 @@ index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f
 +    __syncthreads();
 +
 +    uint32_t prefix = 0;
++    int strict_count = 0;
 +#pragma unroll 4
 +    for (int level = 0; level < 4; ++level) {
 +      const int shift = 24 - level * 8;
@@ -1966,12 +2004,13 @@ index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f
 +        const float value = input[row_start + idx];
 +        if (coarse_key(value) != coarse_threshold) continue;
 +        const uint32_t key = exact_key(value);
-+        if ((key & prefix_mask) == prefix) atomicAdd(&histogram[(key >> shift) & 0xFFu], 1);
++        if ((key & prefix_mask) != prefix) continue;
++        atomicAdd(&histogram[(key >> shift) & 0xFFu], 1);
 +      }
 +      __syncthreads();
 +
 +      run_cumsum();
-+      if (tx < kRadix && histogram[tx] > remaining && histogram[tx + 1] <= remaining) {
++      if (tx < kRadix && histogram[tx] >= remaining && histogram[tx + 1] < remaining) {
 +        threshold_bin_id = tx;
 +      }
 +      __syncthreads();
@@ -1979,36 +2018,32 @@ index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f
 +      const int threshold = threshold_bin_id;
 +      if (threshold < 0) return;
 +      const int above = histogram[threshold + 1];
-+
-+      for (int idx = tx; idx < length; idx += BlockSize) {
-+        const float value = input[row_start + idx];
-+        if (coarse_key(value) != coarse_threshold) continue;
-+        const uint32_t key = exact_key(value);
-+        if ((key & prefix_mask) != prefix) continue;
-+        if (static_cast<int>((key >> shift) & 0xFFu) > threshold) {
-+          const int pos = atomicAdd(&counter, 1);
-+          if (pos < topk) output[pos] = idx;
-+        }
-+      }
-+      __syncthreads();
-+
++      strict_count += above;
 +      remaining -= above;
 +      prefix |= static_cast<uint32_t>(threshold) << shift;
-+      if (remaining == 0) return;
++      // Every thread consumes the shared threshold/cumulative histogram above;
++      // do not let a faster warp clear them for the next refinement round.
++      __syncthreads();
++    }
 +
-+      if (level == 3) {
-+        for (int idx = tx; idx < length; idx += BlockSize) {
-+          const float value = input[row_start + idx];
-+          if (coarse_key(value) != coarse_threshold) continue;
-+          if (exact_key(value) == prefix) {
-+            const int pos = atomicAdd(&counter, 1);
-+            if (pos < topk) output[pos] = idx;
-+          }
-+        }
-+        __syncthreads();
-+        return;
++    if (tx == 0) {
++      num_input[0] = 0;
++      num_input[1] = 0;
++    }
++    __syncthreads();
++    for (int idx = tx; idx < length; idx += BlockSize) {
++      const float value = input[row_start + idx];
++      if (coarse_key(value) != coarse_threshold) continue;
++      const uint32_t key = exact_key(value);
++      if (key > prefix) {
++        const int pos = atomicAdd(&num_input[0], 1);
++        if (pos < strict_count) output[coarse_above + pos] = idx;
++      } else if (key == prefix) {
++        const int pos = atomicAdd(&num_input[1], 1);
++        if (pos < remaining) output[coarse_above + strict_count + pos] = idx;
 +      }
 +    }
++    __syncthreads();
 +    return;
 +  }
 +
@@ -24638,7 +24673,7 @@ index 0000000000000000000000000000000000000000..0841b171194c60c2e2fd223d833c564e
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_topk_v2.py b/test/registered/kernels/ops/attention/test_topk_v2.py
-index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570d9553292 100644
+index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..6fe4c97ca605057facddc265b91bc9c744451a88 100644
 --- a/test/registered/kernels/ops/attention/test_topk_v2.py
 +++ b/test/registered/kernels/ops/attention/test_topk_v2.py
 @@ -2,8 +2,8 @@
@@ -24717,7 +24752,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
  ]
  
  
-@@ -86,20 +85,35 @@ def _assert_topk_close(scores_cpu, ref_raw, our_raw, bs, seq_lens, k):
+@@ -86,20 +85,42 @@ def _assert_topk_close(scores_cpu, ref_raw, our_raw, bs, seq_lens, k):
      bad = 0
      for i in range(bs):
          L = int(seq_lens[i])
@@ -24756,10 +24791,17 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
 +    """
 +    values = 1.0 + torch.arange(seq, dtype=torch.float32, device="cuda") * (1e-3 / seq)
 +    return values.expand(batch, -1).contiguous()
++
++
++def _coarse_keys_12(values: torch.Tensor) -> torch.Tensor:
++    """Mirror extract_coarse_bin<12> for test-shape assertions."""
++    bits = values.to(torch.float16).view(torch.int16).to(torch.int32) & 0xFFFF
++    ordered = torch.where((bits & 0x8000) != 0, (~bits) & 0xFFFF, bits | 0x8000)
++    return ordered >> 4
  
  
  def _make_page_table(batch, num_pages, mode, device, per_row=False):
-@@ -209,7 +223,7 @@ def test_topk_v2(batch: int, seq: int, k: int, page_mode: str) -> None:
+@@ -209,7 +230,7 @@ def test_topk_v2(batch: int, seq: int, k: int, page_mode: str) -> None:
      [
          (20, "small_batch"),  # fused small-batch kernel (<= pool of 30)
          (64, "persistent"),  # persistent pool + main kernel
@@ -24768,7 +24810,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
      ],
  )
  @pytest.mark.parametrize("per_row_pt", [False, True])
-@@ -256,8 +270,8 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
+@@ -256,8 +277,8 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
      Runs the no-page-table mode, so the output is the selected positions
      themselves. Unlike ``test_topk_v2`` -- which checks the page-transformed
      output and inverts it through the page table -- this isolates the top-k
@@ -24779,7 +24821,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
      """
      torch.manual_seed(batch * 100003 + seq * 7 + k + 1)
      device = "cuda"
-@@ -270,6 +284,114 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
+@@ -270,6 +291,151 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
      _assert_topk_close(scores.cpu(), ref_raw, our_raw, batch, seq_lens.cpu(), k)
  
  
@@ -24820,21 +24862,27 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
 +        )
 +
 +
++@pytest.mark.parametrize("depth", [16, 8, 0])
 +@torch.inference_mode()
-+def test_topk_v2_oversized_bin_separates_at_low_byte() -> None:
-+    """The fallback must descend through all four exact-key bytes."""
++def test_topk_v2_oversized_bin_separates_at_each_variable_byte(depth: int) -> None:
++    """The fallback must retain strict winners found at every variable byte."""
++    torch.manual_seed(20260904 + depth)
 +    per_side, k = 4097, 2048
-+    low = torch.full((per_side,), 0x3F800000, dtype=torch.int32, device="cuda").view(
-+        torch.float32
++    base = 0x3F000000
++    noise = torch.randint(
++        0, 1 << depth, (2 * per_side,), dtype=torch.int32, device="cuda"
 +    )
-+    high = torch.full((per_side,), 0x3F800001, dtype=torch.int32, device="cuda").view(
-+        torch.float32
-+    )
++    bits = torch.full((2 * per_side,), base, dtype=torch.int32, device="cuda") + noise
++    bits[:per_side] += 1 << depth
++    values = bits[torch.randperm(2 * per_side, device="cuda")].view(torch.float32)
++    cutoff = torch.topk(values, k).values.min()
++    cutoff_bin = _coarse_keys_12(cutoff.view(1))[0]
++    assert int((_coarse_keys_12(values) == cutoff_bin).sum()) > 2048
 +    logical_length = 2 * per_side
 +    # The entry point requires a 16-byte-aligned physical row stride. Keep the
 +    # 8194-element logical row (and its scalar tail), backed by a padded stride.
 +    padded = torch.empty((1, (logical_length + 3) & ~3), device="cuda")
-+    padded[0, :logical_length] = torch.cat([low, high])
++    padded[0, :logical_length] = values
 +    scores = padded[:, :logical_length]
 +    seq_lens = torch.tensor([logical_length], dtype=torch.int32, device="cuda")
 +
@@ -24845,10 +24893,41 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
 +
 +@torch.inference_mode()
 +def test_topk_v2_cluster_all_equal_overflow() -> None:
-+    """Full-key ties larger than the cap fill exactly k distinct slots."""
++    """Full-key ties larger than the cap use captured candidates exactly."""
 +    seq, k = 131072, 2048
 +    scores = torch.full((1, seq), 0.75, dtype=torch.float32, device="cuda")
 +    seq_lens = torch.tensor([seq], dtype=torch.int32, device="cuda")
++
++    our_raw = _run_raw(scores, seq_lens, k)
++    ref_raw = _reference(scores, seq_lens, k)
++    _assert_topk_close(scores.cpu(), ref_raw, our_raw, 1, seq_lens.cpu(), k)
++
++
++@pytest.mark.parametrize("value", [0.0, -0.0])
++@torch.inference_mode()
++def test_topk_v2_signed_zero_rows(value: float) -> None:
++    """The boundary classifier handles positive and negative zero rows."""
++    seq, k = 6000, 512
++    scores = torch.full((1, seq), value, dtype=torch.float32, device="cuda")
++    seq_lens = torch.tensor([seq], dtype=torch.int32, device="cuda")
++
++    our_raw = _run_raw(scores, seq_lens, k)
++    ref_raw = _reference(scores, seq_lens, k)
++    _assert_topk_close(scores.cpu(), ref_raw, our_raw, 1, seq_lens.cpu(), k)
++
++
++@torch.inference_mode()
++def test_topk_v2_oversized_exact_tie_fills_one_tail_slot() -> None:
++    """Captured exact ties start after topk-1 strictly higher values."""
++    k, high_count, tie_count = 2048, 2047, 3000
++    high = 2.0 + torch.arange(high_count, dtype=torch.float32, device="cuda") * 1e-3
++    tie = torch.full((tie_count,), 0.75, dtype=torch.float32, device="cuda")
++    scores = torch.cat([tie, high]).unsqueeze(0)
++    assert (
++        int((_coarse_keys_12(scores[0]) == _coarse_keys_12(tie[:1])[0]).sum())
++        == tie_count
++    )
++    seq_lens = torch.tensor([scores.shape[1]], dtype=torch.int32, device="cuda")
 +
 +    our_raw = _run_raw(scores, seq_lens, k)
 +    ref_raw = _reference(scores, seq_lens, k)
@@ -24894,7 +24973,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570
  # --- ragged entry point ------------------------------------------------------
  # Rows select inside `[row_start, row_start + seq_len)` of their score row and
  # emit `position + offset`. The window start is an arbitrary token offset, so
-@@ -363,6 +485,33 @@ def test_topk_v2_ragged_window(name: str, rows, k: int, offset_shift: int) -> No
+@@ -363,6 +529,33 @@ def test_topk_v2_ragged_window(name: str, rows, k: int, offset_shift: int) -> No
          assert not stray, f"row {i} ({name}) wrote outside its masked head: {stray[:8]}"
  
  
@@ -25511,10 +25590,10 @@ index 0000000000000000000000000000000000000000..c580051b6c2e85a89055b7c1e849973d
 +    unittest.main()
 diff --git a/test/registered/kernels/test_dsa_kpool_topk_transform.py b/test/registered/kernels/test_dsa_kpool_topk_transform.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d3fae43c2c2922c76e0717b358a8306b339c66e
+index 0000000000000000000000000000000000000000..10a3ac9ae360c94198700f611df20baf26f6ff55
 --- /dev/null
 +++ b/test/registered/kernels/test_dsa_kpool_topk_transform.py
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,364 @@
 +"""CUDA regressions for the DSA kpool pooled radix top-k transform.
 +
 +The kernel (``kernels/jit/csrc/dsa/kpool_topk_transform.cuh``) selects the
@@ -25737,11 +25816,13 @@ index 0000000000000000000000000000000000000000..1d3fae43c2c2922c76e0717b358a8306
 +            self._check_row(out[0], row, group_topk)
 +
 +    def test_all_equal_rows_longer_than_stash(self):
-+        # Every key is identical, so the overflow descent reaches the last key
-+        # byte and must clip the final bin by exact ties only.
++        # Every key is identical, so the final scan must clip the exact ties
++        # without duplicating indices or leaving an output slot unfilled.
 +        for group_topk in GROUP_TOPKS:
 +            rows = [
 +                torch.full((STASH_ENTRIES + 1,), 0.75),
++                torch.full((STASH_ENTRIES + 1,), 0.0),
++                torch.full((STASH_ENTRIES + 1,), -0.0),
 +            ]
 +            self._check_rows(rows, group_topk)
 +
