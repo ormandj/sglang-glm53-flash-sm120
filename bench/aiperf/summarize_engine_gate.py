@@ -28,11 +28,10 @@ EXPECTED_DECODE = {
         "repeat-c4": {4: 5},
         "repeat-c8": {8: 5},
         "qualification": {1: 5, 2: 5, 4: 5, 8: 5, 16: 3, 32: 3},
-        # GLM-5.3-Flash mamba-slot admission caps a simultaneous cohort at
-        # three running requests, so the glm modes stop at C3 (see
-        # run-engine-gate-in-pod.sh for the measurement).
+        # The GLM production profile reserves 28 mamba slots for its
+        # standardized C1/C2/C3/C4 cohort qualification panel.
         "glm-c1": {1: 5},
-        "glm-qualification": {1: 5, 2: 5, 3: 5},
+        "glm-qualification": {1: 5, 2: 5, 3: 5, 4: 5},
         "publication": {1: 5, 2: 5, 4: 5, 8: 5, 16: 5, 32: 5},
     },
     "vllm": {
@@ -45,7 +44,7 @@ EXPECTED_DECODE = {
         "repeat-c8": {8: 5},
         "qualification": {1: 5, 2: 5, 4: 5, 8: 5, 16: 3},
         "glm-c1": {1: 5},
-        "glm-qualification": {1: 5, 2: 5, 3: 5},
+        "glm-qualification": {1: 5, 2: 5, 3: 5, 4: 5},
         "publication": {1: 5, 2: 5, 4: 5, 8: 5, 16: 5},
     },
 }

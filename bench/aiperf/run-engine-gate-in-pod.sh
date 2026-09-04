@@ -107,7 +107,14 @@ run_decode() {
     # equal-context window only spans the initial overlap, which on
     # long-prefill models is shorter than the analyzer minimum. Refill
     # requests keep occupancy pinned while the plateau is measured.
-    export DECODE_REQUESTS="${DECODE_REQUESTS_OVERRIDE:-$(( concurrency * 3 ))}"
+    # Cohort-only modes disable refills: every mid-plateau refill prefills
+    # its 16k shared prefix inside the analyzer window, so the
+    # prefill-counter-unchanged and context-bounds checks reject the cell.
+    if [ "${decode_cohort_only:-0}" = 1 ]; then
+      export DECODE_REQUESTS="${DECODE_REQUESTS_OVERRIDE:-$concurrency}"
+    else
+      export DECODE_REQUESTS="${DECODE_REQUESTS_OVERRIDE:-$(( concurrency * 3 ))}"
+    fi
     export DECODE_ISL=16384
     export DECODE_OSL="$output_length"
     "$script_dir/run-in-pod.sh" "$config_dir/decode-engine.yaml" "$run_id"
@@ -173,6 +180,7 @@ run_prefill() {
     --output "$cell/prefill-analysis.json"
 }
 
+decode_cohort_only=0
 case "$mode" in
   exploratory-decode)
     decode_shapes='1:3:4096 2:3:4096 4:3:4096 8:3:4096'
@@ -206,14 +214,16 @@ case "$mode" in
     # Single-cell C1 x5 for before/after configuration comparisons.
     decode_shapes='1:5:4096'
     prefill_shapes=''
+    decode_cohort_only=1
     ;;
   glm-qualification)
-    # GLM-5.3-Flash MTP reserves five recurrent-state slots per running
-    # request; the C4 profile therefore admits at most four requests, so
-    # C8/C16/C32 decode cells are structurally unreachable rather than
-    # slow. The prefill panel is unchanged from qualification.
-    decode_shapes='1:5:4096 2:5:4096 4:5:4096'
+    # GLM-5.3-Flash mamba admission uses about four state slots per decoding
+    # request plus transients for in-flight prefills. The production profile
+    # reserves 28 slots and supports the standardized C1/C2/C3/C4 cohort
+    # panel. C5+ cells are outside the four-request serving contract.
+    decode_shapes='1:5:4096 2:5:4096 3:5:4096 4:5:4096'
     prefill_shapes='8k-c1:8192:1:5 32k-c1:32768:1:5 64k-c1:65536:1:5 128k-c1:130816:1:5'
+    decode_cohort_only=1
     ;;
   qualification)
     if [ "$bench_engine" = vllm ]; then

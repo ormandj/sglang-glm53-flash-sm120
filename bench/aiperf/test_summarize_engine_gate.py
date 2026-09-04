@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from summarize_engine_gate import SummaryError, summarize
+from summarize_engine_gate import (
+    EXPECTED_DECODE,
+    EXPECTED_PREFILL,
+    SummaryError,
+    summarize,
+)
 
 
 def _write(path, document: dict) -> None:
@@ -100,6 +105,21 @@ def test_accept_rate_accepts_the_bonus_token_excess_and_rejects_more() -> None:
         except SummaryError:
             continue
         raise AssertionError(f"{bad} was accepted")
+
+
+def test_glm_qualification_uses_the_standardized_release_panel() -> None:
+    assert EXPECTED_DECODE["sglang"]["glm-qualification"] == {
+        1: 5,
+        2: 5,
+        3: 5,
+        4: 5,
+    }
+    assert EXPECTED_PREFILL["glm-qualification"] == {
+        "8k-c1": 5,
+        "32k-c1": 5,
+        "64k-c1": 5,
+        "128k-c1": 5,
+    }
 
 
 def test_summarize_quick_gate_retains_every_repetition(tmp_path) -> None:
