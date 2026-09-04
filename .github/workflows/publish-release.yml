@@ -1,0 +1,102 @@
+name: Publish stable repository release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: Full stable-doc commit SHA shared by Forgejo and GitHub
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: sglang-glm53-flash-sm120-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify stable image and publish GitHub Release
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Validate stable release source
+        env:
+          EXPECTED_RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          ./scripts/validate-release.sh
+          ./scripts/validate-docs.sh
+          ./scripts/validate-publish-release.sh
+          ./scripts/verify-patches.sh
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$EXPECTED_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_RELEASE_TARGET" ]]
+
+      - name: Check repository release name and tag
+        env:
+          RELEASE_PROVIDER: github
+          RELEASE_API_URL: ${{ github.api_url }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          export RELEASE_TAG
+          RELEASE_TAG=$(jq -er '.stable_tag' release.json)
+          ./scripts/publish-repository-release.sh check
+
+      - name: Log in to GHCR
+        run: |
+          printf '%s' '${{ secrets.GITHUB_TOKEN }}' \
+            | docker login ghcr.io \
+                --username '${{ github.actor }}' \
+                --password-stdin
+
+      - name: Verify stable image is the candidate manifest
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY}"
+          candidate_tag=$(jq -er '.candidate_tag' release.json)
+          stable_tag=$(jq -er '.stable_tag' release.json)
+          candidate_digest=$(
+            docker buildx imagetools inspect "${repository}:${candidate_tag}" \
+              | awk '$1 == "Digest:" { print $2; exit }'
+          )
+          stable_digest=$(
+            docker buildx imagetools inspect "${repository}:${stable_tag}" \
+              | awk '$1 == "Digest:" { print $2; exit }'
+          )
+          [[ "$candidate_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$stable_digest" == "$candidate_digest" ]] || {
+            echo "stable image differs from candidate: $candidate_digest -> $stable_digest" >&2
+            exit 1
+          }
+          grep -F -- "$stable_digest" README.md >/dev/null
+          grep -F -- "$stable_digest" CHANGELOG.md >/dev/null
+          image_source_revision=$(
+            docker buildx imagetools inspect "${repository}:${stable_tag}" \
+              --format '{{json .Image}}' \
+              | jq -er '.config.Labels["org.opencontainers.image.revision"]'
+          )
+          [[ "$image_source_revision" =~ ^[0-9a-f]{40}$ ]]
+          echo "RELEASE_DIGEST=$stable_digest" >>"$GITHUB_ENV"
+          echo "RELEASE_IMAGE_SOURCE_REVISION=$image_source_revision" >>"$GITHUB_ENV"
+
+      - name: Publish GitHub Release and source tag
+        env:
+          RELEASE_PROVIDER: github
+          RELEASE_API_URL: ${{ github.api_url }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY}"
+          export RELEASE_TAG RELEASE_IMAGE RELEASE_CANDIDATE_IMAGE
+          RELEASE_TAG=$(jq -er '.stable_tag' release.json)
+          candidate_tag=$(jq -er '.candidate_tag' release.json)
+          RELEASE_IMAGE="${repository}:${RELEASE_TAG}"
+          RELEASE_CANDIDATE_IMAGE="${repository}:${candidate_tag}"
+          ./scripts/publish-repository-release.sh publish

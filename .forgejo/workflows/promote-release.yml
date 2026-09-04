@@ -7,6 +7,10 @@ env:
   CONTAINER_REGISTRY: git.home.corenode.com
   IMAGE_NAME: ${{ github.repository }}
 
+concurrency:
+  group: sglang-glm53-flash-sm120-promotion
+  cancel-in-progress: false
+
 jobs:
   promote:
     name: Promote candidate manifest without rebuilding

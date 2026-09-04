@@ -9,18 +9,19 @@ reasoning and tool calling.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.0` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
-The published stable image remains `v0.2.0`. This repository currently builds
-`v0.2.1-rc.8`, an internally qualified candidate based on the official SGLang
-and FlashInfer `main` heads fetched on 2026-09-03. Its source, exact-image GPU,
-first-boot, crash, full quality, long-context, and standardized engine gates
-passed at
-`sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`.
-The primary qualification repository holds the measured results and receipts.
+The current published stable image is `v0.2.1`, promoted without a rebuild from
+`v0.2.1-rc.8`. The internal candidate and stable tag resolve to
+`sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`;
+the independently built ghcr candidate and stable tag resolve to
+`sha256:e292b3677ac8085d087fb2503fb8b42c143abe1d2739c360ee776a669f53b424`.
+The internal candidate's source, exact-image GPU, first-boot, crash, full
+quality, long-context, and standardized engine gates passed. The primary
+qualification repository holds the measured results and receipts.
 `v0.2.1-rc.7` was rejected by its
 exact-image GPU gate because one new test violated the kernel's row-stride
 precondition. `v0.2.1-rc.5` was built and qualified internally on quasar at
@@ -57,8 +58,8 @@ the open pull requests listed under [Carried upstream changes](#carried-upstream
    ```bash
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.0
-   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v56
+   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1
+   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v63
    ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
    ```
 
@@ -239,6 +240,17 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
+`v0.2.1` (2026-09-04) is the current published release, promoted without a
+rebuild from `v0.2.1-rc.8` in both registries. The internal candidate and
+stable tag resolve to
+`sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`;
+the independently built ghcr candidate and stable tag resolve to
+`sha256:e292b3677ac8085d087fb2503fb8b42c143abe1d2739c360ee776a669f53b424`.
+The internal candidate passed its source, exact-image GPU, first-boot, crash,
+full quality, long-context, and standardized C1-C4 engine gates. The primary
+qualification repository holds the measured results and exact-candidate
+receipts.
+
 `v0.2.1-rc.8` (2026-09-04) is the current internally qualified candidate at
 `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`.
 It retains the rc.7 kernel implementation unchanged and pads the new exact-tail
@@ -247,7 +259,7 @@ while preserving the 5,047-element logical row. Its source, exact-image GPU,
 first-boot, crash, full quality, long-context, and standardized C1-C4 engine
 gates passed. The cache schema advances to `v63`. The primary qualification
 repository holds the measured results and exact-candidate receipts. The
-candidate has not been promoted or published.
+candidate was promoted without a rebuild as `v0.2.1` in both registries.
 
 `v0.2.1-rc.7` (2026-09-04) was built internally at
 `sha256:e7945f72cf038ad83a034f2ba1f0d8abf23e977b7576dad7063331c6cb91e16c`
@@ -303,8 +315,8 @@ capacity boundary. It was rejected and was not promoted or published.
 `sha256:39bbf5b178ed90cfabc2f76636c3e707e5bafcc1861be3665c8777b3433dff4a`.
 It was not promoted or published and is superseded by the current-main rebase.
 The complete receipt remains in the primary qualification repository under
-`evidence/v0.2.1-rc.2-validation-20260903.md`. `v0.2.0` (2026-09-03) is the
-current published release, a digest-identical promotion
+`evidence/v0.2.1-rc.2-validation-20260903.md`. `v0.2.0` (2026-09-03) was a
+digest-identical promotion
 of its rc.1 candidate: the v0.1.4 bases and serving configuration with four
 decode-path changes (PCIe IPC all-reduce wired in, fused KDA gate
 projections under the quantized config, upstream's experimental device-side

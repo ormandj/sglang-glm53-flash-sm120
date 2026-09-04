@@ -1,0 +1,102 @@
+name: Publish stable repository release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: Full stable-doc commit SHA shared by Forgejo and GitHub
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sglang-glm53-flash-sm120-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify stable image and publish Forgejo Release
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: linux
+    timeout-minutes: 30
+    container:
+      image: debian:trixie-slim
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            skopeo nodejs git jq curl ca-certificates
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Validate stable release source
+        env:
+          EXPECTED_RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          ./scripts/validate-release.sh
+          ./scripts/validate-docs.sh
+          ./scripts/validate-publish-release.sh
+          ./scripts/verify-patches.sh
+          [[ "$FORGEJO_REF" == refs/heads/main ]]
+          [[ "$(git rev-parse HEAD)" == "$FORGEJO_SHA" ]]
+          [[ "$EXPECTED_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FORGEJO_SHA" == "$EXPECTED_RELEASE_TARGET" ]]
+
+      - name: Check repository release name and tag
+        env:
+          RELEASE_PROVIDER: forgejo
+          RELEASE_API_URL: ${{ github.api_url }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          export RELEASE_TAG
+          RELEASE_TAG=$(jq -er '.stable_tag' release.json)
+          ./scripts/publish-repository-release.sh check
+
+      - name: Verify stable image is the candidate manifest
+        env:
+          REGISTRY_CREDS: ${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          repository="git.home.corenode.com/${FORGEJO_REPOSITORY}"
+          candidate_tag=$(jq -er '.candidate_tag' release.json)
+          stable_tag=$(jq -er '.stable_tag' release.json)
+          candidate_digest=$(skopeo inspect \
+            --creds "$REGISTRY_CREDS" \
+            --format '{{.Digest}}' "docker://${repository}:${candidate_tag}")
+          stable_digest=$(skopeo inspect \
+            --creds "$REGISTRY_CREDS" \
+            --format '{{.Digest}}' "docker://${repository}:${stable_tag}")
+          [[ "$candidate_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$stable_digest" == "$candidate_digest" ]] || {
+            echo "stable image differs from candidate: $candidate_digest -> $stable_digest" >&2
+            exit 1
+          }
+          grep -F -- "$stable_digest" README.md >/dev/null
+          grep -F -- "$stable_digest" CHANGELOG.md >/dev/null
+          image_source_revision=$(skopeo inspect \
+            --creds "$REGISTRY_CREDS" \
+            --config "docker://${repository}:${stable_tag}" \
+            | jq -er '.config.Labels["org.opencontainers.image.revision"]')
+          [[ "$image_source_revision" =~ ^[0-9a-f]{40}$ ]]
+          echo "RELEASE_DIGEST=$stable_digest" >>"$FORGEJO_ENV"
+          echo "RELEASE_IMAGE_SOURCE_REVISION=$image_source_revision" >>"$FORGEJO_ENV"
+
+      - name: Publish Forgejo Release and source tag
+        env:
+          RELEASE_PROVIDER: forgejo
+          RELEASE_API_URL: ${{ github.api_url }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          repository="git.home.corenode.com/${FORGEJO_REPOSITORY}"
+          export RELEASE_TAG RELEASE_IMAGE RELEASE_CANDIDATE_IMAGE
+          RELEASE_TAG=$(jq -er '.stable_tag' release.json)
+          candidate_tag=$(jq -er '.candidate_tag' release.json)
+          RELEASE_IMAGE="${repository}:${RELEASE_TAG}"
+          RELEASE_CANDIDATE_IMAGE="${repository}:${candidate_tag}"
+          ./scripts/publish-repository-release.sh publish

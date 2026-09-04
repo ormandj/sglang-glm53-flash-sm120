@@ -42,7 +42,7 @@ Do not add performance or quality numbers to this repository. Measured results
 belong in the primary `sglang-glm53-flash-sm120` repository, backed by evidence
 files. A candidate is "built", not "qualified", until that evidence exists.
 
-## Release flow: internal first, promote by dispatch
+## Release flow: internal first, promote and publish by dispatch
 
 Candidates are built and validated internally (Forgejo, deployed to quasar via
 gitops) before anything is published to GitHub/ghcr. Stable SemVer tags are
@@ -54,6 +54,14 @@ verifies the digest did not change. skopeo source references must be
 digest-only (`repo@sha256:...`); it rejects `tag@digest` combined references.
 After promotion, verify the stable tag resolves to the candidate digest
 (`docker buildx imagetools inspect`) before updating any docs or announcing.
+After the verified stable-image promotion, update the stable README and
+CHANGELOG on `main`, then dispatch `publish-release.yml`. That workflow
+re-verifies the candidate/stable digest equality, refuses a conflicting source
+tag or Release, and creates the repository Release and its source tag together
+at the exact stable-doc commit. Pass the same full commit SHA as the required
+`release_target` input to Forgejo first and GitHub second; each workflow fails
+unless its checked-out `main` is that commit. Do not push stable source tags
+manually.
 
 ## External contributions (the GitHub mirror)
 

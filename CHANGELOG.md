@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.1 (stable; digest-identical promotion of v0.2.1-rc.8)
+
+- Promoted on 2026-09-04 without a rebuild. The internal candidate and stable
+  tag resolve to
+  `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`;
+  the independently built ghcr candidate and stable tag resolve to
+  `sha256:e292b3677ac8085d087fb2503fb8b42c143abe1d2739c360ee776a669f53b424`.
+- The internal candidate passed its source, exact-image GPU, first-boot, crash,
+  full quality, long-context, and standardized C1-C4 engine gates. The primary
+  qualification repository holds the measured results and exact-candidate
+  receipts.
+
 ## v0.2.1-rc.8 (exact-tail test stride correction; internally qualified)
 
 - Retain the rc.7 kernel implementation unchanged and pad the exact-tail
@@ -15,7 +27,7 @@
   Its source, exact-image GPU, first-boot, crash, full quality, long-context,
   and standardized C1-C4 engine gates passed on quasar. The primary
   qualification repository holds the measured results and exact-candidate
-  receipts. It has not been promoted or published.
+  receipts. It was promoted without a rebuild as `v0.2.1` in both registries.
 
 ## v0.2.1-rc.7 (oversized DSA cutoff-discovery follow-up; rejected by exact-image GPU gate)
 

@@ -16,7 +16,11 @@ on:
       - RUN.md
       - examples/serve-glm53-flash.sh
       - .forgejo/workflows/validate.yml
+      - .forgejo/workflows/build-release.yml
+      - .forgejo/workflows/build-test.yml
       - .forgejo/workflows/package-retention.yml
+      - .forgejo/workflows/promote-release.yml
+      - .forgejo/workflows/publish-release.yml
   workflow_dispatch:
 
 jobs:
