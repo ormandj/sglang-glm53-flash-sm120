@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.2.1-rc.6 (latest-main refresh and final upstream top-k patch; not yet built or qualified)
+
+- Rebase the complete integration onto official SGLang main
+  `c1b4d535d772d7bfa89e1f71f91ab65f2f8da876` and FlashInfer main
+  `9f5051736e9fd5cab41c06118a7d4b5c1de23a6d`, fetched immediately before
+  patch generation. The one SGLang conflict retains current main's tiered
+  cache-admission accounting alongside the downstream Mamba-slot admission
+  gate. FlashInfer rebases without conflict.
+- Recheck all 22 tracked upstream PRs. FlashInfer #4802 is merged as
+  `453aa7c729` and now comes directly from main. The 19 unchanged open PRs
+  remain at their recorded heads. SGLang #36507 moves to `4761b54153` by
+  merging main plus an AMD enablement commit and its immediate revert; its 26
+  substantive commits range-diff unchanged.
+- Replace the original #37625 carry and all downstream top-k follow-ups with
+  the final reviewed upstream head `7ad39a0665`. The top-k portion of the
+  integration has the PR's exact stable patch ID
+  `6f8a5297bcdcb9195b50c8e1ea584f90e35ce386` and includes package-local
+  shared headers, block barriers, and AOT/JIT coverage across the legacy and
+  DeepSeek-V4 selectors.
+- Add a focused CPU regression for the downstream static-Mamba admission gate.
+  It distinguishes recoverable active-pool states from states held in the int8
+  checkpoint pool and proves admission stops when the usable slot budget is
+  exhausted.
+- Advance the compiled-cache schema to `v61`. This immutable candidate is not
+  built or qualified and inherits no claims from earlier candidates.
+
 ## v0.2.1-rc.5 (latest-main refresh and stronger top-k boundary coverage; internally qualified)
 
 - Rebase the complete integration without conflict onto official SGLang main

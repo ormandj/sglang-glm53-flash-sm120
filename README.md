@@ -15,14 +15,12 @@ reasoning and tool calling.
 | Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
 
 The published, qualified image remains `v0.2.0`. This repository currently
-builds `v0.2.1-rc.5`, internally built and qualified on quasar at
-`sha256:289e83c983fb951ed5265de80cca3dc0412cc0cd43cf2190296a7f8190c38f69`.
-It is rebased onto the official SGLang and FlashInfer `main` heads fetched on
-2026-09-03 and has not been promoted or published. Its immediate predecessor,
-`v0.2.1-rc.4`, was built internally and passed startup, a sampled chat, and the
-focused CPU suite, but was superseded before GPU qualification when both
-upstream mains advanced. `v0.2.1-rc.3` was rejected by its exact-image top-k
-GPU gate; `v0.2.1-rc.2` was the preceding internally qualified candidate.
+builds `v0.2.1-rc.6`, an unbuilt source candidate rebased onto the official
+SGLang and FlashInfer `main` heads fetched on 2026-09-03. It has no performance,
+quality, stability, or capacity claims. Its immediate predecessor,
+`v0.2.1-rc.5`, was built and qualified internally on quasar at
+`sha256:289e83c983fb951ed5265de80cca3dc0412cc0cd43cf2190296a7f8190c38f69`
+but was not promoted or published.
 
 The checkpoint keeps the routed experts in W4A16 NVFP4 (K32 blocks) and the
 attention, shared experts and MTP draft layer in FP8 or BF16. Upstream SGLang
@@ -183,15 +181,16 @@ traffic. A load that takes seconds would be a compile and is worth reporting.
 
 The candidate is official SGLang and FlashInfer `main` plus checksummed patches
 (`patches/`, pinned in `stack.lock.json`). It carries each listed open PR from
-the exact head below. General follow-up work that is not yet filed upstream is
-identified explicitly as downstream pending upstream rather than presented as
-upstream provenance.
+the exact head below and records a merged dependency where its code now comes
+from `main`. General follow-up work that is not yet filed upstream is identified
+explicitly as downstream pending upstream rather than presented as upstream
+provenance.
 
-SGLang (base `main` `05dbe64dff`, 2026-09-03):
+SGLang (base `main` `c1b4d535d7`, 2026-09-03):
 
 | PR | State and head | What it carries |
 |---|---|---|
-| [sgl-project/sglang#36507](https://github.com/sgl-project/sglang/pull/36507) | Open, `cdfc224b0e` | GLM-5.3-Flash series, including the fix for issue #37548's first-request multimodal NextN embedding failure |
+| [sgl-project/sglang#36507](https://github.com/sgl-project/sglang/pull/36507) | Open, `4761b54153` | GLM-5.3-Flash series; its 26 substantive commits are unchanged from the prior head and include issue #37548's first-request multimodal NextN embedding fix |
 | [sgl-project/sglang#36904](https://github.com/sgl-project/sglang/pull/36904) | Open, `436a89b06f` | TileLang fp8_e4m3 KV cache on CUDA (raw layout) |
 | [sgl-project/sglang#36661](https://github.com/sgl-project/sglang/pull/36661) | Open, `cc78c41a14` | overlap batch snapshot lifetime tied to result completion |
 | [sgl-project/sglang#36696](https://github.com/sgl-project/sglang/pull/36696) | Open, `1ff8934369` | mamba radix cache split-node key fix |
@@ -204,18 +203,18 @@ SGLang (base `main` `05dbe64dff`, 2026-09-03):
 | [sgl-project/sglang#37537](https://github.com/sgl-project/sglang/pull/37537) | Open, `7e27c6123e` | `--mm-preprocessing-device` for the base visual preprocessing path |
 | [sgl-project/sglang#37538](https://github.com/sgl-project/sglang/pull/37538) | Open, `bcff46c9a8` | env-gated extend memory profiler |
 | [sgl-project/sglang#37539](https://github.com/sgl-project/sglang/pull/37539) | Open, `00cc3e8dc9` | GLM-5-Next vision-tower attention and compiled-activation precompile at startup |
-| [sgl-project/sglang#37625](https://github.com/sgl-project/sglang/pull/37625) | Open, `1436d19a9a` | kpool top-k transform fix by @bold84; the carry adds a downstream follow-up for every AOT/JIT/ragged kernel variant |
+| [sgl-project/sglang#37625](https://github.com/sgl-project/sglang/pull/37625) | Open, `7ad39a0665` | oversized DSA radix-bin recovery across legacy and DeepSeek-V4 AOT/JIT variants, co-authored by @bold84 |
 | [sgl-project/sglang#37541](https://github.com/sgl-project/sglang/pull/37541) | Open, `ade49acbb3` | opt-in `serving_coverage` request warmup |
 | [sgl-project/sglang#37612](https://github.com/sgl-project/sglang/pull/37612) | Open, `595d6b45b7` | prefill admission re-evaluated every round on hybrid SSM radix caches (the v0.1.2 C4 fix) |
 | [sgl-project/sglang#37619](https://github.com/sgl-project/sglang/pull/37619) | Open, `ed46bc9c3c` | unfinished-request mamba checkpoint skipped when the pool is exhausted (the v0.1.3 crash fix) |
 | [sgl-project/sglang#37744](https://github.com/sgl-project/sglang/pull/37744) | Open, `ebe935c116` | qkvbfg fusion gated by each source layer's resolved quantization method |
 | [sgl-project/sglang#37375](https://github.com/sgl-project/sglang/pull/37375) | Open, `b6478a7400` | mHC pipeline stages hand off the flattened hidden state without a separate residual |
 
-FlashInfer (base `main` `7a3c04f015`, 2026-09-03):
+FlashInfer (base `main` `9f5051736e`, 2026-09-03):
 
 | PR | State and head | What it carries |
 |---|---|---|
-| [flashinfer-ai/flashinfer#4802](https://github.com/flashinfer-ai/flashinfer/pull/4802) | Open, `ffa47d54ac` | native SM120 sparse-MLA runner with GLM NoPE rows; current `main` merged into the PR branch without changing its substantive patch |
+| [flashinfer-ai/flashinfer#4802](https://github.com/flashinfer-ai/flashinfer/pull/4802) | Merged, `453aa7c729` | native SM120 sparse-MLA runner with GLM NoPE rows; supplied directly by current `main` |
 | [flashinfer-ai/flashinfer#4687](https://github.com/flashinfer-ai/flashinfer/pull/4687) | Open, `b75d6bfff7` | W4A16 large weight bank addressing |
 | [flashinfer-ai/flashinfer#4827](https://github.com/flashinfer-ai/flashinfer/pull/4827) | Open, `21fb169ff2` | SM12x MoE workspaces kept alive while captured CUDA graphs reference them |
 
@@ -223,8 +222,6 @@ Downstream-only in the patches (no upstream PR): the SM120 W4A16 MoE and
 NoPE-row integration, the ModelOpt E4M3-K32 W4A16 weight preparation, the
 adaptive-MTP chain-buffer pinning, and the Triton late-load diagnostic
 armed after the serving warmup. Pending-upstream follow-ups cover exact
-at-or-above-capacity recovery for the legacy AOT and kpool selectors,
-independent oversized-bin recovery for the CUDA JIT v1/v2/ragged selectors,
 GLM video CPU placement and EPD decoder lifecycle, DP video sampling parity,
 collision-safe media ordering, and stricter NextN multimodal failure handling.
 Already merged upstream and in the base:
@@ -236,7 +233,21 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.2.1-rc.5` (2026-09-03) is the current internally qualified candidate. It rebases
+`v0.2.1-rc.6` (2026-09-03) is the current unbuilt source candidate. It rebases
+the complete integration onto SGLang main `c1b4d535d7` and FlashInfer main
+`9f5051736e`, fetched immediately before patch generation. All 22 tracked PRs
+were rechecked: FlashInfer #4802 is now merged and supplied by `main`; the 19
+other previously unchanged heads remain unchanged; SGLang #36507 moved only by
+merging `main` plus an AMD change and its immediate revert; and #37625 advances
+to final head `7ad39a0665`. The top-k portion of the resulting integration has
+the final PR's exact stable patch ID. The scheduler rebase preserves current
+main's tiered cache-admission accounting alongside the downstream Mamba-slot
+gate. A focused CPU regression covers free, evictable, and int8-checkpoint
+static-Mamba slot accounting. The cache schema advances to `v61`. This
+candidate is not built or qualified and inherits no claims from earlier
+candidates.
+
+`v0.2.1-rc.5` (2026-09-03) is the latest internally qualified candidate. It rebases
 the complete v0.2.1 integration without conflict onto SGLang main
 `05dbe64dff` and FlashInfer main `7a3c04f015`, rechecks every carried PR head,
 retains the allocation-free exact fallback for exact-capacity DSA top-k bins,
@@ -300,7 +311,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.2.1-rc.5 .
+  -t sglang-glm53-flash-sm120:v0.2.1-rc.6 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

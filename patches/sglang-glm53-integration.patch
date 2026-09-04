@@ -289,20 +289,8 @@ index 0000000000000000000000000000000000000000..2990acd505496aaddb578762d40e2f98
 +
 +if __name__ == "__main__":
 +    main()
-diff --git a/python/sglang/kernels/aot/CMakeLists.txt b/python/sglang/kernels/aot/CMakeLists.txt
-index 26943a769ec2d40c7df51104bc0351242c1b2403..c0b49ac08eced25dedd2929b5562681b156a277b 100644
---- a/python/sglang/kernels/aot/CMakeLists.txt
-+++ b/python/sglang/kernels/aot/CMakeLists.txt
-@@ -117,6 +117,7 @@ endif()
- include_directories(
-     ${PROJECT_SOURCE_DIR}/include
-     ${PROJECT_SOURCE_DIR}/csrc
-+    ${PROJECT_SOURCE_DIR}/../jit/include
- )
- 
- set(SGL_KERNEL_CUDA_FLAGS
 diff --git a/python/sglang/kernels/aot/csrc/elementwise/deepseek_v4_topk.cu b/python/sglang/kernels/aot/csrc/elementwise/deepseek_v4_topk.cu
-index 0a1e982996410c036f11e884ebd1f354d7a3b137..461f447a0968560e1d477fd893d169d540dfffa6 100644
+index 0a1e982996410c036f11e884ebd1f354d7a3b137..6f0bce865c1a939e372609afd12f5d2f0584566b 100644
 --- a/python/sglang/kernels/aot/csrc/elementwise/deepseek_v4_topk.cu
 +++ b/python/sglang/kernels/aot/csrc/elementwise/deepseek_v4_topk.cu
 @@ -24,6 +24,7 @@ limitations under the License.
@@ -332,7 +320,7 @@ index 0a1e982996410c036f11e884ebd1f354d7a3b137..461f447a0968560e1d477fd893d169d5
  __device__ __forceinline__ int32_t
  page_to_slot(const int32_t* __restrict__ page_table, uint32_t i, uint32_t page_bits) {
    const uint32_t mask = (1u << page_bits) - 1u;
-@@ -101,159 +90,15 @@ __device__ void naive_paged_transform(
+@@ -101,159 +90,16 @@ __device__ void naive_paged_transform(
  
  __device__ void
  radix_topk(const float* __restrict__ input, int32_t* __restrict__ output, uint32_t length, uint32_t topk) {
@@ -376,7 +364,10 @@ index 0a1e982996410c036f11e884ebd1f354d7a3b137..461f447a0968560e1d477fd893d169d5
 -    const auto bin = convert_to_uint8(input[idx]);
 -    ::atomicAdd(&s_histogram[bin], 1);
 -  }
--  __syncthreads();
++  ::sglang::device::legacy_radix_topk::
++      select<static_cast<int>(kBlockSize), static_cast<int>(kMaxTopK), static_cast<int>(kSMEM / (2 * sizeof(int32_t)))>(
++          input, output, 0, static_cast<int>(length), static_cast<int>(topk));
+   __syncthreads();
 -  run_cumsum();
 -  if (tx < RADIX && s_histogram[tx] > remain_topk && s_histogram[tx + 1] <= remain_topk) {
 -    s_threshold_bin_id = tx;
@@ -484,9 +475,6 @@ index 0a1e982996410c036f11e884ebd1f354d7a3b137..461f447a0968560e1d477fd893d169d5
 -    }
 -    __syncthreads();
 -  }
-+  ::sglang::device::legacy_radix_topk::
-+      select<static_cast<int>(kBlockSize), static_cast<int>(kMaxTopK), static_cast<int>(kSMEM / (2 * sizeof(int32_t)))>(
-+          input, output, 0, static_cast<int>(length), static_cast<int>(topk));
  }
  
  __global__ __launch_bounds__(kBlockSize) void deepseek_v4_topk_transform_kernel(const TopKParams params) {
@@ -497,8 +485,11 @@ index 0a1e982996410c036f11e884ebd1f354d7a3b137..461f447a0968560e1d477fd893d169d5
    const auto topk = params.topk;
    const auto score_ptr = params.scores + bid * params.score_stride;
    const auto page_ptr = params.page_table + bid * params.page_table_stride;
-@@ -272,7 +117,7 @@ __global__ __launch_bounds__(kBlockSize) void deepseek_v4_topk_transform_kernel(
-   __syncthreads();
+@@ -269,10 +115,9 @@ __global__ __launch_bounds__(kBlockSize) void deepseek_v4_topk_transform_kernel(
+   __shared__ int32_t s_topk_indices[kMaxTopK];
+   radix_topk(score_ptr, s_topk_indices, static_cast<uint32_t>(seq_len), topk);
+ 
+-  __syncthreads();
    for (uint32_t i = threadIdx.x; i < topk; i += kBlockSize) {
      const auto raw = s_topk_indices[i];
 -    indices_ptr[i] = page_to_slot(page_ptr, static_cast<uint32_t>(raw), params.page_bits);
@@ -507,7 +498,7 @@ index 0a1e982996410c036f11e884ebd1f354d7a3b137..461f447a0968560e1d477fd893d169d5
        raw_indices_ptr[i] = raw;
      }
 diff --git a/python/sglang/kernels/aot/csrc/elementwise/topk.cu b/python/sglang/kernels/aot/csrc/elementwise/topk.cu
-index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed2319aba5 100644
+index 04a2b73be519fce8e114c0574de14bd97805f96f..51f7664d262828702aa304b15b540a0b3e65c38c 100644
 --- a/python/sglang/kernels/aot/csrc/elementwise/topk.cu
 +++ b/python/sglang/kernels/aot/csrc/elementwise/topk.cu
 @@ -17,6 +17,7 @@
@@ -518,7 +509,7 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed
  
  namespace {
  
-@@ -75,180 +76,9 @@ __device__ void naive_topk_transform_ragged(
+@@ -75,180 +76,10 @@ __device__ void naive_topk_transform_ragged(
    }
  }
  
@@ -555,7 +546,9 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed
 -
 -  // stage 1: 8bit coarse histogram
 -  if (tx < RADIX + 1) s_histogram[tx] = 0;
--  __syncthreads();
++  ::sglang::device::legacy_radix_topk::select<kThreadsPerBlock, TopK, static_cast<int>(kSmem / (2 * sizeof(int)))>(
++      input, index, row_start, length, TopK);
+   __syncthreads();
 -
 -  for (int idx = tx; idx < length; idx += BLOCK_SIZE) {
 -    const auto bin = convert_to_uint8(input[idx + row_start]);
@@ -696,12 +689,10 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed
 -      __syncthreads();
 -    }
 -  }
-+  ::sglang::device::legacy_radix_topk::select<kThreadsPerBlock, TopK, static_cast<int>(kSmem / (2 * sizeof(int)))>(
-+      input, index, row_start, length, TopK);
  }
  
  __global__ __launch_bounds__(kThreadsPerBlock)  // topk
-@@ -290,10 +120,10 @@ __global__ __launch_bounds__(kThreadsPerBlock)  // decode
+@@ -290,10 +121,10 @@ __global__ __launch_bounds__(kThreadsPerBlock)  // decode
      static_assert(TopK / kThreadsPerBlock == 2);
      const auto idx_0 = tid;
      const auto pos_0 = s_indices[idx_0];
@@ -714,7 +705,7 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed
    }
  }
  
-@@ -342,10 +172,10 @@ __global__ __launch_bounds__(kThreadsPerBlock)  // prefill
+@@ -342,10 +173,10 @@ __global__ __launch_bounds__(kThreadsPerBlock)  // prefill
      static_assert(TopK / kThreadsPerBlock == 2);
      const auto idx_0 = tid;
      const auto pos_0 = s_indices[idx_0];
@@ -727,7 +718,7 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed
    }
  }
  
-@@ -373,10 +203,10 @@ __global__ __launch_bounds__(kThreadsPerBlock)  // prefill, ragged kv
+@@ -373,10 +204,10 @@ __global__ __launch_bounds__(kThreadsPerBlock)  // prefill, ragged kv
      static_assert(TopK / kThreadsPerBlock == 2);
      const auto idx_0 = tid;
      const auto pos_0 = s_indices[idx_0];
@@ -740,20 +731,273 @@ index 04a2b73be519fce8e114c0574de14bd97805f96f..e43b7bdc03d30057884e954d340876ed
    }
  }
  
-diff --git a/python/sglang/kernels/aot/setup_rocm.py b/python/sglang/kernels/aot/setup_rocm.py
-index 84551bb0aec3661c577c4187e9ad16d27b489ca9..85d2da9ac989bf72b81ecc7a794690e781484cda 100644
---- a/python/sglang/kernels/aot/setup_rocm.py
-+++ b/python/sglang/kernels/aot/setup_rocm.py
-@@ -38,6 +38,7 @@ include_dirs = [
-     root / "include",
-     root / "include" / "impl",
-     root / "csrc",
-+    root.parent / "jit" / "include",
- ]
- 
- sources = [
+diff --git a/python/sglang/kernels/aot/include/sgl_kernel/dsa/legacy_radix_topk.cuh b/python/sglang/kernels/aot/include/sgl_kernel/dsa/legacy_radix_topk.cuh
+new file mode 100644
+index 0000000000000000000000000000000000000000..d81536cd80bbe2a579662f8c0a1ae37b6811cb34
+--- /dev/null
++++ b/python/sglang/kernels/aot/include/sgl_kernel/dsa/legacy_radix_topk.cuh
+@@ -0,0 +1,259 @@
++#pragma once
++
++#include <cuda_fp16.h>
++
++#include <cstddef>
++#include <cstdint>
++
++namespace sglang::device::legacy_radix_topk {
++
++inline constexpr int kRadix = 256;
++
++// The legacy DSA selectors first partition finite FP32 scores by the high byte
++// of their ordered FP16 representation. This keeps their common-case binning
++// and performance unchanged. Exact refinement uses the monotone FP32 key.
++__device__ __forceinline__ uint8_t coarse_key(float x) {
++  const __half h = __float2half_rn(x);
++  const uint16_t bits = __half_as_ushort(h);
++  const uint16_t key = (bits & 0x8000u) ? static_cast<uint16_t>(~bits) : static_cast<uint16_t>(bits | 0x8000u);
++  return static_cast<uint8_t>(key >> 8);
++}
++
++__device__ __forceinline__ uint32_t exact_key(float x) {
++  const uint32_t bits = __float_as_uint(x);
++  return (bits & 0x80000000u) ? ~bits : (bits | 0x80000000u);
++}
++
++// Exact, allocation-free radix selection for the legacy DSA kernels.
++//
++// The normal path preserves the original two-stash algorithm. Its threshold
++// bin is safe to materialize because it fits below the shared-memory capacity.
++// At or above that capacity, we instead rescan the coarse bin while descending
++// the four bytes of the ordered FP32 key. No candidate is discarded before the
++// full key is known; at byte zero, clipping is exact because every remaining
++// candidate has the same FP32 value.
++//
++// Scores must be finite. For valid input (length > topk > 0), every output slot
++// is filled with a distinct index in [0, length). Defensive initialization and
++// bounds checks turn any violated invariant into -1 padding instead of an
++// out-of-bounds store or a garbage page-table lookup.
++template <int BlockSize, int OutputCapacity, int StashEntries>
++__device__ __forceinline__ void
++select(const float* __restrict__ input, int32_t* __restrict__ output, int row_start, int length, int topk) {
++  static_assert(BlockSize >= kRadix + 1, "the block must initialize the complete radix histogram");
++  static_assert(OutputCapacity <= StashEntries, "top-k output must fit in one shared-memory stash");
++
++  alignas(128) __shared__ int histogram_buf[2][kRadix + 1];
++  alignas(128) __shared__ int counter;
++  alignas(128) __shared__ int threshold_bin_id;
++  alignas(128) __shared__ int num_input[2];
++
++  extern __shared__ int dynamic_smem[];
++  auto* input_idx = reinterpret_cast<int (*)[StashEntries]>(dynamic_smem);
++  auto& histogram = histogram_buf[0];
++  const int tx = threadIdx.x;
++
++  for (int i = tx; i < topk; i += BlockSize)
++    output[i] = -1;
++  if (tx < kRadix + 1) histogram[tx] = 0;
++  if (tx == 0) {
++    counter = 0;
++    threshold_bin_id = -1;
++    num_input[0] = 0;
++    num_input[1] = 0;
++  }
++  __syncthreads();
++
++  for (int idx = tx; idx < length; idx += BlockSize) {
++    atomicAdd(&histogram[coarse_key(input[row_start + idx])], 1);
++  }
++  __syncthreads();
++
++  const auto run_cumsum = [&] {
++#pragma unroll 8
++    for (int i = 0; i < 8; ++i) {
++      if (tx < kRadix) {
++        const int offset = 1 << i;
++        const int src = i & 1;
++        int value = histogram_buf[src][tx];
++        if (tx < kRadix - offset) value += histogram_buf[src][tx + offset];
++        histogram_buf[src ^ 1][tx] = value;
++      }
++      __syncthreads();
++    }
++  };
++
++  run_cumsum();
++  if (tx < kRadix && histogram[tx] > topk && histogram[tx + 1] <= topk) {
++    threshold_bin_id = tx;
++  }
++  __syncthreads();
++
++  const int coarse_threshold = threshold_bin_id;
++  if (coarse_threshold < 0) return;
++  int remaining = topk - histogram[coarse_threshold + 1];
++
++  if (remaining == 0) {
++    for (int idx = tx; idx < length; idx += BlockSize) {
++      if (coarse_key(input[row_start + idx]) > coarse_threshold) {
++        const int pos = atomicAdd(&counter, 1);
++        if (pos < topk) output[pos] = idx;
++      }
++    }
++    __syncthreads();
++    return;
++  }
++
++  const int coarse_population = histogram[coarse_threshold] - histogram[coarse_threshold + 1];
++  __syncthreads();
++  if (coarse_population >= StashEntries) {
++    // Emit the values above the coarse threshold once, then refine only the
++    // capacity-bound coarse bin by exact FP32 key bytes.
++    for (int idx = tx; idx < length; idx += BlockSize) {
++      if (coarse_key(input[row_start + idx]) > coarse_threshold) {
++        const int pos = atomicAdd(&counter, 1);
++        if (pos < topk) output[pos] = idx;
++      }
++    }
++    __syncthreads();
++
++    uint32_t prefix = 0;
++#pragma unroll 4
++    for (int level = 0; level < 4; ++level) {
++      const int shift = 24 - level * 8;
++      const uint32_t prefix_mask = level == 0 ? 0u : (~0u << (32 - level * 8));
++
++      if (tx < kRadix + 1) histogram[tx] = 0;
++      if (tx == 0) threshold_bin_id = -1;
++      __syncthreads();
++
++      for (int idx = tx; idx < length; idx += BlockSize) {
++        const float value = input[row_start + idx];
++        if (coarse_key(value) != coarse_threshold) continue;
++        const uint32_t key = exact_key(value);
++        if ((key & prefix_mask) == prefix) atomicAdd(&histogram[(key >> shift) & 0xFFu], 1);
++      }
++      __syncthreads();
++
++      run_cumsum();
++      if (tx < kRadix && histogram[tx] > remaining && histogram[tx + 1] <= remaining) {
++        threshold_bin_id = tx;
++      }
++      __syncthreads();
++
++      const int threshold = threshold_bin_id;
++      if (threshold < 0) return;
++      const int above = histogram[threshold + 1];
++
++      for (int idx = tx; idx < length; idx += BlockSize) {
++        const float value = input[row_start + idx];
++        if (coarse_key(value) != coarse_threshold) continue;
++        const uint32_t key = exact_key(value);
++        if ((key & prefix_mask) != prefix) continue;
++        if (static_cast<int>((key >> shift) & 0xFFu) > threshold) {
++          const int pos = atomicAdd(&counter, 1);
++          if (pos < topk) output[pos] = idx;
++        }
++      }
++      __syncthreads();
++
++      remaining -= above;
++      prefix |= static_cast<uint32_t>(threshold) << shift;
++      if (remaining == 0) return;
++
++      if (level == 3) {
++        for (int idx = tx; idx < length; idx += BlockSize) {
++          const float value = input[row_start + idx];
++          if (coarse_key(value) != coarse_threshold) continue;
++          if (exact_key(value) == prefix) {
++            const int pos = atomicAdd(&counter, 1);
++            if (pos < topk) output[pos] = idx;
++          }
++        }
++        __syncthreads();
++        return;
++      }
++    }
++    return;
++  }
++
++  // The complete coarse threshold bin fits below capacity: keep the original
++  // stash/refine path, now with unconditional state initialization and bounded
++  // emissions.
++  if (tx < kRadix + 1) histogram[tx] = 0;
++  __syncthreads();
++  for (int idx = tx; idx < length; idx += BlockSize) {
++    const float value = input[row_start + idx];
++    const int bin = coarse_key(value);
++    if (bin > coarse_threshold) {
++      const int pos = atomicAdd(&counter, 1);
++      if (pos < topk) output[pos] = idx;
++    } else if (bin == coarse_threshold) {
++      const int pos = atomicAdd(&num_input[0], 1);
++      if (pos < StashEntries) {
++        input_idx[0][pos] = idx;
++        atomicAdd(&histogram[(exact_key(value) >> 24) & 0xFFu], 1);
++      }
++    }
++  }
++  __syncthreads();
++
++#pragma unroll 4
++  for (int round = 0; round < 4; ++round) {
++    const int current = round & 1;
++    const int next = current ^ 1;
++    const int raw_num_input = num_input[current];
++    const int current_count = raw_num_input < StashEntries ? raw_num_input : StashEntries;
++
++    if (tx == 0) {
++      threshold_bin_id = -1;
++      num_input[next] = 0;
++    }
++    run_cumsum();
++    if (tx < kRadix && histogram[tx] > remaining && histogram[tx + 1] <= remaining) {
++      threshold_bin_id = tx;
++    }
++    __syncthreads();
++
++    const int threshold = threshold_bin_id;
++    if (threshold < 0) return;
++    const int above = histogram[threshold + 1];
++    const int shift = 24 - round * 8;
++
++    __syncthreads();
++    if (round < 3 && tx < kRadix + 1) histogram[tx] = 0;
++    __syncthreads();
++    for (int i = tx; i < current_count; i += BlockSize) {
++      const int idx = input_idx[current][i];
++      const float value = input[row_start + idx];
++      const int bin = static_cast<int>((exact_key(value) >> shift) & 0xFFu);
++      if (bin > threshold) {
++        const int pos = atomicAdd(&counter, 1);
++        if (pos < topk) output[pos] = idx;
++      } else if (bin == threshold && round < 3) {
++        const int pos = atomicAdd(&num_input[next], 1);
++        if (pos < StashEntries) {
++          input_idx[next][pos] = idx;
++          atomicAdd(&histogram[(exact_key(value) >> (shift - 8)) & 0xFFu], 1);
++        }
++      }
++    }
++    __syncthreads();
++
++    remaining -= above;
++    if (remaining == 0) return;
++    if (round == 3) {
++      for (int i = tx; i < current_count; i += BlockSize) {
++        const int idx = input_idx[current][i];
++        if (static_cast<int>(exact_key(input[row_start + idx]) & 0xFFu) == threshold) {
++          const int pos = atomicAdd(&counter, 1);
++          if (pos < topk) output[pos] = idx;
++        }
++      }
++      __syncthreads();
++      return;
++    }
++  }
++}
++
++}  // namespace sglang::device::legacy_radix_topk
 diff --git a/python/sglang/kernels/aot/tests/test_topk.py b/python/sglang/kernels/aot/tests/test_topk.py
-index dd869658514641abdf923c8b7b9932aa2220e796..830662766ce57c4afffadd7aac378eceadacae3e 100644
+index dd869658514641abdf923c8b7b9932aa2220e796..a43a25b95f979ca70dffca5ee8c92ab53da3c241 100644
 --- a/python/sglang/kernels/aot/tests/test_topk.py
 +++ b/python/sglang/kernels/aot/tests/test_topk.py
 @@ -1,5 +1,5 @@
@@ -841,7 +1085,7 @@ index dd869658514641abdf923c8b7b9932aa2220e796..830662766ce57c4afffadd7aac378ece
      )
  
  
-@@ -245,8 +261,57 @@ def test_topk_transform_ragged_kernel(
+@@ -245,8 +261,69 @@ def test_topk_transform_ragged_kernel(
          k,
          seq_len,
          topk_indices_offset,
@@ -857,7 +1101,7 @@ index dd869658514641abdf923c8b7b9932aa2220e796..830662766ce57c4afffadd7aac378ece
 +    batch, seq_len, topk, row_start = 2, 7001, 2048, 3
 +    scores = torch.full(
 +        (batch, seq_len + row_start), -1000.0, dtype=torch.float32, device="cuda"
-     )
++    )
 +    scores[:, row_start:] = _tight_cluster(batch, seq_len)
 +    lengths = torch.full((batch,), seq_len, dtype=torch.int32, device="cuda")
 +    row_starts = torch.full((batch,), row_start, dtype=torch.int32, device="cuda")
@@ -897,10 +1141,22 @@ index dd869658514641abdf923c8b7b9932aa2220e796..830662766ce57c4afffadd7aac378ece
 +        row_starts=row_starts,
 +    )
 +    assert_equal(scores[:, row_start:], reference, paged, batch, topk, seq_len)
++
++    # With one query per row and no row starts, this interface selects the
++    # separate decode kernel rather than the prefill kernel above.
++    decode_scores = scores[:, row_start:].contiguous()
++    decode = fast_topk_transform_fused(
++        score=decode_scores,
++        lengths=lengths,
++        page_table_size_1=page_table,
++        cu_seqlens_q=cu_seqlens_q,
++        topk=topk,
+     )
++    assert_equal(decode_scores, reference, decode, batch, topk, seq_len)
  
  
  @pytest.mark.skipif(
-@@ -292,5 +357,59 @@ def test_deepseek_v4_topk_transform(bs: int, c4_len: int) -> None:
+@@ -292,5 +369,59 @@ def test_deepseek_v4_topk_transform(bs: int, c4_len: int) -> None:
      )
  
  
@@ -961,7 +1217,7 @@ index dd869658514641abdf923c8b7b9932aa2220e796..830662766ce57c4afffadd7aac378ece
  if __name__ == "__main__":
      sys.exit(pytest.main([__file__]))
 diff --git a/python/sglang/kernels/jit/csrc/deepseek_v4/topk_v1.cuh b/python/sglang/kernels/jit/csrc/deepseek_v4/topk_v1.cuh
-index 121a31e67310b54bcb973742d11e41edd3fc66d7..ea6e742b8df1be2ae9c3757edc96c0724363ddb3 100644
+index 121a31e67310b54bcb973742d11e41edd3fc66d7..57044a57eaf37e1c585180e88ba58af3a205823f 100644
 --- a/python/sglang/kernels/jit/csrc/deepseek_v4/topk_v1.cuh
 +++ b/python/sglang/kernels/jit/csrc/deepseek_v4/topk_v1.cuh
 @@ -3,6 +3,8 @@
@@ -992,7 +1248,7 @@ index 121a31e67310b54bcb973742d11e41edd3fc66d7..ea6e742b8df1be2ae9c3757edc96c072
  SGL_DEVICE int32_t page_to_indices(const int32_t* __restrict__ page_table, uint32_t i, uint32_t page_bits) {
    const uint32_t mask = (1u << page_bits) - 1u;
    return (page_table[i >> page_bits] << page_bits) | (i & mask);
-@@ -80,160 +70,9 @@ SGL_DEVICE void naive_transform(
+@@ -80,160 +70,10 @@ SGL_DEVICE void naive_transform(
  [[maybe_unused]]
  SGL_DEVICE void
  radix_topk(const float* __restrict__ input, int32_t* __restrict__ output, const uint32_t length, const uint32_t topk) {
@@ -1036,7 +1292,10 @@ index 121a31e67310b54bcb973742d11e41edd3fc66d7..ea6e742b8df1be2ae9c3757edc96c072
 -    const auto bin = convert_to_uint8(input[idx]);
 -    ::atomicAdd(&s_histogram[bin], 1);
 -  }
--  __syncthreads();
++  ::sglang::device::legacy_radix_topk::
++      select<kTopKBlockSize, kMaxTopK, static_cast<int>(kSMEM / (2 * sizeof(int32_t)))>(
++          input, output, 0, static_cast<int>(length), static_cast<int>(topk));
+   __syncthreads();
 -  run_cumsum();
 -  if (tx < RADIX && s_histogram[tx] > remain_topk && s_histogram[tx + 1] <= remain_topk) {
 -    s_threshold_bin_id = tx;
@@ -1150,13 +1409,10 @@ index 121a31e67310b54bcb973742d11e41edd3fc66d7..ea6e742b8df1be2ae9c3757edc96c072
 -      __syncthreads();
 -    }
 -  }
-+  ::sglang::device::legacy_radix_topk::
-+      select<kTopKBlockSize, kMaxTopK, static_cast<int>(kSMEM / (2 * sizeof(int32_t)))>(
-+          input, output, 0, static_cast<int>(length), static_cast<int>(topk));
  }
  
  template <bool kUsePDL>
-@@ -260,9 +99,10 @@ __global__ void topk_transform_kernel(const __grid_constant__ TopKParams params)
+@@ -260,9 +100,10 @@ __global__ void topk_transform_kernel(const __grid_constant__ TopKParams params)
      radix_topk(score_ptr, s_topk_indices, seq_len, topk);
      const auto tx = threadIdx.x;
      if (tx < topk) {
@@ -1170,7 +1426,7 @@ index 121a31e67310b54bcb973742d11e41edd3fc66d7..ea6e742b8df1be2ae9c3757edc96c072
      }
    }
 diff --git a/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh b/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh
-index e2dffd907c36b3b31159ebc10d1e1b0b96600807..6cc59e39fd0d41b28b05fd96325164e20368df28 100644
+index e2dffd907c36b3b31159ebc10d1e1b0b96600807..b0766e7344acaae638c0aea9b8cecbe3516fa28e 100644
 --- a/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh
 +++ b/python/sglang/kernels/jit/csrc/dsa/kpool_topk_transform.cuh
 @@ -5,13 +5,14 @@
@@ -1189,7 +1445,7 @@ index e2dffd907c36b3b31159ebc10d1e1b0b96600807..6cc59e39fd0d41b28b05fd96325164e2
  
  namespace sglang {
  namespace {
-@@ -37,175 +38,11 @@ struct FastTopKParams {
+@@ -37,175 +38,12 @@ struct FastTopKParams {
    int64_t input_stride;
  };
  
@@ -1225,7 +1481,9 @@ index e2dffd907c36b3b31159ebc10d1e1b0b96600807..6cc59e39fd0d41b28b05fd96325164e2
 -  const int tx = threadIdx.x;
 -
 -  if (tx < RADIX + 1) s_histogram[tx] = 0;
--  __syncthreads();
++  ::sglang::device::legacy_radix_topk::select<kThreadsPerBlock, K, static_cast<int>(kSmem / (2 * sizeof(int)))>(
++      input, index, row_start, length, K);
+   __syncthreads();
 -
 -  for (int idx = tx; idx < length; idx += BLOCK_SIZE) {
 -    const auto bin = convert_to_uint8(input[idx + row_start]);
@@ -1362,12 +1620,10 @@ index e2dffd907c36b3b31159ebc10d1e1b0b96600807..6cc59e39fd0d41b28b05fd96325164e2
 -      __syncthreads();
 -    }
 -  }
-+  ::sglang::device::legacy_radix_topk::select<kThreadsPerBlock, K, static_cast<int>(kSmem / (2 * sizeof(int)))>(
-+      input, index, row_start, length, K);
  }
  
  __device__ __forceinline__ int32_t transform_kpool_token(
-@@ -274,6 +111,12 @@ __global__ __launch_bounds__(kThreadsPerBlock) void kpool_topk_transform_kernel(
+@@ -274,6 +112,12 @@ __global__ __launch_bounds__(kThreadsPerBlock) void kpool_topk_transform_kernel(
        const auto group_rank = col / pool_size;
        const auto group_id = s_indices[group_rank];
        const auto slot = col % pool_size;
@@ -1574,10 +1830,10 @@ index 7dedd89a56e1a901ab325a3b5b36147028947530..8ebe5f7904c8371cf0af8fe1b504470f
  };
 diff --git a/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh b/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh
 new file mode 100644
-index 0000000000000000000000000000000000000000..f438a5b71f7d186f4f4605753d02d3c67f1681fa
+index 0000000000000000000000000000000000000000..d8e708c7e852c190db8f2ea39e6ba36f9e91b07f
 --- /dev/null
 +++ b/python/sglang/kernels/jit/include/sgl_kernel/dsa/legacy_radix_topk.cuh
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,258 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -1684,6 +1940,7 @@ index 0000000000000000000000000000000000000000..f438a5b71f7d186f4f4605753d02d3c6
 +  }
 +
 +  const int coarse_population = histogram[coarse_threshold] - histogram[coarse_threshold + 1];
++  __syncthreads();
 +  if (coarse_population >= StashEntries) {
 +    // Emit the values above the coarse threshold once, then refine only the
 +    // capacity-bound coarse bin by exact FP32 key bytes.
@@ -1798,6 +2055,7 @@ index 0000000000000000000000000000000000000000..f438a5b71f7d186f4f4605753d02d3c6
 +    const int above = histogram[threshold + 1];
 +    const int shift = 24 - round * 8;
 +
++    __syncthreads();
 +    if (round < 3 && tx < kRadix + 1) histogram[tx] = 0;
 +    __syncthreads();
 +    for (int i = tx; i < current_count; i += BlockSize) {
@@ -4726,7 +4984,7 @@ index cb3252b3d47cc35ed51fda77803d31ec604c8d6c..bf2ce3a0742514e4fd8028a1750af22a
 +AutoConfig.register("qwen3_asr", Qwen3ASRConfig, exist_ok=True)
 +AutoConfig.register("qwen3_asr_thinker", Qwen3ASRThinkerConfig, exist_ok=True)
 diff --git a/python/sglang/srt/disaggregation/base/conn.py b/python/sglang/srt/disaggregation/base/conn.py
-index 1dedb16ebed6fc06e105775e0db83abb6ba2895b..a09daafebc71009ec73b1a22643de0f028c173d2 100644
+index 4996cc6ebaef49b689145c5e7bc19787967f85e8..358ff95c43047079ea1b582472207e8e393a2d7e 100644
 --- a/python/sglang/srt/disaggregation/base/conn.py
 +++ b/python/sglang/srt/disaggregation/base/conn.py
 @@ -18,6 +18,9 @@ class StateType(str, enum.Enum):
@@ -4740,7 +4998,7 @@ index 1dedb16ebed6fc06e105775e0db83abb6ba2895b..a09daafebc71009ec73b1a22643de0f0
      # DeepSeek-V4 unified_kv SWA ring: addressed per-row by ring slot
      # (req_pool_idx * ring_stride + pos % ring_stride), needs its own component.
 diff --git a/python/sglang/srt/disaggregation/decode.py b/python/sglang/srt/disaggregation/decode.py
-index c03483ec6425cbb631222eeae93e872cf0f33a2f..3495ba94938aeb6bb30fe98ef3e78e084ab3f2cd 100644
+index 9e0ea879c1f6495f777e44fec5187b36fe47c17f..d589e6acf000cec9295e8f3d140e3f06a5f07e63 100644
 --- a/python/sglang/srt/disaggregation/decode.py
 +++ b/python/sglang/srt/disaggregation/decode.py
 @@ -54,6 +54,7 @@ from sglang.srt.disaggregation.utils import (
@@ -5315,7 +5573,7 @@ index 2c03adead16d25165c9b1cbfbc8bcc892c39148d..730efb1ea2763c4daaaf8118b8020028
                              dst_ranks_infos.append(
                                  (req.endpoint, req.dst_port, req.room)
 diff --git a/python/sglang/srt/disaggregation/nixl/conn.py b/python/sglang/srt/disaggregation/nixl/conn.py
-index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769ac91eb1d7 100644
+index 8e1ceb7fd00f6729f93628596137a3c03ed15f39..300c67bd5cd420373dcf1bf64bdc1609d6f26751 100644
 --- a/python/sglang/srt/disaggregation/nixl/conn.py
 +++ b/python/sglang/srt/disaggregation/nixl/conn.py
 @@ -41,9 +41,13 @@ from sglang.srt.disaggregation.common.utils import (
@@ -5332,7 +5590,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
  )
  from sglang.srt.environ import envs
  from sglang.srt.runtime_context import get_parallel, get_schedule
-@@ -1333,14 +1337,27 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -1338,14 +1342,27 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
                              aux_notif += (
                                  f"_nokv_{self.transfer_source_rank}_{kv_chunk.chunk_id}"
                              )
@@ -5368,7 +5626,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
  
                  if staging_deferred:
                      # Chunk has been re-enqueued; do not advance status.
-@@ -2081,6 +2098,60 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2086,6 +2103,60 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
              raise Exception("KVSender failed to post transfer")
          return xfer_handle
  
@@ -5429,7 +5687,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
      def _send_mamba_state(
          self,
          peer_name: str,
-@@ -2150,8 +2221,10 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2155,8 +2226,10 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
          dst_state_dim_per_tensor: list[int],
          dst_gpu_id: int,
          notif: str,
@@ -5442,7 +5700,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
          src_state_conv_shard_groups: list = None,
          src_state_slice_outer_counts: list[int] = None,
          src_layer_ids: list[int] = None,
-@@ -2159,17 +2232,18 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2164,17 +2237,18 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
      ):
          """Transfer Mamba states with TP slice support via RDMA.
  
@@ -5468,7 +5726,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
          )
          assert len(prefill_state_indices) == 1, "Mamba should have single state index"
  
-@@ -2187,9 +2261,6 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2192,9 +2266,6 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
                  dst_layer_ids=dst_layer_ids,
              )
  
@@ -5478,7 +5736,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
          src_addrs = []
          dst_addrs = []
  
-@@ -2230,10 +2301,10 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2235,10 +2306,10 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
                  src_dim=src_dim,
                  dst_dim=dst_dim,
                  outer_count=outer_count,
@@ -5493,7 +5751,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
                  conv_shard_groups=conv_shard_groups,
              ):
                  src_addr = (
-@@ -2299,11 +2370,14 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2304,11 +2375,14 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
          dst_state_layer_ids = dst_state_layer_ids or []
  
          handles = []
@@ -5509,7 +5767,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
                  continue
              src_ptrs = src_state_data_ptrs[i] if i < len(src_state_data_ptrs) else []
              src_lens = src_state_item_lens[i] if i < len(src_state_item_lens) else []
-@@ -2331,7 +2405,23 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2336,7 +2410,23 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
              comp_notif = f"{notif}_{i}"
  
              if st == StateType.MAMBA:
@@ -5534,7 +5792,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
                      h = self._send_mamba_state_slice(
                          peer_name,
                          src_indices,
-@@ -2344,10 +2434,12 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2349,10 +2439,12 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
                          dst_dims,
                          dst_gpu_id,
                          comp_notif,
@@ -5551,7 +5809,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
                          src_layer_ids=src_lids,
                          dst_layer_ids=dst_lids,
                      )
-@@ -2364,12 +2456,41 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2369,12 +2461,41 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
                          src_layer_ids=src_lids,
                          dst_layer_ids=dst_lids,
                      )
@@ -5599,7 +5857,7 @@ index aebc6ad75130570a329598337abac0afc5cc3af7..ccdf089cc757b01fe02b04df4141769a
                  if not self.is_mla_backend and self.attn_tp_size != decode_tp_size:
                      raise RuntimeError(
                          f"PD Disaggregation does NOT support PD different TP sizes for non-MLA {st.upper()} hybrid models yet."
-@@ -2430,6 +2551,10 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
+@@ -2435,6 +2556,10 @@ class NixlKVManager(StagingManagerMixin, CommonKVManager):
                  )
              if h is not None:
                  handles.append(h)
@@ -6969,7 +7227,7 @@ index 2608621f6ab5af5ebb6a019e34db882a4f230f19..a8b41b59ffbd967c511eb5d0cbab27a5
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index a2bb9274fc193bd058c1c5a03f4f72e3dbeb6256..91be48923d53af18abcc7b444c937df7fbe187be 100644
+index fb5b25e8426bb2f2ec1e20edc10fb109e7b365dd..985f13d9eec0ccdab1c6cec4e71fb4e68a757597 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -446,6 +446,21 @@ class Envs:
@@ -7011,7 +7269,7 @@ index a2bb9274fc193bd058c1c5a03f4f72e3dbeb6256..91be48923d53af18abcc7b444c937df7
  
      # ===================================================================
      # Scheduler token budgeting and admission
-@@ -1018,9 +1043,10 @@ class Envs:
+@@ -1020,9 +1045,10 @@ class Envs:
      # (parity with flash-attn's ragged-aware launch). The feature checks _is_hip
      # explicitly in code; this env var allows override (0=force off, 1=force on).
      SGLANG_TRITON_COMPACT_EXTEND_ATTENTION = EnvBool(True)
@@ -7025,7 +7283,7 @@ index a2bb9274fc193bd058c1c5a03f4f72e3dbeb6256..91be48923d53af18abcc7b444c937df7
      SGLANG_CRASH_ON_TRITON_LOAD_AFTER_READY = EnvBool(False)
      SGLANG_TRITON_SLOW_COMPILE_THRESHOLD_SECS = EnvFloat(1.0)
      SGLANG_TRITON_LOAD_WARNING_THRESHOLD_GB = EnvFloat(1.0)
-@@ -1307,6 +1333,14 @@ class Envs:
+@@ -1309,6 +1335,14 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -7040,7 +7298,7 @@ index a2bb9274fc193bd058c1c5a03f4f72e3dbeb6256..91be48923d53af18abcc7b444c937df7
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1476,6 +1510,12 @@ class Envs:
+@@ -1478,6 +1512,12 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -14510,7 +14768,7 @@ index 7df1969e7780a55b7c1e68a7376e40e0c588bc83..df86ad404c1cfa23c69a4a2681c830a5
              return self.runner.run(dispatch_output, quant_info)
  
 diff --git a/python/sglang/srt/layers/quantization/utils.py b/python/sglang/srt/layers/quantization/utils.py
-index 7aa3d018d8ff7dc6f50b92143bfa55e6f6486729..bf9d44dc4aa39779d38af54842728a35bbaebdde 100644
+index 70c6d05a34a6f4054e55f5e82669ae03d41d52a8..4d933ec2be9d04e00910a2fda555aff3aa38a392 100644
 --- a/python/sglang/srt/layers/quantization/utils.py
 +++ b/python/sglang/srt/layers/quantization/utils.py
 @@ -7,7 +7,7 @@ from __future__ import annotations
@@ -14765,10 +15023,10 @@ index 6996b8e77cd3f2531c19190e2d3d8bc7ad763a40..45ef72a2c73e364fa33bd9b3c5d872ff
          if self.need_topk:
              hidden_states_buf = (
 diff --git a/python/sglang/srt/managers/schedule_batch.py b/python/sglang/srt/managers/schedule_batch.py
-index d8263b63b53e900995704889a58683e4cb8cc117..cd1c8502c15cb37b6f548a5e417598e121b4f338 100755
+index 418a01f20adc7c112e340146a7ea1bd519ff0f96..ed4814d7d748af8cd7618885b04d6f0aa8b95648 100755
 --- a/python/sglang/srt/managers/schedule_batch.py
 +++ b/python/sglang/srt/managers/schedule_batch.py
-@@ -1825,7 +1825,9 @@ class Req(ReqDllmMixin):
+@@ -1870,7 +1870,9 @@ class Req(ReqDllmMixin):
          )
          self.kv.retraction_backup = RetractionBackup(
              cpu_tensors=token_to_kv_pool_allocator.get_cpu_copy(
@@ -14779,7 +15037,7 @@ index d8263b63b53e900995704889a58683e4cb8cc117..cd1c8502c15cb37b6f548a5e417598e1
              ),
              mamba_cpu=(
                  mamba_pool.get_cpu_copy(self.kv.mamba_pool_idx.unsqueeze(0))
-@@ -1849,6 +1851,7 @@ class Req(ReqDllmMixin):
+@@ -1894,6 +1896,7 @@ class Req(ReqDllmMixin):
              self.kv.retraction_backup.cpu_tensors,
              token_indices,
              mamba_indices=self.kv.mamba_pool_idx,
@@ -14788,7 +15046,7 @@ index d8263b63b53e900995704889a58683e4cb8cc117..cd1c8502c15cb37b6f548a5e417598e1
          self.kv.retraction_backup = None
  
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a366d1f5297 100644
+index d08e8609386b748ab21ff0adf164473c26a98464..526946d9e5f98480cbee63b478fccd3e8e6f53ca 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
 @@ -575,6 +575,20 @@ class PrefillAdder:
@@ -14843,10 +15101,10 @@ index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a36
          retracted_stain: bool,
          mamba_gap_reserve: int = 0,
 +        needs_mamba_slot: bool = False,
-         host_hit_len: int = 0,
-         storage_hit_len: int = 0,
      ):
-@@ -855,7 +882,7 @@ class PrefillAdder:
+         # TODO(lsyin): check this workaround logic, which only ensures the prefill will not out of memory, and may be too conservative
+         extend_input_len = self.ceil_paged_tokens(extend_input_len)
+@@ -853,7 +880,7 @@ class PrefillAdder:
          )
          # The new mamba slot also consumes one mamba-recoverable slot (gated
          # separately so full_evictable can't cover it — see __init__).
@@ -14855,15 +15113,15 @@ index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a36
              self.rem_mamba_slots -= 1
          self.rem_input_tokens -= extend_input_len
  
-@@ -917,6 +944,7 @@ class PrefillAdder:
+@@ -940,6 +967,7 @@ class PrefillAdder:
              0,
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
 +            needs_mamba_slot=self._mamba_slot_needed(req),
-             host_hit_len=req.host_hit_length,
-             storage_hit_len=req.storage_hit_length,
          )
-@@ -959,6 +987,7 @@ class PrefillAdder:
+         self._account_prefill_cache_admission(req, prefix_len)
+ 
+@@ -981,6 +1009,7 @@ class PrefillAdder:
              max_new_tokens,
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -14871,7 +15129,7 @@ index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a36
          )
  
          # Return based on remaining token availability
-@@ -1014,6 +1043,7 @@ class PrefillAdder:
+@@ -1036,6 +1065,7 @@ class PrefillAdder:
              ),
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -14879,7 +15137,7 @@ index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a36
          )
  
          # Return if chunked prefill not finished
-@@ -1145,6 +1175,7 @@ class PrefillAdder:
+@@ -1167,6 +1197,7 @@ class PrefillAdder:
                  min(req.sampling_params.max_new_tokens, CLIP_MAX_NEW_TOKENS),
                  req.retracted_stain,
                  mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -14887,7 +15145,7 @@ index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a36
              )
          else:
              if self.rem_chunk_tokens <= 0:
-@@ -1168,6 +1199,7 @@ class PrefillAdder:
+@@ -1190,6 +1221,7 @@ class PrefillAdder:
                  0,
                  req.retracted_stain,
                  mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -14895,24 +15153,24 @@ index 5aa27c38e4d50636aaca7c4ae5d3497413a1e239..aae82357f12d9b2da0b1d87997452a36
              )
  
          return self.budget_state()
-@@ -1347,6 +1379,7 @@ class PrefillAdder:
+@@ -1370,6 +1402,7 @@ class PrefillAdder:
                      ),
                      req.retracted_stain,
                      mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
 +                    needs_mamba_slot=self._mamba_slot_needed(req),
-                     host_hit_len=req.host_hit_length,
-                     storage_hit_len=req.storage_hit_length,
                  )
-@@ -1395,6 +1428,7 @@ class PrefillAdder:
+                 self._account_prefill_cache_admission(req, prefix_len)
+             else:
+@@ -1417,6 +1450,7 @@ class PrefillAdder:
                      0,
                      req.retracted_stain,
                      mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
 +                    needs_mamba_slot=self._mamba_slot_needed(req),
-                     host_hit_len=req.host_hit_length,
-                     storage_hit_len=req.storage_hit_length,
                  )
+                 self._account_prefill_cache_admission(req, prefix_len)
+ 
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08a5aa0577 100644
+index e6dfaf99f1802e054d4f4898d28cb5bba31b4866..11ba6e0a0f0211073638cad362d2e9e944721a49 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -16,6 +16,7 @@
@@ -14932,7 +15190,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
      MMInputsProcessError,
      OpenSessionReqInput,
      PauseGenerationReqInput,
-@@ -335,6 +338,7 @@ from sglang.srt.utils.hf_transformers_utils import (
+@@ -337,6 +340,7 @@ from sglang.srt.utils.hf_transformers_utils import (
      get_tokenizer_from_processor,
      resolve_image_processor_backend,
  )
@@ -14940,7 +15198,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
  from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
  from sglang.srt.utils.numa_utils import get_numa_node_if_available, numa_bind_to_node
  from sglang.srt.utils.nvtx_utils import scheduler_nvtx_method
-@@ -670,9 +674,14 @@ class Scheduler(
+@@ -672,9 +676,14 @@ class Scheduler(
  
          # Init prefill kv split size when deterministic inference is enabled with various attention backends
          self.init_deterministic_inference_config()
@@ -14955,7 +15213,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
          # Init request dispatcher
          self.init_request_dispatcher()
  
-@@ -1625,12 +1634,6 @@ class Scheduler(
+@@ -1627,12 +1636,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -14968,7 +15226,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1660,6 +1663,28 @@ class Scheduler(
+@@ -1662,6 +1665,28 @@ class Scheduler(
              get_int_env_var(env_var, default_size) if env_var else None
          )
  
@@ -14997,7 +15255,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
      def init_request_dispatcher(self):
          self._request_dispatcher = TypeBasedDispatcher(
              [
-@@ -1735,6 +1760,7 @@ class Scheduler(
+@@ -1737,6 +1762,7 @@ class Scheduler(
                  (ShutdownReq, self.handle_shutdown),
                  (GetInternalStateReq, self.get_internal_state),
                  (SetInternalStateReq, self.set_internal_state),
@@ -15005,7 +15263,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1807,10 +1833,20 @@ class Scheduler(
+@@ -1811,10 +1837,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -15029,7 +15287,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3344,6 +3380,11 @@ class Scheduler(
+@@ -3348,6 +3384,11 @@ class Scheduler(
              # it. Drop the marker once the request is actually gone.
              if req.finished() or not req.kv.holds_kv:
                  self._pending_chunked_abort_req = None
@@ -15041,7 +15299,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
              return
  
          prepare_abort(req, "Aborted")
-@@ -3496,6 +3537,7 @@ class Scheduler(
+@@ -3500,6 +3541,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -15049,7 +15307,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3624,8 +3666,16 @@ class Scheduler(
+@@ -3628,8 +3670,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -15068,7 +15326,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
              running_batch.batch_is_full = False
  
          if (
-@@ -3726,6 +3776,9 @@ class Scheduler(
+@@ -3730,6 +3780,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -15078,9 +15336,9 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3761,6 +3814,17 @@ class Scheduler(
-                 if loaded_tokens > 0:
-                     req.storage_hit_length = loaded_tokens
+@@ -3772,6 +3825,17 @@ class Scheduler(
+                     # marks the staged span below once it is surfaced.
+                     req.host_hit_is_storage = False
  
 +            if (
 +                adder.rem_mamba_slots is not None
@@ -15096,7 +15354,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4032,20 +4096,27 @@ class Scheduler(
+@@ -4050,20 +4114,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -15138,7 +15396,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4058,12 +4129,11 @@ class Scheduler(
+@@ -4076,12 +4147,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -15156,7 +15414,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4078,12 +4148,11 @@ class Scheduler(
+@@ -4096,12 +4166,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -15172,7 +15430,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4139,7 +4208,7 @@ class Scheduler(
+@@ -4157,7 +4226,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -15181,7 +15439,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4165,13 +4234,12 @@ class Scheduler(
+@@ -4183,13 +4252,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -15201,7 +15459,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4293,7 +4361,11 @@ class Scheduler(
+@@ -4311,7 +4379,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -15214,7 +15472,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4305,7 +4377,11 @@ class Scheduler(
+@@ -4323,7 +4395,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -15226,7 +15484,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4428,9 +4504,11 @@ class Scheduler(
+@@ -4446,9 +4522,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -15241,7 +15499,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4453,31 +4531,42 @@ class Scheduler(
+@@ -4471,31 +4549,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -15305,7 +15563,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4512,7 +4601,7 @@ class Scheduler(
+@@ -4530,7 +4619,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -15314,7 +15572,7 @@ index 128ba41ee45574081ba8a33a50b7a4662892bf5d..780f67cd2f987fc158d8446800a2dc08
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5465,6 +5554,38 @@ class Scheduler(
+@@ -5483,6 +5572,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -17661,10 +17919,10 @@ index f60d9a713c66c2080e12f7c2bc67f6033e0082ef..12174c4e866bdf638d9cfa48f4effc89
                  # virtual->physical (identity for the non-unified memory pool) first.
                  translate = self.cache.req_to_token_pool.translate_mamba_indices
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
-index 7dc939be4982ed430c42c8510e016d1b9e446b79..15f6114d34b563efb03d6470897f7cc4b55e80ee 100644
+index 9ef9bbd33829d86d679237aaf5614556f3b91dac..2fbf21b9ba8b25020cab0f6366b0639d3dada14f 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
-@@ -2642,6 +2642,28 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+@@ -2676,6 +2676,28 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
              return torch.cat(values)
          return torch.tensor([], dtype=torch.int64, device=self.device)
  
@@ -17694,10 +17952,10 @@ index 7dc939be4982ed430c42c8510e016d1b9e446b79..15f6114d34b563efb03d6470897f7cc4
          self, component_type: ComponentType
      ) -> torch.Tensor:
 diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
-index 57bc54b8c302cd3a4875f96624b2db4626a49066..267e69206fe13cdacecc8841ce8e4e3e35c678f1 100644
+index ec91abc9cb691153d7721d0fc044a149fd6256d8..15db57330d8e936967b1c53c93c6dad899e95fa1 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core_interface.py
-@@ -356,6 +356,16 @@ class UnifiedTreeCoreInterface(ABC):
+@@ -358,6 +358,16 @@ class UnifiedTreeCoreInterface(ABC):
      @abstractmethod
      def all_mamba_values_flatten(self) -> torch.Tensor: ...
  
@@ -17753,7 +18011,7 @@ index 5952534c07a326a98676d567cbb931e006f966c3..bd185a75eca953bf2573a8a04d622d0e
              assert self._swa_allocator is not None
              swa_phys = self._virt_tokens_to_phys_tokens(indices, self._swa_allocator)
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e84f953738 100644
+index 9f10f0f3154b43f9fc4571ee223c928f60c5800e..01a1a62b5dbee9ab67d45f98d748090e975f9137 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -92,6 +92,7 @@ from sglang.srt.runtime_context import (
@@ -17764,7 +18022,7 @@ index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e8
  from sglang.srt.utils.common import ceil_align
  
  if TYPE_CHECKING:
-@@ -154,6 +155,19 @@ class _OngoingPrefetch(NamedTuple):
+@@ -145,6 +146,19 @@ class _OngoingPrefetch(NamedTuple):
      comp_xfers: dict[ComponentType, list[PoolTransfer]]
  
  
@@ -17784,7 +18042,7 @@ index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e8
  class UnifiedRadixCache(BasePrefixCache):
      def __init__(
          self,
-@@ -551,9 +565,12 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -547,9 +561,12 @@ class UnifiedRadixCache(BasePrefixCache):
          assert not self.tree_core.has_ongoing_insert(), "re-entrant insert"
          # Pump the resumable insert, applying each step's actions at its barrier.
          try:
@@ -17797,7 +18055,7 @@ index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e8
                  if step.result is not None:
                      # Walk actions flow through the steps; the result is action-free.
                      assert not step.result.cache_actions
-@@ -894,6 +911,26 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -903,6 +920,26 @@ class UnifiedRadixCache(BasePrefixCache):
              page_aligned_len = len(radix_key)
              values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -17824,7 +18082,7 @@ index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e8
              insert_params.key = radix_key
              insert_params.value = values
              result = self.insert(insert_params)
-@@ -991,6 +1028,24 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1000,6 +1037,24 @@ class UnifiedRadixCache(BasePrefixCache):
          page_aligned_len = len(radix_key)
          values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -17849,7 +18107,7 @@ index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e8
          insert_params.key = radix_key
          insert_params.value = values
          result = self.insert(insert_params)
-@@ -1061,10 +1116,155 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1070,10 +1125,155 @@ class UnifiedRadixCache(BasePrefixCache):
          actions.reverse()
          try:
              while actions:
@@ -18006,7 +18264,7 @@ index 1c603cac39388a3cb5365e665c21847ac74f7e89..9b6696e522d51907078e7c48c86f59e8
      def _apply_cache_action(self, action: CacheAction | ComponentAction) -> None:
          # Component actions route to their component class; the rest are
          # cache-owned and handled here by type.
-@@ -1535,6 +1735,24 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1544,6 +1744,24 @@ class UnifiedRadixCache(BasePrefixCache):
              )
          )
  
@@ -21752,7 +22010,7 @@ index 7eecb63413f00973a0ee1ec0b601da1f6d9eb74d..ccf3622aab8d556e64aa604342764cd7
          mm_items, input_ids, ret = await self.process_and_combine_mm_data_async(
              base_output, self.mm_tokens, **combine_kwargs
 diff --git a/python/sglang/srt/observability/metrics_collector.py b/python/sglang/srt/observability/metrics_collector.py
-index 15645433856fbcceb1fa1aec6574c8e6bd31ef5f..902a22ba5e2558237f5c852b82e027185599fc42 100644
+index 0a9a6f08dc2614dda05c6f6718c96e11dce380be..a0492333ffa9002a25f3079018883f00b2fc4b91 100644
 --- a/python/sglang/srt/observability/metrics_collector.py
 +++ b/python/sglang/srt/observability/metrics_collector.py
 @@ -538,6 +538,11 @@ class SchedulerMetricsCollector(_StatLoggerDIMixin):
@@ -21812,10 +22070,10 @@ index dce42ffd8182bb8064f2c740325103aba37f280d..1a2314d191395518ee98f49aab1ec8d3
          if filter_node.name not in attribute_filters:
              continue
 diff --git a/python/sglang/srt/server_args.py b/python/sglang/srt/server_args.py
-index feec0ab2614bfeeb2ac2b794e918914988810324..597297452060d7dacc6b680a8f291cd4e706be8b 100644
+index afb985c557294bb201a010d12dddc4f9363064ed..afdf5cf0c852c64b8a062e92a60329e31447233c 100644
 --- a/python/sglang/srt/server_args.py
 +++ b/python/sglang/srt/server_args.py
-@@ -2938,6 +2938,15 @@ class ServerArgs:
+@@ -2937,6 +2937,15 @@ class ServerArgs:
          "available backend.",
          NS("mm"),
      ] = "auto"
@@ -22752,10 +23010,10 @@ index be514dc4e5fc5309104c1e8e8434da799a4d9130..5c391202a39c358989aa36adbc6f74b8
      indices: Optional[torch.Tensor], page_size: int, msg: str
  ):
 diff --git a/python/sglang/srt/utils/common.py b/python/sglang/srt/utils/common.py
-index 6100f9e0247ce56bd1b3cd557cb52a4d612ebeda..c20f08cd10d1ca74f206010bb2cd2eed378e313c 100644
+index 069efac07eb0a34db3379c4bfd41e5f4305a2c11..616626c381c9704ce94678fe5be6d7ca086ceee8 100644
 --- a/python/sglang/srt/utils/common.py
 +++ b/python/sglang/srt/utils/common.py
-@@ -88,7 +88,7 @@ import torch
+@@ -89,7 +89,7 @@ import torch
  import torch.distributed as dist
  import triton
  from packaging import version as pkg_version
@@ -22764,7 +23022,7 @@ index 6100f9e0247ce56bd1b3cd557cb52a4d612ebeda..c20f08cd10d1ca74f206010bb2cd2eed
  from starlette.routing import Mount
  from torch import nn
  from torch.library import Library
-@@ -1811,6 +1811,7 @@ def smart_to_rgb(
+@@ -1812,6 +1812,7 @@ def smart_to_rgb(
      if not isinstance(image, Image.Image):
          return image
  
@@ -22772,7 +23030,7 @@ index 6100f9e0247ce56bd1b3cd557cb52a4d612ebeda..c20f08cd10d1ca74f206010bb2cd2eed
      if image.mode in ("RGBA", "LA") or "transparency" in image.info:
          image = image.convert("RGBA")
          width, height = image.size
-@@ -1952,6 +1953,8 @@ def load_image(
+@@ -1953,6 +1954,8 @@ def load_image(
          image = _load_image(image_file=image_file, gpu_image_decode=gpu_image_decode)
      else:
          raise ValueError(f"Invalid image: {image_file}")
@@ -24380,7 +24638,7 @@ index 0000000000000000000000000000000000000000..0841b171194c60c2e2fd223d833c564e
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_topk_v2.py b/test/registered/kernels/ops/attention/test_topk_v2.py
-index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..2967928fb789578343bab345204145dd7c22d81a 100644
+index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..b3bcf0d586a95f738564ea572577b570d9553292 100644
 --- a/test/registered/kernels/ops/attention/test_topk_v2.py
 +++ b/test/registered/kernels/ops/attention/test_topk_v2.py
 @@ -2,8 +2,8 @@
@@ -24521,7 +24779,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..2967928fb789578343bab345204145dd
      """
      torch.manual_seed(batch * 100003 + seq * 7 + k + 1)
      device = "cuda"
-@@ -270,6 +284,103 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
+@@ -270,6 +284,114 @@ def test_topk_v2_output_indices(batch: int, seq: int, k: int) -> None:
      _assert_topk_close(scores.cpu(), ref_raw, our_raw, batch, seq_lens.cpu(), k)
  
  
@@ -24541,7 +24799,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..2967928fb789578343bab345204145dd
 +    scores = _oversized_coarse_bin(batch, seq)
 +    if batch == 31:
 +        # Put the strictly-higher values in the final cluster rank. This makes
-+        # non-primary DSMEM emission fill [0, above_count) while rank 0's exact
++        # non-primary cluster emissions fill [0, above_count) while rank 0's exact
 +        # fallback fills the disjoint tail [above_count, topk).
 +        scores[:, -137:] += 1.0
 +    seq_lens = torch.full((batch,), seq, dtype=torch.int32, device="cuda")
@@ -24549,6 +24807,17 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..2967928fb789578343bab345204145dd
 +    our_raw = _run_raw(scores, seq_lens, k)
 +    ref_raw = _reference(scores, seq_lens, k)
 +    _assert_topk_close(scores.cpu(), ref_raw, our_raw, batch, seq_lens.cpu(), k)
++
++    if seq == 131072:
++        # PAGE_TABLE mode stages cluster output through the elected block's
++        # shared memory before applying the transform. Exercise that distinct
++        # path with the oversized-bin fallback active.
++        num_pages = (seq + PAGE_SIZE - 1) // PAGE_SIZE
++        page_table, inv_cpu = _make_page_table(batch, num_pages, "perm", "cuda")
++        our_paged_raw = _run(scores, seq_lens, page_table, inv_cpu, k)
++        _assert_topk_close(
++            scores.cpu(), ref_raw, our_paged_raw, batch, seq_lens.cpu(), k
++        )
 +
 +
 +@torch.inference_mode()
@@ -24625,7 +24894,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..2967928fb789578343bab345204145dd
  # --- ragged entry point ------------------------------------------------------
  # Rows select inside `[row_start, row_start + seq_len)` of their score row and
  # emit `position + offset`. The window start is an arbitrary token offset, so
-@@ -363,6 +474,33 @@ def test_topk_v2_ragged_window(name: str, rows, k: int, offset_shift: int) -> No
+@@ -363,6 +485,33 @@ def test_topk_v2_ragged_window(name: str, rows, k: int, offset_shift: int) -> No
          assert not stray, f"row {i} ({name}) wrote outside its masked head: {stray[:8]}"
  
  
@@ -26518,10 +26787,10 @@ index 0000000000000000000000000000000000000000..a3a68d527ea895321f383620d656bd5a
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/disaggregation/test_decode_queue_cleanup.py b/test/registered/unit/disaggregation/test_decode_queue_cleanup.py
-index 0aabdbeef5fc28d269365c755af6dc1c4789ed15..3a8f6c097c5faea13b077ba43c42a344ddd54312 100644
+index 98115b6b58e70adfc1ee50a17d4beb9c4662de0e..627ffdd2e70b526f7bbb5ed96500f170e705bb88 100644
 --- a/test/registered/unit/disaggregation/test_decode_queue_cleanup.py
 +++ b/test/registered/unit/disaggregation/test_decode_queue_cleanup.py
-@@ -24,6 +24,10 @@ class FakeReceiver:
+@@ -25,6 +25,10 @@ class FakeReceiver:
      def __init__(self):
          self.clear_called = False
          self.conclude_state = None
@@ -26532,7 +26801,7 @@ index 0aabdbeef5fc28d269365c755af6dc1c4789ed15..3a8f6c097c5faea13b077ba43c42a344
  
      def clear(self):
          self.clear_called = True
-@@ -185,6 +189,66 @@ class TestDecodeQueueCleanup(CustomTestCase):
+@@ -186,6 +190,66 @@ class TestDecodeQueueCleanup(CustomTestCase):
          self.assertTrue(all(r is not decode_req for r in queue.pending_reqs))
          self.assertIsNone(decode_req.kv_receiver)
  
@@ -29134,6 +29403,59 @@ index 0000000000000000000000000000000000000000..6ddbbaa0b0db0e27b338d50e9ddbb646
 +    import sys
 +
 +    sys.exit(pytest.main([__file__, "-v"]))
+diff --git a/test/registered/unit/managers/test_prefill_adder.py b/test/registered/unit/managers/test_prefill_adder.py
+index d74db97d6cbb31c331efe3a1f43e60def4cad1b2..e85b8eb0b0f76e2ebd1950266f1bba4284d59a20 100644
+--- a/test/registered/unit/managers/test_prefill_adder.py
++++ b/test/registered/unit/managers/test_prefill_adder.py
+@@ -125,6 +125,48 @@ class TestPrefillAdder(CustomTestCase):
+         defaults.update(kwargs)
+         return PrefillAdder(**defaults)
+ 
++    def test_static_mamba_admission_counts_only_recoverable_slots(self):
++        for checkpoint_pool, expected_slots in ((None, 3), (object(), 1)):
++            with self.subTest(checkpoint_pool=checkpoint_pool is not None):
++                mamba_evictable_size = MagicMock(return_value=2)
++                tree_cache = SimpleNamespace(
++                    supports_mamba=lambda: True,
++                    req_to_token_pool=SimpleNamespace(
++                        mamba_allocator=SimpleNamespace(available_size=lambda: 1),
++                        mamba_ckpt_pool=checkpoint_pool,
++                    ),
++                    mamba_evictable_size=mamba_evictable_size,
++                    full_evictable_size=lambda: 0,
++                )
++                token_allocator = SimpleNamespace(available_size=lambda: 1_000)
++                adder = PrefillAdder(
++                    page_size=1,
++                    tree_cache=tree_cache,
++                    token_to_kv_pool_allocator=token_allocator,
++                    running_batch=None,
++                    new_token_ratio=1.0,
++                    rem_input_tokens=1_000,
++                    rem_chunk_tokens=None,
++                )
++
++                self.assertEqual(adder.rem_mamba_slots, expected_slots)
++                if checkpoint_pool is None:
++                    mamba_evictable_size.assert_called_once_with()
++                else:
++                    mamba_evictable_size.assert_not_called()
++
++                for _ in range(expected_slots):
++                    adder._update_prefill_budget(
++                        prefix_len=0,
++                        extend_input_len=1,
++                        max_new_tokens=0,
++                        retracted_stain=False,
++                        needs_mamba_slot=adder._mamba_slot_needed(SimpleNamespace()),
++                    )
++
++                self.assertEqual(adder.rem_mamba_slots, 0)
++                self.assertIs(adder.budget_state(), AddReqResult.NO_TOKEN)
++
+     def test_storage_prefetch_fulfillment_resolves_at_admission(self):
+         adder = self.create_adder(self.create_running_batch())
+         req = self.create_mock_req("storage-hit", priority=0, max_new_tokens=1)
 diff --git a/test/registered/unit/managers/test_scheduler_chunked_abort_race.py b/test/registered/unit/managers/test_scheduler_chunked_abort_race.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..ff243db63f7677bf690c12e3a4534e82d439ef18
@@ -30878,10 +31200,10 @@ index 7d90e77ef6243318a70f674235c23c4282e4d20b..20829388a2ae4b38386cfcd773dbf143
  
  
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index 0ec3d265c5be8a3f27a45bf60f7a0bf55d15e0ac..c89b1debe84d55b5815f8c4e0c9fe1fdef296572 100644
+index 5c55c768415dd66d668493a91cd0170a9f64e92f..0c85c10ee280e9a3a444a97955c683175e8709d8 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-@@ -7699,6 +7699,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
+@@ -7710,6 +7710,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
              [mock.call(first), mock.call(second)]
          )
  
