@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.3.0-rc.3 (diagnostic assertion correction; not yet built or qualified)
+## v0.3.0-rc.3 (diagnostic assertion correction; built internally, serving qualification in progress)
 
 - Keep the v0.3.0-rc.2 runtime unchanged. Correct the unified-radix
   mutation-probe test to expect the current diagnostic text, including
@@ -8,6 +8,11 @@
   its stale string expectation rejected the preceding exact-image gate.
 - Use fresh cache namespace `v66` and require the full exact-image GPU and
   serving qualification again. No performance or quality claim is made.
+- Built internally at
+  `sha256:5965a1d2beb0ca824a74ce2e95df49088d00e5b409b3a862ee082662f505a4b0`.
+  The isolated GPU gate passed; full serving qualification remains required.
+- Validate internal and public stable-publication docs independently. An
+  internal Forgejo release does not require claiming the image is on ghcr.
 
 ## v0.3.0-rc.2 (current-main refresh and hybrid DSA HiCache repair; rejected by exact-image test gate)
 

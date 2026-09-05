@@ -27,9 +27,11 @@ jobs:
       - name: Validate stable release source
         env:
           EXPECTED_RELEASE_TARGET: ${{ inputs.release_target }}
+          RELEASE_PROVIDER: github
         run: |
           ./scripts/validate-release.sh
           ./scripts/validate-docs.sh
+          python3 scripts/test_validate_publish_release.py
           ./scripts/validate-publish-release.sh
           ./scripts/verify-patches.sh
           [[ "$GITHUB_REF" == refs/heads/main ]]

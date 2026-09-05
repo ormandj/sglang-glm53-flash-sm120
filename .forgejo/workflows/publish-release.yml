@@ -28,16 +28,18 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            skopeo nodejs git jq curl ca-certificates
+            skopeo nodejs git jq curl ca-certificates python3
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Validate stable release source
         env:
           EXPECTED_RELEASE_TARGET: ${{ inputs.release_target }}
+          RELEASE_PROVIDER: forgejo
         run: |
           ./scripts/validate-release.sh
           ./scripts/validate-docs.sh
+          python3 scripts/test_validate_publish_release.py
           ./scripts/validate-publish-release.sh
           ./scripts/verify-patches.sh
           [[ "$FORGEJO_REF" == refs/heads/main ]]

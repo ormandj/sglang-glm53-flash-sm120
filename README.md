@@ -12,7 +12,7 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.3` (not yet built or qualified) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.3` (built internally; serving qualification in progress) |
 
 `v0.3.0-rc.3` refreshes SGLang and FlashInfer to the pinned 2026-09-05
 upstream-main revisions and integrates the current carried PR heads. It adds
@@ -70,10 +70,11 @@ the open pull requests listed under [Carried upstream changes](#carried-upstream
    cd sglang-glm53-flash-sm120
    export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1
    export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v63
-   ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
+   ./examples/serve-glm53-flash.sh
    ```
 
-   Drop `ENABLE_HICACHE=1` if the host does not have 32 GB of RAM to spare.
+   Keep HiCache disabled on the published `v0.2.1` image because of the
+   reproduced host-restore defect described above.
    The first boot compiles kernels into `CACHE_DIR` and takes about 10 to 20
    minutes; later boots take about 8. Use a fresh `CACHE_DIR` for every
    image version. The server is ready when the log prints
@@ -258,8 +259,10 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.3.0-rc.3` (2026-09-05) is the current source candidate, not yet built or
-qualified. It uses a new compiled-cache namespace, `v66`. The preceding
+`v0.3.0-rc.3` (2026-09-05) is built internally at
+`sha256:5965a1d2beb0ca824a74ce2e95df49088d00e5b409b3a862ee082662f505a4b0`.
+Its isolated GPU gate passed; serving qualification is in progress. It uses
+a new compiled-cache namespace, `v66`. The preceding
 `v0.3.0-rc.1` metadata identifies the old-base HiCache diagnostic, published
 only under its immutable test-commit image tag, not as a SemVer release.
 

@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 stable_tag=$(jq -er '.stable_tag' "$repo/release.json")
-public_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
+provider=${RELEASE_PROVIDER:-github}
 
 require_text() {
   local file=$1 expected=$2
@@ -13,8 +13,19 @@ require_text() {
   }
 }
 
-require_text "$repo/README.md" "| Image | \`${public_image}\` |"
-require_text "$repo/README.md" "The current published stable image is \`${stable_tag}\`"
+case "$provider" in
+  forgejo)
+    internal_image="git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:${stable_tag}"
+    require_text "$repo/README.md" "| Internal image | \`${internal_image}\` |"
+    require_text "$repo/README.md" "The current internal stable image is \`${stable_tag}\`"
+    ;;
+  github)
+    public_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
+    require_text "$repo/README.md" "| Image | \`${public_image}\` |"
+    require_text "$repo/README.md" "The current published stable image is \`${stable_tag}\`"
+    ;;
+  *) echo "unsupported release provider: $provider" >&2; exit 2 ;;
+esac
 require_text "$repo/CHANGELOG.md" "## ${stable_tag} (stable;"
 
-echo "stable publication docs valid: ${stable_tag}"
+echo "stable publication docs valid: ${provider} ${stable_tag}"

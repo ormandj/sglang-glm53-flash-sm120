@@ -63,6 +63,13 @@ at the exact stable-doc commit. Pass the same full commit SHA as the required
 unless its checked-out `main` is that commit. Do not push stable source tags
 manually.
 
+Internal and public publication are independent. Forgejo validates the
+README's `Internal image` row and `current internal stable image` sentence;
+GitHub validates the public `Image` row and `current published stable image`
+sentence. Keep the public version unchanged until its own registry promotion
+is verified. Never claim a ghcr image exists to satisfy an internal release
+check. `RELEASE_PROVIDER` selects the publication-doc contract.
+
 ## External contributions (the GitHub mirror)
 
 Issues and PRs arrive on `github.com/ormandj/sglang-glm53-flash-sm120`.
