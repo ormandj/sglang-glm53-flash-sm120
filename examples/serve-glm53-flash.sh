@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # The TP=2 serving profile for the W4A16 NVFP4 K32 checkpoint, identical to
-# the configuration the README and BENCHMARKS numbers were measured with
+# the configuration used for exact-image qualification
 # (HiCache is the one opt-in, see ENABLE_HICACHE below).
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a candidate-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.2.1-rc.8}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.3.0-rc.2}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -24,7 +24,7 @@ MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}
 # tok/s cold at chunk 4096). To enable it:
 #   ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
 # Size the pinned host tier in GB with HICACHE_SIZE_GB (default 32, about
-# 2.65M cached KV tokens plus the recurrent-state tier; the machine needs
+# the combined KV, index and recurrent-state tiers; the machine needs
 # that much free host RAM). The measured configuration runs with it on.
 ENABLE_HICACHE=${ENABLE_HICACHE:-0}
 HICACHE_SIZE_GB=${HICACHE_SIZE_GB:-32}
@@ -45,7 +45,7 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.2.1-rc.8 is scoped to TP_SIZE=2" >&2
+  echo "v0.3.0-rc.2 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do

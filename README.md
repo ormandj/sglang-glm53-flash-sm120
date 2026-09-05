@@ -12,7 +12,17 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Quality | GSM8K 96.9% (1,278 of 1,319, zero-shot, greedy) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.2` (not yet built or qualified) |
+
+`v0.3.0-rc.2` refreshes SGLang and FlashInfer to the pinned 2026-09-05
+upstream-main revisions and integrates the current carried PR heads. It adds
+the missing hybrid DSA HiCache index tier and aligns radix ownership with
+compressed index groups. Candidate validation and all measured results belong
+in the primary qualification repository. No previous release's results qualify
+this candidate.
+
+The published `v0.2.1` image has a reproduced long-prefix HiCache corruption
+defect. Keep HiCache disabled on that image while the replacement is qualified.
 
 The current published stable image is `v0.2.1`, promoted without a rebuild from
 `v0.2.1-rc.8`. The internal candidate and stable tag resolve to
@@ -192,11 +202,12 @@ from `main`. General follow-up work that is not yet filed upstream is identified
 explicitly as downstream pending upstream rather than presented as upstream
 provenance.
 
-SGLang (base `main` `c1b4d535d7`, 2026-09-03):
+SGLang (base `main` `77aee20259`, 2026-09-05):
 
 | PR | State and head | What it carries |
 |---|---|---|
-| [sgl-project/sglang#36507](https://github.com/sgl-project/sglang/pull/36507) | Open, `4761b54153` | GLM-5.3-Flash series; its 26 substantive commits are unchanged from the prior head and include issue #37548's first-request multimodal NextN embedding fix |
+| [sgl-project/sglang#36507](https://github.com/sgl-project/sglang/pull/36507) | Open, `2f97769375` | Current GLM model, ReqKvInfo, KPool and test updates; unused optional CP/backend additions removed |
+| [sgl-project/sglang#37980](https://github.com/sgl-project/sglang/pull/37980) | Open, `a340acbe5b` | Split plan-stream handoff and Mamba topk1 fastpaths, with existing lifetime fixes retained |
 | [sgl-project/sglang#36904](https://github.com/sgl-project/sglang/pull/36904) | Open, `436a89b06f` | TileLang fp8_e4m3 KV cache on CUDA (raw layout) |
 | [sgl-project/sglang#36661](https://github.com/sgl-project/sglang/pull/36661) | Open, `cc78c41a14` | overlap batch snapshot lifetime tied to result completion |
 | [sgl-project/sglang#36696](https://github.com/sgl-project/sglang/pull/36696) | Open, `1ff8934369` | mamba radix cache split-node key fix |
@@ -209,14 +220,14 @@ SGLang (base `main` `c1b4d535d7`, 2026-09-03):
 | [sgl-project/sglang#37537](https://github.com/sgl-project/sglang/pull/37537) | Open, `7e27c6123e` | `--mm-preprocessing-device` for the base visual preprocessing path |
 | [sgl-project/sglang#37538](https://github.com/sgl-project/sglang/pull/37538) | Open, `bcff46c9a8` | env-gated extend memory profiler |
 | [sgl-project/sglang#37539](https://github.com/sgl-project/sglang/pull/37539) | Open, `00cc3e8dc9` | GLM-5-Next vision-tower attention and compiled-activation precompile at startup |
-| [sgl-project/sglang#37625](https://github.com/sgl-project/sglang/pull/37625) | Open, `7ad39a0665` | oversized DSA radix-bin recovery across legacy and DeepSeek-V4 AOT/JIT variants, co-authored by @bold84; this candidate adds a downstream cutoff-discovery follow-up |
+| [sgl-project/sglang#37625](https://github.com/sgl-project/sglang/pull/37625) | Open, `4302a2b719` | oversized DSA radix-bin recovery and cutoff discovery across legacy and DeepSeek-V4 AOT/JIT variants, co-authored by @bold84; includes the exact-tail physical-stride regression correction |
 | [sgl-project/sglang#37541](https://github.com/sgl-project/sglang/pull/37541) | Open, `ade49acbb3` | opt-in `serving_coverage` request warmup |
 | [sgl-project/sglang#37612](https://github.com/sgl-project/sglang/pull/37612) | Open, `595d6b45b7` | prefill admission re-evaluated every round on hybrid SSM radix caches (the v0.1.2 C4 fix) |
 | [sgl-project/sglang#37619](https://github.com/sgl-project/sglang/pull/37619) | Open, `ed46bc9c3c` | unfinished-request mamba checkpoint skipped when the pool is exhausted (the v0.1.3 crash fix) |
 | [sgl-project/sglang#37744](https://github.com/sgl-project/sglang/pull/37744) | Open, `ebe935c116` | qkvbfg fusion gated by each source layer's resolved quantization method |
 | [sgl-project/sglang#37375](https://github.com/sgl-project/sglang/pull/37375) | Open, `b6478a7400` | mHC pipeline stages hand off the flattened hidden state without a separate residual |
 
-FlashInfer (base `main` `9f5051736e`, 2026-09-03):
+FlashInfer (base `main` `6c14bbd5ff`, 2026-09-05):
 
 | PR | State and head | What it carries |
 |---|---|---|
@@ -227,10 +238,17 @@ FlashInfer (base `main` `9f5051736e`, 2026-09-03):
 Downstream-only in the patches (no upstream PR): the SM120 W4A16 MoE and
 NoPE-row integration, the ModelOpt E4M3-K32 W4A16 weight preparation, the
 adaptive-MTP chain-buffer pinning, and the Triton late-load diagnostic
-armed after the serving warmup. Pending-upstream follow-ups cover the oversized
-DSA cutoff-discovery path, GLM video CPU placement and EPD decoder lifecycle,
+armed after the serving warmup. Pending-upstream follow-ups cover
+GLM video CPU placement and EPD decoder lifecycle,
 DP video sampling parity, collision-safe media ordering, and stricter NextN
 multimodal failure handling.
+The hybrid DSA HiCache index/ownership fix is staged locally for upstream
+submission and is not yet an upstream PR. The active KPool metadata fusion
+removed from the GLM branch by #38071 remains a downstream carry pending
+cleanup. Lifecycle fixes from closed-unmerged #37316 are retained for
+resubmission; the unused CP and optional backend code was removed using
+#38060 and #38058. These are explicit integration choices, not claims that
+the candidate is an unmodified PR head.
 Already merged upstream and in the base:
 [sgl-project/sglang#37317](https://github.com/sgl-project/sglang/pull/37317),
 [#36958](https://github.com/sgl-project/sglang/pull/36958),
@@ -239,6 +257,11 @@ Already merged upstream and in the base:
 GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
+
+`v0.3.0-rc.2` (2026-09-05) is the current source candidate, not yet built or
+qualified. It uses a new compiled-cache namespace, `v65`. The preceding
+`v0.3.0-rc.1` metadata identifies the old-base HiCache diagnostic, published
+only under its immutable test-commit image tag, not as a SemVer release.
 
 `v0.2.1` (2026-09-04) is the current published release, promoted without a
 rebuild from `v0.2.1-rc.8` in both registries. The internal candidate and
@@ -355,7 +378,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.2.1-rc.8 .
+  -t sglang-glm53-flash-sm120:v0.3.0-rc.2 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

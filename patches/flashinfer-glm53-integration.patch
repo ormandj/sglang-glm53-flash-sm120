@@ -1,5 +1,5 @@
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index 7b368af7ff083598a38a31b9d561761fe71ed969..2c85b66da7658a76d78107df74ce7e4c48539ff7 100644
+index 7b368af7..2c85b66d 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -1417,6 +1417,9 @@ class B12xW4A16Config:
@@ -13,7 +13,7 @@ index 7b368af7ff083598a38a31b9d561761fe71ed969..2c85b66da7658a76d78107df74ce7e4c
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
          """
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
-index fe7b4c47f0ba833fde985f02f54a87c7edacc4a1..b6a9e219cad0ec47e0efcb3fdca9dfec8c9cd77b 100644
+index fe7b4c47..b6a9e219 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 @@ -11,6 +11,7 @@ from .moe_dispatch import (
@@ -33,7 +33,7 @@ index fe7b4c47f0ba833fde985f02f54a87c7edacc4a1..b6a9e219cad0ec47e0efcb3fdca9dfec
      "launch_sm120_dynamic_moe",
      "launch_sm120_moe",
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-index fbefa788b2637d6130440a50558929baae08ed78..f8fd988561a3e6a5b8862db8ad13c23424906501 100644
+index fbefa788..f8fd9885 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 @@ -9,6 +9,7 @@ from __future__ import annotations
@@ -194,7 +194,7 @@ index fbefa788b2637d6130440a50558929baae08ed78..f8fd988561a3e6a5b8862db8ad13c234
  
  # ==========================================================================
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
-index 021bd5af61858af8f51ff5083c36a73bd50c65e1..613eecded2f3ace8ce4d79550de9e9f82506d850 100644
+index 021bd5af..613eecde 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 @@ -117,6 +117,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -510,7 +510,7 @@ index 021bd5af61858af8f51ff5083c36a73bd50c65e1..613eecded2f3ace8ce4d79550de9e9f8
          activated,
          fc2_out,
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
-index ce043109ab9b6f1c666c7da782a6f2b2266481f0..205f064f8e5e6b7041b71299cbc5692e7a01a0cb 100644
+index ce043109..205f064f 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 @@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -722,7 +722,7 @@ index ce043109ab9b6f1c666c7da782a6f2b2266481f0..205f064f8e5e6b7041b71299cbc5692e
          return prepare_w4a16_compressed_tensors_weights(
              *args, w13_layout=w13_layout, **kwargs
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e4382dd0ccbe 100644
+index 603807d4..f340eab1 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
 @@ -2471,8 +2471,8 @@ def prepare_b12x_w4a16_weights(
@@ -759,7 +759,7 @@ index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e438
      return {
          "w1_weight": w1_fp4,
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
-index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cff8c7ebd4 100644
+index 7d822ce3..0808b9ab 100644
 --- a/tests/moe/test_b12x_fused_moe.py
 +++ b/tests/moe/test_b12x_fused_moe.py
 @@ -220,6 +220,29 @@ def test_w4a16_static_tiler_uses_64_when_intermediate_not_128_aligned():
@@ -859,7 +859,7 @@ index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cf
      methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..ccc8836c306ad4674dcc9c0ef6bd95ce65b8b41a
+index 00000000..ccc8836c
 --- /dev/null
 +++ b/tests/moe/test_b12x_workspace_graph_pinning.py
 @@ -0,0 +1,206 @@

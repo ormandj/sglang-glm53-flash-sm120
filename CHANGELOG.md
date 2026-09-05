@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.3.0-rc.2 (current-main refresh and hybrid DSA HiCache repair; not yet built or qualified)
+
+- Rebase onto SGLang main `77aee20259` and FlashInfer main `6c14bbd5ff`.
+  Refresh GLM #36507 to `2f97769375`, track its split #37980 fastpaths,
+  and record the current #37625 optimized top-k/test head `4302a2b719`.
+- Preserve compressed DSA index buffers in the hybrid HiCache host tier,
+  including draft layers. Keep the configured total host-memory budget and
+  align radix ownership to full compressed index groups while preserving
+  physical KV transfer pages. Reject unsupported storage/linker combinations.
+- Incorporate upstream ReqKvInfo/KPool refactors and remove unused CP and
+  optional backend additions. Retain active metadata fusion and lifecycle
+  fixes explicitly as downstream work pending upstream submission.
+- Retain current-main graph cleanup and GDN accounting alongside the GLM
+  graph-width and KDA lifetime contracts. Remove inert request-field COW
+  staging; MambaComponent owns request/node state transfers.
+- Install curl in the immutable test-image workflow's source-verification
+  environment. Advance the compiled-cache namespace to `v65`.
+- Upstream submissions are staged, not posted. Qualification is pending in
+  the primary project repository; previous measurements do not qualify this
+  candidate. The `v0.3.0-rc.1` diagnostic used an immutable test-commit tag only.
+
 ## v0.2.1 (stable; digest-identical promotion of v0.2.1-rc.8)
 
 - Promoted on 2026-09-04 without a rebuild. The internal candidate and stable
