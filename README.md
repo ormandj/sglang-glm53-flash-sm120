@@ -12,9 +12,9 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.2` (not yet built or qualified) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.3` (not yet built or qualified) |
 
-`v0.3.0-rc.2` refreshes SGLang and FlashInfer to the pinned 2026-09-05
+`v0.3.0-rc.3` refreshes SGLang and FlashInfer to the pinned 2026-09-05
 upstream-main revisions and integrates the current carried PR heads. It adds
 the missing hybrid DSA HiCache index tier and aligns radix ownership with
 compressed index groups. Candidate validation and all measured results belong
@@ -258,10 +258,18 @@ GLM-5.3-Flash kernels, ported from #36507).
 
 ## Releases
 
-`v0.3.0-rc.2` (2026-09-05) is the current source candidate, not yet built or
-qualified. It uses a new compiled-cache namespace, `v65`. The preceding
+`v0.3.0-rc.3` (2026-09-05) is the current source candidate, not yet built or
+qualified. It uses a new compiled-cache namespace, `v66`. The preceding
 `v0.3.0-rc.1` metadata identifies the old-base HiCache diagnostic, published
 only under its immutable test-commit image tag, not as a SemVer release.
+
+`v0.3.0-rc.2` built internally at
+`sha256:f66f49b75cc960559ec5eaa5c80d7f9743498e03743d47f5d0683417991d2124`
+but was rejected by its exact-image test gate: the reachable-value mutation
+probe correctly detected the injected mutation, while its assertion expected
+an older diagnostic string. `v0.3.0-rc.3` corrects only that test expectation;
+the runtime is unchanged. The previous candidate was never activated for
+serving or promoted.
 
 `v0.2.1` (2026-09-04) is the current published release, promoted without a
 rebuild from `v0.2.1-rc.8` in both registries. The internal candidate and
@@ -378,7 +386,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.3.0-rc.2 .
+  -t sglang-glm53-flash-sm120:v0.3.0-rc.3 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

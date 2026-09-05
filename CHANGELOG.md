@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.3.0-rc.2 (current-main refresh and hybrid DSA HiCache repair; not yet built or qualified)
+## v0.3.0-rc.3 (diagnostic assertion correction; not yet built or qualified)
+
+- Keep the v0.3.0-rc.2 runtime unchanged. Correct the unified-radix
+  mutation-probe test to expect the current diagnostic text, including
+  `at after action FreeDeviceKV`. The probe detected the injected mutation;
+  its stale string expectation rejected the preceding exact-image gate.
+- Use fresh cache namespace `v66` and require the full exact-image GPU and
+  serving qualification again. No performance or quality claim is made.
+
+## v0.3.0-rc.2 (current-main refresh and hybrid DSA HiCache repair; rejected by exact-image test gate)
 
 - Rebase onto SGLang main `77aee20259` and FlashInfer main `6c14bbd5ff`.
   Refresh GLM #36507 to `2f97769375`, track its split #37980 fastpaths,

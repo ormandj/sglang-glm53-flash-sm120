@@ -30358,7 +30358,7 @@ index 7d90e77ef6..20829388a2 100644
  
  
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index 645019745e..aedbde8a35 100644
+index 645019745e..0438e12237 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 @@ -8007,6 +8007,45 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
@@ -30400,7 +30400,7 @@ index 645019745e..aedbde8a35 100644
 +
 +        with envs.SGLANG_ENABLE_ASYNC_ASSERT.override(True):
 +            with self.assertRaisesRegex(
-+                AssertionError, "reachable Full value changed after action FreeDeviceKV"
++                AssertionError, "reachable Full value changed at after action FreeDeviceKV"
 +            ):
 +                cache._apply_cache_actions([action])
 +

@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.3.0",
-    "candidate": 2,
-    "candidate_tag": "v0.3.0-rc.2",
+    "candidate": 3,
+    "candidate_tag": "v0.3.0-rc.3",
     "stable_tag": "v0.3.0",
-    "cache_schema": "v65"
+    "cache_schema": "v66"
   },
   "image": {
-    "tag": "v0.3.0-rc.2",
+    "tag": "v0.3.0-rc.3",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,11 +49,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 2
+      "value": 3
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v65"
+      "value": "v66"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -85,11 +85,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "fd040fa948e0b0d784b81315432c21ca1bd6a202"
+      "value": "adceb53b6d4ec3fb9f2d2734b5af13955f8335af"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "3cf4bbf19c9ffa916fef300c3e079c4ab12a364ee928aa34cb34decc2182fd29"
+      "value": "d90635e645391bfc04b00eb35225e450ea6470afaacf86fd4e665d42bbfa9d64"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -149,12 +149,12 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8",
       "upstream_tree": "0b8a9bb931d7febc30e7b835c65918eba96fab71",
-      "tree": "fd040fa948e0b0d784b81315432c21ca1bd6a202",
+      "tree": "adceb53b6d4ec3fb9f2d2734b5af13955f8335af",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "3cf4bbf19c9ffa916fef300c3e079c4ab12a364ee928aa34cb34decc2182fd29",
+      "patch_sha256": "d90635e645391bfc04b00eb35225e450ea6470afaacf86fd4e665d42bbfa9d64",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260905-r1",
-      "working_head": "c392d0be585bb1768fbb3035831486db65a317b9",
+      "working_head": "a91ce174daa09a04cd6140411f19db6b7291a595",
       "upstream_main_base": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8",
       "included_upstream_work": [
         "sglang#36507 (open head 2f97769375, integrated with main 77aee20259; includes current model/ReqKvInfo/KPool updates and removes the unused optional CP/backend additions)",
@@ -262,10 +262,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "3cf4bbf19c9ffa916fef300c3e079c4ab12a364ee928aa34cb34decc2182fd29",
+      "sha256": "d90635e645391bfc04b00eb35225e450ea6470afaacf86fd4e665d42bbfa9d64",
       "base_head": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8",
       "base_tree": "0b8a9bb931d7febc30e7b835c65918eba96fab71",
-      "result_tree": "fd040fa948e0b0d784b81315432c21ca1bd6a202"
+      "result_tree": "adceb53b6d4ec3fb9f2d2734b5af13955f8335af"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -290,7 +290,7 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.3.0-rc.2: current-main/carry refresh with hybrid DSA HiCache index preservation; not yet built or qualified",
+    "status": "v0.3.0-rc.3: same runtime as v0.3.0-rc.2; correct the stale mutation-diagnostic assertion; not yet built or qualified",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
@@ -304,6 +304,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.3.0-rc.2 is not built or qualified"
+    "claims": "v0.3.0-rc.3 is not built or qualified"
   }
 }
