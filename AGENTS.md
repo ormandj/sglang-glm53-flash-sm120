@@ -97,3 +97,7 @@ Issues and PRs arrive on `github.com/ormandj/sglang-glm53-flash-sm120`.
   repository or any published image.
 - Write issue comments and reviews in the maintainer's own voice, technically
   substantive, with no assistance attributions.
+- Only PR bodies include the closing line `Developed with AI assistance.`
+  Issue bodies, issue comments, PR comments, review comments, and reviews must
+  never include assistance attribution. Remove only the attribution when
+  correcting an existing comment. Do not hard-wrap public prose at 80 columns.
