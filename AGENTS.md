@@ -9,6 +9,13 @@ Every reference to the image — README, RUN.md, CHANGELOG, launcher default,
 workflows — always uses the complete release name, never an abbreviation and
 never a floating tag. `scripts/validate-docs.sh` enforces this.
 
+Stable promotion includes the operational identity: the GitOps Deployment,
+filename, instance/profile labels, selectors, and cache subPath must all use
+the stable version. An immutable candidate tag may remain in provenance, not
+in the stable serving name. Quasar serves one canonical Deployment using the
+qualified internal Forgejo image. Public-image publication does not require a
+duplicate local Deployment unless the owner explicitly requests that test.
+
 Bump `release.json` `candidate` for any change to `Containerfile`,
 `release.json`, `stack.lock.json`, or `patches/**`. Those paths are exactly what
 the build workflow triggers on; anything else cannot replace a published tag.
