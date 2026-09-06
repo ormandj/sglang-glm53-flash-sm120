@@ -1,0 +1,246 @@
+{
+  "resolved_workloads_match": 24,
+  "method": "Compare all exported input_config fields exactly, excluding only artifacts.dir, and compare run_info.random_seed. Saved benchmark-config.yaml templates were separately checked byte-identical.",
+  "cells": [
+    {
+      "cell": "decode/c1/r01",
+      "workload_sha256": "3de39ac8e8daf71259b8fe433062a998dea4973d7ac60c2fcd10e1d2c0f51fc0",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c1/r01",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c1/r01"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c1/r02",
+      "workload_sha256": "13c5909926aeefe8f3270f8a2b80fc126e6130aa28c44df5a75c5d6f32216939",
+      "random_seed": 2026081202,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c1/r02",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c1/r02"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c1/r03",
+      "workload_sha256": "0e2194d6beb20eed73c27f1fb12d4ad01bccd68c59d4b6e7728e1c7cb8b309e0",
+      "random_seed": 2026081203,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c1/r03",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c1/r03"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c1/r04",
+      "workload_sha256": "1449ed6cfc323aaa3aead867b576833de81d6c16655e8220e72d6426489534bd",
+      "random_seed": 2026081204,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c1/r04",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c1/r04"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c1/r05",
+      "workload_sha256": "ca2611d0229fd51a8ebfed00f67e16e00e510f721692d603a1b1852461ac4f9d",
+      "random_seed": 2026081205,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c1/r05",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c1/r05"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c2/r01",
+      "workload_sha256": "3a1a3fd8d6d876e9d0d2331fa7299d4be0904d8aa46486b01ab7f965809d8bca",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c2/r01",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c2/r01"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c2/r02",
+      "workload_sha256": "ed117f36c9132fa06752953cb88bcff54f101386c6fb4ee0e9c293f893890efe",
+      "random_seed": 2026081202,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c2/r02",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c2/r02"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c2/r03",
+      "workload_sha256": "0e56223d317f345aff4ca857ba26b23546208d3a2a7cfaaa517aa3f9eac0ef01",
+      "random_seed": 2026081203,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c2/r03",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c2/r03"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c2/r04",
+      "workload_sha256": "880eb8eab1b3936d79e561da3979f984960c8ebd0433c14c14963075471eef97",
+      "random_seed": 2026081204,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c2/r04",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c2/r04"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c2/r05",
+      "workload_sha256": "7ef3b3d8ceb8f971cf3b67401fd8258497dfa7620eb0d7f99c790f91f31e71b4",
+      "random_seed": 2026081205,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c2/r05",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c2/r05"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c3/r01",
+      "workload_sha256": "f0b850ca47bb30f878c25ae3e18d5ebc17e500c5aff332a1636b9acc64464125",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c3/r01",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r01"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c3/r02",
+      "workload_sha256": "152c2894205bb3ac4b16404e4a2bd6953a63fb0408cc85b94eb6c037949dc005",
+      "random_seed": 2026081202,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c3/r02",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r02"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c3/r03",
+      "workload_sha256": "43e0cc277c7f816f81be785e744b1266a5d135f07daa720610a741df2348664f",
+      "random_seed": 2026081203,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c3/r03",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r03"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c3/r04",
+      "workload_sha256": "8f166044c7ddca1f87f3a833f4679a102d9789a9866d35a622d1c5948829a23a",
+      "random_seed": 2026081204,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c3/r04",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r04"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c3/r05",
+      "workload_sha256": "4053860de41bcf4117cc9fadde6f251bcc97aec0a5baca3d00050ca556e23053",
+      "random_seed": 2026081205,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c3/r05",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r05"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c4/r01",
+      "workload_sha256": "b712440bd1f36e25f03d079315c58d55d12c6f1e63792889e18d2ecb4e9f0b10",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c4/r01",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c4/r01"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c4/r02",
+      "workload_sha256": "f6beaf4a177dda59cd6cf899d7caf0fab48014aa187a9ea0f1c57b69b370b841",
+      "random_seed": 2026081202,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c4/r02",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c4/r02"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c4/r03",
+      "workload_sha256": "e5a573beaf854685c53cd11c77efc8e508a55f4f52c1aa9268590ab2c4983753",
+      "random_seed": 2026081203,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c4/r03",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c4/r03"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c4/r04",
+      "workload_sha256": "37afa550ceedb1d4f3108430b9b64c4cc9e96bb743f45c588982063efb38365b",
+      "random_seed": 2026081204,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c4/r04",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c4/r04"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "decode/c4/r05",
+      "workload_sha256": "6c0e29a06524e8c14c9222d9c2f67382bac5d19d50768df22d8446570f8510ac",
+      "random_seed": 2026081205,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/decode/c4/r05",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c4/r05"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "prefill/128k-c1",
+      "workload_sha256": "edf08a98a7f9baf236bba63ef338c57dca7e4399b19a04a434eb5670835df249",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/128k-c1",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/prefill/128k-c1"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "prefill/32k-c1",
+      "workload_sha256": "debd1bbd2f5999b40f1676a1bb04df2f6600ddc9d56093e1e24520ea9f8f4eed",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/32k-c1",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/prefill/32k-c1"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "prefill/64k-c1",
+      "workload_sha256": "40538ff2d295c58376e279222b3a9d35614e4fafa466930771cdd6531eea035c",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/64k-c1",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/prefill/64k-c1"
+      ],
+      "settings_match": true
+    },
+    {
+      "cell": "prefill/8k-c1",
+      "workload_sha256": "94f13598b7b653c089bef961789ad3cd7a91110f9fe25cba5880512603e2b0cc",
+      "random_seed": 2026081201,
+      "excluded_artifact_dirs": [
+        "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/8k-c1",
+        "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/prefill/8k-c1"
+      ],
+      "settings_match": true
+    }
+  ]
+}

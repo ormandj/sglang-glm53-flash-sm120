@@ -1,5 +1,66 @@
 # Measured results
 
+## v0.3.2 qualification, 2026-09-06
+
+The internal candidate `v0.3.2-rc.1` was qualified and promoted without rebuilding to `v0.3.2` at `sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5`. Hardware: two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, TP2/EP1 over PCIe. The profile retains W4A16 experts, FP8 KV, a 450,560-token pool, four running requests, 4,096-token prefill chunks and 32 GB of HiCache per rank. These measurements apply to that exact internal digest; the independently built public image has separate provenance.
+
+SGLang is based on official main `28457f0dcab4ccf748d60f2387a1a4a7fdb5a110`, after GLM support merged as `97c6978369ac1e04c91fcc01c98acc25129a6000`. FlashInfer is based on main `6c14bbd5ff34210404d5d4b5f6ff3b4b2527f59f`. Both were freshly checked for this rebuild. The combined carried integration was reconciled with main, superseded metadata experiments were removed, and active #38213 fusion and the reviewed route-prefix implementation were retained. Exact source trees and patch hashes are in `stack.lock.json`.
+
+| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
+|---|---|---:|---:|---:|---:|---:|
+| Decode C1, 5 repetitions | Aggregate output after MTP | 215.5 | 202.6 | 60.77 | 61.38 | 3.60 / 3.42 |
+| Decode C2, 5 repetitions | Aggregate output after MTP | 290.2 | 293.8 | 49.11 | 49.16 | 3.02 / 3.08 |
+| Decode C3, 5 repetitions | Aggregate output after MTP | 360.3 | 356.6 | 39.20 | 38.98 | 3.11 / 3.12 |
+| Decode C4, 5 repetitions | Aggregate output after MTP | 406.9 | 410.2 | 33.31 | 33.62 | 3.06 / 3.03 |
+| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,193.5 | 5,211.0 | n/a | n/a | n/a |
+| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 5,877.4 | 5,860.4 | n/a | n/a | n/a |
+| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 5,921.4 | 5,907.2 | n/a | n/a | n/a |
+| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 5,923.1 | 5,903.7 | n/a | n/a | n/a |
+
+Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 10.7-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+
+Decode rows report aggregate output after MTP across the active C1-C4 cohort, including reasoning and content. Forward passes/s counts target-model iterations. Each cell has five repetitions of a 4,096-token `ignore_eos` response after approximately 16k prompt tokens; rates cover the analyzer-selected steady decode window. The post-answer tail can have higher speculative acceptance than the natural answer. Output tok/forward/request is retained separately from the rate distributions, so multiplying table means need not reproduce the mean output rate.
+
+Prefill rows report the mean and median of each request's prompt tokens divided by time to first token, over five cold C1 requests per length. The latency table also preserves aggregate prompt throughput over the complete cell. Prefill is input processing; MTP applies to decode. These controlled measurements do not necessarily represent real-world performance.
+
+| Cold prefill, C1 | Mean TTFT | Median TTFT | Aggregate prompt tok/s over the cell |
+|---|---:|---:|---:|
+| 8k | 1.580 s | 1.574 s | 5,186.6 |
+| 32k | 5.578 s | 5.594 s | 5,875.3 |
+| 64k | 11.070 s | 11.096 s | 5,920.0 |
+| 128k | 22.089 s | 22.160 s | 5,921.8 |
+
+All 24 original engine cell analyzers passed and all 24 resolved workloads match the retained v0.3.1 baseline, excluding only artifact output directories. The raw adaptive acceptance-rate gauge exceeded one in C1/r03; it is retained as diagnostic telemetry and is not an acceptance probability. No cell rerun or summary repair was needed.
+
+### Fixed-acceptance and capped varied-prompt probes
+
+The repetitive-ledger C1 probe uses six 2,048-output-token repetitions per context after a 150-second soak. Both throughput columns cover its decode plateau; accepted output per forward is the ratio of the two fitted rates.
+
+| Context tokens | Mean output tok/s after MTP | Median output tok/s after MTP | Mean forwards/s | Median forwards/s | Output tok/forward, mean / median |
+|---|---:|---:|---:|---:|---:|
+| 1024 | 155.5 | 154.2 | 67.53 | 67.59 | 2.30 / 2.29 |
+| 19000 | 160.2 | 160.1 | 67.39 | 67.46 | 2.38 / 2.37 |
+
+The varied-prompt C1 probe enables normal EOS and uses essay, code-generation and Q&A prompts, two repetitions each, greedy sampling with thinking enabled and a 4,096-token cap. All six responses reached that cap, so these are budget-limited decode measurements, not completed-answer rates. It measures from first to last streamed token, including reasoning. Forward counters are sampled every 250 ms, which limits boundary precision for short replies. Finish reasons: essay: length, length; codegen: length, length; qa: length, length. A `length` result is a capped response, not a completed answer; all results remain in the table.
+
+| Workload | Mean output tok/s after MTP | Median output tok/s after MTP | Mean forwards/s | Median forwards/s | Output tok/forward, mean / median |
+|---|---:|---:|---:|---:|---:|
+| essay | 157.9 | 157.9 | 66.65 | 66.65 | 2.37 / 2.37 |
+| codegen | 164.7 | 164.7 | 65.25 | 65.25 | 2.52 / 2.52 |
+| qa | 166.9 | 166.9 | 64.75 | 64.75 | 2.58 / 2.58 |
+
+These probes and the engine panel describe this run; they do not establish statistical significance or isolate any individual patch's effect. [Raw engine comparison](evidence/v0.3.2/engine-comparison.json) and all probe repetitions are retained.
+
+### Quality and stability
+
+Full GSM8K scored 1,279/1,319 (97.0%) with the unchanged GLM-aware grader and 1,171/1,319 (88.8%) with pinned AIPerf, with zero request errors. One response reached the 16,384-token budget and remains in both denominators. The graders disagreed on 109 pinned-fail/GLM-pass responses and one in the reverse direction. The reverse disagreement contains the correct answer but the GLM-aware extractor selects a later bold time label; neither grader was changed.
+
+The 73k and 400k controls scored 142/150 and 144/150. Prefill rescoring of a 768-token continuation at about 400k context agreed on all 767 next-token choices. Cold and device-cached recall preserved seven ordered markers at 408k. All five confirmed host-load cycles preserved the expected tool decision, and the separate forced-host 408k ordered-marker oracle passed all four stages. The 408k forced-host strict-text check differed in optional `MEMORY-CHECK:` labels after restoration; its original failure is retained alongside the passing ordered-marker oracle. No byte-identical generation claim is made.
+
+Against retained v0.3.1 responses, gsm8k lost 10 and gained 9; longctx-73k lost 3 and gained 2; longctx-400k lost 2 and gained 1. These are single-run paired observations and establish neither quality improvement nor equivalence. No baseline campaign was repeated.
+
+The exact-image CPU/GPU matrix and installed FlashInfer tests passed. FlashInfer's route-packing validation passed 124 tests and 1,720 cases under each of memcheck, racecheck and synccheck, with zero errors or hazards. First-boot sampled chat completed in 0.690 seconds (TTFT 0.470 seconds); both startup and final 7680x4320-image/independent-cold-C4 checks passed. The final qualification pod was Ready with zero restarts and only its two serving GPU processes. [Receipts and limitations](evidence/v0.3.2/README.md).
+
 ## v0.3.1 qualification, 2026-09-06
 
 The internal candidate `v0.3.1-rc.1` is qualified and promoted without rebuilding as `v0.3.1` at `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d`. These measurements apply to that exact internal image on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, TP2/EP1 over PCIe. The profile retains W4A16 experts, FP8 KV, a 450,560-token pool, four running requests, 4,096-token prefill chunks and 32 GB of HiCache per rank.

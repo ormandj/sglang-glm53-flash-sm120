@@ -1,0 +1,177 @@
+................................................................. [ 14%]
+.......................................................... [ 26%]
+............................................................ [ 39%]
+........................................................... [ 52%]
+.............................................s............... [ 65%]
+.................................................................... [ 80%]
+............................................................... [ 93%]
+............................                             [100%]
+=============================== warnings summary ===============================
+../sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464
+  /opt/sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: asyncio_mode
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+../sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: 14 warnings
+  /opt/sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+python/sglang/srt/layers/quantization/awq/awq.py:53
+  /opt/sglang-source/python/sglang/srt/layers/quantization/awq/awq.py:53: UserWarning: Only CUDA, HIP and XPU support AWQ currently.
+    warnings.warn(f"Only CUDA, HIP and XPU support AWQ currently.")
+
+python/sglang/srt/layers/quantization/gguf.py:69
+  /opt/sglang-source/python/sglang/srt/layers/quantization/gguf.py:69: UserWarning: Only CUDA, MUSA and NPU support GGUF quantization currently.
+    warnings.warn(f"Only CUDA, MUSA and NPU support GGUF quantization currently.")
+
+<frozen abc>:106
+  <frozen abc>:106: DeprecationWarning: MultiPlatformOp is deprecated; subclass sglang.kernels.fused_op.BaseFusedOp instead (RFC #29630).
+
+registered/unit/spec/test_ngram_mamba_verify_update.py::TestMtpVerifyHookSignature::test_all_overrides_accept_the_call_kwargs
+  <unknown>:318: SyntaxWarning: invalid escape sequence '\('
+
+registered/unit/disaggregation/test_encode_server.py::TestEncoderMetaRegistry::test_http_send_counts_the_normalized_destination
+  /opt/sglang-source/test/registered/unit/disaggregation/test_encode_server.py:229: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+    response = await http_server.handle_send_request(request)
+
+registered/unit/disaggregation/test_encode_server.py::TestEncoderDelivery::test_destination_registration_rendezvous_with_encode
+  /usr/lib/python3.12/asyncio/events.py:88: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+    self._context.run(self._callback, *self._args)
+
+registered/unit/disaggregation/test_encode_server.py::TestEncoderDelivery::test_destination_registration_timeout_does_not_create_state
+  /opt/sglang-source/test/registered/unit/disaggregation/test_encode_server.py:2337: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+    response = await http_server.handle_scheduler_receive_url_request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+461 passed, 1 skipped, 22 warnings, 86 subtests passed in 36.40s
+..........................ssssss..ss.sss.......sss.............. [  2%]
+.s....s.....ss...ssssssssss...s.sssssssssssssss.sssssssss.sssssss.ssssss [  5%]
+ssssssssssssss.sss.sss.ss..ss.sss.......sss..............ss....s.....ss. [  8%]
+..ssssssssss...s.sssssssssssssss....ssssss.sssssss.ssssssssssssssssssss. [ 10%]
+sss.ssssss..ss.sss.......sss..............ss....s.....ss...ssssssssss... [ 13%]
+s.sssssssssssssss....ssssss.sssssss.ssssssssssssssssssss.sss.ssssss..ss. [ 16%]
+sss.......sss..............ss....s.....ss...ssssssssss...s.sssssssssssss [ 19%]
+ss....ssssss.sssssss.ssssssssssssssssssss.sss.ssssss..ss.sss.......sss.. [ 22%]
+............ss....s.....ss...ssssssssss...s.sssssssssssssss....ssssss.ss [ 24%]
+sssss.ssssssssssssssssssss.sss..ssssssssss.sss......sss...........s...s. [ 27%]
+......ss......ssssssssss...s.s...............sss....ss.ss......sssssssss [ 30%]
+sssssssssss.sss..ssssssssssssss......sss...........s..ss.......ss.s....s [ 33%]
+sssssssss...s.sssssssss.s...s....ssssss.sssssss.ssssssssssssssssssss.sss [ 36%]
+..ssssssssssssss......sss...........s..ss.......ss.s....ssssssssss...s.s [ 38%]
+ssssssss.s...s....ssssss.sssssss.ssssssssssssssssssss.sss..sssssssssssss [ 41%]
+s......sss...........s..ss.......ss.s....ssssssssss...s.sssssssss.s...s. [ 44%]
+...ssssss.sssssss.ssssssssssssssssssss.sss....s.......s...s.....sss..... [ 47%]
+......s..............ss..................sssssssssssssss.sssssss..... [ 50%]
+.ssss........ss..................sss...ss.sss.s.....sss...........s..s [ 52%]
+...........ss...s.s.ss.ss......sssssssssssssss.s..ssssss...sssss.ss.s [ 55%]
+.ssss.........ss.......sss...ss.sss.s.....sss...........s..s.......... [ 58%]
+.ss...s.s.ss.ss......sssssssssssssss.s..ssssss...sssss.ssss.ssss... [ 60%]
+......ss.......sss...ss.sss.s.....sss...........s..s...........ss...s.s.ss.ss......sssssssssssssss.s..ssssss...sssss.ssss.ssss...ssss.sss.. [ 66%]
+.....sss...ss.sss.s.....sss...........s..s...........ss...s.s.ss.ss.. [ 68%]
+....sssssssssssssss.s..ssssss...sssss.ssss.ssss.........ss.......sss.. [ 71%]
+.ss.sss.s.....sss...........s..s...........ss...s.s.ss.ss......ssssss [ 74%]
+sssssssss.s..ssssss...sssss.ssss.ssss.........ss.......sss...ss.sss.s. [ 77%]
+....sss...........s..s...........ss...s.s.ss.ss......sssssssssssssss. [ 79%]
+s..ssssss...sssss.ssss.ssss.........ss.......sss...ss.ss..s.....sss... [ 82%]
+........s..............ss...s..............sssssssssssssss.sssssss... [ 85%]
+...ssss.ssss.ssss...ssss.sss.....ssssssssssssssss............s......s. [ 87%]
+..sssss.ssssssssssssssssssssssss..ssssssss.s...s.sssssssss.sssssss.sssss [ 90%]
+ss...s.ssssssss.sss.ssssssssssssssss............s......s..ssssss.sssss [ 93%]
+sssssssssssssssssss..ssssssss.s...s.s..ssssss.sssssss.sssssss...s.ssss [ 96%]
+ssss.sss.......................................................... [ 98%]
+..................................                                 [100%]
+=============================== warnings summary ===============================
+../sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464
+  /opt/sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: asyncio_mode
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+../sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: 14 warnings
+  /opt/sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1223 passed, 1345 skipped, 15 warnings, 64 subtests passed in 89.64s (0:01:29)
+========= COMPUTE-SANITIZER
+{"gpu": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition", "capability": [12, 0]}
+Derived INDEXER controller lifecycle: 100/100 passed
+Hybrid DSA ratio-mode assembly: passed
+{"layout": "page_first", "backend": "kernel", "trial": 0, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first", "backend": "kernel", "trial": 1, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first", "backend": "kernel", "trial": 2, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first", "backend": "kernel", "trial": 3, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first", "backend": "kernel", "trial": 4, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "kernel", "trial": 0, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "kernel", "trial": 1, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "kernel", "trial": 2, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "kernel", "trial": 3, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "kernel", "trial": 4, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "direct", "trial": 0, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "direct", "trial": 1, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "direct", "trial": 2, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "direct", "trial": 3, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "layer_first", "backend": "direct", "trial": 4, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first_direct", "backend": "direct", "trial": 0, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first_direct", "backend": "direct", "trial": 1, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first_direct", "backend": "direct", "trial": 2, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first_direct", "backend": "direct", "trial": 3, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+{"layout": "page_first_direct", "backend": "direct", "trial": 4, "layers": 3, "pages": 8, "bytes_compared": 202752, "passed": true}
+Hybrid DSA HiCache GPU byte oracle: 20/20 passed
+========= ERROR SUMMARY: 0 errors
+............                       [100%]
+=============================== warnings summary ===============================
+../sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464
+  /opt/sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: asyncio_mode
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+../sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: 14 warnings
+  /opt/sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+12 passed, 15 warnings, 38 subtests passed in 26.50s
+................                                                         [100%]
+=============================== warnings summary ===============================
+../sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464
+  /opt/sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: asyncio_mode
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+16 passed, 269 deselected, 1 warning in 35.63s
+[1/4] ccache /usr/local/cuda/bin/nvcc -MD -MF deepseek_v4_topk.cuda.o.d -DTORCH_EXTENSION_NAME=sgl_topk_patch_ext -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/sglang-source/python/sglang/kernels/aot/include -I/opt/sglang-source/python/sglang/kernels/aot/csrc -I/opt/sglang-source/python/sglang/kernels/jit/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_120,code=sm_120 --compiler-options '-fPIC' -O2 -std=c++20 -c /opt/sglang-source/python/sglang/kernels/aot/csrc/elementwise/deepseek_v4_topk.cu -o deepseek_v4_topk.cuda.o 
+[2/4] ccache /usr/local/cuda/bin/nvcc -MD -MF topk.cuda.o.d -DTORCH_EXTENSION_NAME=sgl_topk_patch_ext -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/sglang-source/python/sglang/kernels/aot/include -I/opt/sglang-source/python/sglang/kernels/aot/csrc -I/opt/sglang-source/python/sglang/kernels/jit/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_120,code=sm_120 --compiler-options '-fPIC' -O2 -std=c++20 -c /opt/sglang-source/python/sglang/kernels/aot/csrc/elementwise/topk.cu -o topk.cuda.o 
+[3/4] ccache c++ -MMD -MF sgl_topk_patch_wrapper.o.d -DTORCH_EXTENSION_NAME=sgl_topk_patch_ext -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/sglang-source/python/sglang/kernels/aot/include -I/opt/sglang-source/python/sglang/kernels/aot/csrc -I/opt/sglang-source/python/sglang/kernels/jit/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/include/python3.12 -fPIC -std=c++20 -O2 -c /test-harness/sgl_topk_patch_wrapper.cc -o sgl_topk_patch_wrapper.o 
+[4/4] ccache c++ sgl_topk_patch_wrapper.o topk.cuda.o deepseek_v4_topk.cuda.o -shared -L/opt/sglang/lib/python3.12/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda/lib64 -lcudart -o sgl_topk_patch_ext.so
+AOT legacy top-k case passed: exact-capacity-ascending
+AOT legacy top-k case passed: exact-capacity-reversed
+AOT legacy top-k case passed: exact-capacity-negative
+AOT legacy top-k case passed: exact-capacity-after-higher-values
+AOT legacy top-k case passed: overflow
+AOT legacy top-k case passed: all-equal-overflow
+AOT legacy top-k case passed: positive-zero-overflow
+AOT legacy top-k case passed: negative-zero-overflow
+AOT DeepSeek-V4 top-k case passed: exact-capacity
+AOT DeepSeek-V4 top-k case passed: exact-capacity-negative
+AOT DeepSeek-V4 top-k case passed: exact-capacity-after-higher-values
+AOT DeepSeek-V4 top-k case passed: all-equal-overflow
+AOT DeepSeek-V4 top-k case passed: positive-zero-overflow
+AOT DeepSeek-V4 top-k case passed: negative-zero-overflow
+AOT top-k runtime validation passed
+========= COMPUTE-SANITIZER
+.........                                                          [100%]
+=============================== warnings summary ===============================
+../sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464
+  /opt/sglang/lib/python3.12/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: asyncio_mode
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+../sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: 14 warnings
+  /opt/sglang/lib/python3.12/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+9 passed, 15 warnings, 6 subtests passed in 32.52s
+========= ERROR SUMMARY: 0 errors
+ALL_EXACT_IMAGE_GPU_TESTS_PASSED

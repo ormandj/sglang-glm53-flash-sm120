@@ -1,10 +1,36 @@
 # Changelog
 
-## v0.3.2-rc.1 (post-merge source rebuild; prepared, not built or qualified)
+## v0.3.2 (stable; digest-identical promotion of each registry's v0.3.2-rc.1)
+
+- Refresh SGLang to main `28457f0dca`, after GLM-5.3-Flash support merged as `97c6978369`, to follow the merged model support and current interfaces. Reconcile the carried corrections, remove superseded metadata experiments and retain active #38213 fusion.
+- Rebuild FlashInfer from freshly checked main `6c14bbd5ff` with the reviewed small-batch route-prefix histogram/inverse-prefix implementation and graph-workspace corrections. Preserve W4A16, FP8 KV, vision, adaptive MTP, the 450,560-token context and four concurrent requests. Use fresh compiled-cache schema `v69`.
+- Full qualification on the exact internal image passed the GPU/CPU matrix, route-packing tests and three sanitizer modes, sampled first boot, image/cold-C4 acceptance, full GSM8K, all 24 engine cell analyzers, long-context controls and confirmed host restoration. 1,279/1,319 GSM8K answers passed unchanged GLM-aware grading and 1,171/1,319 passed pinned AIPerf; one capped response remains in both scores. The 73k/400k controls scored 142/150 and 144/150. All 767 continuation choices agreed; five host-load tool-decision cycles and seven ordered 408k markers passed. The qualification pod had zero restarts.
+
+Measured on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, TP2/EP1 over PCIe, with 32 GB HiCache per rank:
+
+| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
+|---|---|---:|---:|---:|---:|---:|
+| Decode C1, 5 repetitions | Aggregate output after MTP | 215.5 | 202.6 | 60.77 | 61.38 | 3.60 / 3.42 |
+| Decode C2, 5 repetitions | Aggregate output after MTP | 290.2 | 293.8 | 49.11 | 49.16 | 3.02 / 3.08 |
+| Decode C3, 5 repetitions | Aggregate output after MTP | 360.3 | 356.6 | 39.20 | 38.98 | 3.11 / 3.12 |
+| Decode C4, 5 repetitions | Aggregate output after MTP | 406.9 | 410.2 | 33.31 | 33.62 | 3.06 / 3.03 |
+| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,193.5 | 5,211.0 | n/a | n/a | n/a |
+| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 5,877.4 | 5,860.4 | n/a | n/a | n/a |
+| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 5,921.4 | 5,907.2 | n/a | n/a | n/a |
+| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 5,923.1 | 5,903.7 | n/a | n/a | n/a |
+
+Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 10.7-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+
+Decode tok/s is aggregate output after MTP, including reasoning, over a fixed 4,096-token response window. Its post-answer tail can increase speculative acceptance. Forward passes/s counts target-model iterations. Prefill values summarize each cold request's prompt tokens divided by time to first token. These controlled measurements do not necessarily represent real-world performance. See `BENCHMARKS.md` and `evidence/v0.3.2/` for latency, other probes and all retained limitations.
+
+- Known limits: input logprobs spanning a long prompt can OOM the scheduler; score only a continuation at the prompt boundary. Memory at `mem-fraction-static=0.99` requires one 4,096-token prefill chunk per extend batch. Other GPU pairs and tensor-parallel sizes are untested. The 408k forced-host strict-text check differed in optional `MEMORY-CHECK:` labels after restoration; its original failure is retained alongside the passing ordered-marker oracle. No byte-identical generation claim is made. Adaptive acceptance-rate gauges are diagnostic ratios, not probabilities. Keep HiCache disabled on the older v0.2.1 image.
+- Promote without rebuilding within each registry. The qualified internal digest is `sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5`; the independently built public digest is `sha256:5f12516c84abb3a74f135ba43a18021b05c6ca14c186a6583087aefc245593fb`. Pinned image inputs match, but hardware measurements apply only to the internal digest.
+
+## v0.3.2-rc.1 (latest-main rebuild; internally qualified and promoted)
 
 - Build from SGLang main `28457f0dca`, including merged GLM-5.3 support, EPD lifecycle containment and the upstream default Gumbel path for unseeded torch sampling. FlashInfer main remains `6c14bbd5ff`; rebuild it with the reviewed route-prefix change and expanded tests.
 - Reconcile carried SM120 and correctness changes with the merged GLM tree. Apply upstream metadata experiment removal before restoring only active #38213 fusion, and retain the shared GLM speculative-width resolver.
-- Use fresh compiled-cache schema `v69`. Source CPU checks passed 461 tests and 86 subtests with one skip; exact-image GPU and full serving qualification remain required. No new performance or quality result is claimed.
+- Use fresh compiled-cache schema `v69`. Source CPU checks passed 461 tests and 86 subtests with one skip. Exact-image GPU and full serving qualification subsequently completed; the stable section above records measured results and limits.
 
 ## v0.3.1 (stable; digest-identical promotion of each registry's v0.3.1-rc.1)
 

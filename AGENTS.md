@@ -83,6 +83,10 @@ columns or percentage deltas unless the evidence establishes a significant
 improvement. Lead with the behavior addressed: a correctness release must not
 be presented as a performance improvement.
 
+Throughput reports must include both forward passes/s and output tokens/s after MTP, with concurrency, the measurement window, and accepted tokens per forward identified. State that these controlled measurements do not necessarily represent real-world performance. Disclose the post-answer tail in fixed-output engine gates; forward passes/s counts target-model iterations and must not be labelled as emitted output tokens/s.
+
+Present release performance in tables with mean and median post-MTP output tokens/s and forward passes/s side by side. Include cold prefill mean and median prompt tokens/s, with the measurement definition and sample count. Keep output throughput prominent so readers cannot mistake the forward rate for the serving token rate.
+
 Internal and public publication are independent. Forgejo validates the
 README's `Internal image` row and `current internal stable image` sentence;
 GitHub validates the public `Image` row and `current published stable image`

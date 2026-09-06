@@ -9,23 +9,19 @@ reasoning and tool calling.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.1` |
-| Internal image | `git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.3.1` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.2` |
+| Internal image | `git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.3.2` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Qualified internal candidate | `git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.3.1-rc.1` |
+| Qualified internal candidate | `git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.3.2-rc.1` |
 
-The current internal stable image is `v0.3.1`. The current published stable image is `v0.3.1`. Each stable tag was promoted without rebuilding its `v0.3.1-rc.1` candidate. The qualified internal digest is `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d`; the independently built public digest is `sha256:6c5b7e6701fb64e1890f067cbad5bff2d5c979fb3952f520862a7dfb858cdea3`. Both builds use identical pinned image inputs. Hardware measurements apply to the internal digest; the public build has separate source and build provenance.
+The current internal stable image is `v0.3.2`. The current published stable image is `v0.3.2`. Each stable tag was promoted without rebuilding its `v0.3.2-rc.1` candidate. The qualified internal digest is `sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5`; the independently built public digest is `sha256:5f12516c84abb3a74f135ba43a18021b05c6ca14c186a6583087aefc245593fb`. Both builds use identical pinned image inputs. Hardware measurements apply to the internal digest; the public build has separate source and build provenance.
 
-`v0.3.1` replaces small-batch W4A16 MoE route-prefix comparison tiles with a histogram and inverse-prefix lookup to avoid expert-by-route and expert-by-block comparisons. It includes the hybrid DSA HiCache index-restoration and lifecycle corrections from the v0.3.0 integration. The model, quantization and serving settings are retained. SGLang is pinned to main `febb360519` with GLM support carried from the pre-merge #36507 branch; FlashInfer is pinned to main `6c14bbd5ff` plus the changes listed below.
+`v0.3.2` refreshes SGLang to official main `28457f0dca`, after GLM-5.3-Flash support merged, so the image follows the merged support and current interfaces. It reconciles the carried fixes, removes superseded metadata experiments and retains active #38213 fusion. FlashInfer was rebuilt from freshly checked main `6c14bbd5ff` with the reviewed route-prefix optimization. Model, quantization and serving settings are retained; cache schema is `v69`.
 
-The exact internal candidate passed GPU correctness/sanitizer tests, startup and image/cold-C4 acceptance, full GSM8K, all 24 engine cell analyzers, long-context controls and forced-host restoration. The engine summary's adaptive-gauge handling was corrected and independently reviewed without rerunning or changing any measured cell. [Measurements and retained limitations](BENCHMARKS.md#v031-qualification-2026-09-06) and [release receipts](evidence/v0.3.1/README.md) are included here.
+The exact internal candidate passed the GPU correctness/sanitizer matrix, sampled startup and image/cold-C4 acceptance, full GSM8K, all 24 engine cell analyzers, long-context controls and forced-host restoration. [Measurements and limitations](BENCHMARKS.md#v032-qualification-2026-09-06) and [release receipts](evidence/v0.3.2/README.md) are included here.
 
 The older `v0.2.1` image has a reproduced long-prefix HiCache corruption defect. Keep HiCache disabled if continuing to use that version.
-
-## Next internal candidate
-
-`sglang-glm53-flash-sm120:v0.3.2-rc.1` is prepared for an internal build from SGLang main `28457f0dca` after the GLM support merge and FlashInfer main `6c14bbd5ff`. Cache schema is `v69`. It retains the route-prefix change and carried correctness fixes, removes superseded metadata experiments, and restores only active #38213 fusion. It is not built or qualified; the stable artifacts and measurements above remain v0.3.1. See [RUN.md](RUN.md) for the candidate profile.
 
 ## Requirements
 
@@ -53,8 +49,8 @@ The older `v0.2.1` image has a reproduced long-prefix HiCache corruption defect.
    ```bash
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.1
-   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v68
+   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.2
+   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v69
    ./examples/serve-glm53-flash.sh
    ```
 
@@ -94,22 +90,32 @@ profile. Two settings matter more than they look:
 
 ## What to expect
 
-Measured on the qualified internal `v0.3.1-rc.1` digest above, using two RTX PRO 6000 Blackwell Max-Q GPUs at 300 W and the launcher profile with 32 GB of HiCache per rank. The independently built public image was not separately tested on the serving GPUs.
+Measured on the exact qualified internal `v0.3.2-rc.1` digest above, using two RTX PRO 6000 Blackwell Max-Q GPUs at 300 W and the launcher profile with 32 GB of HiCache per rank. The independently built public image was not separately tested on the serving GPUs.
 
-| Measurement | Result |
+| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
+|---|---|---:|---:|---:|---:|---:|
+| Decode C1, 5 repetitions | Aggregate output after MTP | 215.5 | 202.6 | 60.77 | 61.38 | 3.60 / 3.42 |
+| Decode C2, 5 repetitions | Aggregate output after MTP | 290.2 | 293.8 | 49.11 | 49.16 | 3.02 / 3.08 |
+| Decode C3, 5 repetitions | Aggregate output after MTP | 360.3 | 356.6 | 39.20 | 38.98 | 3.11 / 3.12 |
+| Decode C4, 5 repetitions | Aggregate output after MTP | 406.9 | 410.2 | 33.31 | 33.62 | 3.06 / 3.03 |
+| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,193.5 | 5,211.0 | n/a | n/a | n/a |
+| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 5,877.4 | 5,860.4 | n/a | n/a | n/a |
+| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 5,921.4 | 5,907.2 | n/a | n/a | n/a |
+| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 5,923.1 | 5,903.7 | n/a | n/a | n/a |
+
+Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 10.7-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+
+Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Decode uses a fixed 4,096-token response window; its post-answer tail can increase speculative acceptance. Prefill tok/s is the per-request prompt-token count divided by time to first token, reported as mean and median over five cold requests. These controlled measurements do not necessarily represent real-world performance. [Latency, fixed-acceptance and natural-EOS tables](BENCHMARKS.md#v032-qualification-2026-09-06) provide the other measured views.
+
+| Qualification check | Result |
 |---|---|
-| Fixed-acceptance C1, 1k / 19k context | 67.41 / 66.99 forwards/s; six repetitions each |
-| Engine C1 / C2 / C3 / C4 | 62.61 / 48.91 / 38.75 / 34.24 mean forwards/s; five repetitions each |
-| Cold prefill, 8k / 32k / 64k / 128k | 5,291 / 5,944 / 5,970 / 5,935 prompt tok/s |
-| Full GSM8K | 1,280/1,319 with unchanged GLM-aware grading; 1,181/1,319 with pinned AIPerf |
-| 73k / 400k quality controls | 143/150 / 145/150 |
+| Full GSM8K | 1,279/1,319 with unchanged GLM-aware grading; 1,171/1,319 with pinned AIPerf |
+| 73k / 400k quality controls | 142/150 / 144/150 |
 | Long-context continuation | 767/767 next-token choices agreed |
 | Host restoration | Five tool-decision cycles and seven ordered markers at 408k passed |
 | Final memory acceptance | 7680x4320 image, then four independent cold 4k requests; zero restarts |
 
-Forwards/s counts engine decode steps. On the fixed-acceptance ledger probe, mean output rates were 154.9 / 154.6 tok/s at 2.30 / 2.31 accepted tokens per forward for 1k / 19k context ([receipt](evidence/v0.3.1/fixed-acceptance-summary.json)).
-
-Engine rates use a synthetic fixed output window and depend on adaptive speculative paths; they are not application-throughput promises. Two GSM8K responses exhausted their output budget and remain in the scores. Exact-text host recall differed only in optional marker labels; the pre-existing ordered-marker oracle passed. The server's adaptive acceptance-rate gauge can mix draft widths within one reporting interval and is diagnostic, not a probability. The initial C1 decrease and the subsequent follow-up are both retained in [BENCHMARKS.md](BENCHMARKS.md).
+One GSM8K response exhausted its output budget and remains in both scores. The 408k forced-host strict-text check differed in optional `MEMORY-CHECK:` labels after restoration; its original failure is retained alongside the passing ordered-marker oracle. No byte-identical generation claim is made. The adaptive acceptance-rate gauge can mix draft widths within an interval and is diagnostic, not a probability.
 
 Limits for this profile:
 
@@ -121,13 +127,13 @@ Limits for this profile:
 
 ## Carried upstream changes
 
-Status checked 2026-09-06 after #36507 merged into `main`. This table describes the source carried by `v0.3.1`, including the retained v0.3.0 integration. Context, API and test-fixture adaptations are retained in the integration patch. PR refiling changes the upstream review destination; it does not change the immutable image or its source pins.
+Status checked for this build at 16:55 UTC on 2026-09-06 after #36507 merged into `main`. This table describes source integrated or adapted into `v0.3.2`. The combined integration was reconciled with current main; the listed source heads identify provenance, not a claim that every separate review branch was freshly rebased. Context, API and test-fixture adaptations are retained in the integration patch. PR refiling changes the upstream review destination; it does not change the immutable image or its source pins.
 
-Audited source bases: SGLang `main` `febb360519`, GLM #36507 `be2e63c2f1`, FlashInfer `main` `6c14bbd5ff`. Main includes #38163's AMD unified-KV revert and #36988's aborted disaggregated-prefill retirement. Image provenance is the exact pins and patch checksums in `stack.lock.json`.
+Audited source bases: SGLang `main` `28457f0dca`, including GLM #36507 merge `97c6978369`, and FlashInfer `main` `6c14bbd5ff`. Main includes #38163's AMD unified-KV revert and #36988's aborted disaggregated-prefill retirement. Image provenance is the exact pins and patch checksums in `stack.lock.json`.
 
 | SGLang PR | Current state / carried source head | Behavior addressed |
 |---|---|---|
-| [#36507](https://github.com/sgl-project/sglang/pull/36507) | Merged / `be2e63c2f1` | GLM-5.3-Flash model support, including the multimodal NEXTN fix for #37548 |
+| [#36507](https://github.com/sgl-project/sglang/pull/36507) | Merged into main as `97c6978369` | GLM-5.3-Flash model support, including the multimodal NEXTN fix for #37548 |
 | [#37980](https://github.com/sgl-project/sglang/pull/37980) | Open / `a340acbe5b` | Order speculative plan-stream work and preserve the Mamba top-k-1 fast paths |
 | [#36904](https://github.com/sgl-project/sglang/pull/36904) | Closed after base deletion / `436a89b06f` | Make raw-layout FP8 KV usable with CUDA TileLang DSA |
 | [#36661](https://github.com/sgl-project/sglang/pull/36661) | Open / `cc78c41a14` | Keep overlap batch snapshots alive until result processing completes |
@@ -140,7 +146,7 @@ Audited source bases: SGLang `main` `febb360519`, GLM #36507 `be2e63c2f1`, Flash
 | [#37536](https://github.com/sgl-project/sglang/pull/37536) | Open / `17d1707234` | Release raw multimodal device tensors before language-model execution |
 | [#37537](https://github.com/sgl-project/sglang/pull/37537) | Open / `7e27c6123e` | Allow CPU preprocessing to avoid the base visual path's extra CUDA context |
 | [#37538](https://github.com/sgl-project/sglang/pull/37538) | Open / `bcff46c9a8` | Attribute prefill allocation growth to instrumented phases; opt-in diagnostic |
-| [#38214](https://github.com/sgl-project/sglang/pull/38214) | Open successor; carries #37539 `00cc3e8dc9` | Precompile vision attention and MLP activations before KV allocation |
+| [#38214](https://github.com/sgl-project/sglang/pull/38214) | Open successor / `af3b87dd55` | Precompile vision attention and MLP activations before KV allocation |
 | [#37541](https://github.com/sgl-project/sglang/pull/37541) | Open / `ade49acbb3` | Warm up sampled, batched and multimodal serving paths before first traffic |
 | [#37612](https://github.com/sgl-project/sglang/pull/37612) | Open / `595d6b45b7` | Retry queued prefills after a Mamba-aware cache admission failure |
 | [#37619](https://github.com/sgl-project/sglang/pull/37619) | Open / `ed46bc9c3c` | Skip optional unfinished checkpoints when Mamba slots run out instead of crashing |
@@ -148,11 +154,11 @@ Audited source bases: SGLang `main` `febb360519`, GLM #36507 `be2e63c2f1`, Flash
 | [#37744](https://github.com/sgl-project/sglang/pull/37744) | Closed after base deletion / `ebe935c116` | Enable KDA projection fusion when the relevant layers are unquantized |
 | [#37375](https://github.com/sgl-project/sglang/pull/37375) | Closed after base deletion / `b6478a7400` | Avoid the GLM pipeline-parallel `residual` KeyError by using the mHC handoff contract |
 | [#38157](https://github.com/sgl-project/sglang/pull/38157) | Open / `8128658833` | Synchronize TP host-memory readings before pool allocation to avoid a false startup OOM |
-| [#38212](https://github.com/sgl-project/sglang/pull/38212) | Open successor; carries #38161 `66f6da3a21` | Restore missing target/draft attention indexes after HiCache loadback and separate divergent compressed prefixes |
-| [#38213](https://github.com/sgl-project/sglang/pull/38213) | Open successor; carries #38162 `efd2a02d03` | Reduce repeated attention-metadata setup during speculative decoding; opt-in optimization |
+| [#38212](https://github.com/sgl-project/sglang/pull/38212) | Open successor / `a912e8dee0` | Restore missing target/draft attention indexes after HiCache loadback and separate divergent compressed prefixes |
+| [#38213](https://github.com/sgl-project/sglang/pull/38213) | Open successor / `1c16dd8dd6` | Reduce repeated attention-metadata setup during speculative decoding; opt-in optimization |
 | [#38164](https://github.com/sgl-project/sglang/pull/38164) | Open / `7c2a647804` | Expire stuck preallocation waits before rank consensus; correct prefill and health-check queue handling |
 
-#36507 merged on 2026-09-06. Its deleted base branch auto-closed #38161, #38162 and #37539; their unchanged patches are now #38212, #38213 and #38214 against `main` `938dc5621d`. The corresponding carried source heads above remain the original heads. All open SGLang PRs listed here now target `main`, including #37980. #36904, #37375 and #37744 are closed without a PR merge; closure alone does not establish that their fixes reached main. In-graph/preallocated metadata experiments removed by #38071 are not restored by #38213. #38164 replaces the retained lifecycle follow-ups from closed #37316; obsolete encoder cleanup is excluded.
+#36507 merged on 2026-09-06. Its deleted base branch auto-closed #38161, #38162 and #37539; their unchanged patches are now #38212, #38213 and #38214 against `main` `938dc5621d`. The table records the successor source heads used for this rebuild; the lock retains their integration provenance. All open SGLang PRs listed here now target `main`, including #37980. #36904, #37375 and #37744 are closed without a PR merge; closure alone does not establish that their fixes reached main. In-graph/preallocated metadata experiments removed by #38071 are not restored by #38213. #38164 replaces the retained lifecycle follow-ups from closed #37316; obsolete encoder cleanup is excluded.
 
 | FlashInfer PR | State / source | Behavior addressed |
 |---|---|---|
@@ -160,13 +166,13 @@ Audited source bases: SGLang `main` `febb360519`, GLM #36507 `be2e63c2f1`, Flash
 | [#4687](https://github.com/flashinfer-ai/flashinfer/pull/4687) | Open / head `b75d6bfff7` | Correct addressing of large W4A16 expert weight banks |
 | [#4827](https://github.com/flashinfer-ai/flashinfer/pull/4827) | Open / head `21fb169ff2` | Keep graph-referenced MoE workspaces alive after cache growth or clearing |
 
-Already merged dependencies include SGLang #37317, #36958, #36798 and #37477. The carried GLM source also includes #37250, #36884, #36885 and the #37548 fix at `cdfc224b0e`. GLM support has since merged through #36507 at `97c6978369`; that merge commit is upstream status, not this image's source pin.
+Already merged dependencies include SGLang #37317, #36958, #36798 and #37477. The carried GLM source also includes #37250, #36884, #36885 and the #37548 fix at `cdfc224b0e`. GLM support has since merged through #36507 at `97c6978369`; that merge is an ancestor of this image's pinned SGLang main base.
 
 Downstream work still awaiting submission: the small W4A16 route-prefix histogram/inverse-prefix change (reviewed FlashInfer fork branch `pr/sm12x-route-prefix-histogram`, PR prepared), SM120 MoE/NoPE integration and defaults, ModelOpt E4M3-K32 preparation, static Mamba admission/accounting, adaptive-MTP chain-buffer lifetime, GLM video/DP/media-ordering and stricter NEXTN multimodal handling, PCIe IPC all-reduce wiring, mixed-precision KDA gate fusion beyond #37744, optional FP8 lm_head, recurrent-kernel tuning, and additional diagnostics. FlashInfer #4802's merge removes that dependency blocker but does not upstream the SGLang integration. Not every retained local change has an upstream PR yet.
 
 ## Releases
 
-`v0.3.1` (2026-09-06) is the current stable image in both registries. It promotes each registry's `v0.3.1-rc.1` candidate digest-identically. See the [current changelog](CHANGELOG.md) for behavior changes, measured validation and limitations.
+`v0.3.2` (2026-09-06) is the current stable image in both registries. It promotes each registry's `v0.3.2-rc.1` candidate digest-identically. See the [current changelog](CHANGELOG.md) for behavior changes, measured validation and limitations.
 
 `v0.3.0` was released internally from qualified `v0.3.0-rc.4` and is superseded by `v0.3.1`. It was not published to GHCR.
 
@@ -302,7 +308,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.3.1-rc.1 .
+  -t sglang-glm53-flash-sm120:v0.3.2-rc.1 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.

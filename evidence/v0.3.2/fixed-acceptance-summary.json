@@ -1,0 +1,149 @@
+{
+  "method": "C1 repetitive-ledger probe, six 2048-output-token requests per context after a 150-second soak. Rates fit the decode plateau. Output tokens per forward is the output/forward slope ratio, not the adaptive acceptance gauge. Controlled measurements do not necessarily represent real-world performance.",
+  "contexts": {
+    "1024": {
+      "fwd_per_s_ols": {
+        "mean": 67.52880902800182,
+        "median": 67.58964563194586,
+        "sample_stddev": 0.2839883772396971,
+        "count": 6
+      },
+      "tok_per_s_ols": {
+        "mean": 155.4757618655786,
+        "median": 154.20471371684062,
+        "sample_stddev": 5.267299537543951,
+        "count": 6
+      },
+      "accepted_tok_per_fwd_ols": {
+        "mean": 2.3023046243306986,
+        "median": 2.290777159095895,
+        "sample_stddev": 0.07530893535786234,
+        "count": 6
+      },
+      "ttft_s": {
+        "mean": 0.2759183645248413,
+        "median": 0.27483105659484863,
+        "sample_stddev": 0.012532635235019325,
+        "count": 6
+      },
+      "repetitions": [
+        {
+          "fwd_per_s_ols": 67.00531805232472,
+          "tok_per_s_ols": 152.6951035649737,
+          "accepted_tok_per_fwd_ols": 2.278850515204382,
+          "ttft_s": 0.2612161636352539
+        },
+        {
+          "fwd_per_s_ols": 67.55690593292042,
+          "tok_per_s_ols": 164.22507216100416,
+          "accepted_tok_per_fwd_ols": 2.4309146473355203,
+          "ttft_s": 0.27227306365966797
+        },
+        {
+          "fwd_per_s_ols": 67.47676466260405,
+          "tok_per_s_ols": 149.4947366263737,
+          "accepted_tok_per_fwd_ols": 2.2154994741356413,
+          "ttft_s": 0.2773890495300293
+        },
+        {
+          "fwd_per_s_ols": 67.67221106988733,
+          "tok_per_s_ols": 152.3143420900209,
+          "accepted_tok_per_fwd_ols": 2.2507664472898754,
+          "ttft_s": 0.2959599494934082
+        },
+        {
+          "fwd_per_s_ols": 67.6223853309713,
+          "tok_per_s_ols": 155.71432386870754,
+          "accepted_tok_per_fwd_ols": 2.3027038029874083,
+          "ttft_s": 0.265761137008667
+        },
+        {
+          "fwd_per_s_ols": 67.8392691193031,
+          "tok_per_s_ols": 158.41099288239153,
+          "accepted_tok_per_fwd_ols": 2.335092859031363,
+          "ttft_s": 0.2829108238220215
+        }
+      ],
+      "source_sha256": {
+        "probe-ctx1024-r1.json": "0cf9d9bd8fe9a93ed64bbd8836a80dec1ef4cf598bf3cf20a5c448daeddff558",
+        "probe-ctx1024-r2.json": "8e0167a07210b5d2460ed087732856887d71302fd6cf78a9f2d87fad0adeceaf",
+        "probe-ctx1024-r3.json": "20669eea9131f29318690c353de5326340517c975a362e434b6561fb37e82067",
+        "probe-ctx1024-r4.json": "4496c4f80ab8e101fd407e8acfe4939e6ef75399dd96642778b60bafbe56a7ba",
+        "probe-ctx1024-r5.json": "aecb235a684f90816936bda171f6113e5b18632c5b10f29deab2348bd96d8d3b",
+        "probe-ctx1024-r6.json": "caf4dcf64c26ecdb0818c263b59b8527aaafb05392f320e4444d77089fd47588"
+      }
+    },
+    "19000": {
+      "fwd_per_s_ols": {
+        "mean": 67.38668867174945,
+        "median": 67.46351135803482,
+        "sample_stddev": 0.24768326531969148,
+        "count": 6
+      },
+      "tok_per_s_ols": {
+        "mean": 160.20848750335355,
+        "median": 160.0750743516938,
+        "sample_stddev": 4.237286877206294,
+        "count": 6
+      },
+      "accepted_tok_per_fwd_ols": {
+        "mean": 2.3773876224101707,
+        "median": 2.372015933142414,
+        "sample_stddev": 0.05936446086019255,
+        "count": 6
+      },
+      "ttft_s": {
+        "mean": 1.0833576917648315,
+        "median": 0.6169910430908203,
+        "sample_stddev": 1.1144071760291014,
+        "count": 6
+      },
+      "repetitions": [
+        {
+          "fwd_per_s_ols": 67.50904840216344,
+          "tok_per_s_ols": 166.37141599377546,
+          "accepted_tok_per_fwd_ols": 2.4644313604107,
+          "ttft_s": 3.3437559604644775
+        },
+        {
+          "fwd_per_s_ols": 67.55176140663947,
+          "tok_per_s_ols": 160.1253381172573,
+          "accepted_tok_per_fwd_ols": 2.370409516834879,
+          "ttft_s": 0.8679308891296387
+        },
+        {
+          "fwd_per_s_ols": 66.90501353512747,
+          "tok_per_s_ols": 155.1507974185313,
+          "accepted_tok_per_fwd_ols": 2.318971168536895,
+          "ttft_s": 0.608320951461792
+        },
+        {
+          "fwd_per_s_ols": 67.56368384153892,
+          "tok_per_s_ols": 156.1963045966238,
+          "accepted_tok_per_fwd_ols": 2.3118381905131193,
+          "ttft_s": 0.6256611347198486
+        },
+        {
+          "fwd_per_s_ols": 67.41797431390619,
+          "tok_per_s_ols": 160.02481058613031,
+          "accepted_tok_per_fwd_ols": 2.373622349449949,
+          "ttft_s": 0.5307610034942627
+        },
+        {
+          "fwd_per_s_ols": 67.37265053112121,
+          "tok_per_s_ols": 163.3822583078032,
+          "accepted_tok_per_fwd_ols": 2.425053148715481,
+          "ttft_s": 0.5237162113189697
+        }
+      ],
+      "source_sha256": {
+        "probe-ctx19000-r1.json": "93d771c29e16f807ea4db29c382506e2f35d0cd9bc057139f300357409936193",
+        "probe-ctx19000-r2.json": "6bc013a26f825dc8bf4ec3f49d6963efd719176ddc02af8464032cee1640a8cf",
+        "probe-ctx19000-r3.json": "daeab93cf36d8409d4c1748497c113809d222edd877ab95f8fc6b91a7eb86e1c",
+        "probe-ctx19000-r4.json": "c37e323bc4f15c46597cf47a586a142c17232219b9db0b2ee39dcc7ff41d3a0b",
+        "probe-ctx19000-r5.json": "d2637bada4e297755f4503977a6cfc568b85ceb896ab528f529506f89be0e455",
+        "probe-ctx19000-r6.json": "082cbe470ce078ffbdad8dc4c814ff1501803791dc293724a6e20dc96db42901"
+      }
+    }
+  }
+}

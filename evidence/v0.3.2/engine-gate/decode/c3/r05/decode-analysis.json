@@ -1,0 +1,125 @@
+{
+  "average_context_length": {
+    "max": 20170.333333333332,
+    "mean": 18804.28717948718,
+    "median": 18812.666666666668,
+    "min": 17528.666666666668,
+    "p05": 17669.333333333332,
+    "samples": 65
+  },
+  "decode": {
+    "counter_delta": 8277.0,
+    "counter_family": "sglang:realtime_tokens{mode=decode,tp_rank=0}",
+    "ols_r_squared": 0.9978879745605894,
+    "target_concurrency": 3,
+    "tokens_per_second_delta": 388.22513597847234,
+    "tokens_per_second_ols": 386.3581139700283
+  },
+  "engine_work": {
+    "active_request_ranks": {
+      "max": 1,
+      "mean": 1.0,
+      "median": 1,
+      "min": 1,
+      "p05": 1.0,
+      "samples": 65
+    },
+    "counter_delta": 788.0,
+    "counter_family": "sglang:cuda_graph_passes{mode=decode_cuda_graph|decode_none,tp_rank=0}",
+    "forward_passes_per_second_delta": 36.96042130615394,
+    "forward_passes_per_second_ols": 37.66198176248808,
+    "ols_r_squared": 0.9940937130939519,
+    "useful_tokens_per_forward_per_request": 3.5012690355329945
+  },
+  "failures": [],
+  "phase": {
+    "end_ns": 1788720441669125721,
+    "start_ns": 1788720405085263658
+  },
+  "plateau": {
+    "average_context_lower": 17408.0,
+    "average_context_upper": 20480.0,
+    "duration_seconds": 21.320103293,
+    "end_ns": 1788720439106954033,
+    "end_reason": "average_context_window",
+    "first_occupancy_departure_ns": null,
+    "scrapes": 65,
+    "selection": "average_context_window",
+    "settle_seconds": 0.0,
+    "start_ns": 1788720417786850740,
+    "tail_seconds": 0.0
+  },
+  "prefill_control": {
+    "cache": {
+      "counter_delta": 0.0,
+      "ols_r_squared": 1.0,
+      "series_observed": true,
+      "tokens_per_second_delta": 0.0,
+      "tokens_per_second_ols": 0.0
+    },
+    "compute": {
+      "counter_delta": 0.0,
+      "ols_r_squared": 1.0,
+      "series_observed": true,
+      "tokens_per_second_delta": 0.0,
+      "tokens_per_second_ols": 0.0
+    }
+  },
+  "queued_requests": {
+    "max": 0.0,
+    "mean": 0.0,
+    "median": 0.0,
+    "min": 0.0,
+    "p05": 0.0,
+    "samples": 65
+  },
+  "running_requests": {
+    "max": 3.0,
+    "mean": 3.0,
+    "median": 3.0,
+    "min": 3.0,
+    "p05": 3.0,
+    "samples": 65
+  },
+  "schema_version": "1.0",
+  "server_cross_checks": {
+    "generation_throughput": {
+      "max": 450.2520701381707,
+      "mean": 385.50380760336816,
+      "median": 376.7596254479412,
+      "min": 306.03504119046625,
+      "p05": 333.82497934991864,
+      "samples": 65
+    },
+    "spec_accept_length": {
+      "max": 5.091666666666667,
+      "mean": 3.606923076923077,
+      "median": 3.275,
+      "min": 2.3833333333333333,
+      "p05": 2.6333333333333333,
+      "samples": 65
+    },
+    "spec_accept_rate": {
+      "max": 0.8333333333333334,
+      "mean": 0.6701538461538462,
+      "median": 0.6583333333333333,
+      "min": 0.46111111111111114,
+      "p05": 0.5416666666666666,
+      "samples": 65
+    }
+  },
+  "source": {
+    "jsonl": "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r05/server_metrics_export.jsonl",
+    "summary": "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/decode/c3/r05/server_metrics_export.json"
+  },
+  "validation": {
+    "average_context_within_bounds": true,
+    "decode_counter_monotonic": true,
+    "exact_occupancy_fraction": 1.0,
+    "exact_occupancy_required": 0.98,
+    "prefill_cache_counter_unchanged": true,
+    "prefill_compute_counter_unchanged": true,
+    "queue_empty": true,
+    "valid": true
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "pull_request": 1189,
+  "revision": "8dd9fbce9eb31af3c721b7e6ca606c8fe6f15900",
+  "deployment": "glm53-flash-sglang-v0-3-2-w4a16-c4-450k-tp2",
+  "pod": "glm53-flash-sglang-v0-3-2-w4a16-c4-450k-tp2-869bbf4f56-mwc84",
+  "image": "git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.3.2@sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5",
+  "desired_replicas": 0,
+  "operational_replicas": 1,
+  "acceptance": "PASS: stable pod Ready with zero restarts; sampled thinking chat, 7680x4320 image then four independent cold 4k prompts; only two scheduler GPU processes."
+}

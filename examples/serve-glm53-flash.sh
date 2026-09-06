@@ -7,7 +7,7 @@ set -euo pipefail
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a candidate-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.3.2-rc.1}
+IMAGE=${IMAGE:-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.2}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -20,8 +20,8 @@ MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}
 MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}
 
 # HiCache: host-RAM prefix cache tier, DISABLED by default. Reuse of long
-# prompts across requests re-prefills from scratch without it (about 6.3k
-# tok/s cold at chunk 4096). To enable it:
+# prompts across requests re-prefills from scratch without it. See
+# BENCHMARKS.md for measured cold prefill throughput. To enable it:
 #   ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
 # Size the combined KV/index/recurrent host tiers per rank with
 # HICACHE_SIZE_GB (default 32 GB per rank, 64 GB across TP2). Leave
@@ -45,7 +45,7 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.3.2-rc.1 is scoped to TP_SIZE=2" >&2
+  echo "v0.3.2 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do

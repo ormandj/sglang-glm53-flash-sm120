@@ -1,0 +1,217 @@
+Using Python 3.12.3 environment at: /root/.cache/bench-stage/aiperf-0.12.0-6ed4823d/venv
+Configuration valid: /root/.cache/bench-stage/harness/configs/gsm8k.yaml
+2026-09-06 18:16:33,584 - aiperf.common.readiness_probe - INFO - Waiting for endpoint readiness (mode=both, timeout=300.0s, interval=5.0s) across 1 URL(s) x 1 model(s)
+2026-09-06 18:16:33,587 - aiperf.common.readiness_probe - INFO - Model 'glm-5.3-flash' ready at http://127.0.0.1:8000 after 1 attempt(s)
+2026-09-06 18:16:33,830 - aiperf.common.readiness_probe - INFO - Inference probe ready at http://127.0.0.1:8000/v1/chat/completions (status=200, attempt 1)
+2026-09-06 18:16:33,857 - aiperf.cli_runner._single_run - INFO - Starting AIPerf System
+18:16:33.857 INFO     Starting AIPerf System (_single_run.py:81)
+2026-09-06 18:16:33,864 - aiperf.config.resolution.resolvers - INFO - [OK] Tokenizer /scratch/out/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO detected
+18:16:33.864 INFO     [OK] Tokenizer /scratch/out/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO detected (tokenizer_display.py:297)
+2026-09-06 18:16:33,864 - aiperf.config.resolution.resolvers - INFO - 1 tokenizer validated | 0.0s
+18:16:33.864 INFO     1 tokenizer validated | 0.0s (tokenizer_display.py:306)
+2026-09-06 18:16:33,867 - aiperf.config.resolution.resolvers - INFO - Prefetching 1 tokenizer into HF cache...
+18:16:33.867 INFO     Prefetching 1 tokenizer into HF cache... (tokenizer_validator.py:129)
+2026-09-06 18:16:37,971 - aiperf.config.resolution.resolvers - INFO -   Cached /scratch/out/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO (4.09s)
+18:16:37.971 INFO       Cached /scratch/out/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO (4.09s) (tokenizer_validator.py:146)
+2026-09-06 18:16:38,002 - aiperf.config.resolution.resolvers - INFO - 1 tokenizer cached • 4.1s
+18:16:38.002 INFO     1 tokenizer cached • 4.1s (tokenizer_validator.py:166)
+2026-09-06 18:16:38,140 - aiperf - WARNING - Using --osl without ignore_eos or min_tokens in --extra-inputs. Output sequence length cannot be guaranteed unless the server honors these parameters. Consider: --extra-inputs ignore_eos:true (generate until max_tokens) or --extra-inputs min_tokens:<value> (set minimum output length).
+18:16:38.140 WARNING  Using --osl without ignore_eos or min_tokens in --extra-inputs. Output sequence length cannot be guaranteed unless the server honors these parameters. Consider: --extra-inputs ignore_eos:true (generate until max_tokens) or --extra-inputs min_tokens:<value> (set minimum output length). (cli_utils.py:157)
+18:16:38.295 INFO     GPU telemetry disabled via --no-gpu-telemetry (system_controller.py:267)
+18:16:38.318 INFO     OutputsJsonRecordProcessor initialized: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/output_fragments/output_fragments_record_processor_c8fbf441.jsonl (outputs_json_record_processor.py:107)
+18:16:38.318 INFO     OutputsJsonRecordProcessor initialized: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/output_fragments/output_fragments_record_processor_c093731c.jsonl (outputs_json_record_processor.py:107)
+18:16:38.335 INFO     Server Metrics: Discovered 1 endpoints: ['http://127.0.0.1:8000/metrics'] (manager.py:97)
+18:16:38.361 INFO     Registered Record Processor (id: 'record_processor_c8fbf441') (system_controller.py:411)
+18:16:38.373 INFO     Registered Record Processor (id: 'record_processor_c093731c') (system_controller.py:411)
+18:16:38.376 INFO     Registered Server Metrics Manager (id: 'server_metrics_manager') (system_controller.py:411)
+18:16:38.400 INFO     Registered Worker Manager (id: 'worker_manager') (system_controller.py:411)
+18:16:38.469 INFO     Registered Dataset Manager (id: 'dataset_manager') (system_controller.py:411)
+18:16:38.524 INFO     Accuracy JSONL export enabled: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/accuracy_export.jsonl (jsonl_writer.py:55)
+18:16:38.534 INFO     Telemetry streaming is disabled (set --otel-url and/or --mlflow-tracking-uri to enable) (otel_metrics_results_processor.py:127)
+18:16:38.535 INFO     Record metrics export enabled: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/profile_export.jsonl (record_export_jsonl_writer.py:62)
+18:16:38.536 INFO     Server metrics JSONL export enabled: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/server_metrics_export.jsonl (jsonl_writer.py:65)
+18:16:38.542 INFO     Registered Records Manager (id: 'records_manager') (system_controller.py:411)
+18:16:38.563 INFO     Registered Timing Manager (id: 'timing_manager') (system_controller.py:411)
+18:16:38.579 INFO     Registered Worker (id: 'worker_4332bf05') (system_controller.py:411)
+18:16:38.590 INFO     Registered Worker (id: 'worker_d92d1c89') (system_controller.py:411)
+18:16:38.598 INFO     Registered Worker (id: 'worker_43935069') (system_controller.py:411)
+18:16:38.600 INFO     Registered Worker (id: 'worker_b2ede5dc') (system_controller.py:411)
+18:16:38.616 INFO     Registered Worker (id: 'worker_852ad221') (system_controller.py:411)
+18:16:38.698 INFO     Registered Worker (id: 'worker_e387aa6d') (system_controller.py:411)
+18:16:38.732 INFO     Registered Worker (id: 'worker_20c1cbc4') (system_controller.py:411)
+18:16:38.751 INFO     Registered Worker (id: 'worker_9fc8ca8d') (system_controller.py:411)
+18:16:38.799 INFO     AIPerf System is CONFIGURING (system_controller.py:292)
+18:16:38.799 INFO     Configuring all services to start profiling (system_controller.py:305)
+18:16:38.800 INFO     Tokenization is disabled for this endpoint, skipping tokenizer configuration (inference_result_parser.py:80)
+18:16:38.800 INFO     Tokenization is disabled for this endpoint, skipping tokenizer configuration (inference_result_parser.py:80)
+18:16:38.800 INFO     Waiting for dataset to be configured before configuring timing (manager.py:126)
+18:16:38.801 INFO     Configuring tokenizer(s) for dataset manager (dataset_manager.py:240)
+18:16:38.819 INFO     Server Metrics: Capturing baseline metrics... (manager.py:191)
+18:16:38.858 WARNING  Dropping non-finite (NaN/Inf) sample(s) from metric 'sglang:fwd_occupancy': 1 in this scrape; affected data will be missing from server_metrics_export. Further occurrences for this metric name will not be logged. (data_collector.py:374)
+18:16:38.861 INFO     Server metrics enabled - 1/1 endpoint(s) reachable. (system_controller.py:559)
+18:16:38.861 INFO     Waiting for result domains: accuracy, profile, server_metrics (system_controller.py:824)
+18:16:41.404 INFO     Tokenizer(s) configured in 2.60 seconds (dataset_manager.py:244)
+18:16:41.404 INFO     Configuring dataset for dataset_manager (dataset_manager.py:250)
+18:16:42.663 INFO     HTTP Request: GET https://huggingface.co/api/agent-harnesses "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:42.729 INFO     HTTP Request: HEAD https://huggingface.co/datasets/openai/gsm8k/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect" (_client.py:1025)
+18:16:42.766 INFO     HTTP Request: HEAD https://huggingface.co/api/resolve-cache/datasets/openai/gsm8k/740312add88f781978c0658806c59bc2815b9866/README.md?%2Fdatasets%2Fopenai%2Fgsm8k%2Fresolve%2Fmain%2FREADME.md=&etag=%22ad25b2c451d0fcd2793678b2baa917c962acf281%22 "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:42.797 INFO     HTTP Request: GET https://huggingface.co/api/resolve-cache/datasets/openai/gsm8k/740312add88f781978c0658806c59bc2815b9866/README.md?%2Fdatasets%2Fopenai%2Fgsm8k%2Fresolve%2Fmain%2FREADME.md=&etag=%22ad25b2c451d0fcd2793678b2baa917c962acf281%22 "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:42.862 INFO     HTTP Request: HEAD https://huggingface.co/datasets/openai/gsm8k/resolve/740312add88f781978c0658806c59bc2815b9866/gsm8k.py "HTTP/1.1 404 Not Found" (_client.py:1025)
+18:16:43.043 INFO     HTTP Request: HEAD https://s3.amazonaws.com/datasets.huggingface.co/datasets/datasets/openai/gsm8k/openai/gsm8k.py "HTTP/1.1 404 Not Found" (_client.py:1025)
+18:16:43.121 INFO     HTTP Request: GET https://huggingface.co/api/datasets/openai/gsm8k/revision/740312add88f781978c0658806c59bc2815b9866 "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:43.201 INFO     HTTP Request: HEAD https://huggingface.co/datasets/openai/gsm8k/resolve/740312add88f781978c0658806c59bc2815b9866/.huggingface.yaml "HTTP/1.1 404 Not Found" (_client.py:1025)
+18:16:43.202 WARNING  Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads. (_http.py:965)
+18:16:43.347 INFO     HTTP Request: GET https://datasets-server.huggingface.co/info?dataset=openai/gsm8k "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:43.432 INFO     HTTP Request: GET https://huggingface.co/api/datasets/openai/gsm8k/tree/740312add88f781978c0658806c59bc2815b9866/main?recursive=true&expand=false "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:43.494 INFO     HTTP Request: GET https://huggingface.co/api/datasets/openai/gsm8k/tree/740312add88f781978c0658806c59bc2815b9866?recursive=false&expand=false "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:43.566 INFO     HTTP Request: HEAD https://huggingface.co/datasets/openai/gsm8k/resolve/740312add88f781978c0658806c59bc2815b9866/dataset_infos.json "HTTP/1.1 404 Not Found" (_client.py:1025)
+18:16:43.883 INFO     HTTP Request: HEAD https://huggingface.co/datasets/openai/gsm8k/resolve/740312add88f781978c0658806c59bc2815b9866/main/train-00000-of-00001.parquet "HTTP/1.1 302 Found" (_client.py:1025)
+18:16:43.974 INFO     HTTP Request: GET https://huggingface.co/api/datasets/openai/gsm8k/xet-read-token/740312add88f781978c0658806c59bc2815b9866 "HTTP/1.1 200 OK" (_client.py:1025)
+18:16:45.167 INFO     HTTP Request: HEAD https://huggingface.co/datasets/openai/gsm8k/resolve/740312add88f781978c0658806c59bc2815b9866/main/test-00000-of-00001.parquet "HTTP/1.1 302 Found" (_client.py:1025)
+Generating train split:   0%|          | 0/7473 [00:00<?, ? examples/s]Generating train split: 100%|██████████| 7473/7473 [00:00<00:00, 502953.05 examples/s]
+Generating test split:   0%|          | 0/1319 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 1319/1319 [00:00<00:00, 342811.19 examples/s]
+18:16:46.128 INFO     Memory-mapped backing store initialized (streaming to /tmp/aiperf_mmap_9d8d9399b1d9/dataset.dat) (memory_map_utils.py:160)
+18:16:46.241 INFO     Data file finalized: 1319 conversations, 2.17 MB (memory_map_utils.py:288)
+18:16:46.241 INFO     Index file created: /tmp/aiperf_mmap_9d8d9399b1d9/index.dat (memory_map_utils.py:295)
+18:16:46.241 INFO     Backing store finalized: client_type=DatasetClientStoreType.MEMORY_MAP format=MemoryMapFormat.CONVERSATION data_file_path=PosixPath('/tmp/aiperf_mmap_9d8d9399b1d9/dataset.dat') index_file_path=PosixPath('/tmp/aiperf_mmap_9d8d9399b1d9/index.dat') conversation_count=1319 total_size_bytes=2275029 compressed=False compressed_data_file_path=None compressed_index_file_path=None compressed_size_bytes=0 (dataset_manager.py:975)
+18:16:46.259 INFO     sampling strategy: sequential, unique conversations: 1319, unique turn count: 1319 (dataset_manager.py:993)
+18:16:46.267 INFO     Generating inputs.json file at /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/inputs.json (dataset_manager.py:495)
+18:16:46.285 INFO     Initialized 1 phase(s): ['Profiling'] (phase_orchestrator.py:341)
+18:16:46.290 INFO     inputs.json file generated in 0.02 seconds (dataset_manager.py:514)
+18:16:46.465 INFO     Dataset client initialized and freed 1319 conversations from memory (dataset_manager.py:333)
+18:16:46.466 INFO     Dataset configured in 5.06 seconds (dataset_manager.py:263)
+18:16:46.466 INFO     All services configured in 7.67 seconds (system_controller.py:316)
+18:16:46.473 INFO     AIPerf System is CONFIGURED (system_controller.py:294)
+18:16:46.474 INFO     Server Metrics: Started 1 collector(s) successfully (manager.py:281)
+18:16:46.475 INFO     All services started profiling successfully (system_controller.py:338)
+18:16:46.475 INFO     AIPerf System is PROFILING (system_controller.py:296)
+18:16:46.481 INFO     Creating interval generator: pattern=concurrency_burst, rate=None, smoothness=None (request_rate.py:114)
+18:16:46.481 NOTICE   Phase profiling (profiling) started | phase_index=0 | profiling_index=0 | target: 1,319 requests (runner.py:630)
+18:16:46.482 INFO     Credit phase start: profiling (records_manager.py:976)
+18:16:47.597 WARNING  Token usage is reported but no prompt-cache read tokens were seen (usage.prompt_tokens_details.cached_tokens absent). If your server uses prefix/KV caching, enable cache reporting so AIPerf can populate the prompt-cache metrics: vLLM --enable-prompt-tokens-details, SGLang --enable-cache-report (TRT-LLM reports it by default). (records_manager.py:748)
+18:16:47.597 WARNING  Token usage is reported but no prompt-cache read tokens were seen (usage.prompt_tokens_details.cached_tokens absent). If your server uses prefix/KV caching, enable cache reporting so AIPerf can populate the prompt-cache metrics: vLLM --enable-prompt-tokens-details, SGLang --enable-cache-report (TRT-LLM reports it by default). (accumulator.py:243)
+18:31:50.651 NOTICE   Phase profiling (profiling) sending complete | sent=1,319, completed=1,303, in_flight=16 | sessions: sent=1,319, completed=1,303 (runner.py:1073)
+18:31:50.652 INFO     Sent 1,319 requests. Waiting for all to complete... (records_manager.py:992)
+18:32:00.114 NOTICE   Phase profiling (profiling) complete | completed=1,319, cancelled=0, errors=0 | sessions: completed=1,319, cancelled=0 | elapsed=913.63s (runner.py:1196)
+18:32:00.114 NOTICE   All credits completed (phase_orchestrator.py:358)
+18:32:00.115 INFO     Received CREDIT_PHASE_COMPLETE message, Phase complete: PhaseRecordsStats(phase=CreditPhase.PROFILING, phase_index=0, profiling_index=0, phase_name='profiling', phase_kind='profiling', start_ns=1788718606481344477, sent_end_ns=1788719510651901352, requests_end_ns=1788719520113893635, baseline_start_ns=1788718606481323197, baseline_end_ns=1788719520113900545, total_expected_requests=1319, expected_duration_sec=None, expected_num_sessions=None, expected_grace_period_sec=None, final_requests_sent=None, final_requests_completed=1319, final_requests_cancelled=0, final_request_errors=0, final_sent_sessions=None, final_completed_sessions=None, final_cancelled_sessions=None, timeout_triggered=False, grace_period_timeout_triggered=False, was_cancelled=False, records_end_ns=None, success_records=1318, error_records=0) (records_manager.py:1018)
+18:32:00.115 NOTICE   All requests have completed, please wait for the results to be processed (currently 1,318 of 1,319 records processed)... (records_manager.py:1029)
+18:32:00.115 INFO     Received credits complete from 'timing_manager' (system_controller.py:446)
+18:32:00.115 INFO     All credits complete, please wait for the results to be processed... (records_manager.py:1055)
+18:32:00.118 INFO     Processed 1319 valid requests and 0 errors (1319 total). (records_manager.py:891)
+18:32:00.118 INFO     Received all records, processing now... (records_manager.py:897)
+18:32:00.118 INFO     Server Metrics: Profiling complete, capturing final metrics... (manager.py:355)
+18:32:00.119 INFO     Waiting 2.0s for server metrics flush period... (records_manager.py:951)
+18:32:02.114 INFO     Processing records results... (records_manager.py:1941)
+18:32:02.194 INFO     Waiting for result domains: accuracy, server_metrics (system_controller.py:824)
+18:32:16.957 INFO     Parquet export complete: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/server_metrics_export.parquet, 1,898,848 rows. (parquet_exporter.py:239)
+18:32:16.963 INFO     Exported server metrics to Parquet: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/server_metrics_export.parquet (accumulator.py:620)
+18:32:16.968 INFO     _finalize_and_process_results completed (records_manager.py:958)
+18:32:16.972 INFO     Waiting for result domains: accuracy (system_controller.py:824)
+18:32:16.972 INFO     All results received, initiating shutdown (system_controller.py:819)
+18:32:17.579 INFO     Exporting all records (exporter_manager.py:69)
+18:32:17.659 INFO     Accuracy results exported to /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/accuracy_results.csv (accuracy_data_exporter.py:100)
+18:32:17.815 INFO     Exported 1319 records to /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/outputs.json (outputs_json_exporter.py:89)
+18:32:17.817 INFO     Exporting console data (exporter_manager.py:326)
+
+
+                                             NVIDIA AIPerf | LLM Metrics: Effective                                             
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃                                    Metric ┃       avg ┃      min ┃        max ┃       p99 ┃       p90 ┃       p50 ┃      std ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│          Effective Concurrency (requests) │     15.93 │     0.00 │      16.00 │     16.00 │     16.00 │     16.00 │     0.84 │
+│  Effective Decode Throughput (tokens/sec) │    333.30 │     0.00 │  25,782.10 │    767.29 │    545.06 │    450.53 │   245.47 │
+│ Effective Prefill Throughput (tokens/sec) │    107.86 │     0.00 │     733.01 │    150.47 │    130.30 │    107.51 │    24.87 │
+│   Effective Decode Concurrency (requests) │      3.55 │     0.00 │       4.00 │      4.00 │      4.00 │      4.00 │     0.57 │
+│  Effective Prefill Concurrency (requests) │     12.38 │     0.00 │      16.00 │     14.00 │     13.00 │     12.00 │     0.98 │
+│   Effective Total Throughput (tokens/sec) │    441.17 │     0.00 │     802.58 │    547.28 │    507.66 │    456.73 │    59.81 │
+│      Effective Decode Throughput Per User │     86.85 │     0.00 │  11,834.62 │    198.46 │    136.83 │    117.00 │    60.86 │
+│                         (tokens/sec/user) │           │          │            │           │           │           │          │
+│     Effective Prefill Throughput Per User │      8.68 │     0.00 │     115.09 │     11.84 │     10.29 │      8.66 │     1.70 │
+│                         (tokens/sec/user) │           │          │            │           │           │           │          │
+│                 Tokens In Flight (tokens) │  3,276.93 │     0.00 │  18,173.38 │ 17,102.67 │  8,941.73 │  1,765.68 │ 3,667.23 │
+│         Effective Latency (CO-aware) (ms) │ 11,031.87 │ 1,107.46 │ 165,067.38 │ 17,094.63 │ 12,990.36 │ 10,591.78 │ 5,008.24 │
+└───────────────────────────────────────────┴───────────┴──────────┴────────────┴───────────┴───────────┴───────────┴──────────┘
+                                    NVIDIA AIPerf | LLM Metrics: Active                                    
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┓
+┃                                 Metric ┃    avg ┃   min ┃       max ┃    p99 ┃    p90 ┃    p50 ┃    std ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━┩
+│  Active Decode Throughput (tokens/sec) │ 333.50 │  0.00 │ 25,782.10 │ 767.29 │ 545.08 │ 450.85 │ 245.41 │
+│ Active Prefill Throughput (tokens/sec) │ 108.03 │  7.51 │    733.01 │ 150.47 │ 130.33 │ 107.53 │  24.51 │
+│      Active Decode Throughput Per User │  86.90 │  0.00 │ 11,834.62 │ 198.46 │ 136.84 │ 117.02 │  60.84 │
+│                      (tokens/sec/user) │        │       │           │        │        │        │        │
+│     Active Prefill Throughput Per User │   8.70 │  5.49 │    115.09 │  11.85 │  10.29 │   8.67 │   1.66 │
+│                      (tokens/sec/user) │        │       │           │        │        │        │        │
+│   Active Total Throughput (tokens/sec) │ 441.17 │ 78.80 │    802.58 │ 547.28 │ 507.66 │ 456.73 │  59.80 │
+└────────────────────────────────────────┴────────┴───────┴───────────┴────────┴────────┴────────┴────────┘
+                                       NVIDIA AIPerf | LLM Metrics: Usage                                       
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┓
+┃                                 Metric ┃        avg ┃    min ┃       max ┃    p99 ┃    p90 ┃    p50 ┃    std ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━┩
+│           Usage Prompt Tokens (tokens) │      74.71 │  38.00 │    201.00 │ 140.00 │ 105.00 │  71.00 │  21.75 │
+│       Usage Completion Tokens (tokens) │     231.87 │  80.00 │ 16,384.00 │ 696.66 │ 326.00 │ 191.00 │ 474.85 │
+│            Usage Total Tokens (tokens) │     306.58 │ 121.00 │ 16,523.00 │ 820.14 │ 423.00 │ 265.00 │ 479.16 │
+│     Total Usage Prompt Tokens (tokens) │  98,545.00 │    N/A │       N/A │    N/A │    N/A │    N/A │    N/A │
+│ Total Usage Completion Tokens (tokens) │ 305,837.00 │    N/A │       N/A │    N/A │    N/A │    N/A │    N/A │
+│      Total Usage Total Tokens (tokens) │ 404,382.00 │    N/A │       N/A │    N/A │    N/A │    N/A │    N/A │
+└────────────────────────────────────────┴────────────┴────────┴───────────┴────────┴────────┴────────┴────────┘
+                                                    NVIDIA AIPerf | LLM Metrics                                                     
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃                                        Metric ┃       avg ┃      min ┃        max ┃       p99 ┃       p90 ┃       p50 ┃      std ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│                      Time to First Token (ms) │  8,574.50 │   532.97 │  14,376.64 │ 13,391.32 │ 10,244.74 │  8,381.79 │ 1,463.00 │
+│                     Time to Second Token (ms) │     54.93 │     0.24 │     283.51 │    263.95 │    224.96 │     32.77 │    67.23 │
+│               Time to First Output Token (ms) │  9,766.99 │   864.83 │  68,627.01 │ 15,170.94 │ 11,709.47 │  9,477.92 │ 2,542.21 │
+│                          Request Latency (ms) │ 11,016.98 │ 1,105.86 │ 165,066.10 │ 17,093.56 │ 12,980.01 │ 10,580.21 │ 5,009.56 │
+│                          Decode Duration (ms) │  2,442.48 │   558.90 │ 157,657.83 │  8,326.69 │  3,475.86 │  1,985.45 │ 4,832.91 │
+│                      Inter Token Latency (ms) │     10.51 │     6.19 │      17.74 │     14.63 │     12.51 │     10.43 │     1.57 │
+│              Output Token Throughput Per User │     97.28 │    56.36 │     161.49 │    140.05 │    115.17 │     95.85 │    14.84 │
+│                             (tokens/sec/user) │           │          │            │           │           │           │          │
+│ E2E Output Token Throughput (tokens/sec/user) │     19.70 │     5.96 │      99.26 │     47.83 │     28.63 │     18.40 │     8.25 │
+│               Output Sequence Length (tokens) │    231.87 │    80.00 │  16,384.00 │    696.66 │    326.00 │    191.00 │   474.85 │
+│                Input Sequence Length (tokens) │     74.71 │    38.00 │     201.00 │    140.00 │    105.00 │     71.00 │    21.75 │
+│          Output Token Throughput (tokens/sec) │    334.75 │      N/A │        N/A │       N/A │       N/A │       N/A │      N/A │
+│           Input Token Throughput (tokens/sec) │    107.86 │      N/A │        N/A │       N/A │       N/A │       N/A │      N/A │
+│             Request Throughput (requests/sec) │      1.44 │      N/A │        N/A │       N/A │       N/A │       N/A │      N/A │
+│                        Request Error Rate (%) │      0.00 │      N/A │        N/A │       N/A │       N/A │       N/A │      N/A │
+│                      Request Count (requests) │  1,319.00 │      N/A │        N/A │       N/A │       N/A │       N/A │      N/A │
+└───────────────────────────────────────────────┴───────────┴──────────┴────────────┴───────────┴───────────┴───────────┴──────────┘
+
+Token usage is reported but no prompt-cache read tokens were seen (usage.prompt_tokens_details.cached_tokens absent). If your server uses 
+prefix/KV caching, enable cache reporting so AIPerf can populate the prompt-cache metrics: vLLM --enable-prompt-tokens-details, SGLang 
+--enable-cache-report (TRT-LLM reports it by default).
+
+ NVIDIA AIPerf | Server Metrics: Speculative Decoding 
+┏━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┓
+┃ Metric          ┃ mean ┃  min ┃  max ┃  p50 ┃  p90 ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━┩
+│ Accept Rate (%) │ 68.9 │ 49.9 │ 93.5 │ 68.9 │ 75.2 │
+│ Accept Length   │ 4.44 │ 2.60 │ 5.13 │ 4.44 │ 4.75 │
+└─────────────────┴──────┴──────┴──────┴──────┴──────┘
+
+                        Accuracy Benchmark Results                        
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Task                           ┃ Correct ┃ Total ┃ Unparsed ┃ Accuracy ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━┩
+│ gsm8k                          │    1171 │  1319 │     1319 │   88.78% │
+├────────────────────────────────┼─────────┼───────┼──────────┼──────────┤
+│ OVERALL                        │    1171 │  1319 │     1319 │   88.78% │
+└────────────────────────────────┴─────────┴───────┴──────────┴──────────┘
+Warning: every accuracy response was unparsed (accuracy=0). The grader could not extract an answer from any model output. Verify the 
+inference server returns valid completions for this benchmark before trusting the accuracy CSV.
+
+CLI Command: aiperf profile -f '/root/.cache/bench-stage/harness/configs/gsm8k.yaml'
+Benchmark Duration: 913.61 sec
+CSV Export: 
+/root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/profile_export_aiperf.csv
+JSON Export: 
+/root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/profile_export_aiperf.json
+Server Metrics CSV Export: 
+/root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/server_metrics_export.csv
+Server Metrics JSON Export: 
+/root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/server_metrics_export.json
+accuracy_csv: 
+/root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/accuracy_results.csv
+Outputs JSON: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/outputs.json
+Log File: /root/.cache/bench-stage/results/v032rc1-full-20260906/quality/gsm8k-full/logs/aiperf.log
+

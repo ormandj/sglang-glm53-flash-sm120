@@ -1,6 +1,6 @@
-# Running `v0.3.2-rc.1`
+# Running `v0.3.2`
 
-This candidate is prepared for an internal build from SGLang main `28457f0dca`, which includes merged GLM support, and FlashInfer main `6c14bbd5ff`. It is not built or qualified yet. The released version remains v0.3.1. Use separate cache schema v69 for this rebuild.
+This release uses SGLang main `28457f0dca`, including merged GLM support, and FlashInfer main `6c14bbd5ff`, plus the recorded integration patches. The exact internal image completed full qualification; each registry's candidate was promoted digest-identically. Use cache schema `v69` for this build.
 
 ```bash
 export MODEL_REPO=ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
@@ -8,7 +8,7 @@ export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
 mkdir -p "$MODEL_DIR"
 HF_XET_HIGH_PERFORMANCE=1 hf download "$MODEL_REPO" --local-dir "$MODEL_DIR"
 
-export IMAGE=sglang-glm53-flash-sm120:v0.3.2-rc.1
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.2
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v69
 ./examples/serve-glm53-flash.sh
 ```

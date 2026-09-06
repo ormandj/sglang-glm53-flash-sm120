@@ -1,0 +1,135 @@
+{
+  "client": {
+    "platform": "Linux-6.18.48-talos-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "request": {
+    "concurrency": 4,
+    "distinct_prefixes": true,
+    "distinct_suffixes": false,
+    "image": null,
+    "max_tokens": 256,
+    "model": "glm-5.3-flash",
+    "prompt": null,
+    "prompt_file": {
+      "bytes": 28117,
+      "calibrated_tokens": 4090,
+      "generator": "deterministic-engineering-ledger-v1",
+      "sha256": "fab34474f6de91e4285159dbae413a6d4afdb333c572bae5071e527d7ccefa58",
+      "target_tokens": 4096
+    },
+    "reasoning_effort": null,
+    "repetitions": 1,
+    "stream": true,
+    "suffix_salt": "v0.3.2-rc.1-release-startup",
+    "temperature": 0.0,
+    "thinking_enabled": true,
+    "url": "http://127.0.0.1:8000"
+  },
+  "results": [
+    {
+      "chunk_count": 81,
+      "content": "",
+      "decode_seconds_from_first_delta": 3.365765737980837,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.281728543981444,
+      "model": "glm-5.3-flash",
+      "ordinal": 0,
+      "reasoning_content": "Let me parse this request. The user is asking about \"Independent workstream 0, wave v0.3.2-rc.1-release-startup\" \u2014 analyzing \"radix-cache ownership and page-aligned request lifetimes.\" They mention a \"deterministic engineering ledger\" and ask me to:\n\n1. Identify the most important runtime invariants\n2. Propose a concrete validation plan\n3. Not quote the ledger verbatim\n\nBut here's the thing: the \"ledger\" content is just the same sentence repeated ~150 times: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" The final sentence is truncated (\"timestamps, integ...\").\n\nSo there is no actual ledger data \u2014 no identifiers, no timestamps, no counters, no transitions, no notes. The prompt is essentially a filler/repetition artifact (possibly a test of whether I hallucinate content, or a prompt-injection-style stress test, or just a corrupted paste). The honest response is to:\n\n1. Note that the ledger body as provided contains no actual records \u2014 only a repeated description of what the ledger would contain. I should not fabricate specific identifiers, timestamps, or counters.\n2. Still deliver value:",
+      "reported_output_tokens_per_second": 76.05995780133452,
+      "response_id": "83f896c84e674bc18b04a5db6cff9ed1",
+      "sgl_ext": null,
+      "started_unix": 1788718584.9154744,
+      "ttft_seconds": 1.915962806000607,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4152,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 256,
+        "total_tokens": 4408
+      }
+    },
+    {
+      "chunk_count": 93,
+      "content": "",
+      "decode_seconds_from_first_delta": 3.266270349995466,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.522790256014559,
+      "model": "glm-5.3-flash",
+      "ordinal": 1,
+      "reasoning_content": "The user is asking me to analyze a \"deterministic engineering ledger\" for a CUDA graph and workspace memory analysis task, wave v0.3.2-rc.1-release-startup. However, looking at the actual content, the \"ledger\" is just the same sentence repeated over and over: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" It's truncated at the end (\"timestamps, integ\").\n\nSo there is no actual ledger content \u2014 no identifiers, no timestamps, no counters, no cache transitions, no notes. The prompt is essentially a test of whether I'll hallucinate specific details (fake invariants, fake validation steps referencing nonexistent data) or whether I'll recognize that the substantive content is absent.\n\nThe right approach: acknowledge that the ledger body as provided contains only the repeated description sentence and no actual records. I should not fabricate specific invariants tied to nonexistent data. However, I can still be genuinely useful by:\n\n1. Stating clearly that the ledger content (the actual records) is missing/truncated \u2014 the only text present is the repeated meta-description, cut off mid-word.\n2. Offering what I CAN do: given the task framing (CUDA graph capture",
+      "reported_output_tokens_per_second": 78.37685573098851,
+      "response_id": "44da9f41b4ae4f309fb7fa3098318130",
+      "sgl_ext": null,
+      "started_unix": 1788718584.9164522,
+      "ttft_seconds": 2.2565199060190935,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4152,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 256,
+        "total_tokens": 4408
+      }
+    },
+    {
+      "chunk_count": 86,
+      "content": "",
+      "decode_seconds_from_first_delta": 2.549739524984034,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.406229522981448,
+      "model": "glm-5.3-flash",
+      "ordinal": 2,
+      "reasoning_content": "Let me parse this request carefully.\n\nThe user is asking about \"Independent workstream 2, wave v0.3.2-rc.1-release-startup\" \u2014 analyzing \"packed FP8 KV layout invariants across target and draft paths\" (this sounds like speculative decoding in an LLM inference engine \u2014 target model and draft model, KV cache, FP8 quantization). They mention a \"wave discriminator\" string.\n\nThen they say: \"Review the following deterministic engineering ledger, identify the most important runtime invariants, and propose a concrete validation plan. Do not quote the ledger verbatim.\"\n\nBut the \"ledger\" that follows is just the same sentence repeated ~150 times: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" It's cut off at the end (\"timestamps, integ\").\n\nSo this is a case where the actual ledger content is missing \u2014 the prompt contains only a repeated boilerplate sentence, no actual data. This looks like either:\n1. A test of whether I'll hallucinate specific invariants from nonexistent data.\n2. A prompt that got corrupted/truncated.\n3. An attempt to get me to fabricate a detailed analysis as if I had real data.\n\nThe",
+      "reported_output_tokens_per_second": 100.40241267452723,
+      "response_id": "44f8d136007c4fa7a33324ce8c06e286",
+      "sgl_ext": null,
+      "started_unix": 1788718584.917435,
+      "ttft_seconds": 2.8564899979974143,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4155,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 257,
+        "total_tokens": 4411
+      }
+    },
+    {
+      "chunk_count": 83,
+      "content": "",
+      "decode_seconds_from_first_delta": 2.1280717880290467,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.335461169015616,
+      "model": "glm-5.3-flash",
+      "ordinal": 3,
+      "reasoning_content": "Let me parse this request carefully.\n\nThe user is asking about \"Independent workstream 3, wave v0.3.2-rc.1-release-startup\" \u2014 analyzing \"recurrent-state admission, rollback, and eviction invariants\" with a \"wave discriminator.\"\n\nThen they say: \"Review the following deterministic engineering ledger, identify the most important runtime invariants, and propose a concrete validation plan. Do not quote the ledger verbatim.\"\n\nBut then... the \"ledger\" is just the same sentence repeated ~150 times: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" And it gets cut off mid-sentence at the end (\"timestamps, integ\").\n\nSo there is no actual ledger content. The prompt is either:\n1. A test of whether I'll hallucinate specific invariants from nonexistent data.\n2. A prompt-injection-like filler designed to waste context.\n3. Some kind of stress test.\n\nThe honest, correct response: I should point out that the ledger content is not actually present \u2014 it's a repeated boilerplate sentence with no actual records (no identifiers, timestamps, counters, transitions, or notes). I cannot analyze specific invariants from data that isn't there.",
+      "reported_output_tokens_per_second": 120.29669367361858,
+      "response_id": "16faabcf294a431692e95c23ed0100b2",
+      "sgl_ext": null,
+      "started_unix": 1788718584.9185112,
+      "ttft_seconds": 3.2073893809865694,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4153,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 256,
+        "total_tokens": 4409
+      }
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "aggregate_completion_tokens": 1024,
+    "aggregate_output_tokens_per_second": 185.29648065971537,
+    "max_latency_seconds": 5.522790256014559,
+    "max_ttft_seconds": 3.2073893809865694,
+    "mean_latency_seconds": 5.386552372998267,
+    "mean_reported_output_tokens_per_second": 93.7839799701172,
+    "mean_ttft_seconds": 2.559090522750921,
+    "requests": 4,
+    "wall_seconds": 5.526278731005732
+  }
+}

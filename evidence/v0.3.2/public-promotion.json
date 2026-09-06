@@ -1,0 +1,13 @@
+{
+  "provider": "public",
+  "workflow": "promote-release.yml",
+  "run": "34055611240",
+  "verified_at_utc": "2026-09-06T19:41:58.050585+00:00",
+  "repository": "ghcr.io/ormandj/sglang-glm53-flash-sm120",
+  "candidate": "v0.3.2-rc.1",
+  "stable": "v0.3.2",
+  "candidate_digest": "sha256:5f12516c84abb3a74f135ba43a18021b05c6ca14c186a6583087aefc245593fb",
+  "stable_digest": "sha256:5f12516c84abb3a74f135ba43a18021b05c6ca14c186a6583087aefc245593fb",
+  "build_source": "55ae7c65ee1e2cf02b4f3a85b00d06b5d8c839b0",
+  "digest_identical": true
+}

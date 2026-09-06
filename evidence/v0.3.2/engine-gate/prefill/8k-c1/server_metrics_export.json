@@ -1,0 +1,5302 @@
+{
+  "schema_version": "1.1",
+  "aiperf_version": "0.12.0",
+  "benchmark_id": "b020becd012d",
+  "summary": {
+    "endpoints_configured": [
+      "http://127.0.0.1:8000/metrics"
+    ],
+    "endpoints_successful": [
+      "http://127.0.0.1:8000/metrics"
+    ],
+    "start_time": "2026-09-06T18:52:22.090726",
+    "end_time": "2026-09-06T18:52:30.005180",
+    "endpoint_info": {
+      "http://127.0.0.1:8000/metrics": {
+        "total_fetches": 28,
+        "first_fetch_ns": 1788720738794950181,
+        "last_fetch_ns": 1788720750074779158,
+        "avg_fetch_latency_ms": 28.096205464285713,
+        "unique_updates": 28,
+        "first_update_ns": 1788720738794950181,
+        "last_update_ns": 1788720750074779158,
+        "duration_seconds": 11.279828977,
+        "avg_update_interval_ms": 417.77144359259256,
+        "median_update_interval_ms": 332.416546
+      }
+    },
+    "phase_time_ranges": {
+      "profiling": {
+        "start_ns": 1788720742090726341,
+        "end_ns": 1788720750005179789
+      }
+    }
+  },
+  "metrics_phase": "profiling",
+  "metrics": {
+    "sglang:cache_hit_rate": {
+      "type": "gauge",
+      "description": "The prefix cache hit rate.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:cached_tokens": {
+      "type": "counter",
+      "description": "Number of cached prompt tokens by source (device/host/storage).",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_source": "device",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_source": "host",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:context_len": {
+      "type": "gauge",
+      "description": "Maximum context length.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 450560.0,
+            "min": 450560.0,
+            "max": 450560.0,
+            "std": 0.0,
+            "p1": 450560.0,
+            "p5": 450560.0,
+            "p10": 450560.0,
+            "p25": 450560.0,
+            "p50": 450560.0,
+            "p75": 450560.0,
+            "p90": 450560.0,
+            "p95": 450560.0,
+            "p99": 450560.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 450560.0,
+            "min": 450560.0,
+            "max": 450560.0,
+            "std": 0.0,
+            "p1": 450560.0,
+            "p5": 450560.0,
+            "p10": 450560.0,
+            "p25": 450560.0,
+            "p50": 450560.0,
+            "p75": 450560.0,
+            "p90": 450560.0,
+            "p95": 450560.0,
+            "p99": 450560.0
+          }
+        }
+      ]
+    },
+    "sglang:cuda_graph_passes": {
+      "type": "counter",
+      "description": "Total number of forward passes categorized by CUDA graph.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "decode_cuda_graph",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 5.0,
+            "rate": 0.44326913202276297
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "decode_cuda_graph",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 5.0,
+            "rate": 0.44326913202276297
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "prefill_none",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 15.0,
+            "rate": 1.3298073960682888
+          }
+        }
+      ]
+    },
+    "sglang:decode_sum_seq_lens": {
+      "type": "gauge",
+      "description": "The sum of all sequence lengths in decode.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 40916.0,
+            "min": 40916.0,
+            "max": 40916.0,
+            "std": 0.0,
+            "p1": 40916.0,
+            "p5": 40916.0,
+            "p10": 40916.0,
+            "p25": 40916.0,
+            "p50": 40916.0,
+            "p75": 40916.0,
+            "p90": 40916.0,
+            "p95": 40916.0,
+            "p99": 40916.0
+          }
+        }
+      ]
+    },
+    "sglang:e2e_request_latency_seconds": {
+      "type": "histogram",
+      "description": "Histogram of End-to-end request latency in seconds",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "false",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 0
+          },
+          "buckets": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.4": 0,
+            "0.6": 0,
+            "0.8": 0,
+            "1.0": 0,
+            "2.0": 0,
+            "4.0": 0,
+            "6.0": 0,
+            "8.0": 0,
+            "10.0": 0,
+            "20.0": 0,
+            "40.0": 0,
+            "60.0": 0,
+            "80.0": 0,
+            "100.0": 0,
+            "200.0": 0,
+            "400.0": 0,
+            "600.0": 0,
+            "1200.0": 0,
+            "1800.0": 0,
+            "2400.0": 0,
+            "+Inf": 0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "true",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 7.8322481039504055,
+            "avg": 1.566449620790081,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.6943587637650055,
+            "p1_estimate": 1.3503175312274063,
+            "p5_estimate": 1.3679609671100736,
+            "p10_estimate": 1.3900152619634079,
+            "p25_estimate": 1.4561781465234103,
+            "p50_estimate": 1.566449620790081,
+            "p75_estimate": 1.676721095056752,
+            "p90_estimate": 1.7428839796167543,
+            "p95_estimate": 1.7649382744700886,
+            "p99_estimate": 1.782581710352756
+          },
+          "buckets": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.4": 0,
+            "0.6": 0,
+            "0.8": 0,
+            "1.0": 0,
+            "2.0": 5,
+            "4.0": 5,
+            "6.0": 5,
+            "8.0": 5,
+            "10.0": 5,
+            "20.0": 5,
+            "40.0": 5,
+            "60.0": 5,
+            "80.0": 5,
+            "100.0": 5,
+            "200.0": 5,
+            "400.0": 5,
+            "600.0": 5,
+            "1200.0": 5,
+            "1800.0": 5,
+            "2400.0": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:evicted_tokens": {
+      "type": "counter",
+      "description": "The number of device KV token slots freed by eviction, regardless of whether the data was backed up to host (see sglang:hicache_backup_tokens_total) or destroyed (see sglang:hicache_dropped_tokens_total).",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:eviction_duration_seconds": {
+      "type": "histogram",
+      "description": "End-to-end time of a device eviction pass in seconds; under --hicache-write-policy write_back this includes the blocking D->H backup (see sglang:hicache_backup_duration_seconds for the copy alone).",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache"
+          },
+          "stats": {
+            "count": 0
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.002": 0,
+            "0.003": 0,
+            "0.004": 0,
+            "0.005": 0,
+            "0.006": 0,
+            "0.007": 0,
+            "0.008": 0,
+            "0.009": 0,
+            "0.01": 0,
+            "0.02": 0,
+            "0.03": 0,
+            "0.04": 0,
+            "0.05": 0,
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0,
+            "+Inf": 0
+          }
+        }
+      ]
+    },
+    "sglang:full_token_usage": {
+      "type": "gauge",
+      "description": "The token usage for full attention layers.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0026936026936026933,
+            "min": 0.0,
+            "max": 0.01818181818181818,
+            "std": 0.006582072598149921,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.01818181818181818,
+            "p95": 0.01818181818181818,
+            "p99": 0.01818181818181818
+          }
+        }
+      ]
+    },
+    "sglang:gen_throughput": {
+      "type": "gauge",
+      "description": "The generation throughput (token/s).",
+      "unit": "tokens/s",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 348.04588092200134,
+            "min": 348.0458809220013,
+            "max": 348.0458809220013,
+            "std": 5.792624794651921e-14,
+            "p1": 348.0458809220013,
+            "p5": 348.0458809220013,
+            "p10": 348.0458809220013,
+            "p25": 348.0458809220013,
+            "p50": 348.0458809220013,
+            "p75": 348.0458809220013,
+            "p90": 348.0458809220013,
+            "p95": 348.0458809220013,
+            "p99": 348.0458809220013
+          }
+        }
+      ]
+    },
+    "sglang:generation_tokens": {
+      "type": "counter",
+      "description": "Number of generation tokens processed.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "false",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "true",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 5.0,
+            "rate": 0.44326913202276297
+          }
+        }
+      ]
+    },
+    "sglang:generation_tokens_histogram": {
+      "type": "histogram",
+      "description": "Histogram of generation token length.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 5.0,
+            "avg": 1.0,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.44326913202276297,
+            "p1_estimate": 0.0,
+            "p5_estimate": 0.0,
+            "p10_estimate": 0.0,
+            "p25_estimate": 0.0,
+            "p50_estimate": 0.0,
+            "p75_estimate": 9.4,
+            "p90_estimate": 21.4,
+            "p95_estimate": 25.399999999999995,
+            "p99_estimate": 28.599999999999998
+          },
+          "buckets": {
+            "100.0": 5,
+            "300.0": 5,
+            "500.0": 5,
+            "700.0": 5,
+            "1000.0": 5,
+            "1500.0": 5,
+            "2000.0": 5,
+            "3000.0": 5,
+            "4000.0": 5,
+            "5000.0": 5,
+            "6000.0": 5,
+            "7000.0": 5,
+            "8000.0": 5,
+            "9000.0": 5,
+            "10000.0": 5,
+            "12500.0": 5,
+            "15000.0": 5,
+            "17500.0": 5,
+            "20000.0": 5,
+            "22500.0": 5,
+            "25000.0": 5,
+            "27500.0": 5,
+            "30000.0": 5,
+            "35000.0": 5,
+            "40000.0": 5,
+            "60000.0": 5,
+            "80000.0": 5,
+            "100000.0": 5,
+            "200000.0": 5,
+            "300000.0": 5,
+            "400000.0": 5,
+            "600000.0": 5,
+            "800000.0": 5,
+            "1e+06": 5,
+            "1.1e+06": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:graph_memory_usage_gb": {
+      "type": "gauge",
+      "description": "Memory used by captured device graphs in GB.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "decode",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "decode",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "draft_decode",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.091796875,
+            "min": 0.091796875,
+            "max": 0.091796875,
+            "std": 0.0,
+            "p1": 0.091796875,
+            "p5": 0.091796875,
+            "p10": 0.091796875,
+            "p25": 0.091796875,
+            "p50": 0.091796875,
+            "p75": 0.091796875,
+            "p90": 0.091796875,
+            "p95": 0.091796875,
+            "p99": 0.091796875
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "draft_decode",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 0.091796875,
+            "min": 0.091796875,
+            "max": 0.091796875,
+            "std": 0.0,
+            "p1": 0.091796875,
+            "p5": 0.091796875,
+            "p10": 0.091796875,
+            "p25": 0.091796875,
+            "p50": 0.091796875,
+            "p75": 0.091796875,
+            "p90": 0.091796875,
+            "p95": 0.091796875,
+            "p99": 0.091796875
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "draft_extend",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.1484375,
+            "min": 0.1484375,
+            "max": 0.1484375,
+            "std": 0.0,
+            "p1": 0.1484375,
+            "p5": 0.1484375,
+            "p10": 0.1484375,
+            "p25": 0.1484375,
+            "p50": 0.1484375,
+            "p75": 0.1484375,
+            "p90": 0.1484375,
+            "p95": 0.1484375,
+            "p99": 0.1484375
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "draft_extend",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 0.1484375,
+            "min": 0.1484375,
+            "max": 0.1484375,
+            "std": 0.0,
+            "p1": 0.1484375,
+            "p5": 0.1484375,
+            "p10": 0.1484375,
+            "p25": 0.1484375,
+            "p50": 0.1484375,
+            "p75": 0.1484375,
+            "p90": 0.1484375,
+            "p95": 0.1484375,
+            "p99": 0.1484375
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "draft_prefill",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "draft_prefill",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "prefill",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "prefill",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "target_verify",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 1.470703125,
+            "min": 1.470703125,
+            "max": 1.470703125,
+            "std": 0.0,
+            "p1": 1.470703125,
+            "p5": 1.470703125,
+            "p10": 1.470703125,
+            "p25": 1.470703125,
+            "p50": 1.470703125,
+            "p75": 1.470703125,
+            "p90": 1.470703125,
+            "p95": 1.470703125,
+            "p99": 1.470703125
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "phase": "target_verify",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 1.470703125,
+            "min": 1.470703125,
+            "max": 1.470703125,
+            "std": 0.0,
+            "p1": 1.470703125,
+            "p5": 1.470703125,
+            "p10": 1.470703125,
+            "p25": 1.470703125,
+            "p50": 1.470703125,
+            "p75": 1.470703125,
+            "p90": 1.470703125,
+            "p95": 1.470703125,
+            "p99": 1.470703125
+          }
+        }
+      ]
+    },
+    "sglang:hicache_backup_bytes": {
+      "type": "counter",
+      "description": "Bytes backed up from GPU to local host DRAM (L2), all pools combined, including draft/sidecar transfers that the token counter excludes. Divided by the rate of hicache_backup_duration_seconds_sum, gives the achieved D->H bandwidth while transferring.",
+      "unit": "bytes",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:hicache_backup_duration_seconds": {
+      "type": "histogram",
+      "description": "Time taken to back up KV cache from GPU to local host DRAM (L2) in seconds, per merged write op. Covers all D->H backups regardless of --hicache-write-policy. Distinct from the host-to-storage (L3) sglang:backuped_tokens_total.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache"
+          },
+          "stats": {
+            "count": 0
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.005": 0,
+            "0.01": 0,
+            "0.05": 0,
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0,
+            "2.0": 0,
+            "5.0": 0,
+            "10.0": 0,
+            "30.0": 0,
+            "60.0": 0,
+            "+Inf": 0
+          }
+        }
+      ]
+    },
+    "sglang:hicache_backup_tokens": {
+      "type": "counter",
+      "description": "The number of tokens backed up from GPU to local host DRAM (L2), by host pool (kv, swa, mamba, ...). Covers all D->H backups regardless of --hicache-write-policy. Distinct from the host-to-storage (L3) sglang:backuped_tokens_total.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache",
+            "pool": "kv"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache",
+            "pool": "mamba"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:hicache_dropped_tokens": {
+      "type": "counter",
+      "description": "The number of logical device KV tokens destroyed without a host backup. The pool label is always kv; reason is host_pressure for write-back failure, or write_through_unbacked_eviction when eager write-through did not complete before eviction.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache",
+            "pool": "kv",
+            "reason": "host_pressure"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache",
+            "pool": "kv",
+            "reason": "write_through_unbacked_eviction"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:hicache_host_total_tokens": {
+      "type": "gauge",
+      "description": "Total capacity of the host KV cache in tokens.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 2123968.0,
+            "min": 2123968.0,
+            "max": 2123968.0,
+            "std": 0.0,
+            "p1": 2123968.0,
+            "p5": 2123968.0,
+            "p10": 2123968.0,
+            "p25": 2123968.0,
+            "p50": 2123968.0,
+            "p75": 2123968.0,
+            "p90": 2123968.0,
+            "p95": 2123968.0,
+            "p99": 2123968.0
+          }
+        }
+      ]
+    },
+    "sglang:hicache_host_used_tokens": {
+      "type": "gauge",
+      "description": "Number of tokens currently used in the host KV cache.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 208668.44444444444,
+            "min": 0.0,
+            "max": 939008.0,
+            "std": 397819.4464973867,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 939008.0,
+            "p95": 939008.0,
+            "p99": 939008.0
+          }
+        }
+      ]
+    },
+    "sglang:http_requests": {
+      "type": "counter",
+      "description": "Total number of HTTP requests by endpoint and method",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/flush_cache",
+            "method": "POST"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/freeze_gc",
+            "method": "POST"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/health",
+            "method": "GET"
+          },
+          "stats": {
+            "total": 1.0,
+            "rate": 0.08865382640455259
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/metrics",
+            "method": "GET"
+          },
+          "stats": {
+            "total": 27.0,
+            "rate": 2.39365331292292
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/metrics",
+            "method": "HEAD"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/model_info",
+            "method": "GET"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/tokenize",
+            "method": "POST"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/v1/chat/completions",
+            "method": "POST"
+          },
+          "stats": {
+            "total": 5.0,
+            "rate": 0.44326913202276297
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/v1/models",
+            "method": "GET"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:http_requests_active": {
+      "type": "gauge",
+      "description": "Number of currently active HTTP requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/flush_cache",
+            "method": "POST"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/freeze_gc",
+            "method": "POST"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/health",
+            "method": "GET"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/metrics",
+            "method": "GET"
+          },
+          "stats": {
+            "avg": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "std": 0.0,
+            "p1": 1.0,
+            "p5": 1.0,
+            "p10": 1.0,
+            "p25": 1.0,
+            "p50": 1.0,
+            "p75": 1.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "p99": 1.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/metrics",
+            "method": "HEAD"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/model_info",
+            "method": "GET"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/tokenize",
+            "method": "POST"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/v1/chat/completions",
+            "method": "POST"
+          },
+          "stats": {
+            "avg": 1.8148148148148149,
+            "min": 0.0,
+            "max": 3.0,
+            "std": 0.7357380928771742,
+            "p1": 0.0,
+            "p5": 0.30000000000000004,
+            "p10": 1.0,
+            "p25": 2.0,
+            "p50": 2.0,
+            "p75": 2.0,
+            "p90": 2.400000000000002,
+            "p95": 3.0,
+            "p99": 3.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/v1/models",
+            "method": "GET"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:http_responses": {
+      "type": "counter",
+      "description": "Total number of HTTP responses by endpoint and status code",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/flush_cache",
+            "method": "POST",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/freeze_gc",
+            "method": "POST",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/health",
+            "method": "GET",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 1.0,
+            "rate": 0.08865382640455259
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/metrics",
+            "method": "GET",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 27.0,
+            "rate": 2.39365331292292
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/metrics",
+            "method": "HEAD",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/model_info",
+            "method": "GET",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/tokenize",
+            "method": "POST",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/v1/chat/completions",
+            "method": "POST",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 3.0,
+            "rate": 0.26596147921365776
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "endpoint": "/v1/models",
+            "method": "GET",
+            "status_code": "200"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:inter_token_latency_seconds": {
+      "type": "histogram",
+      "description": "Histogram of inter-token latency in seconds.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 0
+          },
+          "buckets": {
+            "0.002": 0,
+            "0.004": 0,
+            "0.006": 0,
+            "0.008": 0,
+            "0.01": 0,
+            "0.015": 0,
+            "0.02": 0,
+            "0.025": 0,
+            "0.03": 0,
+            "0.035": 0,
+            "0.04": 0,
+            "0.06": 0,
+            "0.08": 0,
+            "0.1": 0,
+            "0.2": 0,
+            "0.4": 0,
+            "0.6": 0,
+            "0.8": 0,
+            "1.0": 0,
+            "2.0": 0,
+            "4.0": 0,
+            "6.0": 0,
+            "8.0": 0,
+            "+Inf": 0
+          }
+        }
+      ]
+    },
+    "sglang:is_cuda_graph": {
+      "type": "gauge",
+      "description": "Whether the batch is using CUDA graph.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:kv_available_tokens": {
+      "type": "gauge",
+      "description": "Number of free token slots in the KV cache pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 332401.77777777775,
+            "min": 768.0,
+            "max": 442368.0,
+            "std": 180903.59049150447,
+            "p1": 768.0,
+            "p5": 768.0,
+            "p10": 768.0,
+            "p25": 409600.0,
+            "p50": 425984.0,
+            "p75": 434176.0,
+            "p90": 442368.0,
+            "p95": 442368.0,
+            "p99": 442368.0
+          }
+        }
+      ]
+    },
+    "sglang:kv_cache_memory_usage_gb": {
+      "type": "gauge",
+      "description": "Memory used by the KV cache pools in GB.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 3.637754201889038,
+            "min": 3.637754201889038,
+            "max": 3.637754201889038,
+            "std": 0.0,
+            "p1": 3.637754201889038,
+            "p5": 3.637754201889038,
+            "p10": 3.637754201889038,
+            "p25": 3.637754201889038,
+            "p50": 3.637754201889038,
+            "p75": 3.637754201889038,
+            "p90": 3.637754201889038,
+            "p95": 3.637754201889038,
+            "p99": 3.637754201889038
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 3.637754201889038,
+            "min": 3.637754201889038,
+            "max": 3.637754201889038,
+            "std": 0.0,
+            "p1": 3.637754201889038,
+            "p5": 3.637754201889038,
+            "p10": 3.637754201889038,
+            "p25": 3.637754201889038,
+            "p50": 3.637754201889038,
+            "p75": 3.637754201889038,
+            "p90": 3.637754201889038,
+            "p95": 3.637754201889038,
+            "p99": 3.637754201889038
+          }
+        }
+      ]
+    },
+    "sglang:kv_evictable_tokens": {
+      "type": "gauge",
+      "description": "Number of evictable (radix-cached) token slots in the KV cache pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 116944.5925925926,
+            "min": 8192.0,
+            "max": 449792.0,
+            "std": 181550.17018725138,
+            "p1": 8192.0,
+            "p5": 8192.0,
+            "p10": 8192.0,
+            "p25": 16384.0,
+            "p50": 24576.0,
+            "p75": 40960.0,
+            "p90": 449792.0,
+            "p95": 449792.0,
+            "p99": 449792.0
+          }
+        }
+      ]
+    },
+    "sglang:kv_used_tokens": {
+      "type": "gauge",
+      "description": "Number of actively used token slots in the KV cache pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 1213.6296296296296,
+            "min": 0.0,
+            "max": 8192.0,
+            "std": 2965.6186298224284,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 8192.0,
+            "p95": 8192.0,
+            "p99": 8192.0
+          }
+        }
+      ]
+    },
+    "sglang:load_back_bytes": {
+      "type": "counter",
+      "description": "Bytes loaded back from local host DRAM (L2) to GPU, all pools combined, including draft/sidecar transfers that the token counter excludes. Divided by the rate of load_back_duration_seconds_sum, gives the achieved bandwidth over each merged H2D load operation.",
+      "unit": "bytes",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:load_back_duration_seconds": {
+      "type": "histogram",
+      "description": "GPU-stream span of a merged host-to-device load-back copy loop, including gaps between per-layer I/O submissions but excluding pre-transfer queue and fence waits.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache"
+          },
+          "stats": {
+            "count": 0
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.002": 0,
+            "0.003": 0,
+            "0.004": 0,
+            "0.005": 0,
+            "0.006": 0,
+            "0.007": 0,
+            "0.008": 0,
+            "0.009": 0,
+            "0.01": 0,
+            "0.02": 0,
+            "0.03": 0,
+            "0.04": 0,
+            "0.05": 0,
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0,
+            "+Inf": 0
+          }
+        }
+      ]
+    },
+    "sglang:load_back_tokens": {
+      "type": "counter",
+      "description": "The number of tokens loaded back from local host DRAM (L2) to GPU, by host pool (kv, swa, mamba, ...).",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "cache_type": "UnifiedRadixCache",
+            "pool": "mamba"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:mamba_available_tokens": {
+      "type": "gauge",
+      "description": "Number of free state slots in the mamba SSM pool (hybrid-SSM only).",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 19.25925925925926,
+            "min": 10.0,
+            "max": 26.0,
+            "std": 5.687994053554939,
+            "p1": 10.0,
+            "p5": 10.0,
+            "p10": 10.0,
+            "p25": 17.0,
+            "p50": 20.0,
+            "p75": 24.0,
+            "p90": 26.0,
+            "p95": 26.0,
+            "p99": 26.0
+          }
+        }
+      ]
+    },
+    "sglang:mamba_evictable_tokens": {
+      "type": "gauge",
+      "description": "Number of evictable (radix-cached) state slots in the mamba SSM pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 8.148148148148149,
+            "min": 2.0,
+            "max": 18.0,
+            "std": 5.842178885574639,
+            "p1": 2.0,
+            "p5": 2.0,
+            "p10": 2.0,
+            "p25": 4.0,
+            "p50": 6.0,
+            "p75": 10.0,
+            "p90": 18.0,
+            "p95": 18.0,
+            "p99": 18.0
+          }
+        }
+      ]
+    },
+    "sglang:mamba_usage": {
+      "type": "gauge",
+      "description": "The token usage for Mamba layers.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.021164021164021163,
+            "min": 0.0,
+            "max": 0.14285714285714285,
+            "std": 0.05171628469974937,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.14285714285714285,
+            "p95": 0.14285714285714285,
+            "p99": 0.14285714285714285
+          }
+        }
+      ]
+    },
+    "sglang:mamba_used_tokens": {
+      "type": "gauge",
+      "description": "Number of actively used state slots in the mamba SSM pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.5925925925925926,
+            "min": 0.0,
+            "max": 4.0,
+            "std": 1.4480559715929826,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "p99": 4.0
+          }
+        }
+      ]
+    },
+    "sglang:max_total_num_tokens": {
+      "type": "gauge",
+      "description": "Maximum total number of tokens in the KV cache pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 450560.0,
+            "min": 450560.0,
+            "max": 450560.0,
+            "std": 0.0,
+            "p1": 450560.0,
+            "p5": 450560.0,
+            "p10": 450560.0,
+            "p25": 450560.0,
+            "p50": 450560.0,
+            "p75": 450560.0,
+            "p90": 450560.0,
+            "p95": 450560.0,
+            "p99": 450560.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 450560.0,
+            "min": 450560.0,
+            "max": 450560.0,
+            "std": 0.0,
+            "p1": 450560.0,
+            "p5": 450560.0,
+            "p10": 450560.0,
+            "p25": 450560.0,
+            "p50": 450560.0,
+            "p75": 450560.0,
+            "p90": 450560.0,
+            "p95": 450560.0,
+            "p99": 450560.0
+          }
+        }
+      ]
+    },
+    "sglang:new_token_ratio": {
+      "type": "gauge",
+      "description": "The new token ratio.",
+      "unit": "ratio",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.6999999999999998,
+            "min": 0.7,
+            "max": 0.7,
+            "std": 1.1313720302054534e-16,
+            "p1": 0.7,
+            "p5": 0.7,
+            "p10": 0.7,
+            "p25": 0.7,
+            "p50": 0.7,
+            "p75": 0.7,
+            "p90": 0.7,
+            "p95": 0.7,
+            "p99": 0.7
+          }
+        }
+      ]
+    },
+    "sglang:num_decode_prealloc_queue_reqs": {
+      "type": "gauge",
+      "description": "The number of requests in the decode prealloc queue.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_decode_transfer_queue_reqs": {
+      "type": "gauge",
+      "description": "The number of requests in the decode transfer queue.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_grammar_queue_reqs": {
+      "type": "gauge",
+      "description": "The number of requests in the grammar waiting queue.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_pages": {
+      "type": "gauge",
+      "description": "Number of KV cache pages.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 7040.0,
+            "min": 7040.0,
+            "max": 7040.0,
+            "std": 0.0,
+            "p1": 7040.0,
+            "p5": 7040.0,
+            "p10": 7040.0,
+            "p25": 7040.0,
+            "p50": 7040.0,
+            "p75": 7040.0,
+            "p90": 7040.0,
+            "p95": 7040.0,
+            "p99": 7040.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 7040.0,
+            "min": 7040.0,
+            "max": 7040.0,
+            "std": 0.0,
+            "p1": 7040.0,
+            "p5": 7040.0,
+            "p10": 7040.0,
+            "p25": 7040.0,
+            "p50": 7040.0,
+            "p75": 7040.0,
+            "p90": 7040.0,
+            "p95": 7040.0,
+            "p99": 7040.0
+          }
+        }
+      ]
+    },
+    "sglang:num_paused_reqs": {
+      "type": "gauge",
+      "description": "The number of paused requests by async weight sync.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pid": "192",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_prefill_bootstrap_queue_reqs": {
+      "type": "gauge",
+      "description": "The number of requests in the prefill bootstrap queue.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_prefill_inflight_queue_reqs": {
+      "type": "gauge",
+      "description": "The number of requests in the prefill inflight queue.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_queue_reqs": {
+      "type": "gauge",
+      "description": "The number of requests in the waiting queue.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_requests": {
+      "type": "counter",
+      "description": "Number of requests processed.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "false",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "true",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 5.0,
+            "rate": 0.44326913202276297
+          }
+        }
+      ]
+    },
+    "sglang:num_retracted_reqs": {
+      "type": "gauge",
+      "description": "The number of retracted requests.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pid": "192",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_running_reqs": {
+      "type": "gauge",
+      "description": "The number of running requests.",
+      "unit": "requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_unique_running_routing_keys": {
+      "type": "gauge",
+      "description": "Number of unique routing keys in running batch.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:num_used_tokens": {
+      "type": "gauge",
+      "description": "The number of used tokens.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 1213.6296296296296,
+            "min": 0.0,
+            "max": 8192.0,
+            "std": 2965.6186298224284,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 8192.0,
+            "p95": 8192.0,
+            "p99": 8192.0
+          }
+        }
+      ]
+    },
+    "sglang:page_size": {
+      "type": "gauge",
+      "description": "KV cache page size in tokens.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 64.0,
+            "min": 64.0,
+            "max": 64.0,
+            "std": 0.0,
+            "p1": 64.0,
+            "p5": 64.0,
+            "p10": 64.0,
+            "p25": 64.0,
+            "p50": 64.0,
+            "p75": 64.0,
+            "p90": 64.0,
+            "p95": 64.0,
+            "p99": 64.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 64.0,
+            "min": 64.0,
+            "max": 64.0,
+            "std": 0.0,
+            "p1": 64.0,
+            "p5": 64.0,
+            "p10": 64.0,
+            "p25": 64.0,
+            "p50": 64.0,
+            "p75": 64.0,
+            "p90": 64.0,
+            "p95": 64.0,
+            "p99": 64.0
+          }
+        }
+      ]
+    },
+    "sglang:pending_prealloc_token_usage": {
+      "type": "gauge",
+      "description": "The token usage for pending preallocated tokens (not preallocated yet).",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:per_stage_req_latency_seconds": {
+      "type": "histogram",
+      "description": "The latency of each stage of requests.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "stage": "chunked_prefill",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "count": 10,
+            "sum": 7.568906063010218,
+            "avg": 0.7568906063010218,
+            "count_rate": 0.8865382640455259,
+            "sum_rate": 0.6710124841824734,
+            "p1_estimate": 0.22800257138503285,
+            "p5_estimate": 0.23337795096597877,
+            "p10_estimate": 0.24009717544216116,
+            "p25_estimate": 0.2602548488707083,
+            "p50_estimate": 0.7187271369566466,
+            "p75_estimate": 1.2513345686203843,
+            "p90_estimate": 1.3244827401088664,
+            "p95_estimate": 1.331367672926116,
+            "p99_estimate": 1.3368756191799156
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.0016200000000000001": 0,
+            "0.0026244000000000007": 0,
+            "0.004251528": 0,
+            "0.006887475360000002": 0,
+            "0.011157710083200004": 0,
+            "0.018075490334784006": 0,
+            "0.029282294342350097": 0,
+            "0.047437316834607154": 0,
+            "0.07684845327206359": 0,
+            "0.12449449430074302": 0,
+            "0.20168108076720373": 0,
+            "0.3267233508428701": 5,
+            "0.5292918283654495": 5,
+            "0.8574527619520282": 5,
+            "1.389073474362286": 10,
+            "2.2502990284669036": 10,
+            "3.6454844261163837": 10,
+            "5.905684770308542": 10,
+            "9.567209327899839": 10,
+            "15.49887911119774": 10,
+            "25.10818416014034": 10,
+            "40.67525833942735": 10,
+            "65.89391850987231": 10,
+            "106.74814798599316": 10,
+            "172.93199973730896": 10,
+            "280.1498395744405": 10,
+            "453.84274011059364": 10,
+            "735.2252389791618": 10,
+            "1191.064887146242": 10,
+            "+Inf": 10
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "stage": "chunked_prefill",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "count": 10,
+            "sum": 7.562758368003415,
+            "avg": 0.7562758368003415,
+            "count_rate": 0.8865382640455259,
+            "sum_rate": 0.6704674674965522,
+            "p1_estimate": 0.22725825086495643,
+            "p5_estimate": 0.2326293854401306,
+            "p10_estimate": 0.2393433036590983,
+            "p25_estimate": 0.2594850583160013,
+            "p50_estimate": 0.7180966676242351,
+            "p75_estimate": 1.2508295616594698,
+            "p90_estimate": 1.3239747424378796,
+            "p95_estimate": 1.330957091581124,
+            "p99_estimate": 1.3365429708957195
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.0016200000000000001": 0,
+            "0.0026244000000000007": 0,
+            "0.004251528": 0,
+            "0.006887475360000002": 0,
+            "0.011157710083200004": 0,
+            "0.018075490334784006": 0,
+            "0.029282294342350097": 0,
+            "0.047437316834607154": 0,
+            "0.07684845327206359": 0,
+            "0.12449449430074302": 0,
+            "0.20168108076720373": 0,
+            "0.3267233508428701": 5,
+            "0.5292918283654495": 5,
+            "0.8574527619520282": 5,
+            "1.389073474362286": 10,
+            "2.2502990284669036": 10,
+            "3.6454844261163837": 10,
+            "5.905684770308542": 10,
+            "9.567209327899839": 10,
+            "15.49887911119774": 10,
+            "25.10818416014034": 10,
+            "40.67525833942735": 10,
+            "65.89391850987231": 10,
+            "106.74814798599316": 10,
+            "172.93199973730896": 10,
+            "280.1498395744405": 10,
+            "453.84274011059364": 10,
+            "735.2252389791618": 10,
+            "1191.064887146242": 10,
+            "+Inf": 10
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "stage": "prefill_forward",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 7.605853372981073,
+            "avg": 1.5211706745962146,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.6742880045867449,
+            "p1_estimate": 1.4965869188023244,
+            "p5_estimate": 1.498593756009989,
+            "p10_estimate": 1.5011023025195696,
+            "p25_estimate": 1.5086279420483113,
+            "p50_estimate": 1.5211706745962146,
+            "p75_estimate": 1.5337134071441179,
+            "p90_estimate": 1.5412390466728596,
+            "p95_estimate": 1.5437475931824403,
+            "p99_estimate": 1.5457544303901047
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.0016200000000000001": 0,
+            "0.0026244000000000007": 0,
+            "0.004251528": 0,
+            "0.006887475360000002": 0,
+            "0.011157710083200004": 0,
+            "0.018075490334784006": 0,
+            "0.029282294342350097": 0,
+            "0.047437316834607154": 0,
+            "0.07684845327206359": 0,
+            "0.12449449430074302": 0,
+            "0.20168108076720373": 0,
+            "0.3267233508428701": 0,
+            "0.5292918283654495": 0,
+            "0.8574527619520282": 0,
+            "1.389073474362286": 0,
+            "2.2502990284669036": 5,
+            "3.6454844261163837": 5,
+            "5.905684770308542": 5,
+            "9.567209327899839": 5,
+            "15.49887911119774": 5,
+            "25.10818416014034": 5,
+            "40.67525833942735": 5,
+            "65.89391850987231": 5,
+            "106.74814798599316": 5,
+            "172.93199973730896": 5,
+            "280.1498395744405": 5,
+            "453.84274011059364": 5,
+            "735.2252389791618": 5,
+            "1191.064887146242": 5,
+            "+Inf": 5
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "stage": "prefill_forward",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 7.605319468973903,
+            "avg": 1.5210638937947807,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.6742406719535765,
+            "p1_estimate": 1.4965094470580427,
+            "p5_estimate": 1.4985138916896132,
+            "p10_estimate": 1.5010194474790763,
+            "p25_estimate": 1.5085361148474654,
+            "p50_estimate": 1.5210638937947807,
+            "p75_estimate": 1.533591672742096,
+            "p90_estimate": 1.541108340110485,
+            "p95_estimate": 1.5436138958999481,
+            "p99_estimate": 1.5456183405315187
+          },
+          "buckets": {
+            "0.001": 0,
+            "0.0016200000000000001": 0,
+            "0.0026244000000000007": 0,
+            "0.004251528": 0,
+            "0.006887475360000002": 0,
+            "0.011157710083200004": 0,
+            "0.018075490334784006": 0,
+            "0.029282294342350097": 0,
+            "0.047437316834607154": 0,
+            "0.07684845327206359": 0,
+            "0.12449449430074302": 0,
+            "0.20168108076720373": 0,
+            "0.3267233508428701": 0,
+            "0.5292918283654495": 0,
+            "0.8574527619520282": 0,
+            "1.389073474362286": 0,
+            "2.2502990284669036": 5,
+            "3.6454844261163837": 5,
+            "5.905684770308542": 5,
+            "9.567209327899839": 5,
+            "15.49887911119774": 5,
+            "25.10818416014034": 5,
+            "40.67525833942735": 5,
+            "65.89391850987231": 5,
+            "106.74814798599316": 5,
+            "172.93199973730896": 5,
+            "280.1498395744405": 5,
+            "453.84274011059364": 5,
+            "735.2252389791618": 5,
+            "1191.064887146242": 5,
+            "+Inf": 5
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "stage": "request_process",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 0.00015043202438391745,
+            "avg": 0.00003008640487678349,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.00001333637457541724,
+            "p1_estimate": 0.00002303291847836322,
+            "p5_estimate": 0.00002360871328639753,
+            "p10_estimate": 0.000024328456796440414,
+            "p25_estimate": 0.000026487687326569065,
+            "p50_estimate": 0.00003008640487678349,
+            "p75_estimate": 0.000033685122426997915,
+            "p90_estimate": 0.00003584435295712657,
+            "p95_estimate": 0.000036564096467169455,
+            "p99_estimate": 0.000037139891275203765
+          },
+          "buckets": {
+            "0.001": 5,
+            "0.0016200000000000001": 5,
+            "0.0026244000000000007": 5,
+            "0.004251528": 5,
+            "0.006887475360000002": 5,
+            "0.011157710083200004": 5,
+            "0.018075490334784006": 5,
+            "0.029282294342350097": 5,
+            "0.047437316834607154": 5,
+            "0.07684845327206359": 5,
+            "0.12449449430074302": 5,
+            "0.20168108076720373": 5,
+            "0.3267233508428701": 5,
+            "0.5292918283654495": 5,
+            "0.8574527619520282": 5,
+            "1.389073474362286": 5,
+            "2.2502990284669036": 5,
+            "3.6454844261163837": 5,
+            "5.905684770308542": 5,
+            "9.567209327899839": 5,
+            "15.49887911119774": 5,
+            "25.10818416014034": 5,
+            "40.67525833942735": 5,
+            "65.89391850987231": 5,
+            "106.74814798599316": 5,
+            "172.93199973730896": 5,
+            "280.1498395744405": 5,
+            "453.84274011059364": 5,
+            "735.2252389791618": 5,
+            "1191.064887146242": 5,
+            "+Inf": 5
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "stage": "request_process",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 0.00015645497478544712,
+            "avg": 0.00003129099495708942,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.000013870332174757682,
+            "p1_estimate": 0.000019000301367120337,
+            "p5_estimate": 0.0000200036232928321,
+            "p10_estimate": 0.000021257775699971802,
+            "p25_estimate": 0.00002502023292139091,
+            "p50_estimate": 0.00003129099495708942,
+            "p75_estimate": 0.000037561756992787934,
+            "p90_estimate": 0.00004132421421420704,
+            "p95_estimate": 0.000042578366621346744,
+            "p99_estimate": 0.0000435816885470585
+          },
+          "buckets": {
+            "0.001": 5,
+            "0.0016200000000000001": 5,
+            "0.0026244000000000007": 5,
+            "0.004251528": 5,
+            "0.006887475360000002": 5,
+            "0.011157710083200004": 5,
+            "0.018075490334784006": 5,
+            "0.029282294342350097": 5,
+            "0.047437316834607154": 5,
+            "0.07684845327206359": 5,
+            "0.12449449430074302": 5,
+            "0.20168108076720373": 5,
+            "0.3267233508428701": 5,
+            "0.5292918283654495": 5,
+            "0.8574527619520282": 5,
+            "1.389073474362286": 5,
+            "2.2502990284669036": 5,
+            "3.6454844261163837": 5,
+            "5.905684770308542": 5,
+            "9.567209327899839": 5,
+            "15.49887911119774": 5,
+            "25.10818416014034": 5,
+            "40.67525833942735": 5,
+            "65.89391850987231": 5,
+            "106.74814798599316": 5,
+            "172.93199973730896": 5,
+            "280.1498395744405": 5,
+            "453.84274011059364": 5,
+            "735.2252389791618": 5,
+            "1191.064887146242": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:prefill_effective_tokens": {
+      "type": "counter",
+      "description": "Effective prefill tokens with retracted-request re-counts excluded, updated on each log interval. mode: device_hit, host_hit, storage_hit, input. Windowed prefix cache hit rate = rate(sum of *_hit) / rate(sum of all modes); per-tier rate uses a single *_hit mode in the numerator.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "device_hit",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "device_hit",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "host_hit",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "host_hit",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "input",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 41280.0,
+            "rate": 3659.629953979931
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "input",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "storage_hit",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "storage_hit",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:process_cpu_seconds": {
+      "type": "counter",
+      "description": "Total CPU time consumed by this process (user + system)",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "component": "detokenizer"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "component": "tokenizer"
+          },
+          "stats": {
+            "total": 0.9000000000000341,
+            "rate": 0.07978844376410035
+          }
+        }
+      ]
+    },
+    "sglang:prompt_tokens": {
+      "type": "counter",
+      "description": "Number of prefill tokens processed.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "false",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "true",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 41025.0,
+            "rate": 3637.02322824677
+          }
+        }
+      ]
+    },
+    "sglang:prompt_tokens_histogram": {
+      "type": "histogram",
+      "description": "Histogram of prompt token length.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 41025.0,
+            "avg": 8205.0,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 3637.02322824677,
+            "p1_estimate": 8205.009756097561,
+            "p5_estimate": 8205.009756097561,
+            "p10_estimate": 8205.009756097561,
+            "p25_estimate": 8205.009756097561,
+            "p50_estimate": 8205.009756097561,
+            "p75_estimate": 8205.009756097561,
+            "p90_estimate": 8205.009756097561,
+            "p95_estimate": 8205.009756097561,
+            "p99_estimate": 8205.009756097561
+          },
+          "buckets": {
+            "100.0": 0,
+            "300.0": 0,
+            "500.0": 0,
+            "700.0": 0,
+            "1000.0": 0,
+            "1500.0": 0,
+            "2000.0": 0,
+            "3000.0": 0,
+            "4000.0": 0,
+            "5000.0": 0,
+            "6000.0": 0,
+            "7000.0": 0,
+            "8000.0": 0,
+            "9000.0": 5,
+            "10000.0": 5,
+            "12500.0": 5,
+            "15000.0": 5,
+            "17500.0": 5,
+            "20000.0": 5,
+            "22500.0": 5,
+            "25000.0": 5,
+            "27500.0": 5,
+            "30000.0": 5,
+            "35000.0": 5,
+            "40000.0": 5,
+            "60000.0": 5,
+            "80000.0": 5,
+            "100000.0": 5,
+            "200000.0": 5,
+            "300000.0": 5,
+            "400000.0": 5,
+            "600000.0": 5,
+            "800000.0": 5,
+            "1e+06": 5,
+            "1.1e+06": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:queue_time_seconds": {
+      "type": "histogram",
+      "description": "Histogram of queueing time in seconds.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 0.0039263129874598235,
+            "avg": 0.0007852625974919647,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.0003480826700002035,
+            "p1_estimate": 0.0006467603509698406,
+            "p5_estimate": 0.0006580666568083813,
+            "p10_estimate": 0.0006721995391065573,
+            "p25_estimate": 0.0007145981860010851,
+            "p50_estimate": 0.0007852625974919647,
+            "p75_estimate": 0.0008559270089828442,
+            "p90_estimate": 0.000898325655877372,
+            "p95_estimate": 0.000912458538175548,
+            "p99_estimate": 0.0009237648440140887
+          },
+          "buckets": {
+            "0.0": 0,
+            "0.001": 5,
+            "0.005": 5,
+            "0.01": 5,
+            "0.05": 5,
+            "0.1": 5,
+            "0.2": 5,
+            "0.5": 5,
+            "1.0": 5,
+            "2.0": 5,
+            "3.0": 5,
+            "4.0": 5,
+            "5.0": 5,
+            "10.0": 5,
+            "15.0": 5,
+            "20.0": 5,
+            "30.0": 5,
+            "40.0": 5,
+            "50.0": 5,
+            "60.0": 5,
+            "70.0": 5,
+            "80.0": 5,
+            "90.0": 5,
+            "100.0": 5,
+            "200.0": 5,
+            "300.0": 5,
+            "400.0": 5,
+            "500.0": 5,
+            "600.0": 5,
+            "700.0": 5,
+            "800.0": 5,
+            "900.0": 5,
+            "1000.0": 5,
+            "1200.0": 5,
+            "1400.0": 5,
+            "1600.0": 5,
+            "1800.0": 5,
+            "2000.0": 5,
+            "2500.0": 5,
+            "3000.0": 5,
+            "+Inf": 5
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 0.0032192150538321584,
+            "avg": 0.0006438430107664316,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.0002853957325413586,
+            "p1_estimate": 0.00040710662638946776,
+            "p5_estimate": 0.0004267899476509867,
+            "p10_estimate": 0.0004513940992278854,
+            "p25_estimate": 0.0005252065539585814,
+            "p50_estimate": 0.0006482273118430748,
+            "p75_estimate": 0.0007712480697275682,
+            "p90_estimate": 0.0008319076212283348,
+            "p95_estimate": 0.0008521274717285903,
+            "p99_estimate": 0.0008683033521287947
+          },
+          "buckets": {
+            "0.0": 0,
+            "0.001": 5,
+            "0.005": 5,
+            "0.01": 5,
+            "0.05": 5,
+            "0.1": 5,
+            "0.2": 5,
+            "0.5": 5,
+            "1.0": 5,
+            "2.0": 5,
+            "3.0": 5,
+            "4.0": 5,
+            "5.0": 5,
+            "10.0": 5,
+            "15.0": 5,
+            "20.0": 5,
+            "30.0": 5,
+            "40.0": 5,
+            "50.0": 5,
+            "60.0": 5,
+            "70.0": 5,
+            "80.0": 5,
+            "90.0": 5,
+            "100.0": 5,
+            "200.0": 5,
+            "300.0": 5,
+            "400.0": 5,
+            "500.0": 5,
+            "600.0": 5,
+            "700.0": 5,
+            "800.0": 5,
+            "900.0": 5,
+            "1000.0": 5,
+            "1200.0": 5,
+            "1400.0": 5,
+            "1600.0": 5,
+            "1800.0": 5,
+            "2000.0": 5,
+            "2500.0": 5,
+            "3000.0": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:realtime_tokens": {
+      "type": "counter",
+      "description": "Total number of tokens processed (updated on each log interval). mode: prefill_compute, prefill_cache, decode.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "decode",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 11.0,
+            "rate": 0.9751920904500785
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "prefill_cache",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "mode": "prefill_compute",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 41280.0,
+            "rate": 3659.629953979931
+          }
+        }
+      ]
+    },
+    "sglang:routing_key_all_req_count": {
+      "type": "gauge",
+      "description": "Distribution of routing keys by running+waiting request count (gt < count <= le).",
+      "unit": "count",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "0",
+            "le": "1",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "1",
+            "le": "2",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "10",
+            "le": "20",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "100",
+            "le": "200",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "2",
+            "le": "3",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "20",
+            "le": "50",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "200",
+            "le": "+Inf",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "3",
+            "le": "5",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "5",
+            "le": "7",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "50",
+            "le": "100",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "7",
+            "le": "10",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:routing_key_running_req_count": {
+      "type": "gauge",
+      "description": "Distribution of routing keys by running request count (gt < count <= le).",
+      "unit": "count",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "0",
+            "le": "1",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "1",
+            "le": "2",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "10",
+            "le": "20",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "100",
+            "le": "200",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "2",
+            "le": "3",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "20",
+            "le": "50",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "200",
+            "le": "+Inf",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "3",
+            "le": "5",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "5",
+            "le": "7",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "50",
+            "le": "100",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "gt": "7",
+            "le": "10",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:routing_keys_active": {
+      "type": "gauge",
+      "description": "Number of unique routing keys with active requests",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:scheduler_idle_seconds": {
+      "type": "counter",
+      "description": "Total wall time while the scheduler has no runnable or queued work.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 3.9362619480000376,
+            "rate": 0.34896468342084136
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 3.9363593210000545,
+            "rate": 0.34897331590988134
+          }
+        }
+      ]
+    },
+    "sglang:scheduler_process_cpu_seconds": {
+      "type": "counter",
+      "description": "Total CPU time consumed by the scheduler process across all threads.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 10.73388296200028,
+            "rate": 0.9515997967599577
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 10.138711761999275,
+            "rate": 0.8988355925140793
+          }
+        }
+      ]
+    },
+    "sglang:scheduler_stage_seconds": {
+      "type": "counter",
+      "description": "Total scheduler-loop wall time exclusively attributed to each stage.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "get_next_batch_to_run",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 2.0259265930000083,
+            "rate": 0.1796061444841894
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "get_next_batch_to_run",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 1.895623210999986,
+            "rate": 0.16805425107643332
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "idle",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.6558804379999827,
+            "rate": 0.05814631049259239
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "idle",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.10769539400000028,
+            "rate": 0.009547608764245919
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "other",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.1163985150000002,
+            "rate": 0.01031917374255773
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "other",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.10384899199999786,
+            "rate": 0.009206610509055581
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "process_batch_result",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.046001583000002455,
+            "rate": 0.004078216353616835
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "process_batch_result",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.03656658999999962,
+            "rate": 0.003241768122066415
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "process_input_requests",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.03738854299999872,
+            "rate": 0.0033146374006410365
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "process_input_requests",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.035744615999999674,
+            "rate": 0.003168896981761364
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "process_queue",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "process_queue",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "recv_requests",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.9932122929999991,
+            "rate": 0.08805207020648954
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "recv_requests",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 1.6985993280000002,
+            "rate": 0.15058732995540172
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "run_batch",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 6.57798040800003,
+            "rate": 0.5831631331833828
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "run_batch",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 6.57059369999979,
+            "rate": 0.5825082732546283
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "sanity_check_cache",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "total": 0.2485447439999966,
+            "rate": 0.022034442588339663
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "category": "sanity_check_cache",
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "total": 0.25205730200000076,
+            "rate": 0.022345844295507955
+          }
+        }
+      ]
+    },
+    "sglang:spec_accept_length": {
+      "type": "gauge",
+      "description": "Mean acceptance length of speculative decoding (accepted drafts + bonus token per forward).",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 3.2149532710280373,
+            "min": 3.2149532710280373,
+            "max": 3.2149532710280373,
+            "std": 0.0,
+            "p1": 3.2149532710280373,
+            "p5": 3.2149532710280373,
+            "p10": 3.2149532710280373,
+            "p25": 3.2149532710280373,
+            "p50": 3.2149532710280373,
+            "p75": 3.2149532710280373,
+            "p90": 3.2149532710280373,
+            "p95": 3.2149532710280373,
+            "p99": 3.2149532710280373
+          }
+        }
+      ]
+    },
+    "sglang:spec_accept_rate": {
+      "type": "gauge",
+      "description": "Speculative acceptance rate (`accepted drafts / proposed drafts` in batch).",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.7383177570093457,
+            "min": 0.7383177570093458,
+            "max": 0.7383177570093458,
+            "std": 1.1313720302054534e-16,
+            "p1": 0.7383177570093458,
+            "p5": 0.7383177570093458,
+            "p10": 0.7383177570093458,
+            "p25": 0.7383177570093458,
+            "p50": 0.7383177570093458,
+            "p75": 0.7383177570093458,
+            "p90": 0.7383177570093458,
+            "p95": 0.7383177570093458,
+            "p99": 0.7383177570093458
+          }
+        }
+      ]
+    },
+    "sglang:spec_block_accept_length": {
+      "type": "gauge",
+      "description": "Mean uncapped full-block accept length per verify step (accept + cap-trimmed drafts; exact only in DSpark cap-accept mode).",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:spec_cap_length": {
+      "type": "gauge",
+      "description": "Mean DSpark confidence-scheduled verify window per verify step, incl the bonus slot (0 when no cap is scheduled).",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:spec_num_draft_tokens": {
+      "type": "gauge",
+      "description": "Currently active speculative_num_draft_tokens (decouples from steps under topk>1).",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 4.0,
+            "min": 4.0,
+            "max": 4.0,
+            "std": 0.0,
+            "p1": 4.0,
+            "p5": 4.0,
+            "p10": 4.0,
+            "p25": 4.0,
+            "p50": 4.0,
+            "p75": 4.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "p99": 4.0
+          }
+        }
+      ]
+    },
+    "sglang:spec_num_steps": {
+      "type": "gauge",
+      "description": "Currently active speculative_num_steps.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "std": 0.0,
+            "p1": 3.0,
+            "p5": 3.0,
+            "p10": 3.0,
+            "p25": 3.0,
+            "p50": 3.0,
+            "p75": 3.0,
+            "p90": 3.0,
+            "p95": 3.0,
+            "p99": 3.0
+          }
+        }
+      ]
+    },
+    "sglang:spec_verify_calls": {
+      "type": "counter",
+      "description": "Number of speculative decoding verification calls.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "total": 0.0,
+            "rate": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:startup_available_gpu_memory_gb": {
+      "type": "gauge",
+      "description": "Available GPU memory in GB at startup.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 2.2672119140625,
+            "min": 2.2672119140625,
+            "max": 2.2672119140625,
+            "std": 0.0,
+            "p1": 2.2672119140625,
+            "p5": 2.2672119140625,
+            "p10": 2.2672119140625,
+            "p25": 2.2672119140625,
+            "p50": 2.2672119140625,
+            "p75": 2.2672119140625,
+            "p90": 2.2672119140625,
+            "p95": 2.2672119140625,
+            "p99": 2.2672119140625
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 2.2672119140625,
+            "min": 2.2672119140625,
+            "max": 2.2672119140625,
+            "std": 0.0,
+            "p1": 2.2672119140625,
+            "p5": 2.2672119140625,
+            "p10": 2.2672119140625,
+            "p25": 2.2672119140625,
+            "p50": 2.2672119140625,
+            "p75": 2.2672119140625,
+            "p90": 2.2672119140625,
+            "p95": 2.2672119140625,
+            "p99": 2.2672119140625
+          }
+        }
+      ]
+    },
+    "sglang:startup_cuda_graph_time_seconds": {
+      "type": "gauge",
+      "description": "CUDA graph capture duration by phase in seconds.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "decode"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "draft_decode"
+          },
+          "stats": {
+            "avg": 14.006241672002943,
+            "min": 14.006241672002943,
+            "max": 14.006241672002943,
+            "std": 0.0,
+            "p1": 14.006241672002943,
+            "p5": 14.006241672002943,
+            "p10": 14.006241672002943,
+            "p25": 14.006241672002943,
+            "p50": 14.006241672002943,
+            "p75": 14.006241672002943,
+            "p90": 14.006241672002943,
+            "p95": 14.006241672002943,
+            "p99": 14.006241672002943
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "draft_extend"
+          },
+          "stats": {
+            "avg": 4.6486490269890055,
+            "min": 4.6486490269890055,
+            "max": 4.6486490269890055,
+            "std": 0.0,
+            "p1": 4.6486490269890055,
+            "p5": 4.6486490269890055,
+            "p10": 4.6486490269890055,
+            "p25": 4.6486490269890055,
+            "p50": 4.6486490269890055,
+            "p75": 4.6486490269890055,
+            "p90": 4.6486490269890055,
+            "p95": 4.6486490269890055,
+            "p99": 4.6486490269890055
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "draft_prefill"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "prefill"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "target_verify"
+          },
+          "stats": {
+            "avg": 20.733669539971743,
+            "min": 20.733669539971743,
+            "max": 20.733669539971743,
+            "std": 0.0,
+            "p1": 20.733669539971743,
+            "p5": 20.733669539971743,
+            "p10": 20.733669539971743,
+            "p25": 20.733669539971743,
+            "p50": 20.733669539971743,
+            "p75": 20.733669539971743,
+            "p90": 20.733669539971743,
+            "p95": 20.733669539971743,
+            "p99": 20.733669539971743
+          }
+        }
+      ]
+    },
+    "sglang:startup_time_seconds": {
+      "type": "gauge",
+      "description": "Engine startup duration by phase in seconds.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "kv_cache_allocation"
+          },
+          "stats": {
+            "avg": 0.536765013996046,
+            "min": 0.536765013996046,
+            "max": 0.536765013996046,
+            "std": 0.0,
+            "p1": 0.536765013996046,
+            "p5": 0.536765013996046,
+            "p10": 0.536765013996046,
+            "p25": 0.536765013996046,
+            "p50": 0.536765013996046,
+            "p75": 0.536765013996046,
+            "p90": 0.536765013996046,
+            "p95": 0.536765013996046,
+            "p99": 0.536765013996046
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "load_weight"
+          },
+          "stats": {
+            "avg": 246.88395134999882,
+            "min": 246.88395134999882,
+            "max": 246.88395134999882,
+            "std": 0.0,
+            "p1": 246.88395134999882,
+            "p5": 246.88395134999882,
+            "p10": 246.88395134999882,
+            "p25": 246.88395134999882,
+            "p50": 246.88395134999882,
+            "p75": 246.88395134999882,
+            "p90": 246.88395134999882,
+            "p95": 246.88395134999882,
+            "p99": 246.88395134999882
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "scheduler_e2e"
+          },
+          "stats": {
+            "avg": 603.3952152919956,
+            "min": 603.3952152919956,
+            "max": 603.3952152919956,
+            "std": 0.0,
+            "p1": 603.3952152919956,
+            "p5": 603.3952152919956,
+            "p10": 603.3952152919956,
+            "p25": 603.3952152919956,
+            "p50": 603.3952152919956,
+            "p75": 603.3952152919956,
+            "p90": 603.3952152919956,
+            "p95": 603.3952152919956,
+            "p99": 603.3952152919956
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "phase": "tokenizer_e2e"
+          },
+          "stats": {
+            "avg": 613.8220843210001,
+            "min": 613.8220843210001,
+            "max": 613.8220843210001,
+            "std": 0.0,
+            "p1": 613.8220843210001,
+            "p5": 613.8220843210001,
+            "p10": 613.8220843210001,
+            "p25": 613.8220843210001,
+            "p50": 613.8220843210001,
+            "p75": 613.8220843210001,
+            "p90": 613.8220843210001,
+            "p95": 613.8220843210001,
+            "p99": 613.8220843210001
+          }
+        }
+      ]
+    },
+    "sglang:swa_available_tokens": {
+      "type": "gauge",
+      "description": "Number of free token slots in the SWA pool (hybrid-SWA only).",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:swa_evictable_tokens": {
+      "type": "gauge",
+      "description": "Number of evictable (radix-cached) token slots in the SWA pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:swa_token_usage": {
+      "type": "gauge",
+      "description": "The token usage for SWA layers.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:swa_used_tokens": {
+      "type": "gauge",
+      "description": "Number of actively used token slots in the SWA pool.",
+      "unit": "tokens",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:time_to_first_token_seconds": {
+      "type": "histogram",
+      "description": "Histogram of time to first token in seconds.",
+      "unit": "seconds",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "false",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 0
+          },
+          "buckets": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.4": 0,
+            "0.6": 0,
+            "0.8": 0,
+            "1.0": 0,
+            "2.0": 0,
+            "4.0": 0,
+            "6.0": 0,
+            "8.0": 0,
+            "10.0": 0,
+            "20.0": 0,
+            "40.0": 0,
+            "60.0": 0,
+            "80.0": 0,
+            "100.0": 0,
+            "200.0": 0,
+            "400.0": 0,
+            "+Inf": 0
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "is_streaming": "true",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 7.832234314002562,
+            "avg": 1.5664468628005124,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 0.6943575412333632,
+            "p1_estimate": 1.3503147845714014,
+            "p5_estimate": 1.3679582195288797,
+            "p10_estimate": 1.390012513225728,
+            "p25_estimate": 1.456175394316272,
+            "p50_estimate": 1.5664468628005124,
+            "p75_estimate": 1.6767183312847527,
+            "p90_estimate": 1.7428812123752968,
+            "p95_estimate": 1.764935506072145,
+            "p99_estimate": 1.7825789410296233
+          },
+          "buckets": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.4": 0,
+            "0.6": 0,
+            "0.8": 0,
+            "1.0": 0,
+            "2.0": 5,
+            "4.0": 5,
+            "6.0": 5,
+            "8.0": 5,
+            "10.0": 5,
+            "20.0": 5,
+            "40.0": 5,
+            "60.0": 5,
+            "80.0": 5,
+            "100.0": 5,
+            "200.0": 5,
+            "400.0": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:token_usage": {
+      "type": "gauge",
+      "description": "The token usage.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.020740740740740744,
+            "min": 0.0,
+            "max": 0.14,
+            "std": 0.0506819590057544,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.14,
+            "p95": 0.14,
+            "p99": 0.14
+          }
+        }
+      ]
+    },
+    "sglang:uncached_prompt_tokens_histogram": {
+      "type": "histogram",
+      "description": "Histogram of uncached (compute) prompt token length.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash"
+          },
+          "stats": {
+            "count": 5,
+            "sum": 41025.0,
+            "avg": 8205.0,
+            "count_rate": 0.44326913202276297,
+            "sum_rate": 3637.02322824677,
+            "p1_estimate": 8205.009756097561,
+            "p5_estimate": 8205.009756097561,
+            "p10_estimate": 8205.009756097561,
+            "p25_estimate": 8205.009756097561,
+            "p50_estimate": 8205.009756097561,
+            "p75_estimate": 8205.009756097561,
+            "p90_estimate": 8205.009756097561,
+            "p95_estimate": 8205.009756097561,
+            "p99_estimate": 8205.009756097561
+          },
+          "buckets": {
+            "100.0": 0,
+            "300.0": 0,
+            "500.0": 0,
+            "700.0": 0,
+            "1000.0": 0,
+            "1500.0": 0,
+            "2000.0": 0,
+            "3000.0": 0,
+            "4000.0": 0,
+            "5000.0": 0,
+            "6000.0": 0,
+            "7000.0": 0,
+            "8000.0": 0,
+            "9000.0": 5,
+            "10000.0": 5,
+            "12500.0": 5,
+            "15000.0": 5,
+            "17500.0": 5,
+            "20000.0": 5,
+            "22500.0": 5,
+            "25000.0": 5,
+            "27500.0": 5,
+            "30000.0": 5,
+            "35000.0": 5,
+            "40000.0": 5,
+            "60000.0": 5,
+            "80000.0": 5,
+            "100000.0": 5,
+            "200000.0": 5,
+            "300000.0": 5,
+            "400000.0": 5,
+            "600000.0": 5,
+            "800000.0": 5,
+            "1e+06": 5,
+            "1.1e+06": 5,
+            "+Inf": 5
+          }
+        }
+      ]
+    },
+    "sglang:utilization": {
+      "type": "gauge",
+      "description": "The utilization.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "std": 0.0,
+            "p1": 0.0,
+            "p5": 0.0,
+            "p10": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0
+          }
+        }
+      ]
+    },
+    "sglang:weight_memory_usage_gb": {
+      "type": "gauge",
+      "description": "Memory used by model weights in GB.",
+      "series": [
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "stats": {
+            "avg": 81.43951416015625,
+            "min": 81.43951416015625,
+            "max": 81.43951416015625,
+            "std": 0.0,
+            "p1": 81.43951416015625,
+            "p5": 81.43951416015625,
+            "p10": 81.43951416015625,
+            "p25": 81.43951416015625,
+            "p50": 81.43951416015625,
+            "p75": 81.43951416015625,
+            "p90": 81.43951416015625,
+            "p95": 81.43951416015625,
+            "p99": 81.43951416015625
+          }
+        },
+        {
+          "endpoint_url": "http://127.0.0.1:8000/metrics",
+          "labels": {
+            "engine_type": "unified",
+            "model_name": "glm-5.3-flash",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "1"
+          },
+          "stats": {
+            "avg": 81.44732666015625,
+            "min": 81.44732666015625,
+            "max": 81.44732666015625,
+            "std": 0.0,
+            "p1": 81.44732666015625,
+            "p5": 81.44732666015625,
+            "p10": 81.44732666015625,
+            "p25": 81.44732666015625,
+            "p50": 81.44732666015625,
+            "p75": 81.44732666015625,
+            "p90": 81.44732666015625,
+            "p95": 81.44732666015625,
+            "p99": 81.44732666015625
+          }
+        }
+      ]
+    }
+  },
+  "input_config": {
+    "models": {
+      "items": [
+        {
+          "name": "glm-5.3-flash"
+        }
+      ]
+    },
+    "endpoint": {
+      "urls": [
+        "http://127.0.0.1:8000"
+      ],
+      "type": "chat",
+      "api_key": "<redacted>",
+      "timeout": 900.0,
+      "streaming": true,
+      "use_server_token_count": true,
+      "extra": {
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 2026081201,
+        "ignore_eos": true,
+        "min_tokens": 1,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "wait_for_model_timeout": 300.0,
+      "wait_for_model_mode": "both",
+      "reset_kv_cache": {
+        "timeout_seconds": 70.0,
+        "path": "/flush_cache?timeout=60"
+      }
+    },
+    "datasets": [
+      {
+        "name": "default",
+        "type": "synthetic",
+        "entries": 5,
+        "sampling": "sequential",
+        "prompts": {
+          "isl": {
+            "value": 8192.0
+          },
+          "osl": {
+            "value": 1.0
+          },
+          "cache_bust": {
+            "target": "first_turn_prefix"
+          },
+          "corpus": "coding"
+        }
+      }
+    ],
+    "phases": [
+      {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "requests": 5,
+        "concurrency": 1
+      }
+    ],
+    "artifacts": {
+      "dir": "/root/.cache/bench-stage/results/v032rc1-full-20260906/engine-gates/v032rc1-full-20260906/v0.3.2-rc.1-cohort-450k-glm-qualification/prefill/8k-c1",
+      "summary": [
+        "json"
+      ],
+      "records": [
+        "jsonl"
+      ],
+      "raw": false,
+      "trace": false,
+      "auto_plot": false
+    },
+    "tokenizer": {
+      "name": "/scratch/out/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO",
+      "trust_remote_code": true,
+      "apply_chat_template": true
+    },
+    "gpu_telemetry": {
+      "enabled": true
+    },
+    "server_metrics": {
+      "enabled": true,
+      "urls": [
+        "http://127.0.0.1:8000/metrics"
+      ],
+      "formats": [
+        "json",
+        "csv",
+        "parquet",
+        "jsonl"
+      ],
+      "discovery": {
+        "mode": "disabled"
+      }
+    },
+    "runtime": {
+      "ui": "none",
+      "workers": 1,
+      "record_processors": 1,
+      "stats_interval": 0.0
+    }
+  }
+}

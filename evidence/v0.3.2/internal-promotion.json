@@ -1,0 +1,13 @@
+{
+  "provider": "internal",
+  "workflow": "promote-release.yml",
+  "run": "331",
+  "verified_at_utc": "2026-09-06T19:31:23.972423+00:00",
+  "repository": "git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container",
+  "candidate": "v0.3.2-rc.1",
+  "stable": "v0.3.2",
+  "candidate_digest": "sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5",
+  "stable_digest": "sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5",
+  "build_source": "55ae7c65ee1e2cf02b4f3a85b00d06b5d8c839b0",
+  "digest_identical": true
+}

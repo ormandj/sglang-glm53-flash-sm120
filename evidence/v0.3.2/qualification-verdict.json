@@ -1,0 +1,46 @@
+{
+  "qualified": true,
+  "qualification_scope": "All original release gates complete; supplementary descriptive throughput probes recorded separately.",
+  "supplemental_throughput_complete": true,
+  "qualified_at_utc": "2026-09-06T19:32:33.971235+00:00",
+  "candidate": "v0.3.2-rc.1",
+  "image_digest": "sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5",
+  "build_source": "55ae7c65ee1e2cf02b4f3a85b00d06b5d8c839b0",
+  "pod": "glm53-flash-sglang-v0-3-2-rc1-w4a16-c4-450k-tp2-7b4c65b8dcqdrtg",
+  "pod_ready": true,
+  "restart_count": 0,
+  "gpu_scheduler_processes": [
+    192,
+    323
+  ],
+  "quality": {
+    "gsm8k_pinned_correct": 1171,
+    "gsm8k_glm_correct": 1279,
+    "gsm8k_questions": 1319,
+    "gsm8k_budget_limited_responses": 1,
+    "gsm8k_request_errors": 0,
+    "longctx_73k_correct": 142,
+    "longctx_400k_correct": 144,
+    "longctx_questions": 150,
+    "next_token_agreement": [
+      767,
+      767
+    ],
+    "positional_markers": 7,
+    "forced_host_cycles": 5,
+    "host_408k_marker_stages": 4
+  },
+  "engine": {
+    "cell_analyzers_valid": 24,
+    "resolved_configs_match_baseline": 24,
+    "original_summary_exit_code": 0
+  },
+  "limitations": [
+    "Both unchanged GSM8K graders and all capped responses are retained. Single-run paired results establish neither improvement nor equivalence.",
+    "Fixed-output engine windows contain a post-answer tail; these controlled measurements do not necessarily represent real-world performance.",
+    "The 408k ordered-marker oracle and original strict-text verdict are both retained; do not conflate them.",
+    "Internal hardware evidence applies only to this digest; the independently built public image has separate provenance."
+  ],
+  "upstream_base": "SGLang main28457f0dca after GLM merge97c6978369; FlashInfer main6c14bbd5ff, freshly checked before rebuild.",
+  "upstream_pr_maintenance": "Owner deferred separate PR branch and text updates until after release."
+}

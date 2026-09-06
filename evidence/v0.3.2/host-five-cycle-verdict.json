@@ -1,0 +1,13 @@
+{
+  "verdict": {
+    "all_cycles_confirmed_host_load": true,
+    "confirmed_host_loads": 5,
+    "host_load_mismatches": 0,
+    "host_loads_matching_baseline": 2,
+    "passed": true,
+    "post_host_device_recoveries": 5
+  },
+  "cycles_requested": 5,
+  "scope": "Expected tool decision preserved over five confirmed host loads; private reconstructed request and full responses retained in primary repository.",
+  "source_sha256": "b1270cc4fcc8ea283f7f92f21fd6348861ce4f248fbdc5813b6d0adc4d4b52f7"
+}
