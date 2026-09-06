@@ -1,5 +1,5 @@
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index 7b368af7..2c85b66d 100644
+index 7b368af7ff083598a38a31b9d561761fe71ed969..2c85b66da7658a76d78107df74ce7e4c48539ff7 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -1417,6 +1417,9 @@ class B12xW4A16Config:
@@ -13,7 +13,7 @@ index 7b368af7..2c85b66d 100644
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
          """
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
-index fe7b4c47..b6a9e219 100644
+index fe7b4c47f0ba833fde985f02f54a87c7edacc4a1..b6a9e219cad0ec47e0efcb3fdca9dfec8c9cd77b 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 @@ -11,6 +11,7 @@ from .moe_dispatch import (
@@ -33,7 +33,7 @@ index fe7b4c47..b6a9e219 100644
      "launch_sm120_dynamic_moe",
      "launch_sm120_moe",
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-index fbefa788..f8fd9885 100644
+index fbefa788b2637d6130440a50558929baae08ed78..f8fd988561a3e6a5b8862db8ad13c23424906501 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 @@ -9,6 +9,7 @@ from __future__ import annotations
@@ -194,7 +194,7 @@ index fbefa788..f8fd9885 100644
  
  # ==========================================================================
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
-index 021bd5af..613eecde 100644
+index 021bd5af61858af8f51ff5083c36a73bd50c65e1..613eecded2f3ace8ce4d79550de9e9f82506d850 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 @@ -117,6 +117,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -510,7 +510,7 @@ index 021bd5af..613eecde 100644
          activated,
          fc2_out,
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
-index ce043109..205f064f 100644
+index ce043109ab9b6f1c666c7da782a6f2b2266481f0..205f064f8e5e6b7041b71299cbc5692e7a01a0cb 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 @@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -721,8 +721,67 @@ index ce043109..205f064f 100644
      if source_format == "compressed_tensors":
          return prepare_w4a16_compressed_tensors_weights(
              *args, w13_layout=w13_layout, **kwargs
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
+index 664f2a886faaac20f86d4c184528359f53988cd9..e80eb06546a83f4cbddd076695b2d6209d5dae22 100644
+--- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
+@@ -162,6 +162,7 @@ def _pack_topk_routes_small_prefix_kernel(
+     BLOCK_T: tl.constexpr,
+     BLOCK_ROUTE_INIT: tl.constexpr,
+     BLOCK_M: tl.constexpr,
++    LOG2_BLOCK_E: tl.constexpr,
+ ):
+     experts = tl.arange(0, BLOCK_E)
+     expert_mask = experts < NUM_EXPERTS
+@@ -180,10 +181,9 @@ def _pack_topk_routes_small_prefix_kernel(
+             ids = tl.load(expert_map + safe_ids, mask=valid, other=-1).to(tl.int32)
+             valid = valid & (ids >= 0) & (ids < NUM_EXPERTS)
+ 
+-        matches = (
+-            (experts[:, None] == ids[None, :]) & expert_mask[:, None] & valid[None, :]
+-        )
+-        counts += tl.sum(matches.to(tl.int32), axis=1)
++        # Avoid the expert-by-route comparison tile. With hundreds of experts,
++        # its register pressure dominates these small decode-sized launches.
++        counts += tl.histogram(ids, BLOCK_E, mask=valid)
+ 
+     padded = ((counts + BLOCK_SIZE - 1) // BLOCK_SIZE) * BLOCK_SIZE
+     padded = tl.where(expert_mask, padded, 0)
+@@ -204,13 +204,17 @@ def _pack_topk_routes_small_prefix_kernel(
+ 
+     block_offsets = tl.arange(0, BLOCK_M)
+     block_rows = block_offsets * BLOCK_SIZE
+-    active = (
+-        (block_offsets[None, :] < MAX_ROUTE_BLOCKS)
+-        & expert_mask[:, None]
+-        & (block_rows[None, :] >= prefix[:, None])
+-        & (block_rows[None, :] < inclusive[:, None])
+-    )
+-    block_experts = tl.max(tl.where(active, experts[:, None], -1), axis=0)
++    # Upper-bound search also avoids an expert-by-block tile. Repeated prefix
++    # values from empty experts must be skipped, including trailing padding.
++    lo = tl.full((BLOCK_M,), 0, tl.int32)
++    hi = tl.full((BLOCK_M,), BLOCK_E - 1, tl.int32)
++    for _ in range(LOG2_BLOCK_E):
++        mid = (lo + hi) // 2
++        end = tl.gather(inclusive, mid, axis=0)
++        advance = end <= block_rows
++        lo = tl.where(advance, mid + 1, lo)
++        hi = tl.where(advance, hi, mid)
++    block_experts = tl.where(block_rows < total, lo, -1)
+     tl.store(
+         block_expert_ids + block_offsets,
+         block_experts,
+@@ -401,6 +405,7 @@ def pack_topk_routes_by_expert(
+             BLOCK_T=_COUNT_BLOCK_T,
+             BLOCK_ROUTE_INIT=block_route_init,
+             BLOCK_M=block_m,
++            LOG2_BLOCK_E=block_e.bit_length() - 1,
+             num_warps=8,
+         )
+     else:
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 603807d4..f340eab1 100644
+index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e4382dd0ccbe 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
 @@ -2471,8 +2471,8 @@ def prepare_b12x_w4a16_weights(
@@ -759,7 +818,7 @@ index 603807d4..f340eab1 100644
      return {
          "w1_weight": w1_fp4,
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
-index 7d822ce3..0808b9ab 100644
+index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cff8c7ebd4 100644
 --- a/tests/moe/test_b12x_fused_moe.py
 +++ b/tests/moe/test_b12x_fused_moe.py
 @@ -220,6 +220,29 @@ def test_w4a16_static_tiler_uses_64_when_intermediate_not_128_aligned():
@@ -857,9 +916,94 @@ index 7d822ce3..0808b9ab 100644
  def _self_deps(class_def, entry):
      """All ``self.<attr>`` reads reachable from method ``entry``."""
      methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
+diff --git a/tests/moe/test_b12x_w4a16_route_pack.py b/tests/moe/test_b12x_w4a16_route_pack.py
+index 4e122e2f688e59673ebe92394d58b3edef010105..c794c9c424e1435a8a7c984b80a751cc0d262a4c 100644
+--- a/tests/moe/test_b12x_w4a16_route_pack.py
++++ b/tests/moe/test_b12x_w4a16_route_pack.py
+@@ -330,3 +330,80 @@ def test_w4a16_workspace_route_buffers_cover_route_pack_capacity(monkeypatch):
+         required = max_packed_route_slots(numel_capacity, block_size, num_experts)
+         assert slots >= required
+         assert blocks >= (required + block_size - 1) // block_size
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
++@pytest.mark.parametrize("num_experts", [1, 7, 288, 512])
++@pytest.mark.parametrize("tokens", [1, 9, 16])
++@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
++@pytest.mark.parametrize("mapped", [False, True])
++def test_route_pack_graph_replay_replaces_expert_distribution(
++    num_experts, tokens, dtype, mapped
++):
++    """Changing routes must replace counts, empty experts and padding in place."""
++    from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_host import (
++        max_packed_route_slots,
++        route_pack_numel_capacity,
++    )
++
++    block_size, topk = 8, 8
++    ids = torch.zeros((tokens, topk), dtype=dtype, device="cuda")
++    expert_map = None
++    if mapped:
++        expert_map = torch.arange(num_experts, dtype=torch.int32, device="cuda")
++        expert_map.remainder_(max(1, num_experts // 2))
++        expert_map[::3] = -1
++        expert_map[1::5] = num_experts
++    capacity = route_pack_numel_capacity(ids.numel(), topk=topk)
++    slots = max_packed_route_slots(capacity, block_size, num_experts)
++    workspace = {
++        "packed_route_indices": torch.empty(slots, dtype=torch.int32, device="cuda"),
++        "block_expert_ids": torch.empty(
++            math.ceil(slots / block_size), dtype=torch.int32, device="cuda"
++        ),
++        "packed_route_count": torch.empty(1, dtype=torch.int32, device="cuda"),
++        "expert_offsets": torch.empty(
++            num_experts + 1, dtype=torch.int32, device="cuda"
++        ),
++    }
++
++    def run():
++        return pack_topk_routes_by_expert(
++            ids, block_size, num_experts, expert_map=expert_map, **workspace
++        )
++
++    run()
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        packed, owners, count = run()
++
++    generator = torch.Generator().manual_seed(20260906)
++    host_inputs = [
++        torch.randint(0, num_experts, ids.shape, dtype=dtype, generator=generator),
++        torch.full(ids.shape, num_experts - 1, dtype=dtype),
++        torch.arange(ids.numel(), dtype=dtype).reshape(ids.shape) % num_experts,
++        torch.full(ids.shape, -1, dtype=dtype),
++        torch.full(ids.shape, num_experts, dtype=dtype),
++        torch.zeros(ids.shape, dtype=dtype),
++    ]
++    for host_ids in host_inputs:
++        ids.copy_(host_ids)
++        for buffer in workspace.values():
++            buffer.fill_(-777)
++        graph.replay()
++        expected_ids, valid, expected_count, expected_owners = _expected_route_pack(
++            ids, block_size, num_experts, expert_map
++        )
++        total = int(expected_count.item())
++        assert torch.equal(count.cpu(), expected_count)
++        assert torch.equal(owners[: total // block_size].cpu(), expected_owners)
++        assert bool((owners[total // block_size :] == -1).all())
++        assert bool((packed[total:] == ids.numel()).all())
++        host_routes = packed[:total].cpu().long()
++        assert bool(((host_routes >= 0) & (host_routes <= ids.numel())).all())
++        payload = host_routes[host_routes < ids.numel()]
++        assert torch.equal(payload.sort().values, torch.nonzero(valid).flatten())
++        for i, expert in enumerate(expected_owners.tolist()):
++            routes = host_routes[i * block_size : (i + 1) * block_size]
++            routes = routes[routes < ids.numel()]
++            assert bool((expected_ids[routes] == expert).all())
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
-index 00000000..ccc8836c
+index 0000000000000000000000000000000000000000..ccc8836c306ad4674dcc9c0ef6bd95ce65b8b41a
 --- /dev/null
 +++ b/tests/moe/test_b12x_workspace_graph_pinning.py
 @@ -0,0 +1,206 @@

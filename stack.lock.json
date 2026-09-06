@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "release": {
-    "version": "0.3.0",
-    "candidate": 4,
-    "candidate_tag": "v0.3.0-rc.4",
-    "stable_tag": "v0.3.0",
-    "cache_schema": "v67"
+    "version": "0.3.1",
+    "candidate": 1,
+    "candidate_tag": "v0.3.1-rc.1",
+    "stable_tag": "v0.3.1",
+    "cache_schema": "v68"
   },
   "image": {
-    "tag": "v0.3.0-rc.4",
+    "tag": "v0.3.1-rc.1",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -45,15 +45,15 @@
   "pins": [
     {
       "arg": "GLM53_RELEASE_VERSION",
-      "value": "0.3.0"
+      "value": "0.3.1"
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 4
+      "value": 1
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v67"
+      "value": "v68"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -109,11 +109,11 @@
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "9deed899b1f29d702c91d3bab803124cba5ef7f6"
+      "value": "a969cd09ec02b8c1e132acc683595917886c9627"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "dcab356c80945c9798ff5b2cf7b7553b16284c626e60b8932fc4d3a98897b2fe"
+      "value": "896caff0615821aa3532ada9854d5c43079e49b8b9b8ca6903d7a1d5aff989ab"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -238,19 +238,20 @@
       "package_version": "0.6.18",
       "head": "6c14bbd5ff34210404d5d4b5f6ff3b4b2527f59f",
       "upstream_tree": "9b9b1b775d5925ecdcc3ea97435a195553a80462",
-      "tree": "9deed899b1f29d702c91d3bab803124cba5ef7f6",
+      "tree": "a969cd09ec02b8c1e132acc683595917886c9627",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "dcab356c80945c9798ff5b2cf7b7553b16284c626e60b8932fc4d3a98897b2fe",
+      "patch_sha256": "896caff0615821aa3532ada9854d5c43079e49b8b9b8ca6903d7a1d5aff989ab",
       "working_repository": "https://git.home.corenode.com/homelab/flashinfer.git",
-      "working_branch": "integration/glm53-main-20260905-r1",
-      "working_head": "610d4d65621bff48d650d9f2489edbef6e7b5e41",
+      "working_branch": "perf/glm53-route-pack",
+      "working_head": "f8a7573e56d685adf9ba915904eae02e1f08fbc2",
       "upstream_main_base": "6c14bbd5ff34210404d5d4b5f6ff3b4b2527f59f",
       "included_upstream_work": [
         "flashinfer#4802 (merged as 453aa7c729 and supplied by main 6c14bbd5ff)",
         "flashinfer#4687 (open head b75d6bfff7)",
         "flashinfer#4827 (open head 21fb169ff2, rebased)",
         "ModelOpt E2M1/E4M3-K32 W4A16 preparation",
-        "SM120 W4A16 TC-decode ultra-tile replay validation"
+        "SM120 W4A16 TC-decode ultra-tile replay validation",
+        "downstream performance experiment: small W4A16 route prefix histogram and inverse-prefix lookup, with changing-input CUDA graph regressions; current dispatch bounds retained"
       ]
     },
     "modelopt": {
@@ -273,10 +274,10 @@
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "dcab356c80945c9798ff5b2cf7b7553b16284c626e60b8932fc4d3a98897b2fe",
+      "sha256": "896caff0615821aa3532ada9854d5c43079e49b8b9b8ca6903d7a1d5aff989ab",
       "base_head": "6c14bbd5ff34210404d5d4b5f6ff3b4b2527f59f",
       "base_tree": "9b9b1b775d5925ecdcc3ea97435a195553a80462",
-      "result_tree": "9deed899b1f29d702c91d3bab803124cba5ef7f6"
+      "result_tree": "a969cd09ec02b8c1e132acc683595917886c9627"
     }
   ],
   "runtime_profile": {
@@ -293,7 +294,7 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.3.0-rc.4: current-main refresh with reviewed lifecycle corrections and synchronized host-memory allocation; not built or qualified",
+    "status": "v0.3.1-rc.1: isolated small route-prefix optimization on the v0.3.0 runtime; not built or qualified",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
@@ -307,6 +308,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.3.0-rc.4 is not built or qualified"
+    "claims": "v0.3.1-rc.1 is not built or qualified"
   }
 }

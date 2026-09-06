@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1-rc.1 (small route-prefix experiment; not built or qualified)
+
+- Replace the small W4A16 route-prefix expert-by-route count tile with a masked histogram and its expert-by-block ownership tile with an upper-bound lookup. Preserve route padding, mapped/invalid expert handling, CUDA graph workspaces and dispatch limits.
+- Add CUDA graph regressions that change expert distributions and overwrite workspaces between replays. Retain the exact `v0.3.0` SGLang integration, model, quantization and serving settings.
+- Use a separate `v68` cache. Full serving comparison and exact-candidate qualification are pending; isolated kernel timings are recorded only in the primary project evidence.
+
 ## v0.3.0-rc.4 (lifecycle corrections and source refresh; internally qualified)
 
 - Refresh to SGLang main `febb360519`, including upstream aborted-prefill retirement and the AMD unified-KV revert. FlashInfer main remains `6c14bbd5ff`; all carried PR heads were rechecked on 2026-09-06.

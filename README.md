@@ -12,9 +12,11 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.4` (built and qualified internally) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.1-rc.1` (not built or qualified) |
 
-`v0.3.0-rc.4` refreshes SGLang to main `febb360519` and retains current
+`v0.3.1-rc.1` tests a smaller W4A16 MoE route-prefix kernel for concurrent decoding. It retains the `v0.3.0` SGLang runtime, model, quantization and serving settings. The changed FlashInfer source passed isolated GPU correctness and graph replay checks; serving performance and exact-candidate qualification are pending.
+
+The preceding `v0.3.0-rc.4` refreshes SGLang to main `febb360519` and retains current
 FlashInfer main `6c14bbd5ff` and the audited carry heads. It preserves the
 hybrid HiCache index fix, removes obsolete encoder cleanup, moves receive
 timeouts before rank consensus and synchronizes host-memory budget readings.
@@ -376,7 +378,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.3.0-rc.3 .
+  -t sglang-glm53-flash-sm120:v0.3.1-rc.1 .
 ```
 
 The release workflow refuses to overwrite an existing SemVer candidate tag.
