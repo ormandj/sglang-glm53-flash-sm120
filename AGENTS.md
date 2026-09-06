@@ -38,9 +38,11 @@ re-resolves the base image digests against the registry.
 
 ## Claims discipline
 
-Do not add performance or quality numbers to this repository. Measured results
-belong in the primary `sglang-glm53-flash-sm120` repository, backed by evidence
-files. A candidate is "built", not "qualified", until that evidence exists.
+Measured results belong in the primary `sglang-glm53-flash-sm120` repository,
+backed by exact-candidate evidence files. Current-release measurements may be
+copied into stable release notes and their source CHANGELOG section, with
+artifact identity and test scope stated. A candidate is "built", not
+"qualified", until that evidence exists.
 
 ## Release flow: internal first, promote and publish by dispatch
 
@@ -69,6 +71,10 @@ self-contained summary in each stable CHANGELOG section; publication copies
 that exact section into both providers' release notes and rejects missing or
 empty change lists. Only PR bodies carry assistance attribution, never
 repository release notes. Do not hard-wrap release-note prose at 80 columns.
+Report the new release's absolute measurements, without previous-release
+columns or percentage deltas unless the evidence establishes a significant
+improvement. Lead with the behavior addressed: a correctness release must not
+be presented as a performance improvement.
 
 Internal and public publication are independent. Forgejo validates the
 README's `Internal image` row and `current internal stable image` sentence;
