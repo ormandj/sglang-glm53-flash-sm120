@@ -1,0 +1,93 @@
+{
+  "method": "Six repetitive-ledger C1 requests per context after a 150-second soak; 2048 completion-token budget; OLS decode plateau rates. Accepted tokens/forward is the token-rate to forward-rate ratio, not the adaptive probability gauge.",
+  "means": {
+    "1024": {
+      "fwd_per_s_ols": 67.40647618201838,
+      "tok_per_s_ols": 154.91805391464473,
+      "accepted_tok_per_fwd_ols": 2.2983936472935995
+    },
+    "19000": {
+      "fwd_per_s_ols": 66.98818300250613,
+      "tok_per_s_ols": 154.6404536708535,
+      "accepted_tok_per_fwd_ols": 2.308715173322998
+    }
+  },
+  "repetitions": {
+    "1024": [
+      {
+        "fwd_per_s_ols": 66.86982158812349,
+        "tok_per_s_ols": 152.66728258232158,
+        "accepted_tok_per_fwd_ols": 2.283052039867208,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.10981074981261,
+        "tok_per_s_ols": 161.0986474258223,
+        "accepted_tok_per_fwd_ols": 2.400523047612262,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.49463110542854,
+        "tok_per_s_ols": 156.96547028275452,
+        "accepted_tok_per_fwd_ols": 2.325599350821993,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.66793026459301,
+        "tok_per_s_ols": 150.8563394845959,
+        "accepted_tok_per_fwd_ols": 2.2293624009885065,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.66270227399922,
+        "tok_per_s_ols": 147.43391678572226,
+        "accepted_tok_per_fwd_ols": 2.1789540150006212,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.6339611101534,
+        "tok_per_s_ols": 160.48666692665176,
+        "accepted_tok_per_fwd_ols": 2.3728710294710074,
+        "fwd_ols_valid": true
+      }
+    ],
+    "19000": [
+      {
+        "fwd_per_s_ols": 67.26814570710883,
+        "tok_per_s_ols": 150.3246556755091,
+        "accepted_tok_per_fwd_ols": 2.234707885810251,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.32161598193207,
+        "tok_per_s_ols": 146.3448941907668,
+        "accepted_tok_per_fwd_ols": 2.1738173104763736,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.33505677789682,
+        "tok_per_s_ols": 157.4965284654324,
+        "accepted_tok_per_fwd_ols": 2.3389974851425634,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 66.7092036042307,
+        "tok_per_s_ols": 157.70512442740318,
+        "accepted_tok_per_fwd_ols": 2.3640684629219817,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 67.23229314142553,
+        "tok_per_s_ols": 160.25758942546577,
+        "accepted_tok_per_fwd_ols": 2.3836400922449306,
+        "fwd_ols_valid": true
+      },
+      {
+        "fwd_per_s_ols": 66.0627828024429,
+        "tok_per_s_ols": 155.71392984054384,
+        "accepted_tok_per_fwd_ols": 2.357059803341887,
+        "fwd_ols_valid": true
+      }
+    ]
+  }
+}

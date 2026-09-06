@@ -1,0 +1,68 @@
+{
+  "client": {
+    "platform": "Linux-6.18.48-talos-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "request": {
+    "concurrency": 1,
+    "distinct_prefixes": false,
+    "distinct_suffixes": false,
+    "image": {
+      "bytes": 23295264,
+      "mime_type": "image/png",
+      "path": "/root/.cache/bench-stage/qualification-8k-image.png",
+      "sha256": "ad394aed9f4bf27b3a628ff1ec05694ff5b634ea8987e18293b7a5770d1543e8"
+    },
+    "max_tokens": 200,
+    "model": "glm-5.3-flash",
+    "prompt": "Describe this image in one paragraph.",
+    "prompt_file": null,
+    "reasoning_effort": null,
+    "repetitions": 1,
+    "stream": true,
+    "suffix_salt": null,
+    "temperature": 0.0,
+    "thinking_enabled": true,
+    "url": "http://127.0.0.1:8000"
+  },
+  "results": [
+    {
+      "chunk_count": 83,
+      "content": "This image is an abstract, computer-generated digital artwork composed of a dense mosaic of tiny pixelated squares that create a vibrant, psychedelic visual effect. The upper-left portion features sweeping, curved",
+      "decode_seconds_from_first_delta": 1.1338774519972503,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.064840256993193,
+      "model": "glm-5.3-flash",
+      "ordinal": 0,
+      "reasoning_content": "The user wants me to describe this image in one paragraph. Let me look at what's in the image.\n\nThis appears to be an abstract digital artwork or computer-generated pattern. It features a highly pixelated, mosaic-like texture composed of tiny colored squares. The colors include vibrant greens, yellows, magentas, purples, blues, oranges, and reds. There's a diagonal division running through the image - the upper left portion has curved, rainbow-like bands of color (green, yellow, orange, red, purple) that arc across, while the lower right portion shows a darker magenta/purple region with a diagonal edge. The overall effect is like a psychedelic, glitch-art style image with a checkered or dithered appearance throughout.\n\nI should describe this in one paragraph as requested.",
+      "reported_output_tokens_per_second": 176.3859045329045,
+      "response_id": "53517dedb020493e95b782969aae1ac9",
+      "sgl_ext": null,
+      "started_unix": 1788712518.5046945,
+      "ttft_seconds": 3.930962804995943,
+      "usage": {
+        "completion_tokens": 200,
+        "prompt_tokens": 7994,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "image_tokens": 7973
+        },
+        "reasoning_tokens": 163,
+        "total_tokens": 8194
+      }
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "aggregate_completion_tokens": 200,
+    "aggregate_output_tokens_per_second": 38.793002217639945,
+    "max_latency_seconds": 5.064840256993193,
+    "max_ttft_seconds": 3.930962804995943,
+    "mean_latency_seconds": 5.064840256993193,
+    "mean_reported_output_tokens_per_second": 176.3859045329045,
+    "mean_ttft_seconds": 3.930962804995943,
+    "requests": 1,
+    "wall_seconds": 5.155569009017199
+  }
+}

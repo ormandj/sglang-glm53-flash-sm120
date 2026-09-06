@@ -101,11 +101,21 @@ def _finite_positive(value: Any, source: str) -> float:
     return numeric
 
 
-# SGLang's spec_accept_rate gauge counts the bonus token of a fully accepted
-# draft, so a single scrape can read slightly above 1.0 (1.03 observed on
-# GLM-5.3-Flash with 5 draft steps). The statistic is a server cross-check,
-# not a gate quantity; accept that excess, reject anything larger.
+# The original bonus-token explanation for 1.25 was incorrect. Keep this
+# legacy bound only to leave non-SGLang behavior unchanged in this correction.
+# SGLang divides interval-wide accepted drafts by the currently active draft
+# width. Adaptive tier changes can bias this diagnostic ratio high or low.
 _ACCEPT_RATE_UPPER_BOUND = 1.25
+
+
+def _finite_nonnegative(value: Any, source: str) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise SummaryError(f"{source} is not numeric") from exc
+    if not math.isfinite(numeric) or numeric < 0:
+        raise SummaryError(f"{source} is not nonnegative and finite")
+    return numeric
 
 
 def _finite_unit_interval(value: Any, source: str) -> float:
@@ -167,6 +177,7 @@ def summarize(
         )
 
     decode: dict[str, Any] = {}
+    telemetry_warnings: list[dict[str, Any]] = []
     for concurrency, expected_repetitions in expected_decode.items():
         documents = decode_documents[concurrency]
         if len(documents) != expected_repetitions:
@@ -215,7 +226,10 @@ def summarize(
             server_cross_checks = document.get("server_cross_checks", {})
             speculative = {}
             for metric, validator in (
-                ("accept_rate", _finite_unit_interval),
+                (
+                    "accept_rate",
+                    _finite_nonnegative if engine == "sglang" else _finite_unit_interval,
+                ),
                 ("accept_length", _finite_positive),
             ):
                 metric_document = server_cross_checks.get(f"spec_{metric}", {})
@@ -228,6 +242,19 @@ def summarize(
                 }
                 for statistic, value in speculative[metric].items():
                     speculative_values[metric][statistic].append(value)
+            if engine == "sglang" and speculative["accept_rate"]["max"] > 1:
+                telemetry_warnings.append(
+                    {
+                        "cell": f"C{concurrency}/{repetition}",
+                        "metric": "sglang:spec_accept_rate",
+                        "maximum": speculative["accept_rate"]["max"],
+                        "message": (
+                            "Server gauge exceeds one; retained as diagnostic telemetry, "
+                            "not a valid acceptance probability. Adaptive draft-width "
+                            "changes can mix numerator and denominator windows."
+                        ),
+                    }
+                )
             client_document = _load(
                 root
                 / "decode"
@@ -309,7 +336,7 @@ def summarize(
         }
 
     return {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "engine": engine,
         "build_id": build_id,
         "mode": mode,
@@ -322,6 +349,17 @@ def summarize(
         ),
         "decode": decode,
         "prefill": prefill,
+        "server_telemetry_warnings": telemetry_warnings,
+        "server_telemetry_notes": (
+            [
+                "SGLang speculative acceptance-rate statistics are raw server "
+                "diagnostics. Adaptive draft-width changes can bias any statistic, "
+                "including values below one; do not interpret them as acceptance "
+                "probabilities."
+            ]
+            if engine == "sglang"
+            else []
+        ),
     }
 
 

@@ -1,10 +1,19 @@
 # Changelog
 
-## v0.3.1-rc.1 (small route-prefix experiment; built internally, not qualified)
+## v0.3.1 (stable; digest-identical promotion of each registry's v0.3.1-rc.1)
+
+- Replace small-batch W4A16 MoE route-prefix tiles with a masked histogram and inverse-prefix lookup to avoid expert-by-route and expert-by-block comparisons. Preserve padding, mapped/invalid experts, graph workspaces and dispatch limits.
+- Include the v0.3.0 integration's hybrid DSA HiCache target/draft index restoration, graph-lifetime and request-lifecycle corrections. Retain CPU image preprocessing, sampled serving warmup, a 450,560-token context and four concurrent requests. SGLang remains main `febb360519` plus the recorded GLM integration; FlashInfer remains main `6c14bbd5ff` plus the carried changes.
+- On the exact internal image, full GSM8K scored 1,280/1,319 with the unchanged GLM-aware grader and 1,181/1,319 with pinned AIPerf. The 73k/400k controls scored 143/150 and 145/150. Two budget-limited outputs remain in the scores. All 767 continuation choices agreed; five forced-host tool-decision cycles and seven ordered 408k markers passed.
+- The internal C1/C2/C3/C4 engine means were 62.61/48.91/38.75/34.24 forwards/s, with five repetitions per cell. Cold prefill at 8k/32k/64k/128k measured 5,291/5,944/5,970/5,935 prompt tok/s. These fixed-window engine measurements are not expected application throughput. The exact-image GPU, sampled startup and final image/cold-C4 checks passed with zero restarts. Receipts and limitations are in `evidence/v0.3.1/` and `BENCHMARKS.md`.
+- Correct benchmark summarization of SGLang's adaptive acceptance-rate gauge: retain and flag the raw ratio without treating it as a probability. All 24 original cell analyzers passed; the initial summary failure, unchanged input receipts and independently reviewed reanalysis are retained. Strict-text 408k host recall differed in optional `MEMORY-CHECK:` labels; the unchanged ordered-marker oracle passed. Keep HiCache disabled on the older v0.2.1 image.
+- Promote without rebuilding within each registry. The qualified internal digest is `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d`; the independently built public digest is `sha256:6c5b7e6701fb64e1890f067cbad5bff2d5c979fb3952f520862a7dfb858cdea3`. Public image inputs match the internal build, but hardware measurements apply only to the internal digest. Cache schema remains `v68`.
+
+## v0.3.1-rc.1 (small route-prefix optimization; internally qualified and promoted)
 
 - Replace the small W4A16 route-prefix expert-by-route count tile with a masked histogram and its expert-by-block ownership tile with an upper-bound lookup. Preserve route padding, mapped/invalid expert handling, CUDA graph workspaces and dispatch limits.
 - Add CUDA graph regressions that change expert distributions and overwrite workspaces between replays. Retain the exact `v0.3.0` SGLang integration, model, quantization and serving settings.
-- Use a separate `v68` cache. The internal image at `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d` completed fresh-cache sampled startup, image/cold-C4 acceptance and the matched application comparison. Concurrent gains and the unresolved C1 decrease are recorded in the primary project evidence. Full release qualification and promotion have not been performed.
+- Use a separate `v68` cache. The internal image at `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d` completed fresh-cache sampled startup, image/cold-C4 acceptance and the matched application comparison. The initial C1 decrease and its follow-up are retained. Full qualification and promotion subsequently completed as described in the stable section above.
 
 ## v0.3.0-rc.4 (lifecycle corrections and source refresh; internally qualified)
 
@@ -12,7 +21,7 @@
 - Remove the obsolete encoder cleanup call that fails during timeout/cancellation. Retain upstream task joins and socket cleanup.
 - Expire preallocation waits through receiver polling before rank consensus, preserving consistent failure handling across TP/PP workers. Include the submitted regression tests for #38161, #38162 and #38164.
 - Carry #38157's synchronized TP host-memory readings before pool allocation. Correct host-tier documentation to 32 GB per rank, 64 GB across TP2.
-- Use fresh cache namespace `v67`. The internal image at `sha256:86dc493a8d64df2f1beae4b15e3224cad7f6b9fb741183affb18ff5d1882c0c3` completed the isolated GPU, sampled first-boot, image/cold-cohort, full GSM8K, standardized C1-C4/prefill, 400k-context and forced-host restoration checks. Exact-candidate receipts remain in the primary qualification repository. Public publication is pending.
+- Use fresh cache namespace `v67`. The internal image at `sha256:86dc493a8d64df2f1beae4b15e3224cad7f6b9fb741183affb18ff5d1882c0c3` completed the isolated GPU, sampled first-boot, image/cold-cohort, full GSM8K, standardized C1-C4/prefill, 400k-context and forced-host restoration checks. Exact-candidate receipts remain in the primary qualification repository. Promoted internally as v0.3.0; public publication was superseded by v0.3.1.
 
 ## v0.3.0-rc.3 (diagnostic assertion correction; serving gates complete, promotion withheld)
 

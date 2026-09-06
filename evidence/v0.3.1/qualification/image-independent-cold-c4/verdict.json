@@ -1,0 +1,30 @@
+{
+  "label": "v0.3.1-rc.1",
+  "passed": true,
+  "before": {
+    "input": 8471104,
+    "device_hit": 73957120,
+    "host_hit": 2250240,
+    "storage_hit": 0
+  },
+  "after": {
+    "input": 8487744,
+    "device_hit": 73957120,
+    "host_hit": 2250240,
+    "storage_hit": 0
+  },
+  "metric_delta": {
+    "host_hit": 0,
+    "input": 16640,
+    "storage_hit": 0,
+    "device_hit": 0
+  },
+  "image_sha256": "ad394aed9f4bf27b3a628ff1ec05694ff5b634ea8987e18293b7a5770d1543e8",
+  "prompt_tokens": [
+    4146,
+    4146,
+    4149,
+    4147
+  ],
+  "note": "Restart count and GPU process ownership must also be verified externally."
+}

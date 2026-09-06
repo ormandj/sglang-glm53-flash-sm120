@@ -1,0 +1,236 @@
+{
+  "rows": [
+    {
+      "timestamp_ns": 1788707996348529792,
+      "spec_accept_rate": 0.5833333333333334,
+      "spec_accept_length": 2.75,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707997020083268,
+      "spec_accept_rate": 0.46,
+      "spec_accept_length": 3.3,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707997667243126,
+      "spec_accept_rate": 1.3583333333333334,
+      "spec_accept_length": 5.075,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707998342070411,
+      "spec_accept_rate": 0.525,
+      "spec_accept_length": 2.575,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707999024593416,
+      "spec_accept_rate": 0.675,
+      "spec_accept_length": 3.025,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    }
+  ],
+  "all_unique_gauge_samples": [
+    {
+      "timestamp_ns": 1788707978932249259,
+      "spec_accept_rate": 0.525,
+      "spec_accept_length": 2.575,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707986019978762,
+      "spec_accept_rate": 0.485,
+      "spec_accept_length": 3.425,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707986671037930,
+      "spec_accept_rate": 0.9083333333333333,
+      "spec_accept_length": 3.725,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707987332415160,
+      "spec_accept_rate": 0.8333333333333334,
+      "spec_accept_length": 3.5,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707987998603183,
+      "spec_accept_rate": 0.46,
+      "spec_accept_length": 3.3,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707988665186936,
+      "spec_accept_rate": 0.8,
+      "spec_accept_length": 3.4,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707989344787153,
+      "spec_accept_rate": 0.5583333333333333,
+      "spec_accept_length": 2.675,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707990007079927,
+      "spec_accept_rate": 0.7083333333333334,
+      "spec_accept_length": 3.125,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707990337305413,
+      "spec_accept_rate": 0.5583333333333333,
+      "spec_accept_length": 2.675,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707991006408807,
+      "spec_accept_rate": 0.65,
+      "spec_accept_length": 2.95,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707991685757701,
+      "spec_accept_rate": 0.6,
+      "spec_accept_length": 4.0,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707992349135693,
+      "spec_accept_rate": 0.475,
+      "spec_accept_length": 2.425,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707993015172047,
+      "spec_accept_rate": 0.48333333333333334,
+      "spec_accept_length": 2.45,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707993687037648,
+      "spec_accept_rate": 0.38,
+      "spec_accept_length": 2.9,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707994341335259,
+      "spec_accept_rate": 0.855,
+      "spec_accept_length": 5.275,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707995007789724,
+      "spec_accept_rate": 0.5583333333333333,
+      "spec_accept_length": 2.675,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707995673916554,
+      "spec_accept_rate": 0.5,
+      "spec_accept_length": 2.5,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707996348529792,
+      "spec_accept_rate": 0.5833333333333334,
+      "spec_accept_length": 2.75,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707997020083268,
+      "spec_accept_rate": 0.46,
+      "spec_accept_length": 3.3,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788707997667243126,
+      "spec_accept_rate": 1.3583333333333334,
+      "spec_accept_length": 5.075,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707998342070411,
+      "spec_accept_rate": 0.525,
+      "spec_accept_length": 2.575,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707999024593416,
+      "spec_accept_rate": 0.675,
+      "spec_accept_length": 3.025,
+      "spec_num_steps": 3.0,
+      "spec_num_draft_tokens": 4.0
+    },
+    {
+      "timestamp_ns": 1788707999683599522,
+      "spec_accept_rate": 0.945,
+      "spec_accept_length": 5.725,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788708000355370228,
+      "spec_accept_rate": 0.985,
+      "spec_accept_length": 5.925,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788708001348838425,
+      "spec_accept_rate": 0.975,
+      "spec_accept_length": 5.875,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788708002018059192,
+      "spec_accept_rate": 1.0,
+      "spec_accept_length": 6.0,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    },
+    {
+      "timestamp_ns": 1788708002678943386,
+      "spec_accept_rate": 0.995,
+      "spec_accept_length": 5.975,
+      "spec_num_steps": 5.0,
+      "spec_num_draft_tokens": 6.0
+    }
+  ],
+  "original_gate_status": 2,
+  "all_cell_analyzers_valid": true,
+  "original_error": "C1/r02 speculative accept_rate max is not finite and within [0, 1.25]",
+  "source_head": "dc876eb68dd0552325e4547278e78167e2ad0756",
+  "source_path": "python/sglang/srt/managers/scheduler_components/metrics_reporter.py",
+  "source_logic": "Accepted-draft counts accumulate across a log interval. The denominator is the interval forward count multiplied by the current draft width, which can change inside the interval."
+}

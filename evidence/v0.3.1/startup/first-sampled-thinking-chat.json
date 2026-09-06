@@ -1,0 +1,60 @@
+{
+  "client": {
+    "platform": "Linux-6.18.48-talos-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "request": {
+    "concurrency": 1,
+    "distinct_prefixes": false,
+    "distinct_suffixes": false,
+    "image": null,
+    "max_tokens": 128,
+    "model": "glm-5.3-flash",
+    "prompt": "What is 6 times 7? Answer briefly.",
+    "prompt_file": null,
+    "reasoning_effort": null,
+    "repetitions": 1,
+    "stream": true,
+    "suffix_salt": null,
+    "temperature": 1.0,
+    "thinking_enabled": true,
+    "url": "http://127.0.0.1:8000"
+  },
+  "results": [
+    {
+      "chunk_count": 18,
+      "content": "6 \u00d7 7 = **42**",
+      "decode_seconds_from_first_delta": 0.19445843101129867,
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 0.5488355090201367,
+      "model": "glm-5.3-flash",
+      "ordinal": 0,
+      "reasoning_content": "The user asks what 6 times 7 is, and wants a brief answer. Simple arithmetic: 6 \u00d7 7 = 42.",
+      "reported_output_tokens_per_second": 200.55700232269163,
+      "response_id": "e1c00b0c711f457989cab80047bfa0f4",
+      "sgl_ext": null,
+      "started_unix": 1788706169.1823041,
+      "ttft_seconds": 0.354377078008838,
+      "usage": {
+        "completion_tokens": 39,
+        "prompt_tokens": 23,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 30,
+        "total_tokens": 62
+      }
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "aggregate_completion_tokens": 39,
+    "aggregate_output_tokens_per_second": 70.78462425424519,
+    "max_latency_seconds": 0.5488355090201367,
+    "max_ttft_seconds": 0.354377078008838,
+    "mean_latency_seconds": 0.5488355090201367,
+    "mean_reported_output_tokens_per_second": 200.55700232269163,
+    "mean_ttft_seconds": 0.354377078008838,
+    "requests": 1,
+    "wall_seconds": 0.5509671120089479
+  }
+}

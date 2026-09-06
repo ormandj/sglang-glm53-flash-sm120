@@ -1,0 +1,70 @@
+{
+  "cell": {
+    "expected_requests": 5,
+    "isl_tolerance": 16,
+    "target_concurrency": 1,
+    "target_isl": 8192
+  },
+  "engine": "sglang",
+  "failures": [],
+  "prefill_concurrency": {
+    "duration_seconds": 7.753535902,
+    "fraction_of_window_at_target": 0.9989840173438846,
+    "max": 1,
+    "target": 1,
+    "time_weighted_mean": 0.9989840173438846,
+    "window_end_ns": 1788708903763727861,
+    "window_start_ns": 1788708896010191959
+  },
+  "requests": {
+    "aggregate_prompt_tokens": 41027.0,
+    "aggregate_prompt_tokens_per_second": 5291.392278123999,
+    "completed": 5,
+    "input_tokens": {
+      "count": 5,
+      "max": 8207.0,
+      "mean": 8205.4,
+      "median": 8205.0,
+      "min": 8204.0,
+      "p90": 8206.6,
+      "p95": 8206.8,
+      "p99": 8206.96,
+      "sample_stddev": 1.140175425099138
+    },
+    "records_exported": 5,
+    "time_to_first_token_ms": {
+      "count": 5,
+      "max": 1571.117755,
+      "mean": 1549.1316888,
+      "median": 1544.902697,
+      "min": 1538.079573,
+      "p90": 1563.6643774,
+      "p95": 1567.3910661999998,
+      "p99": 1570.37241724,
+      "sample_stddev": 13.562961968319456
+    }
+  },
+  "schema_version": "1.0",
+  "server_controls": {
+    "cache": {
+      "counter_family": "sglang:realtime_tokens",
+      "tokens_per_second": 0.0,
+      "total_tokens": 0.0
+    },
+    "compute": {
+      "maximum_allowed_ratio": 1.1,
+      "ratio_to_observed_prompt_tokens": 1.0061666707290322,
+      "tokens_per_second": 3693.768356330833,
+      "total_tokens": 41280.0
+    },
+    "counter_family": "sglang:realtime_tokens"
+  },
+  "source": {
+    "records": "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/8k-c1/profile_export.jsonl",
+    "server_summary": "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/8k-c1/server_metrics_export.json",
+    "summary": "/root/.cache/bench-stage/results/v031rc1-full-20260906/engine-gates/v031rc1-full-20260906/v0.3.1-rc.1-cohort-450k-glm-qualification/prefill/8k-c1/profile_export_aiperf.json"
+  },
+  "validation": {
+    "valid": true
+  }
+}

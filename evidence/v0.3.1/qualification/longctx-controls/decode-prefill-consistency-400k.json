@@ -1,0 +1,26 @@
+{
+ "label": "v0.3.1-rc.1",
+ "results": {
+  "r01": {
+   "prompt_tokens": 399981,
+   "new_tokens": 768,
+   "finish": {
+    "type": "length",
+    "length": 768
+   },
+   "scored": 767,
+   "delta_mean": 0.0001495722529306734,
+   "delta_median": 1.2874232197646052e-05,
+   "delta_p95": 0.0004344782209955156,
+   "delta_max": 0.0244029238820076,
+   "delta_mean_first_quarter": 0.0004850416990224527,
+   "delta_mean_last_quarter": 1.9943112286226726e-05,
+   "prefill_argmax_agrees": [
+    767,
+    767
+   ],
+   "gen_seconds": 72.6,
+   "big_deltas": []
+  }
+ }
+}

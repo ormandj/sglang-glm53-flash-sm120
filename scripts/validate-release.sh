@@ -75,6 +75,9 @@ done < <(sed -n 's/^ARG \([A-Z0-9_]*\)=.*/\1/p' "$repo/Containerfile")
 
 launcher="$repo/examples/serve-glm53-flash.sh"
 local_image="sglang-glm53-flash-sm120:${candidate_tag}"
+if grep -F -- "The current published stable image is \`${stable_tag}\`" "$repo/README.md" >/dev/null; then
+  local_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
+fi
 grep -Fx "IMAGE=\${IMAGE:-${local_image}}" "$launcher" >/dev/null
 grep -F "/srv/cache/sglang-glm53-flash-sm120-${cache_schema}" "$repo/RUN.md" >/dev/null
 

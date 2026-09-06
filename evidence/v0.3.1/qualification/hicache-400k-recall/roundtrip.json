@@ -1,0 +1,152 @@
+{
+  "baseline": {
+    "cached_tokens": null,
+    "completion_tokens": 141,
+    "content_tail": ":MAPLE-7319|MEMORY-CHECK:COBALT-2846|MEMORY-CHECK:EMBER-9052|MEMORY-CHECK:JUNIPER-4173|MEMORY-CHECK:ORBIT-6628|MEMORY-CHECK:VIOLET-1394|MEMORY-CHECK:SILVER-5081",
+    "decision_signature": {
+      "content": "MEMORY-CHECK:MAPLE-7319|MEMORY-CHECK:COBALT-2846|MEMORY-CHECK:EMBER-9052|MEMORY-CHECK:JUNIPER-4173|MEMORY-CHECK:ORBIT-6628|MEMORY-CHECK:VIOLET-1394|MEMORY-CHECK:SILVER-5081",
+      "finish_reason": "stop",
+      "tool_calls": []
+    },
+    "elapsed_seconds": 73.86,
+    "finish_reason": "stop",
+    "metric_delta": {
+      "device_hit": 0,
+      "host_hit": 0,
+      "input": 408192,
+      "storage_hit": 0
+    },
+    "prompt_tokens": 408132,
+    "reasoning_tail": "Find all MEMORY-CHECK codes in order: MAPLE-7319, COBALT-2846, EMBER-9052, JUNIPER-4173, ORBIT-6628, VIOLET-1394, SILVER-5081.",
+    "sha256": "9156c8a6861c81244df2301705c6a09946496a2459252ad90934762a8afee49a",
+    "tool_arguments": [],
+    "tool_names": [],
+    "tool_type_delta_counts": [],
+    "tool_types": []
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "post_host_device_replay": {
+        "cached_tokens": 408064,
+        "completion_tokens": 114,
+        "content_tail": "MAPLE-7319|COBALT-2846|EMBER-9052|JUNIPER-4173|ORBIT-6628|VIOLET-1394|SILVER-5081",
+        "decision_matches_baseline": false,
+        "decision_matches_host_replay": true,
+        "decision_signature": {
+          "content": "MAPLE-7319|COBALT-2846|EMBER-9052|JUNIPER-4173|ORBIT-6628|VIOLET-1394|SILVER-5081",
+          "finish_reason": "stop",
+          "tool_calls": []
+        },
+        "elapsed_seconds": 2.708,
+        "finish_reason": "stop",
+        "matches_baseline": false,
+        "metric_delta": {
+          "device_hit": 408064,
+          "host_hit": 0,
+          "input": 128,
+          "storage_hit": 0
+        },
+        "prompt_tokens": 408132,
+        "reasoning_tail": "Find all MEMORY-CHECK codes in order: MAPLE-7319, COBALT-2846, EMBER-9052, JUNIPER-4173, ORBIT-6628, VIOLET-1394, SILVER-5081.",
+        "sha256": "fbb7be017654db3e5a9940d5ee95bde6ed533bbde09c556fea5fe001a9f5cd07",
+        "tool_arguments": [],
+        "tool_names": [],
+        "tool_type_delta_counts": [],
+        "tool_types": []
+      },
+      "pressure": [
+        [
+          {
+            "completion_tokens": 1,
+            "elapsed_seconds": 79.702,
+            "finish_reason": "length",
+            "index": 0,
+            "prompt_tokens": 235023
+          },
+          {
+            "completion_tokens": 1,
+            "elapsed_seconds": 40.066,
+            "finish_reason": "length",
+            "index": 1,
+            "prompt_tokens": 235255
+          },
+          {
+            "completion_tokens": 1,
+            "elapsed_seconds": 119.371,
+            "finish_reason": "length",
+            "index": 2,
+            "prompt_tokens": 234667
+          }
+        ]
+      ],
+      "replay": {
+        "cached_tokens": 408064,
+        "completion_tokens": 114,
+        "confirmed_host_load": true,
+        "content_tail": "MAPLE-7319|COBALT-2846|EMBER-9052|JUNIPER-4173|ORBIT-6628|VIOLET-1394|SILVER-5081",
+        "decision_matches_baseline": false,
+        "decision_signature": {
+          "content": "MAPLE-7319|COBALT-2846|EMBER-9052|JUNIPER-4173|ORBIT-6628|VIOLET-1394|SILVER-5081",
+          "finish_reason": "stop",
+          "tool_calls": []
+        },
+        "elapsed_seconds": 2.912,
+        "finish_reason": "stop",
+        "matches_baseline": false,
+        "metric_delta": {
+          "device_hit": 0,
+          "host_hit": 408064,
+          "input": 128,
+          "storage_hit": 0
+        },
+        "prompt_tokens": 408132,
+        "reasoning_tail": "Find all MEMORY-CHECK codes in order: MAPLE-7319, COBALT-2846, EMBER-9052, JUNIPER-4173, ORBIT-6628, VIOLET-1394, SILVER-5081.",
+        "sha256": "fbb7be017654db3e5a9940d5ee95bde6ed533bbde09c556fea5fe001a9f5cd07",
+        "tool_arguments": [],
+        "tool_names": [],
+        "tool_type_delta_counts": [],
+        "tool_types": []
+      }
+    }
+  ],
+  "cycles_requested": 1,
+  "pressure_chars": 700000,
+  "pressure_concurrency": 3,
+  "run_nonce": "HICACHE-ROUNDTRIP-1788710805016807299",
+  "verdict": {
+    "all_cycles_confirmed_host_load": true,
+    "confirmed_host_loads": 1,
+    "host_load_mismatches": 1,
+    "host_loads_matching_baseline": 0,
+    "passed": false,
+    "post_host_device_recoveries": 0
+  },
+  "warm_device_replay": {
+    "cached_tokens": 408064,
+    "completion_tokens": 141,
+    "content_tail": ":MAPLE-7319|MEMORY-CHECK:COBALT-2846|MEMORY-CHECK:EMBER-9052|MEMORY-CHECK:JUNIPER-4173|MEMORY-CHECK:ORBIT-6628|MEMORY-CHECK:VIOLET-1394|MEMORY-CHECK:SILVER-5081",
+    "decision_matches_baseline": true,
+    "decision_signature": {
+      "content": "MEMORY-CHECK:MAPLE-7319|MEMORY-CHECK:COBALT-2846|MEMORY-CHECK:EMBER-9052|MEMORY-CHECK:JUNIPER-4173|MEMORY-CHECK:ORBIT-6628|MEMORY-CHECK:VIOLET-1394|MEMORY-CHECK:SILVER-5081",
+      "finish_reason": "stop",
+      "tool_calls": []
+    },
+    "elapsed_seconds": 2.8,
+    "finish_reason": "stop",
+    "matches_baseline": true,
+    "metric_delta": {
+      "device_hit": 408064,
+      "host_hit": 0,
+      "input": 128,
+      "storage_hit": 0
+    },
+    "prompt_tokens": 408132,
+    "reasoning_tail": "Find all MEMORY-CHECK codes in order: MAPLE-7319, COBALT-2846, EMBER-9052, JUNIPER-4173, ORBIT-6628, VIOLET-1394, SILVER-5081.",
+    "sha256": "9156c8a6861c81244df2301705c6a09946496a2459252ad90934762a8afee49a",
+    "tool_arguments": [],
+    "tool_names": [],
+    "tool_type_delta_counts": [],
+    "tool_types": []
+  }
+}

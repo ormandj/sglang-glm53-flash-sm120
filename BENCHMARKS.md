@@ -1,5 +1,39 @@
 # Measured results
 
+## v0.3.1 qualification, 2026-09-06
+
+The internal candidate `v0.3.1-rc.1` is qualified and promoted without rebuilding as `v0.3.1` at `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d`. These measurements apply to that exact internal image on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, TP2/EP1 over PCIe. The profile retains W4A16 experts, FP8 KV, a 450,560-token pool, four running requests, 4,096-token prefill chunks and 32 GB of HiCache per rank.
+
+SGLang remains main `febb360519` plus the recorded integration, including GLM support carried from the pre-merge #36507 branch. FlashInfer remains main `6c14bbd5ff` plus the carried changes and the small route-prefix optimization. The owner deferred a post-merge SGLang refresh to a separate rebuild.
+
+The exact-image GPU/CPU matrix, sampled startup, 7680x4320 image followed by four independent cold requests, full GSM8K, long-context and forced-host checks completed. Full GSM8K scored 1,181/1,319 (89.5%) with pinned AIPerf and 1,280/1,319 (97.0%) with the unchanged GLM-aware grader, with zero request errors. Two responses exhausted the 16,384-token budget and remain in both denominators. Grader disagreements are 100 pinned-fail/GLM-pass and one in the reverse direction.
+
+The 73k and 400k controls scored 143/150 and 145/150. Against the existing v0.3.0 baseline, full GSM8K lost six previously correct answers and gained seven; 73k lost one and gained five; 400k lost two and gained six. These single-run paired changes establish neither quality improvement nor equivalence. Prefill rescoring of the 768-token continuation at 400k context agreed on all 767 next-token choices. Cold/device recall and the separate forced-host 408k probe preserved all seven ordered markers. All five reconstructed-request host cycles preserved the expected tool decision. The 408k strict-text check failed only because optional `MEMORY-CHECK:` labels changed after restoration; its original failure and the pre-existing marker-oracle pass are both retained.
+
+| Engine cell | Mean forwards/s | Median forwards/s | Sample CV |
+|---|---:|---:|---:|
+| C1, n=5 | 62.61 | 64.28 | 5.66% |
+| C2, n=5 | 48.91 | 48.28 | 3.99% |
+| C3, n=5 | 38.75 | 40.01 | 9.03% |
+| C4, n=5 | 34.24 | 35.33 | 5.70% |
+
+| Cold prefill | Prompt tok/s | Median TTFT |
+|---|---:|---:|
+| 8k, five requests | 5,291 | 1.545 s |
+| 32k, five requests | 5,944 | 5.501 s |
+| 64k, five requests | 5,970 | 11.012 s |
+| 128k, five requests | 5,935 | 22.130 s |
+
+All 24 cell analyzers passed, with configs byte-identical to the retained baseline. Final summarization initially failed because an adaptive speculative-acceptance gauge reached 1.3583, exceeding an incorrect fixed 1.25 bound. Source and raw samples show interval-wide accepted drafts divided by the currently active draft width. The corrected summarizer retains and flags this diagnostic ratio; it changes no cell verdict, workload, counter or measured rate. Codex and Claude approved the exact correction and its 26 focused tests passed. The original failure and data are preserved separately from the reviewed summary, with full hash provenance. All adaptive acceptance-rate gauge statistics, including values below one, can be biased and are not reliable probabilities. Fixed-window engine rates are engineering comparisons, not expected application throughput.
+
+The candidate-only fixed-acceptance follow-up measured 67.406 ± 0.338 forwards/s at 1k and 66.988 ± 0.511 at 19k (six repetitions, mean ± sample SD). The initial candidate means were 67.073 and 66.187, versus baseline 67.360 and 67.042. The earlier 19k decrease did not recur at the same size; no zero-effect or causal clock claim is made. The original matched natural-EOS C2/C4 results and full private fixture receipts remain in the primary qualification repository. No baseline campaign was repeated.
+
+The retained paired engine comparison measured v0.3.0 / v0.3.1 mean forwards/s of 61.67 / 62.61 at C1, 43.95 / 48.91 at C2, 36.66 / 38.75 at C3 and 32.04 / 34.24 at C4. These sequential, adaptive-path measurements are descriptive and do not establish statistical significance or isolate the route-prefix change. [All repetitions and comparison](evidence/v0.3.1/engine-comparison.json).
+
+The final qualification pod was Ready with zero restarts and only its two scheduler GPU processes. Exact-candidate receipts, both graders, paired IDs and the reviewed engine analysis are in [the release evidence](evidence/v0.3.1/README.md).
+
+## Historical measurements
+
 Three measurement sets are recorded here: the v0.2.0-rc.1 set below, then the earlier two. The v0.1.1 set was measured on
 2026-09-02 on the released `v0.1.1` image (internal digest
 `sha256:5e499c5f...`), one host: 2x NVIDIA RTX PRO 6000 Blackwell (96 GB,

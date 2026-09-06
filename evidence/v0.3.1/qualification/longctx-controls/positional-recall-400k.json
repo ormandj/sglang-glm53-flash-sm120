@@ -1,0 +1,72 @@
+[
+  {
+    "label": "about-400k-cold",
+    "prompt_sha256": "0e1ae074f5e620fc6b502297e50d33c6b42d2442144aa3f0bd0ceb50d1f9e669",
+    "prompt_tokens": 408111,
+    "cached_tokens": 0,
+    "completion_tokens": 114,
+    "elapsed_seconds": 74.06296381901484,
+    "expected": [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    "recalled": [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    "exact_set": true,
+    "document_order": true,
+    "finish_reason": "stop",
+    "message": {
+      "role": "assistant",
+      "content": "MAPLE-7319|COBALT-2846|EMBER-9052|JUNIPER-4173|ORBIT-6628|VIOLET-1394|SILVER-5081",
+      "reasoning_content": "Find all MEMORY-CHECK codes in order: MAPLE-7319, COBALT-2846, EMBER-9052, JUNIPER-4173, ORBIT-6628, VIOLET-1394, SILVER-5081.",
+      "tool_calls": null
+    }
+  },
+  {
+    "label": "about-400k-hot-repeat",
+    "prompt_sha256": "0e1ae074f5e620fc6b502297e50d33c6b42d2442144aa3f0bd0ceb50d1f9e669",
+    "prompt_tokens": 408111,
+    "cached_tokens": 408064,
+    "completion_tokens": 114,
+    "elapsed_seconds": 2.6786775600048713,
+    "expected": [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    "recalled": [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    "exact_set": true,
+    "document_order": true,
+    "finish_reason": "stop",
+    "message": {
+      "role": "assistant",
+      "content": "MAPLE-7319|COBALT-2846|EMBER-9052|JUNIPER-4173|ORBIT-6628|VIOLET-1394|SILVER-5081",
+      "reasoning_content": "Find all MEMORY-CHECK codes in order: MAPLE-7319, COBALT-2846, EMBER-9052, JUNIPER-4173, ORBIT-6628, VIOLET-1394, SILVER-5081.",
+      "tool_calls": null
+    }
+  }
+]

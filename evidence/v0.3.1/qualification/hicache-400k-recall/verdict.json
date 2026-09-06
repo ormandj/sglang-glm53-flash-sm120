@@ -1,0 +1,63 @@
+{
+  "passed": true,
+  "expected_codes": [
+    "MAPLE-7319",
+    "COBALT-2846",
+    "EMBER-9052",
+    "JUNIPER-4173",
+    "ORBIT-6628",
+    "VIOLET-1394",
+    "SILVER-5081"
+  ],
+  "codes_by_stage": [
+    [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ],
+    [
+      "MAPLE-7319",
+      "COBALT-2846",
+      "EMBER-9052",
+      "JUNIPER-4173",
+      "ORBIT-6628",
+      "VIOLET-1394",
+      "SILVER-5081"
+    ]
+  ],
+  "stages_checked": 4,
+  "cache_paths_confirmed": true,
+  "exact_text_roundtrip_verdict": {
+    "all_cycles_confirmed_host_load": true,
+    "confirmed_host_loads": 1,
+    "host_load_mismatches": 1,
+    "host_loads_matching_baseline": 0,
+    "passed": false,
+    "post_host_device_recoveries": 0
+  },
+  "oracle": "Exact ordered code list; optional literal MEMORY-CHECK: labels only.",
+  "report_sha256": "60f3cf04944e6344e5f7d902ff02a322dadbe853eb6359de33838eeacf0fea04",
+  "exact_text_probe_exit_code": 3
+}

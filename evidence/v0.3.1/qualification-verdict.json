@@ -1,0 +1,45 @@
+{
+  "qualified": true,
+  "qualified_at_utc": "2026-09-06T16:13:40.370642+00:00",
+  "candidate": "v0.3.1-rc.1",
+  "image_digest": "sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d",
+  "build_source": "ab95331ebabdc42598b467559239e9bf21d9915b",
+  "pod": "glm53-flash-sglang-v0-3-1-rc1-w4a16-c4-450k-tp2-6f46c7b9d9h4zhw",
+  "pod_ready": true,
+  "restart_count": 0,
+  "gpu_scheduler_processes": [
+    188,
+    319
+  ],
+  "quality": {
+    "gsm8k_pinned_correct": 1181,
+    "gsm8k_glm_correct": 1280,
+    "gsm8k_questions": 1319,
+    "gsm8k_budget_limited_responses": 2,
+    "gsm8k_request_errors": 0,
+    "longctx_73k_correct": 143,
+    "longctx_400k_correct": 145,
+    "longctx_questions": 150,
+    "next_token_agreement": [
+      767,
+      767
+    ],
+    "positional_markers": 7,
+    "forced_host_cycles": 5,
+    "host_408k_marker_stages": 4
+  },
+  "engine": {
+    "cell_analyzers_valid": 24,
+    "resolved_configs_match_baseline": 24,
+    "original_summary_exit_code": 2,
+    "reviewed_reanalysis_status": 0,
+    "reanalysis_provenance": "engine-gate-reviewed/analysis-provenance.json"
+  },
+  "limitations": [
+    "Both GSM8K graders and two budget-limited outputs are retained. One serving run per image does not establish quality improvement or equivalence.",
+    "The original engine summary failed on an adaptive telemetry gauge. The source-bound correction was approved by Codex and Claude; original data/status remain unchanged.",
+    "Strict text equality failed on optional MEMORY-CHECK labels after 408k restoration. The unchanged ordered-marker oracle passed at all four stages; no byte-identical output claim is made.",
+    "Internal hardware evidence applies only to this digest. The independently built GHCR artifact will have separate provenance."
+  ],
+  "source_refresh_deferred_per_owner": true
+}

@@ -1,0 +1,135 @@
+{
+  "client": {
+    "platform": "Linux-6.18.48-talos-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "request": {
+    "concurrency": 4,
+    "distinct_prefixes": true,
+    "distinct_suffixes": false,
+    "image": null,
+    "max_tokens": 256,
+    "model": "glm-5.3-flash",
+    "prompt": null,
+    "prompt_file": {
+      "bytes": 28117,
+      "calibrated_tokens": 4090,
+      "generator": "deterministic-engineering-ledger-v1",
+      "sha256": "fab34474f6de91e4285159dbae413a6d4afdb333c572bae5071e527d7ccefa58",
+      "target_tokens": 4096
+    },
+    "reasoning_effort": null,
+    "repetitions": 1,
+    "stream": true,
+    "suffix_salt": "v0.3.1-stable-startup",
+    "temperature": 0.0,
+    "thinking_enabled": true,
+    "url": "http://127.0.0.1:8000"
+  },
+  "results": [
+    {
+      "chunk_count": 87,
+      "content": "",
+      "decode_seconds_from_first_delta": 3.353501954989042,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.275070439005503,
+      "model": "glm-5.3-flash",
+      "ordinal": 0,
+      "reasoning_content": "Let me parse this request carefully.\n\nThe user's message is titled \"Independent workstream 0, wave v0.3.1-stable-startup. Analyze radix-cache ownership and page-aligned request lifetimes. Wave discriminator: v0.3.1-stable-startup.\"\n\nThen: \"Review the following deterministic engineering ledger, identify the most important runtime invariants, and propose a concrete validation plan. Do not quote the ledger verbatim.\"\n\nThen there's a huge repeated paragraph: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" repeated many times, and it gets cut off mid-sentence at the end (\"...timestamps, integ\").\n\nSo the actual \"ledger\" content is... not present. The message just repeats a meta-description of what the ledger contains, over and over. There are no actual identifiers, timestamps, counters, transitions, or notes. The prompt appears to be either a test of whether I'll hallucinate content, a prompt-injection-style filler, or an accidental paste of a repeated line.\n\nThe honest, correct response: point out that the ledger's substantive content is missing \u2014 the message contains only a repeated description of the ledger's schema, not the ledger entries",
+      "reported_output_tokens_per_second": 76.33810966447953,
+      "response_id": "c72dbe2f9efa4a34b6daa8920a659079",
+      "sgl_ext": null,
+      "started_unix": 1788712523.8056,
+      "ttft_seconds": 1.9215684840164613,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4146,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 256,
+        "total_tokens": 4402
+      }
+    },
+    {
+      "chunk_count": 82,
+      "content": "",
+      "decode_seconds_from_first_delta": 2.983980130025884,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.16676154002198,
+      "model": "glm-5.3-flash",
+      "ordinal": 1,
+      "reasoning_content": "Let me parse this request carefully.\n\nThe user says: \"Independent workstream 1, wave v0.3.1-stable-startup. Analyze CUDA graph and workspace memory without changing model values. Wave discriminator: v0.3.1-stable-startup.\"\n\nThen: \"Review the following deterministic engineering ledger, identify the most important runtime invariants, and propose a concrete validation plan. Do not quote the ledger verbatim.\"\n\nThen there's a huge repetition of the same sentence: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" repeated many times, and it cuts off mid-sentence at the end (\"timestamps, integ\").\n\nSo the actual \"ledger\" content is... just that repeated sentence. There's no actual ledger data \u2014 no identifiers, no timestamps, no counters, no cache transitions, no notes. The prompt appears to be either a test, a prompt-injection-like filler, or a corrupted paste. The repeated sentence is a description of what a ledger would contain, not the ledger itself.\n\nWhat should I do? The honest, helpful response:\n\n1. Note that the ledger content as provided doesn't contain actual records \u2014 it's a repeated description sentence, truncated mid",
+      "reported_output_tokens_per_second": 85.7914559899497,
+      "response_id": "2d71276c0ff6442d83318fdebd2e40a8",
+      "sgl_ext": null,
+      "started_unix": 1788712523.806607,
+      "ttft_seconds": 2.182781409996096,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4146,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 257,
+        "total_tokens": 4402
+      }
+    },
+    {
+      "chunk_count": 80,
+      "content": "",
+      "decode_seconds_from_first_delta": 2.3219159170112107,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.108049835020211,
+      "model": "glm-5.3-flash",
+      "ordinal": 2,
+      "reasoning_content": "The user is asking me to analyze \"packed FP8 KV layout invariants across target and draft paths\" for what appears to be a speculative decoding system (target and draft models are terminology from speculative decoding). They mention a \"deterministic engineering ledger\" but the actual content of the message is just the same sentence repeated many times: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\"\n\nSo there's no actual ledger content here \u2014 the message is padded with repetition. The user wants me to:\n1. Identify the most important runtime invariants for packed FP8 KV cache layouts across target and draft paths\n2. Propose a concrete validation plan\n3. Not quote the ledger verbatim\n\nThis is a legitimate technical request about LLM inference infrastructure \u2014 specifically FP8 (8-bit floating point) KV cache quantization in speculative decoding systems. Let me think about what I actually know about this domain.\n\nContext: In speculative decoding, you have a target model (larger, verifies) and a draft model (smaller, proposes tokens). Both maintain KV caches. FP8 KV cache quantization packs K and V tensors into 8-bit floats (e.g., E4M3 format)",
+      "reported_output_tokens_per_second": 110.25377711761644,
+      "response_id": "ec34070b6f4448269cb15fb84b4b9636",
+      "sgl_ext": null,
+      "started_unix": 1788712523.8075948,
+      "ttft_seconds": 2.786133918009,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4149,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 257,
+        "total_tokens": 4405
+      }
+    },
+    {
+      "chunk_count": 88,
+      "content": "",
+      "decode_seconds_from_first_delta": 2.244687516009435,
+      "finish_reason": "length",
+      "http_status": 200,
+      "latency_seconds": 5.288083738996647,
+      "model": "glm-5.3-flash",
+      "ordinal": 3,
+      "reasoning_content": "Let me parse this request carefully.\n\nThe user says: \"Independent workstream 3, wave v0.3.1-stable-startup. Analyze recurrent-state admission, rollback, and eviction invariants. Wave discriminator: v0.3.1-stable-startup. Review the following deterministic engineering ledger, identify the most important runtime invariants, and propose a concrete validation plan. Do not quote the ledger verbatim.\"\n\nThen the \"ledger\" is just the same sentence repeated ~200 times: \"The engineering ledger records deterministic identifiers, timestamps, integer counters, cache-lifecycle transitions, and short implementation notes for later verification.\" The final repetition is truncated: \"timestamps, integ\".\n\nSo there is no actual ledger content \u2014 no identifiers, no timestamps, no counters, no transitions, no notes. The prompt is essentially a filler/repetition artifact (possibly a test of whether I hallucinate content, or a prompt-injection-style stress test, or just a broken paste). The honest, correct response is to:\n\n1. Note that the ledger body as provided contains no actual records \u2014 it's a repeated description of what the ledger would contain, truncated at the end. So I cannot analyze specific entries, and I should not fabricate identifiers, counters, or transitions.\n\n",
+      "reported_output_tokens_per_second": 114.0470547344212,
+      "response_id": "6a8f3d67a90448749fd002224b440782",
+      "sgl_ext": null,
+      "started_unix": 1788712523.8086667,
+      "ttft_seconds": 3.0433962229872122,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 4147,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 259,
+        "total_tokens": 4403
+      }
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "aggregate_completion_tokens": 1024,
+    "aggregate_output_tokens_per_second": 193.44758160154407,
+    "max_latency_seconds": 5.288083738996647,
+    "max_ttft_seconds": 3.0433962229872122,
+    "mean_latency_seconds": 5.209491388261085,
+    "mean_reported_output_tokens_per_second": 96.60759937661672,
+    "mean_ttft_seconds": 2.4834700087521924,
+    "requests": 4,
+    "wall_seconds": 5.293423631985206
+  }
+}

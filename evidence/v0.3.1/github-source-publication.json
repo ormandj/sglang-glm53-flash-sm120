@@ -1,0 +1,10 @@
+{
+  "from": "c7e02d4b0dc9ee11cd80170714c25a1fa1bc712a",
+  "to": "3797e9eeda0976a9f47d05b5d595ffc1a2ac538d",
+  "destination": "github.com/ormandj/sglang-glm53-flash-sm120",
+  "image_inputs_identical_to_internal_build": "ab95331ebabdc42598b467559239e9bf21d9915b",
+  "method": "Existing GitHub build-image.yml push workflow; direct registry copy failed due local credential scopes and created no candidate tag.",
+  "workflow_disabled": false,
+  "core_prepublication_gates_passed": true,
+  "remaining_local_release_tests": "forced host restoration and final image/cold-C4 acceptance"
+}

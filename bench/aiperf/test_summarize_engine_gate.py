@@ -91,12 +91,11 @@ def _gate(tmp_path):
     return tmp_path
 
 
-def test_accept_rate_accepts_the_bonus_token_excess_and_rejects_more() -> None:
+def test_other_engine_accept_rate_retains_its_existing_bound() -> None:
     from summarize_engine_gate import SummaryError, _finite_unit_interval
 
-    # SGLang's spec_accept_rate gauge can read slightly above 1.0 when a fully
-    # accepted draft counts its bonus token (1.03 observed); that is not a
-    # defect in the cell.
+    # Preserve the legacy tolerance for other adapters without endorsing its
+    # original, incorrect bonus-token rationale.
     assert _finite_unit_interval(1.03, "x") == 1.03
     assert _finite_unit_interval(0.0, "x") == 0.0
     for bad in (1.3, -0.1, float("nan"), float("inf")):
@@ -105,6 +104,47 @@ def test_accept_rate_accepts_the_bonus_token_excess_and_rejects_more() -> None:
         except SummaryError:
             continue
         raise AssertionError(f"{bad} was accepted")
+
+
+@pytest.mark.parametrize("observed", [1.03, 1.3583333333333334])
+def test_adaptive_sglang_gauge_is_retained_and_flagged(tmp_path, observed) -> None:
+    root = _gate(tmp_path)
+    path = root / "decode/c1/r02/decode-analysis.json"
+    document = json.loads(path.read_text())
+    # Captured when the active width changed from five drafts to three:
+    # the interval's 4.075 correct drafts per forward / current width 3.
+    document["server_cross_checks"]["spec_accept_rate"]["max"] = observed
+    _write(path, document)
+    result = summarize(root, mode="quick", build_id="adaptive", engine="sglang")
+    row = result["decode"]["c1"]["repetitions"][1]
+    assert row["speculative"]["accept_rate"]["max"] == observed
+    assert row["forward_passes_per_second"] == 52
+    assert row["synthetic_decode_tokens_per_second"] == 102
+    assert len(result["server_telemetry_warnings"]) == 1
+    assert result["server_telemetry_warnings"][0]["cell"] == "C1/r02"
+    assert result["server_telemetry_warnings"][0]["maximum"] == observed
+    assert "including values below one" in result["server_telemetry_notes"][0]
+
+
+def test_other_engine_rejects_adaptive_sglang_gauge_value(tmp_path) -> None:
+    root = _gate(tmp_path)
+    path = root / "decode/c1/r02/decode-analysis.json"
+    document = json.loads(path.read_text())
+    document["server_cross_checks"]["spec_accept_rate"]["max"] = 1.3583333333333334
+    _write(path, document)
+    with pytest.raises(SummaryError, match=r"C1/r02 speculative accept_rate max"):
+        summarize(root, mode="quick", build_id="other-engine", engine="vllm")
+
+
+@pytest.mark.parametrize("bad", [-0.1, float("nan"), float("inf"), None])
+def test_sglang_rejects_invalid_diagnostic_values(tmp_path, bad) -> None:
+    root = _gate(tmp_path)
+    path = root / "decode/c1/r02/decode-analysis.json"
+    document = json.loads(path.read_text())
+    document["server_cross_checks"]["spec_accept_rate"]["max"] = bad
+    _write(path, document)
+    with pytest.raises(SummaryError):
+        summarize(root, mode="quick", build_id="adaptive", engine="sglang")
 
 
 def test_glm_qualification_uses_the_standardized_release_panel() -> None:
@@ -124,8 +164,9 @@ def test_glm_qualification_uses_the_standardized_release_panel() -> None:
 
 def test_summarize_quick_gate_retains_every_repetition(tmp_path) -> None:
     result = summarize(_gate(tmp_path), mode="quick", build_id="rc3")
+    assert result["server_telemetry_warnings"] == []
     c1 = result["decode"]["c1"]
-    assert result["schema_version"] == "1.2"
+    assert result["schema_version"] == "1.3"
     assert c1["engine_forward_passes_per_second"]["count"] == 3
     assert c1["synthetic_decode_tokens_per_second"]["count"] == 3
     assert c1["output_tokens_per_forward_per_request"]["count"] == 3
@@ -188,6 +229,8 @@ def test_vllm_quick_gate_uses_the_same_supported_panel(tmp_path) -> None:
     root = _gate(tmp_path)
     result = summarize(root, mode="quick", build_id="r33", engine="vllm")
     assert result["engine"] == "vllm"
+    assert result["server_telemetry_warnings"] == []
+    assert result["server_telemetry_notes"] == []
     assert set(result["decode"]) == {"c1", "c4", "c8"}
 
 

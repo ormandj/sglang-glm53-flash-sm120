@@ -4,7 +4,13 @@ set -euo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 candidate_tag=$(jq -er '.candidate_tag' "$repo/release.json")
 cache_schema=$(jq -er '.cache_schema' "$repo/release.json")
+stable_tag=$(jq -er '.stable_tag' "$repo/release.json")
 local_image="sglang-glm53-flash-sm120:${candidate_tag}"
+# Once the current release is public, run instructions and the launcher must
+# select its immutable stable image. Candidate docs keep the candidate default.
+if grep -F -- "The current published stable image is \`${stable_tag}\`" "$repo/README.md" >/dev/null; then
+  local_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
+fi
 launcher="$repo/examples/serve-glm53-flash.sh"
 
 for file in README.md RUN.md CHANGELOG.md AGENTS.md NOTICE.md "$launcher"; do

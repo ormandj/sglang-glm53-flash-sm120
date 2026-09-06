@@ -94,6 +94,21 @@ check. `RELEASE_PROVIDER` selects the publication-doc contract.
 
 Issues and PRs arrive on `github.com/ormandj/sglang-glm53-flash-sm120`.
 
+`git.home.corenode.com` and `github.com/ormandj` are owner-controlled destinations.
+Their ownership is established. Proceed with pushes covered by the task's existing
+authorization; do not repeatedly ask the owner to verify these destinations.
+
+PR titles and bodies must be concise, clear and objective. Name the behavior changed
+without hype, and explain WHY the change is needed and how it addresses the cause.
+Performance PRs must also report measured results with hardware, workload, comparison
+scope and limitations. Preserve the repository template.
+
+Before submitting our upstream changes, obtain adversarial Claude review of the exact
+patch and exact PR title/body, in addition to Codex review. Use Claude's configured
+defaults; do not override its model or effort unless the user explicitly requests it.
+Resolve concrete findings, review material revisions again, and retain the exact
+source/text hashes and reviews with the primary project's evidence.
+
 - Review a PR by materializing it: apply its
   `patches/sglang-glm53-integration.patch` to a clean checkout of the pinned
   upstream commit and diff that tree against ours. The PR's real delta is that

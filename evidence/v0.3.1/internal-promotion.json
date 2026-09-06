@@ -1,0 +1,9 @@
+{
+  "candidate": "v0.3.1-rc.1",
+  "stable": "v0.3.1",
+  "digest": "sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d",
+  "workflow": "https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container/actions/runs/324",
+  "workflow_status": "success",
+  "workflow_source": "3797e9eeda0976a9f47d05b5d595ffc1a2ac538d",
+  "digest_verified_before_docs": true
+}
