@@ -12,15 +12,16 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.3` (built internally; promotion withheld after source review) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.4` (source prepared; not built or qualified) |
 
-`v0.3.0-rc.3` refreshes SGLang and FlashInfer to the pinned 2026-09-05
-upstream-main revisions and integrates the current carried PR heads. It adds
-the missing hybrid DSA HiCache index tier and aligns radix ownership with
-compressed index groups. Its gates completed, but final source review required
-lifecycle corrections and a further base refresh. The replacement source is
-not built or qualified yet. Validation and measured results belong in the
-primary qualification repository; no previous release qualifies new source.
+`v0.3.0-rc.4` refreshes SGLang to main `febb360519` and retains current
+FlashInfer main `6c14bbd5ff` and the audited carry heads. It preserves the
+hybrid HiCache index fix, removes obsolete encoder cleanup, moves receive
+timeouts before rank consensus and synchronizes host-memory budget readings.
+It is not built or qualified yet. `v0.3.0-rc.3` completed its serving gates but
+is withheld from promotion because the subsequent lifecycle corrections are
+absent from that immutable image. Validation and measured results belong in
+the primary qualification repository; no previous release qualifies new source.
 
 The published `v0.2.1` image has a reproduced long-prefix HiCache corruption
 defect. Keep HiCache disabled on that image while the replacement is qualified.
@@ -198,9 +199,9 @@ traffic. A load that takes seconds would be a compile and is worth reporting.
 
 ## Carried upstream changes
 
-Status checked 2026-09-06. This table describes the refreshed integration source, not an unmodified collection of PR heads and not the immutable `v0.3.0-rc.3` image. Context, API and test-fixture adaptations are retained in the integration patch. The three newly submitted PRs and the host-memory startup fix are included in the refreshed source; that replacement image is not built or qualified yet.
+Status checked 2026-09-06. This table describes the `v0.3.0-rc.4` integration source, not an unmodified collection of PR heads and not the immutable `v0.3.0-rc.3` image. Context, API and test-fixture adaptations are retained in the integration patch. The three newly submitted PRs and the host-memory startup fix are included; this candidate is not built or qualified yet.
 
-Audited source bases: SGLang `main` `09daea94ac`, GLM #36507 `be2e63c2f1`, FlashInfer `main` `6c14bbd5ff`. SGLang main has since advanced to `f5819b09bf`, reverting the AMD unified-KV change through #38163; that subsequent refresh is still pending. Image provenance remains the exact pins and patch checksums in `stack.lock.json`.
+Audited source bases: SGLang `main` `febb360519`, GLM #36507 `be2e63c2f1`, FlashInfer `main` `6c14bbd5ff`. Main includes #38163's AMD unified-KV revert and #36988's aborted disaggregated-prefill retirement. Image provenance is the exact pins and patch checksums in `stack.lock.json`.
 
 | SGLang PR | State / source head | Behavior addressed |
 |---|---|---|

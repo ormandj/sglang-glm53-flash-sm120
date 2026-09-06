@@ -1,6 +1,14 @@
 # Changelog
 
-## v0.3.0-rc.3 (diagnostic assertion correction; built internally, serving qualification in progress)
+## v0.3.0-rc.4 (lifecycle corrections and source refresh; not built or qualified)
+
+- Refresh to SGLang main `febb360519`, including upstream aborted-prefill retirement and the AMD unified-KV revert. FlashInfer main remains `6c14bbd5ff`; all carried PR heads were rechecked on 2026-09-06.
+- Remove the obsolete encoder cleanup call that fails during timeout/cancellation. Retain upstream task joins and socket cleanup.
+- Expire preallocation waits through receiver polling before rank consensus, preserving consistent failure handling across TP/PP workers. Include the submitted regression tests for #38161, #38162 and #38164.
+- Carry #38157's synchronized TP host-memory readings before pool allocation. Correct host-tier documentation to 32 GB per rank, 64 GB across TP2.
+- Use fresh cache namespace `v67`. Require full exact-image qualification before promotion; the preceding candidate's measurements do not qualify this source.
+
+## v0.3.0-rc.3 (diagnostic assertion correction; serving gates complete, promotion withheld)
 
 - Keep the v0.3.0-rc.2 runtime unchanged. Correct the unified-radix
   mutation-probe test to expect the current diagnostic text, including
@@ -10,7 +18,7 @@
   serving qualification again. No performance or quality claim is made.
 - Built internally at
   `sha256:5965a1d2beb0ca824a74ce2e95df49088d00e5b409b3a862ee082662f505a4b0`.
-  The isolated GPU gate passed; full serving qualification remains required.
+  The isolated GPU and serving gates completed. Final review found lifecycle defects corrected only in v0.3.0-rc.4; this image must not be promoted.
 - Validate internal and public stable-publication docs independently. An
   internal Forgejo release does not require claiming the image is on ghcr.
 

@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.3.0",
-    "candidate": 3,
-    "candidate_tag": "v0.3.0-rc.3",
+    "candidate": 4,
+    "candidate_tag": "v0.3.0-rc.4",
     "stable_tag": "v0.3.0",
-    "cache_schema": "v66"
+    "cache_schema": "v67"
   },
   "image": {
-    "tag": "v0.3.0-rc.3",
+    "tag": "v0.3.0-rc.4",
     "platform": "linux/amd64",
     "status": "source bundle; not built or qualified"
   },
@@ -49,11 +49,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 3
+      "value": 4
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v66"
+      "value": "v67"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -77,19 +77,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8"
+      "value": "febb360519875d95dfc25997a7e7d73ba1dc8377"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "0b8a9bb931d7febc30e7b835c65918eba96fab71"
+      "value": "c16ccf36bf5c68181fa6b11b45ba4efe92ceb4fd"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "adceb53b6d4ec3fb9f2d2734b5af13955f8335af"
+      "value": "0aa92b5d0cbf5f809d58f4b07900e4bda2e04ed5"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "d90635e645391bfc04b00eb35225e450ea6470afaacf86fd4e665d42bbfa9d64"
+      "value": "23aa322857b9ce4e88eeaa0b4ff1a7f8263cc4d1686b2c7dd68dbb04607ee6b3"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -147,17 +147,17 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8",
-      "upstream_tree": "0b8a9bb931d7febc30e7b835c65918eba96fab71",
-      "tree": "adceb53b6d4ec3fb9f2d2734b5af13955f8335af",
+      "head": "febb360519875d95dfc25997a7e7d73ba1dc8377",
+      "upstream_tree": "c16ccf36bf5c68181fa6b11b45ba4efe92ceb4fd",
+      "tree": "0aa92b5d0cbf5f809d58f4b07900e4bda2e04ed5",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "d90635e645391bfc04b00eb35225e450ea6470afaacf86fd4e665d42bbfa9d64",
+      "patch_sha256": "23aa322857b9ce4e88eeaa0b4ff1a7f8263cc4d1686b2c7dd68dbb04607ee6b3",
       "working_repository": "https://git.home.corenode.com/homelab/sglang.git",
       "working_branch": "integration/glm53-main-20260905-r1",
-      "working_head": "a91ce174daa09a04cd6140411f19db6b7291a595",
-      "upstream_main_base": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8",
+      "working_head": "dc876eb68dd0552325e4547278e78167e2ad0756",
+      "upstream_main_base": "febb360519875d95dfc25997a7e7d73ba1dc8377",
       "included_upstream_work": [
-        "sglang#36507 (open head 2f97769375, integrated with main 77aee20259; includes current model/ReqKvInfo/KPool updates and removes the unused optional CP/backend additions)",
+        "sglang#36507 (open head be2e63c2f1, integrated with main febb360519; includes current model/ReqKvInfo/KPool updates and removes the unused optional CP/backend additions)",
         "sglang#36904 TileLang FP8 KV cache on CUDA (open head 436a89b06f)",
         "sglang#36661 result-owned overlap snapshot lifetime (open head cc78c41a14)",
         "sglang#36696 Mamba radix child-key consistency (open head 1ff8934369)",
@@ -198,17 +198,16 @@
         "sglang#37537 --mm-preprocessing-device (open head 7e27c6123e; cpu in this deployment)",
         "sglang#37538 extend memory profiler (open head bcff46c9a8)",
         "sglang#37541 serving_coverage warmup (open head ade49acbb3)",
-        "sglang#37539 GLM-5-Next vision-tower attention precompile (open head 00cc3e8dc9)",
+        "sglang#37539 GLM-5-Next vision attention and MLP/patch-merger precompile (open head 00cc3e8dc9)",
         "sglang#37625 oversized DSA radix-bin fix across legacy and DeepSeek-V4 AOT/JIT variants (open head 4302a2b719; co-authored by bold84)",
         "sglang#37744 per-layer quantization-aware qkvbfg fusion gate (open head ebe935c116), plus a concrete-class dispatch follow-up and ModelOpt mixed-precision regression",
         "sglang#37375 mHC pipeline-proxy contract (open head b6478a7400)",
         "downstream-only: Triton late-load diagnostics armed after the HTTP warmups (single-worker form)",
-        "downstream-only pending upstream: vision MLP and patch-merger swiglu precompile at two token counts (dynamo dynamic-shape settle before pools)",
         "sglang#37612 per-round prefill admission retry on Mamba-aware hybrid SSM caches (open head 595d6b45b7)",
         "sglang#37619 unfinished-request mamba checkpoint skip on an exhausted unified pool (open head ed46bc9c3c)",
         "downstream-only: static mamba pool admission gating and pre-match admission stop (companion to #37619), with focused free/evictable and int8-checkpoint slot-accounting coverage",
         "current heads used for every open carried PR; merged flashinfer#4802 is sourced from current FlashInfer main; conflict resolutions retain the current upstream APIs and are covered by focused regressions",
-        "downstream pending upstream: GLM video preprocessing stays on CPU, mixed EPD video batches dispatch per item, decoder workers settle before cleanup, DP frame budgets scale their minimum and maximum, and odd HF samples preserve pair sharding",
+        "downstream pending upstream: GLM video preprocessing stays on CPU, mixed EPD video batches dispatch per item, DP frame budgets scale their minimum and maximum, and odd HF samples preserve pair sharding; upstream task-join/socket-close cleanup retained without the obsolete encoder carry",
         "downstream pending upstream: collision-safe media-order recovery across tool-result template rendering",
         "focused test coverage separates request-local media sentinel identity from ordering and forces lazy PIL decode in the I/O worker",
         "downstream follow-up to #36507/#37548: missing multimodal draft embeddings raise RuntimeError and the regression executes the real completion path",
@@ -217,9 +216,11 @@
         "downstream-only (0.2.0): optional in-place FP8 128x128 blockwise lm_head shared by target and draft (SGLANG_LM_HEAD_FP8) and a draft-only variant (SGLANG_SPEC_DRAFT_LM_HEAD_FP8, off)",
         "downstream-only (0.2.0): SGLANG_KDA_RECURRENT_BV validated override of the recurrent decode tile (default 32, unchanged behaviour)",
         "sglang#37980 (open head a340acbe5b): split plan-stream handoff and Mamba topk1 fastpaths retained with existing lifetime fixes",
-        "downstream pending upstream: hybrid DSA HiCache INDEXER sidecar including draft buffers, fixed total host budget, and compressed-group radix ownership; local submission branch staged on #36507 plus #37534",
-        "downstream pending upstream: retain active KPool metadata fusion removed from #36507 by #38071 pending cleanup; unused optional CP/backend additions were removed using upstream #38060/#38058",
-        "downstream pending upstream: lifecycle fixes split into closed-unmerged #37316 retained for resubmission",
+        "sglang#38161 (open head 66f6da3a21): hybrid DSA HiCache target/draft INDEXER sidecar, fixed total host budget and compressed-group radix ownership; published CPU/GPU regressions included",
+        "sglang#38162 (open head efd2a02d03): active KPool metadata fusion retained after #38071; published CPU/GPU regressions included; unused optional CP/backend additions remain removed",
+        "sglang#38164 (open head 7c2a647804): receiver preallocation timeout before TP/PP consensus, prefill budget and health queue handling; replaces closed #37316; real two-process Gloo regression included",
+        "sglang#38157 (open head 8128658833): synchronize available host-memory readings within each TP CPU group before host-pool allocation",
+        "current main febb360519 includes #36988 aborted disaggregated-prefill retirement and #38163 AMD unified-KV revert; constructor-bypassing regression fixtures adapted to current scheduler hooks",
         "current-main integration: GLM flattened graph scratch widths, GDN/KDA replay accounting separation, graph cleanup ownership, and updated non-Mamba test fixtures"
       ],
       "excluded_work": [
@@ -227,7 +228,9 @@
         "hicache layer-load synchronization commits (no reachable defect on upstream main; dropped)",
         "node-owned mamba slot admission helper (inert on the unified cache; dropped)",
         "scheduler Triton kernel prewarm (superseded by the serving_coverage warmup)",
-        "inert req.mamba_pool_idx copy-on-write staging removed after ReqKvInfo migration; MambaComponent owns host transfers to request and node slots"
+        "inert req.mamba_pool_idx copy-on-write staging removed after ReqKvInfo migration; MambaComponent owns host transfers to request and node slots",
+        "obsolete encoder timeout/cancellation cleanup carry calling a nonexistent method; upstream task joins and socket cleanup retained",
+        "scheduler-local preallocation timeout after rank consensus and its counter; receiver poll now emits failure before collective reduction"
       ]
     },
     "flashinfer": {
@@ -262,10 +265,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "d90635e645391bfc04b00eb35225e450ea6470afaacf86fd4e665d42bbfa9d64",
-      "base_head": "77aee20259d1cdd6c337ed55d9b77ed78ebe70a8",
-      "base_tree": "0b8a9bb931d7febc30e7b835c65918eba96fab71",
-      "result_tree": "adceb53b6d4ec3fb9f2d2734b5af13955f8335af"
+      "sha256": "23aa322857b9ce4e88eeaa0b4ff1a7f8263cc4d1686b2c7dd68dbb04607ee6b3",
+      "base_head": "febb360519875d95dfc25997a7e7d73ba1dc8377",
+      "base_tree": "c16ccf36bf5c68181fa6b11b45ba4efe92ceb4fd",
+      "result_tree": "0aa92b5d0cbf5f809d58f4b07900e4bda2e04ed5"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -290,7 +293,7 @@
     "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8 (private stream identity retained; qualification experiment)",
-    "status": "v0.3.0-rc.3: same runtime as v0.3.0-rc.2; correct the stale mutation-diagnostic assertion; not yet built or qualified",
+    "status": "v0.3.0-rc.4: current-main refresh with reviewed lifecycle corrections and synchronized host-memory allocation; not built or qualified",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
@@ -304,6 +307,6 @@
     "flashinfer_repository": "https://github.com/flashinfer-ai/flashinfer.git",
     "modelopt_repository": "https://github.com/NVIDIA/Model-Optimizer.git",
     "base_image_is_dependency_stack_only": true,
-    "claims": "v0.3.0-rc.3 is not built or qualified"
+    "claims": "v0.3.0-rc.4 is not built or qualified"
   }
 }
