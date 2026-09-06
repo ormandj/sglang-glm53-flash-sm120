@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2-rc.1 (post-merge source rebuild; prepared, not built or qualified)
+
+- Build from SGLang main `28457f0dca`, including merged GLM-5.3 support, EPD lifecycle containment and the upstream default Gumbel path for unseeded torch sampling. FlashInfer main remains `6c14bbd5ff`; rebuild it with the reviewed route-prefix change and expanded tests.
+- Reconcile carried SM120 and correctness changes with the merged GLM tree. Apply upstream metadata experiment removal before restoring only active #38213 fusion, and retain the shared GLM speculative-width resolver.
+- Use fresh compiled-cache schema `v69`. Source CPU checks passed 461 tests and 86 subtests with one skip; exact-image GPU and full serving qualification remain required. No new performance or quality result is claimed.
+
 ## v0.3.1 (stable; digest-identical promotion of each registry's v0.3.1-rc.1)
 
 - Replace small-batch W4A16 MoE route-prefix tiles with a masked histogram and inverse-prefix lookup to avoid expert-by-route and expert-by-block comparisons. Preserve padding, mapped/invalid experts, graph workspaces and dispatch limits.

@@ -1,6 +1,6 @@
-# Running `v0.3.1`
+# Running `v0.3.2-rc.1`
 
-The stable images are published. The exact internal image completed GPU, startup, GSM8K, engine, long-context and forced-host qualification. The public image was independently built from identical pinned image inputs; hardware measurements apply to the internal digest. See [BENCHMARKS.md](BENCHMARKS.md) for results and limitations.
+This candidate is prepared for an internal build from SGLang main `28457f0dca`, which includes merged GLM support, and FlashInfer main `6c14bbd5ff`. It is not built or qualified yet. The released version remains v0.3.1. Use separate cache schema v69 for this rebuild.
 
 ```bash
 export MODEL_REPO=ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
@@ -8,8 +8,8 @@ export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
 mkdir -p "$MODEL_DIR"
 HF_XET_HIGH_PERFORMANCE=1 hf download "$MODEL_REPO" --local-dir "$MODEL_DIR"
 
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.1
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v68
+export IMAGE=sglang-glm53-flash-sm120:v0.3.2-rc.1
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v69
 ./examples/serve-glm53-flash.sh
 ```
 

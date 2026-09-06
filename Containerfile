@@ -5,24 +5,24 @@
 # SGLang integration tree first on PYTHONPATH and rebuilds FlashInfer from exact
 # official bases plus checksummed project patches. No vendor-byte patches are
 # carried forward.
-ARG GLM53_RELEASE_VERSION=0.3.1
+ARG GLM53_RELEASE_VERSION=0.3.2
 ARG GLM53_RELEASE_CANDIDATE=1
-ARG GLM53_CACHE_SCHEMA=v68
+ARG GLM53_CACHE_SCHEMA=v69
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:aa9210e3507fef64ded0c78afc571d9412b53417c6e271721a095fbde754ad40
 ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
-ARG GLM53_SGLANG_HEAD=febb360519875d95dfc25997a7e7d73ba1dc8377
-ARG GLM53_SGLANG_UPSTREAM_TREE=c16ccf36bf5c68181fa6b11b45ba4efe92ceb4fd
-ARG GLM53_SGLANG_TREE=0aa92b5d0cbf5f809d58f4b07900e4bda2e04ed5
-ARG GLM53_SGLANG_PATCH_SHA256=23aa322857b9ce4e88eeaa0b4ff1a7f8263cc4d1686b2c7dd68dbb04607ee6b3
+ARG GLM53_SGLANG_HEAD=28457f0dcab4ccf748d60f2387a1a4a7fdb5a110
+ARG GLM53_SGLANG_UPSTREAM_TREE=2dfb7588bb2ee2b8f08e204b155756e4d6f0f8bc
+ARG GLM53_SGLANG_TREE=fd0f6bc5e863b82c3602fb561edbbff2834d75a5
+ARG GLM53_SGLANG_PATCH_SHA256=d9c8492396ae0f37d3a68fbee0e00b54cb2de6fba09ceafc1b1bdee26f3fae7d
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=6c14bbd5ff34210404d5d4b5f6ff3b4b2527f59f
 ARG GLM53_FLASHINFER_UPSTREAM_TREE=9b9b1b775d5925ecdcc3ea97435a195553a80462
-ARG GLM53_FLASHINFER_TREE=a969cd09ec02b8c1e132acc683595917886c9627
-ARG GLM53_FLASHINFER_PATCH_SHA256=896caff0615821aa3532ada9854d5c43079e49b8b9b8ca6903d7a1d5aff989ab
+ARG GLM53_FLASHINFER_TREE=4056b66aa0eb3f974a25493f7024d9777f651209
+ARG GLM53_FLASHINFER_PATCH_SHA256=c278c53ce4db83c37c0b3a4cd1b9455ed71c91ee3cd7fa3ed228382442308c36
 ARG GLM53_MODELOPT_REPOSITORY=https://github.com/NVIDIA/Model-Optimizer.git
 ARG GLM53_MODELOPT_VERSION=0.47.0rc0
 ARG GLM53_MODELOPT_RELEASE_TAG=0.47.0rc0
@@ -78,7 +78,7 @@ COPY patches/sglang-glm53-integration.patch /tmp/sglang-glm53-integration.patch
 COPY patches/flashinfer-glm53-integration.patch /tmp/flashinfer-glm53-integration.patch
 
 # Replace the unverifiable vendor Python tree with the exact patched SGLang
-# integration tree. The delta contains GLM-5.3 support, native FlashInfer SM120
+# integration tree. Upstream supplies GLM-5.3 support; the delta retains native FlashInfer SM120
 # NoPE sparse MLA, and the E4M3-K32 W4A16 loader/runner contract.
 RUN set -eux; \
     git init -q "${SGLANG_SOURCE_ROOT}"; \

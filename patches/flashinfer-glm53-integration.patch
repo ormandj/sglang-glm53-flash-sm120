@@ -1,5 +1,1052 @@
+diff --git a/benchmarks/bench_b12x_w4a16_route_pack.py b/benchmarks/bench_b12x_w4a16_route_pack.py
+new file mode 100644
+index 00000000..09efc9d9
+--- /dev/null
++++ b/benchmarks/bench_b12x_w4a16_route_pack.py
+@@ -0,0 +1,283 @@
++#!/usr/bin/env python3
++"""Compare W4A16 route-pack modules in an isolated GPU test process.
++
++Reference and candidate are standalone copies of moe_w4a16_route_pack.py from
++the base and proposed FlashInfer revisions. Run with the candidate installed. Integer metadata is checked exactly before
++sort; sorted routes are checked against a CPU oracle, including graph replay.
++Timings cover the complete pack, with 100 calls captured in each graph to
++amortize Python replay overhead. For example, save the base module with
++`git show BASE:flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py`
++and pass its path as --reference and the proposed module as --candidate.
++"""
++
++import argparse
++import hashlib
++import importlib.util
++import json
++from pathlib import Path
++import statistics
++import subprocess
++import sys
++
++import torch
++import triton
++
++
++def load(path, name):
++    qualified = f"flashinfer.fused_moe.cute_dsl.blackwell_sm12x.{name}"
++    spec = importlib.util.spec_from_file_location(qualified, path)
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[qualified] = module
++    spec.loader.exec_module(module)
++    return module
++
++
++def workspace(module, ids, block, experts, exact=False):
++    capacity = (
++        ids.numel()
++        if exact
++        else module.route_pack_numel_capacity(ids.numel(), topk=ids.shape[-1])
++    )
++    slots = max(module.max_packed_route_slots(capacity, block, experts), 1)
++    sizes = (slots, triton.cdiv(slots, block), 1, experts + 1)
++    keys = (
++        "packed_route_indices",
++        "block_expert_ids",
++        "packed_route_count",
++        "expert_offsets",
++    )
++    return {
++        k: torch.full((s,), -777, dtype=torch.int32, device="cuda")
++        for k, s in zip(keys, sizes, strict=True)
++    }
++
++
++def prefix(module, ids, block, experts, mapping, buffers):
++    slots = buffers["packed_route_indices"].numel()
++    blocks = buffers["block_expert_ids"].numel()
++    capacity = module.route_pack_numel_capacity(ids.numel(), topk=ids.shape[-1])
++    if slots < module.max_packed_route_slots(capacity, block, experts):
++        capacity = ids.numel()
++    kwargs = dict(
++        NUMEL_CAPACITY=capacity,
++        BLOCK_SIZE=block,
++        NUM_EXPERTS=experts,
++        MAX_PACKED_ROUTES=slots,
++        MAX_ROUTE_BLOCKS=blocks,
++        HAS_EXPERT_MAP=mapping is not None,
++        BLOCK_E=triton.next_power_of_2(experts),
++        BLOCK_T=256,
++        BLOCK_ROUTE_INIT=triton.next_power_of_2(slots),
++        BLOCK_M=triton.next_power_of_2(blocks),
++        num_warps=8,
++    )
++    if "LOG2_BLOCK_E" in module._pack_topk_routes_small_prefix_kernel.arg_names:
++        kwargs["LOG2_BLOCK_E"] = kwargs["BLOCK_E"].bit_length() - 1
++    module._pack_topk_routes_small_prefix_kernel[(1,)](
++        ids,
++        mapping if mapping is not None else ids,
++        *buffers.values(),
++        ids.numel(),
++        **kwargs,
++    )
++
++
++def check(ids, block, experts, mapping, buffers):
++    raw = ids.cpu().flatten().long()
++    valid = (raw >= 0) & (raw < experts)
++    mapped = raw if mapping is None else mapping.cpu().long()[raw.clamp(0, experts - 1)]
++    valid &= (mapped >= 0) & (mapped < experts)
++    counts = torch.bincount(mapped[valid], minlength=experts)
++    padded = ((counts + block - 1) // block) * block
++    total = int(padded.sum())
++    routes = buffers["packed_route_indices"].cpu().long()
++    owners = buffers["block_expert_ids"].cpu().long()
++    assert int(buffers["packed_route_count"].item()) == total
++    expected_owners = torch.repeat_interleave(torch.arange(experts), padded // block)
++    assert torch.equal(owners[: total // block], expected_owners)
++    assert (owners[total // block :] == -1).all()
++    assert (routes[total:] == raw.numel()).all()
++    cursor = 0
++    for expert, size in enumerate(padded.tolist()):
++        section = routes[cursor : cursor + size]
++        assert ((section >= 0) & (section <= raw.numel())).all()
++        payload = section[section < raw.numel()].sort().values
++        expected = torch.nonzero(valid & (mapped == expert)).flatten()
++        assert torch.equal(payload, expected), expert
++        cursor += size
++
++
++def pattern(tokens, experts, dtype, kind, seed):
++    generator = torch.Generator().manual_seed(seed)
++    if kind == "random":
++        x = torch.randint(0, experts, (tokens, 8), generator=generator, dtype=dtype)
++    elif kind == "skew":
++        x = torch.randint(
++            0, min(experts, 3), (tokens, 8), generator=generator, dtype=dtype
++        )
++    elif kind == "last":
++        x = torch.full((tokens, 8), experts - 1, dtype=dtype)
++    elif kind == "unique":
++        x = torch.arange(tokens * 8, dtype=dtype).reshape(tokens, 8) % experts
++    else:
++        x = torch.full((tokens, 8), -1, dtype=dtype)
++        x.flatten()[::3] = experts
++    return x.cuda()
++
++
++def validate(reference, candidate, quick):
++    checked = 0
++    cases = [(288, n, 8) for n in (1, 4, 8, 12, 16)]
++    if not quick:
++        cases += [
++            (e, n, b)
++            for e in (1, 7, 16, 128, 257, 512)
++            for n in (1, 9, 16)
++            for b in (8, 48)
++        ]
++    if not quick:
++        cases += [(16, 48, 8), (16, 48, 48)]
++    for experts, tokens, block in cases:
++        for dtype in (torch.int32, torch.int64):
++            for exact in (False, True):
++                ids = pattern(tokens, experts, dtype, "random", checked)
++                a = workspace(reference, ids, block, experts, exact)
++                b = workspace(candidate, ids, block, experts, exact)
++                # Bound direct small-prefix checks to the dispatcher's domain.
++                small = (
++                    triton.next_power_of_2(a["packed_route_indices"].numel()) <= 4096
++                    and triton.next_power_of_2(a["block_expert_ids"].numel()) <= 128
++                    and triton.next_power_of_2(experts)
++                    * triton.next_power_of_2(a["block_expert_ids"].numel())
++                    <= 65536
++                )
++                for has_map in (False, True):
++                    mapping = None
++                    if has_map:
++                        mapping = torch.arange(
++                            experts, dtype=torch.int32, device="cuda"
++                        ) % max(1, experts // 2)
++                        mapping[::3] = -1
++                        mapping[1::5] = experts
++
++                    def fn():
++                        return candidate.pack_topk_routes_by_expert(
++                            ids, block, experts, expert_map=mapping, **b
++                        )
++
++                    fn()
++                    graph = torch.cuda.CUDAGraph()
++                    with torch.cuda.graph(graph):
++                        fn()
++                    for kind in ("random", "skew", "last", "unique", "invalid"):
++                        ids.copy_(pattern(tokens, experts, dtype, kind, checked + 13))
++                        if small:
++                            prefix(reference, ids, block, experts, mapping, a)
++                            prefix(candidate, ids, block, experts, mapping, b)
++                            for key in a:
++                                assert torch.equal(a[key], b[key]), (
++                                    key,
++                                    experts,
++                                    tokens,
++                                    block,
++                                    kind,
++                                )
++                        for tensor in b.values():
++                            tensor.fill_(-777)
++                        graph.replay()
++                        check(ids, block, experts, mapping, b)
++                        checked += 1
++    return checked
++
++
++def benchmark(reference, candidate, repeats):
++    rows = []
++    for tokens in (4, 8, 12, 16, 24, 32):
++        for kind in ("random", "skew", "last"):
++            ids = pattern(tokens, 288, torch.int32, kind, 20260906 + tokens)
++            graphs, owners = {}, []
++            for name, module in (("reference", reference), ("candidate", candidate)):
++                buffers = workspace(module, ids, 8, 288)
++                owners.append(buffers)
++
++                def fn():
++                    return module.pack_topk_routes_by_expert(ids, 8, 288, **buffers)
++
++                for _ in range(5):
++                    fn()
++                graph = torch.cuda.CUDAGraph()
++                with torch.cuda.graph(graph):
++                    for _ in range(100):
++                        fn()
++                graphs[name] = graph
++            samples = {name: [] for name in graphs}
++            for rep in range(repeats):
++                for name in list(graphs) if rep % 2 == 0 else list(reversed(graphs)):
++                    graph = graphs[name]
++                    graph.replay()
++                    start, end = [
++                        torch.cuda.Event(enable_timing=True) for _ in range(2)
++                    ]
++                    start.record()
++                    for _ in range(10):
++                        graph.replay()
++                    end.record()
++                    end.synchronize()
++                    samples[name].append(
++                        start.elapsed_time(end)
++                    )  # ms / 1000 calls == us/call
++            row = dict(
++                tokens=tokens,
++                topk=8,
++                experts=288,
++                block_size=8,
++                pattern=kind,
++                samples_us=samples,
++                median_us={k: statistics.median(v) for k, v in samples.items()},
++            )
++            rows.append(row)
++            print(json.dumps(row), flush=True)
++    return rows
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--reference", type=Path, required=True)
++    parser.add_argument("--candidate", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--quick", action="store_true")
++    parser.add_argument("--validate-only", action="store_true")
++    parser.add_argument("--repeats", type=int, default=12)
++    args = parser.parse_args()
++    torch.set_num_threads(1)
++    reference, candidate = (
++        load(args.reference, "route_pack_reference"),
++        load(args.candidate, "route_pack_candidate"),
++    )
++    result = dict(
++        torch=torch.__version__,
++        triton=triton.__version__,
++        gpu=torch.cuda.get_device_name(),
++        source_sha256={
++            k: hashlib.sha256(p.read_bytes()).hexdigest()
++            for k, p in (("reference", args.reference), ("candidate", args.candidate))
++        },
++        timing="CUDA events, 100 full pack calls per captured graph, 10 replays/sample, alternating order",
++    )
++    result["integer_and_graph_cases"] = validate(reference, candidate, args.quick)
++    print("Validated", result["integer_and_graph_cases"], flush=True)
++    if not args.validate_only:
++        result["timings"] = benchmark(reference, candidate, args.repeats)
++    result["gpu_status"] = subprocess.check_output(
++        [
++            "nvidia-smi",
++            "--query-gpu=uuid,temperature.gpu,clocks.sm,power.draw,power.limit",
++            "--format=csv",
++        ],
++        text=True,
++    )
++    args.output.write_text(json.dumps(result, indent=2) + "\n")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benchmarks/bench_b12x_w4a16_route_pack_sm120.json b/benchmarks/bench_b12x_w4a16_route_pack_sm120.json
+new file mode 100644
+index 00000000..c64e28bb
+--- /dev/null
++++ b/benchmarks/bench_b12x_w4a16_route_pack_sm120.json
+@@ -0,0 +1,752 @@
++{
++  "torch": "2.13.0+cu130",
++  "triton": "3.7.1",
++  "gpu": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
++  "source_sha256": {
++    "reference": "ecf89b722084ab65b8877f7f7c3f6072de659b29c9436707edc05f86f47d1b24",
++    "candidate": "335234a7a64a5a4cf4bd0c9e97fd0a0ed9a2e5992f8888a485e747ad194f78dc"
++  },
++  "timing": "CUDA events, 100 full pack calls per captured graph, 10 replays/sample, alternating order",
++  "integer_and_graph_cases": 1720,
++  "timings": [
++    {
++      "tokens": 4,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          59.99923324584961,
++          59.99513626098633,
++          60.00128173828125,
++          59.99513626098633,
++          59.986942291259766,
++          59.988990783691406,
++          59.99513626098633,
++          59.99103927612305,
++          59.99513626098633,
++          59.99923324584961,
++          59.99923324584961,
++          59.98284912109375
++        ],
++        "candidate": [
++          4.314112186431885,
++          4.314112186431885,
++          4.312064170837402,
++          4.314112186431885,
++          4.314112186431885,
++          4.312064170837402,
++          4.312064170837402,
++          4.312064170837402,
++          4.31001615524292,
++          4.314112186431885,
++          4.314112186431885,
++          4.31001615524292
++        ]
++      },
++      "median_us": {
++        "reference": 59.99513626098633,
++        "candidate": 4.3130881786346436
++      }
++    },
++    {
++      "tokens": 4,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          59.93779373168945,
++          59.93574523925781,
++          59.94803237915039,
++          59.93369674682617,
++          59.93164825439453,
++          59.92755126953125,
++          59.92959976196289,
++          59.93574523925781,
++          59.93983840942383,
++          59.93779373168945,
++          59.93779373168945,
++          59.93369674682617
++        ],
++        "candidate": [
++          4.229119777679443,
++          4.226047992706299,
++          4.223999977111816,
++          4.226047992706299,
++          4.223999977111816,
++          4.221951961517334,
++          4.223999977111816,
++          4.223999977111816,
++          4.227071762084961,
++          4.230144023895264,
++          4.228096008300781,
++          4.228096008300781
++        ]
++      },
++      "median_us": {
++        "reference": 59.93574523925781,
++        "candidate": 4.226047992706299
++      }
++    },
++    {
++      "tokens": 4,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          60.00128173828125,
++          59.988990783691406,
++          59.99513626098633,
++          59.98284912109375,
++          60.003326416015625,
++          60.005374908447266,
++          59.99923324584961,
++          59.99718475341797,
++          60.003326416015625,
++          60.003326416015625,
++          60.01152038574219,
++          60.007423400878906
++        ],
++        "candidate": [
++          4.2936320304870605,
++          4.291584014892578,
++          4.290559768676758,
++          4.287487983703613,
++          4.289535999298096,
++          4.289535999298096,
++          4.291584014892578,
++          4.289535999298096,
++          4.289535999298096,
++          4.291584014892578,
++          4.291584014892578,
++          4.289535999298096
++        ]
++      },
++      "median_us": {
++        "reference": 60.00230407714844,
++        "candidate": 4.290047883987427
++      }
++    },
++    {
++      "tokens": 8,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          62.38412857055664,
++          62.38822555541992,
++          62.38617706298828,
++          62.39231872558594,
++          62.406654357910156,
++          62.40460968017578,
++          62.41075134277344,
++          62.39641571044922,
++          62.39436721801758,
++          62.39231872558594,
++          62.39231872558594,
++          62.39846420288086
++        ],
++        "candidate": [
++          4.29260778427124,
++          4.289535999298096,
++          4.299776077270508,
++          4.30079984664917,
++          4.297728061676025,
++          4.2936320304870605,
++          4.2936320304870605,
++          4.295680046081543,
++          4.297728061676025,
++          4.297728061676025,
++          4.2936320304870605,
++          4.297728061676025
++        ]
++      },
++      "median_us": {
++        "reference": 62.39334297180176,
++        "candidate": 4.296704053878784
++      }
++    },
++    {
++      "tokens": 8,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          62.232574462890625,
++          62.24486541748047,
++          62.234622955322266,
++          62.24076843261719,
++          62.24281692504883,
++          62.24076843261719,
++          62.25715255737305,
++          62.251007080078125,
++          62.25920104980469,
++          62.248958587646484,
++          62.248958587646484,
++          62.248958587646484
++        ],
++        "candidate": [
++          4.2096638679504395,
++          4.215807914733887,
++          4.2096638679504395,
++          4.207615852355957,
++          4.213759899139404,
++          4.215807914733887,
++          4.215807914733887,
++          4.217855930328369,
++          4.211711883544922,
++          4.211711883544922,
++          4.215807914733887,
++          4.213759899139404
++        ]
++      },
++      "median_us": {
++        "reference": 62.24691200256348,
++        "candidate": 4.213759899139404
++      }
++    },
++    {
++      "tokens": 8,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          62.3001594543457,
++          62.302207946777344,
++          62.291969299316406,
++          62.2817268371582,
++          62.29401779174805,
++          62.29606246948242,
++          62.291969299316406,
++          62.3001594543457,
++          62.27967834472656,
++          62.29401779174805,
++          62.285823822021484,
++          62.289920806884766
++        ],
++        "candidate": [
++          4.238336086273193,
++          4.238336086273193,
++          4.240384101867676,
++          4.238336086273193,
++          4.236288070678711,
++          4.236288070678711,
++          4.236288070678711,
++          4.236288070678711,
++          4.2342400550842285,
++          4.2342400550842285,
++          4.238336086273193,
++          4.236288070678711
++        ]
++      },
++      "median_us": {
++        "reference": 62.29299354553223,
++        "candidate": 4.236288070678711
++      }
++    },
++    {
++      "tokens": 12,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          70.32524871826172,
++          70.3109130859375,
++          70.31910705566406,
++          70.3088607788086,
++          70.32115173339844,
++          70.31705474853516,
++          70.30067443847656,
++          70.28428649902344,
++          70.30271911621094,
++          70.3109130859375,
++          70.28633880615234,
++          70.29862213134766
++        ],
++        "candidate": [
++          4.245503902435303,
++          4.240384101867676,
++          4.246528148651123,
++          4.246528148651123,
++          4.242432117462158,
++          4.246528148651123,
++          4.242432117462158,
++          4.242432117462158,
++          4.244480133056641,
++          4.246528148651123,
++          4.240384101867676,
++          4.244480133056641
++        ]
++      },
++      "median_us": {
++        "reference": 70.30988693237305,
++        "candidate": 4.244480133056641
++      }
++    },
++    {
++      "tokens": 12,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          70.23513793945312,
++          70.22284698486328,
++          70.24537658691406,
++          70.22489929199219,
++          70.22694396972656,
++          70.22489929199219,
++          70.23308563232422,
++          70.23104095458984,
++          70.23104095458984,
++          70.2392349243164,
++          70.23513793945312,
++          70.22898864746094
++        ],
++        "candidate": [
++          4.196352005004883,
++          4.193280220031738,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.193280220031738,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221
++        ]
++      },
++      "median_us": {
++        "reference": 70.23104095458984,
++        "candidate": 4.195328235626221
++      }
++    },
++    {
++      "tokens": 12,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          70.30067443847656,
++          70.30681610107422,
++          70.31295776367188,
++          70.30477142333984,
++          70.30681610107422,
++          70.30681610107422,
++          70.31295776367188,
++          70.31295776367188,
++          70.3109130859375,
++          70.31295776367188,
++          70.31295776367188,
++          70.3088607788086
++        ],
++        "candidate": [
++          4.228096008300781,
++          4.230144023895264,
++          4.228096008300781,
++          4.230144023895264,
++          4.229119777679443,
++          4.226047992706299,
++          4.227071762084961,
++          4.229119777679443,
++          4.232192039489746,
++          4.232192039489746,
++          4.228096008300781,
++          4.228096008300781
++        ]
++      },
++      "median_us": {
++        "reference": 70.30988693237305,
++        "candidate": 4.228607892990112
++      }
++    },
++    {
++      "tokens": 16,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          70.46451568603516,
++          70.46451568603516,
++          70.46656036376953,
++          70.46451568603516,
++          70.46451568603516,
++          70.46451568603516,
++          70.46656036376953,
++          70.50956726074219,
++          70.46041870117188,
++          70.47270202636719,
++          70.4686050415039,
++          70.4686050415039
++        ],
++        "candidate": [
++          4.246528148651123,
++          4.244480133056641,
++          4.2485761642456055,
++          4.246528148651123,
++          4.246528148651123,
++          4.246528148651123,
++          4.246528148651123,
++          4.246528148651123,
++          4.2485761642456055,
++          4.25267219543457,
++          4.246528148651123,
++          4.2485761642456055
++        ]
++      },
++      "median_us": {
++        "reference": 70.46553802490234,
++        "candidate": 4.246528148651123
++      }
++    },
++    {
++      "tokens": 16,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          70.41535949707031,
++          70.41535949707031,
++          70.4194564819336,
++          70.41741180419922,
++          70.40512084960938,
++          70.41331481933594,
++          70.40512084960938,
++          70.41741180419922,
++          70.40921783447266,
++          70.41331481933594,
++          70.42150115966797,
++          70.42355346679688
++        ],
++        "candidate": [
++          4.192255973815918,
++          4.195328235626221,
++          4.2485761642456055,
++          4.195328235626221,
++          4.195328235626221,
++          4.197375774383545,
++          4.191232204437256,
++          4.193280220031738,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221
++        ]
++      },
++      "median_us": {
++        "reference": 70.41535949707031,
++        "candidate": 4.195328235626221
++      }
++    },
++    {
++      "tokens": 16,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          70.55052947998047,
++          70.55052947998047,
++          70.54438018798828,
++          70.54438018798828,
++          70.52595520019531,
++          70.52799987792969,
++          70.52799987792969,
++          70.53004455566406,
++          70.51980590820312,
++          70.53823852539062,
++          70.51776123046875,
++          70.5116195678711
++        ],
++        "candidate": [
++          4.3079681396484375,
++          4.305920124053955,
++          4.305920124053955,
++          4.303872108459473,
++          4.303872108459473,
++          4.303872108459473,
++          4.30182409286499,
++          4.303872108459473,
++          4.305920124053955,
++          4.302847862243652,
++          4.30182409286499,
++          4.299776077270508
++        ]
++      },
++      "median_us": {
++        "reference": 70.52902221679688,
++        "candidate": 4.303872108459473
++      }
++    },
++    {
++      "tokens": 24,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          63.903743743896484,
++          63.909889221191406,
++          63.9180793762207,
++          63.920127868652344,
++          63.9180793762207,
++          63.91398239135742,
++          63.905792236328125,
++          63.91603088378906,
++          63.91193771362305,
++          63.93036651611328,
++          63.89759826660156,
++          63.91193771362305
++        ],
++        "candidate": [
++          63.752193450927734,
++          63.76038360595703,
++          63.76652908325195,
++          63.78905487060547,
++          63.78086471557617,
++          63.77676773071289,
++          63.77062225341797,
++          63.77676773071289,
++          63.77267074584961,
++          63.78496170043945,
++          63.77471923828125,
++          63.768577575683594
++        ]
++      },
++      "median_us": {
++        "reference": 63.912960052490234,
++        "candidate": 63.77369499206543
++      }
++    },
++    {
++      "tokens": 24,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          63.933441162109375,
++          63.9365119934082,
++          63.924224853515625,
++          63.93241500854492,
++          63.940608978271484,
++          63.940608978271484,
++          63.93241500854492,
++          63.93446350097656,
++          63.9365119934082,
++          63.9365119934082,
++          63.93241500854492,
++          63.9365119934082
++        ],
++        "candidate": [
++          63.89350509643555,
++          63.883262634277344,
++          63.8996467590332,
++          63.8996467590332,
++          63.903743743896484,
++          63.91398239135742,
++          63.89350509643555,
++          63.903743743896484,
++          63.901695251464844,
++          63.89350509643555,
++          63.885311126708984,
++          63.8812141418457
++        ]
++      },
++      "median_us": {
++        "reference": 63.93548774719238,
++        "candidate": 63.896575927734375
++      }
++    },
++    {
++      "tokens": 24,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          63.95084762573242,
++          63.94675064086914,
++          63.95084762573242,
++          63.9447021484375,
++          63.94879913330078,
++          63.93241500854492,
++          63.9549446105957,
++          63.95289611816406,
++          63.96518325805664,
++          63.9549446105957,
++          63.95289611816406,
++          63.94675064086914
++        ],
++        "candidate": [
++          64.07577514648438,
++          64.08396911621094,
++          64.08396911621094,
++          64.07987213134766,
++          64.08806610107422,
++          64.0921630859375,
++          64.07577514648438,
++          64.08601379394531,
++          64.06963348388672,
++          64.0901107788086,
++          64.0901107788086,
++          64.08191680908203
++        ]
++      },
++      "median_us": {
++        "reference": 63.95084762573242,
++        "candidate": 64.08396911621094
++      }
++    },
++    {
++      "tokens": 32,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          63.928321838378906,
++          63.93036651611328,
++          63.93241500854492,
++          63.93241500854492,
++          63.938560485839844,
++          63.942657470703125,
++          63.938560485839844,
++          63.956993103027344,
++          63.940608978271484,
++          63.94675064086914,
++          63.959041595458984,
++          63.94675064086914
++        ],
++        "candidate": [
++          64.036865234375,
++          64.03276824951172,
++          64.03276824951172,
++          64.04300689697266,
++          64.03276824951172,
++          64.036865234375,
++          64.036865234375,
++          64.036865234375,
++          64.04096221923828,
++          64.0532455444336,
++          64.03890991210938,
++          64.04710388183594
++        ]
++      },
++      "median_us": {
++        "reference": 63.939584732055664,
++        "candidate": 64.036865234375
++      }
++    },
++    {
++      "tokens": 32,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          63.928321838378906,
++          63.926273345947266,
++          63.93241500854492,
++          63.9365119934082,
++          63.940608978271484,
++          63.942657470703125,
++          63.93446350097656,
++          63.942657470703125,
++          63.938560485839844,
++          63.940608978271484,
++          63.94675064086914,
++          63.938560485839844
++        ],
++        "candidate": [
++          63.84844970703125,
++          63.850494384765625,
++          63.85663986206055,
++          63.852542877197266,
++          63.86278533935547,
++          63.84025573730469,
++          63.852542877197266,
++          63.85663986206055,
++          63.85663986206055,
++          63.86073684692383,
++          63.85663986206055,
++          63.850494384765625
++        ]
++      },
++      "median_us": {
++        "reference": 63.938560485839844,
++        "candidate": 63.854591369628906
++      }
++    },
++    {
++      "tokens": 32,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          64.16998291015625,
++          64.16793823242188,
++          64.16588592529297,
++          64.17407989501953,
++          64.17407989501953,
++          64.15564727783203,
++          64.17817687988281,
++          64.17203521728516,
++          64.1761245727539,
++          64.16793823242188,
++          64.1761245727539,
++          64.17203521728516
++        ],
++        "candidate": [
++          64.0979232788086,
++          64.0921630859375,
++          64.0901107788086,
++          64.08191680908203,
++          64.06963348388672,
++          64.07782745361328,
++          64.09420776367188,
++          64.09625244140625,
++          64.0901107788086,
++          64.0921630859375,
++          64.08396911621094,
++          64.09625244140625
++        ]
++      },
++      "median_us": {
++        "reference": 64.17203521728516,
++        "candidate": 64.09113693237305
++      }
++    }
++  ],
++  "gpu_status": "uuid, temperature.gpu, clocks.current.sm [MHz], power.draw [W], power.limit [W]\nGPU-4b6a1e3a-4e8f-95c7-9f90-be37abc0b7a4, 72, 2355 MHz, 111.28 W, 300.00 W\nGPU-bfdf4699-e4d9-b46a-6503-21a001973e6c, 42, 180 MHz, 16.00 W, 300.00 W\n"
++}
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index 7b368af7ff083598a38a31b9d561761fe71ed969..2c85b66da7658a76d78107df74ce7e4c48539ff7 100644
+index 7b368af7..2c85b66d 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -1417,6 +1417,9 @@ class B12xW4A16Config:
@@ -13,7 +1060,7 @@ index 7b368af7ff083598a38a31b9d561761fe71ed969..2c85b66da7658a76d78107df74ce7e4c
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
          """
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
-index fe7b4c47f0ba833fde985f02f54a87c7edacc4a1..b6a9e219cad0ec47e0efcb3fdca9dfec8c9cd77b 100644
+index fe7b4c47..b6a9e219 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 @@ -11,6 +11,7 @@ from .moe_dispatch import (
@@ -33,7 +1080,7 @@ index fe7b4c47f0ba833fde985f02f54a87c7edacc4a1..b6a9e219cad0ec47e0efcb3fdca9dfec
      "launch_sm120_dynamic_moe",
      "launch_sm120_moe",
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-index fbefa788b2637d6130440a50558929baae08ed78..f8fd988561a3e6a5b8862db8ad13c23424906501 100644
+index fbefa788..f8fd9885 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 @@ -9,6 +9,7 @@ from __future__ import annotations
@@ -194,7 +1241,7 @@ index fbefa788b2637d6130440a50558929baae08ed78..f8fd988561a3e6a5b8862db8ad13c234
  
  # ==========================================================================
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
-index 021bd5af61858af8f51ff5083c36a73bd50c65e1..613eecded2f3ace8ce4d79550de9e9f82506d850 100644
+index 021bd5af..613eecde 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 @@ -117,6 +117,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -510,7 +1557,7 @@ index 021bd5af61858af8f51ff5083c36a73bd50c65e1..613eecded2f3ace8ce4d79550de9e9f8
          activated,
          fc2_out,
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
-index ce043109ab9b6f1c666c7da782a6f2b2266481f0..205f064f8e5e6b7041b71299cbc5692e7a01a0cb 100644
+index ce043109..205f064f 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 @@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -722,7 +1769,7 @@ index ce043109ab9b6f1c666c7da782a6f2b2266481f0..205f064f8e5e6b7041b71299cbc5692e
          return prepare_w4a16_compressed_tensors_weights(
              *args, w13_layout=w13_layout, **kwargs
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
-index 664f2a886faaac20f86d4c184528359f53988cd9..e80eb06546a83f4cbddd076695b2d6209d5dae22 100644
+index 664f2a88..278eac03 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
 @@ -162,6 +162,7 @@ def _pack_topk_routes_small_prefix_kernel(
@@ -733,7 +1780,7 @@ index 664f2a886faaac20f86d4c184528359f53988cd9..e80eb06546a83f4cbddd076695b2d620
  ):
      experts = tl.arange(0, BLOCK_E)
      expert_mask = experts < NUM_EXPERTS
-@@ -180,10 +181,9 @@ def _pack_topk_routes_small_prefix_kernel(
+@@ -180,10 +181,8 @@ def _pack_topk_routes_small_prefix_kernel(
              ids = tl.load(expert_map + safe_ids, mask=valid, other=-1).to(tl.int32)
              valid = valid & (ids >= 0) & (ids < NUM_EXPERTS)
  
@@ -741,13 +1788,12 @@ index 664f2a886faaac20f86d4c184528359f53988cd9..e80eb06546a83f4cbddd076695b2d620
 -            (experts[:, None] == ids[None, :]) & expert_mask[:, None] & valid[None, :]
 -        )
 -        counts += tl.sum(matches.to(tl.int32), axis=1)
-+        # Avoid the expert-by-route comparison tile. With hundreds of experts,
-+        # its register pressure dominates these small decode-sized launches.
++        # Avoid materializing a BLOCK_E by BLOCK_T comparison tile for counts.
 +        counts += tl.histogram(ids, BLOCK_E, mask=valid)
  
      padded = ((counts + BLOCK_SIZE - 1) // BLOCK_SIZE) * BLOCK_SIZE
      padded = tl.where(expert_mask, padded, 0)
-@@ -204,13 +204,17 @@ def _pack_topk_routes_small_prefix_kernel(
+@@ -204,13 +203,17 @@ def _pack_topk_routes_small_prefix_kernel(
  
      block_offsets = tl.arange(0, BLOCK_M)
      block_rows = block_offsets * BLOCK_SIZE
@@ -772,7 +1818,7 @@ index 664f2a886faaac20f86d4c184528359f53988cd9..e80eb06546a83f4cbddd076695b2d620
      tl.store(
          block_expert_ids + block_offsets,
          block_experts,
-@@ -401,6 +405,7 @@ def pack_topk_routes_by_expert(
+@@ -401,6 +404,7 @@ def pack_topk_routes_by_expert(
              BLOCK_T=_COUNT_BLOCK_T,
              BLOCK_ROUTE_INIT=block_route_init,
              BLOCK_M=block_m,
@@ -781,7 +1827,7 @@ index 664f2a886faaac20f86d4c184528359f53988cd9..e80eb06546a83f4cbddd076695b2d620
          )
      else:
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e4382dd0ccbe 100644
+index 603807d4..f340eab1 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
 @@ -2471,8 +2471,8 @@ def prepare_b12x_w4a16_weights(
@@ -818,7 +1864,7 @@ index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e438
      return {
          "w1_weight": w1_fp4,
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
-index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cff8c7ebd4 100644
+index 7d822ce3..0808b9ab 100644
 --- a/tests/moe/test_b12x_fused_moe.py
 +++ b/tests/moe/test_b12x_fused_moe.py
 @@ -220,6 +220,29 @@ def test_w4a16_static_tiler_uses_64_when_intermediate_not_128_aligned():
@@ -917,22 +1963,25 @@ index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cf
      """All ``self.<attr>`` reads reachable from method ``entry``."""
      methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
 diff --git a/tests/moe/test_b12x_w4a16_route_pack.py b/tests/moe/test_b12x_w4a16_route_pack.py
-index 4e122e2f688e59673ebe92394d58b3edef010105..c794c9c424e1435a8a7c984b80a751cc0d262a4c 100644
+index 4e122e2f..fdb8f08a 100644
 --- a/tests/moe/test_b12x_w4a16_route_pack.py
 +++ b/tests/moe/test_b12x_w4a16_route_pack.py
-@@ -330,3 +330,80 @@ def test_w4a16_workspace_route_buffers_cover_route_pack_capacity(monkeypatch):
+@@ -330,3 +330,83 @@ def test_w4a16_workspace_route_buffers_cover_route_pack_capacity(monkeypatch):
          required = max_packed_route_slots(numel_capacity, block_size, num_experts)
          assert slots >= required
          assert blocks >= (required + block_size - 1) // block_size
 +
 +
 +@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
-+@pytest.mark.parametrize("num_experts", [1, 7, 288, 512])
-+@pytest.mark.parametrize("tokens", [1, 9, 16])
++@pytest.mark.parametrize(
++    "num_experts,tokens,block_size",
++    [(e, n, 8) for e in (1, 7, 288, 512) for n in (1, 9, 16)]
++    + [(16, 48, 8), (16, 48, 48), (288, 16, 48)],
++)
 +@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 +@pytest.mark.parametrize("mapped", [False, True])
 +def test_route_pack_graph_replay_replaces_expert_distribution(
-+    num_experts, tokens, dtype, mapped
++    num_experts, tokens, block_size, dtype, mapped
 +):
 +    """Changing routes must replace counts, empty experts and padding in place."""
 +    from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_host import (
@@ -940,7 +1989,7 @@ index 4e122e2f688e59673ebe92394d58b3edef010105..c794c9c424e1435a8a7c984b80a751cc
 +        route_pack_numel_capacity,
 +    )
 +
-+    block_size, topk = 8, 8
++    topk = 8
 +    ids = torch.zeros((tokens, topk), dtype=dtype, device="cuda")
 +    expert_map = None
 +    if mapped:
@@ -1003,7 +2052,7 @@ index 4e122e2f688e59673ebe92394d58b3edef010105..c794c9c424e1435a8a7c984b80a751cc
 +            assert bool((expected_ids[routes] == expert).all())
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..ccc8836c306ad4674dcc9c0ef6bd95ce65b8b41a
+index 00000000..ccc8836c
 --- /dev/null
 +++ b/tests/moe/test_b12x_workspace_graph_pinning.py
 @@ -0,0 +1,206 @@

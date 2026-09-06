@@ -23,6 +23,10 @@ The exact internal candidate passed GPU correctness/sanitizer tests, startup and
 
 The older `v0.2.1` image has a reproduced long-prefix HiCache corruption defect. Keep HiCache disabled if continuing to use that version.
 
+## Next internal candidate
+
+`sglang-glm53-flash-sm120:v0.3.2-rc.1` is prepared for an internal build from SGLang main `28457f0dca` after the GLM support merge and FlashInfer main `6c14bbd5ff`. Cache schema is `v69`. It retains the route-prefix change and carried correctness fixes, removes superseded metadata experiments, and restores only active #38213 fusion. It is not built or qualified; the stable artifacts and measurements above remain v0.3.1. See [RUN.md](RUN.md) for the candidate profile.
+
 ## Requirements
 
 - Linux x86_64 with a CUDA 13 capable driver, Docker and the NVIDIA
