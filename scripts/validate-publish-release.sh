@@ -27,5 +27,7 @@ case "$provider" in
   *) echo "unsupported release provider: $provider" >&2; exit 2 ;;
 esac
 require_text "$repo/CHANGELOG.md" "## ${stable_tag} (stable;"
+python3 "$repo/scripts/render-release-changes.py" \
+  --changelog "$repo/CHANGELOG.md" --tag "$stable_tag" >/dev/null
 
 echo "stable publication docs valid: ${provider} ${stable_tag}"

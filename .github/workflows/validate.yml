@@ -28,6 +28,8 @@ jobs:
         run: bash -n scripts/*.sh examples/*.sh
       - name: Check JSON syntax
         run: jq -e . release.json stack.lock.json bench/aiperf/aiperf.lock.json >/dev/null
+      - name: Test release publication notes
+        run: python3 scripts/test_validate_publish_release.py
       - name: Validate release contract
         run: ./scripts/validate-release.sh
       - name: Validate documentation contract

@@ -1,6 +1,7 @@
 """Offline regression checks for independent internal/public release docs."""
 
 import os
+import importlib.util
 import shutil
 import subprocess
 import tempfile
@@ -16,8 +17,9 @@ class PublicationDocsTests(unittest.TestCase):
         (self.root / "scripts").mkdir()
         self.script = self.root / "scripts/validate-publish-release.sh"
         shutil.copyfile(Path(__file__).with_name(self.script.name), self.script)
+        shutil.copyfile(Path(__file__).with_name("render-release-changes.py"), self.root / "scripts/render-release-changes.py")
         (self.root / "release.json").write_text('{"stable_tag":"v9.8.7"}')
-        (self.root / "CHANGELOG.md").write_text("## v9.8.7 (stable; internal promotion)\n")
+        (self.root / "CHANGELOG.md").write_text("## v9.8.7 (stable; internal promotion)\n\n- Fix the documented serving failure.\n")
 
     def check_provider(self, provider):
         return subprocess.run(
@@ -46,6 +48,33 @@ class PublicationDocsTests(unittest.TestCase):
 
     def test_unknown_provider_fails_closed(self):
         self.assertEqual(self.check_provider("unknown"), 2)
+
+
+class ReleaseChangesTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("release_changes", Path(__file__).with_name("render-release-changes.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.render = module.release_changes
+
+    def test_exact_version_and_subsections(self):
+        text = "## v1.2.30 (stable; other)\n\n- Wrong version.\n\n## v1.2.3 (stable; release)\n\n- Fix serving.\n\n### Known issues\n\n- Keep this warning.\n\n## v1.2.3-rc.1\n\n- Candidate history.\n"
+        self.assertEqual(self.render(text, "v1.2.3"), "- Fix serving.\n\n### Known issues\n\n- Keep this warning.\n")
+
+    def test_long_prose_is_not_hard_wrapped(self):
+        bullet = "- " + "release change " * 20
+        self.assertEqual(self.render("## v1.2.3\n\n" + bullet, "v1.2.3"), bullet.rstrip() + "\n")
+
+    def test_missing_empty_duplicate_and_prerelease_sections_fail(self):
+        for text, tag in (
+            ("## v1.2.30\n- Other.\n", "v1.2.3"),
+            ("## v1.2.3\n", "v1.2.3"),
+            ("## v1.2.3\nRead CHANGELOG.md.\n", "v1.2.3"),
+            ("## v1.2.3\n- One.\n## v1.2.3\n- Two.\n", "v1.2.3"),
+            ("## v1.2.3-rc.1\n- Candidate.\n", "v1.2.3-rc.1"),
+        ):
+            with self.subTest(text=text, tag=tag), self.assertRaises(ValueError):
+                self.render(text, tag)
 
 
 if __name__ == "__main__":

@@ -214,11 +214,16 @@ fi
 
 {
   printf '# %s\n\n' "$RELEASE_TAG"
+  printf '## Changes\n\n'
+  python3 "$(dirname "${BASH_SOURCE[0]}")/render-release-changes.py" \
+    --changelog "$(dirname "${BASH_SOURCE[0]}")/../CHANGELOG.md" \
+    --tag "$RELEASE_TAG"
+  printf '\n## Artifacts\n\n'
   printf 'Image: `%s`, digest `%s`.\n\n' "$RELEASE_IMAGE" "$RELEASE_DIGEST"
   printf 'This is a digest-identical promotion of `%s` within this registry.\n\n' "$RELEASE_CANDIDATE_IMAGE"
   printf 'Image source revision: `%s`.\n\n' "$RELEASE_IMAGE_SOURCE_REVISION"
   printf 'Release tag target: `%s`.\n\n' "$RELEASE_TARGET"
-  printf 'Detailed changes are recorded in `CHANGELOG.md`; measured qualification evidence is maintained in the primary project repository.\n'
+  printf 'Measured qualification evidence is maintained in the primary project repository.\n'
 } >"$release_tmp/body.md"
 
 if (( ! release_exists )); then

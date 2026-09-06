@@ -45,15 +45,12 @@
 
 ## v0.2.1 (stable; digest-identical promotion of v0.2.1-rc.8)
 
-- Promoted on 2026-09-04 without a rebuild. The internal candidate and stable
-  tag resolve to
-  `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`;
-  the independently built ghcr candidate and stable tag resolve to
-  `sha256:e292b3677ac8085d087fb2503fb8b42c143abe1d2739c360ee776a669f53b424`.
-- The internal candidate passed its source, exact-image GPU, first-boot, crash,
-  full quality, long-context, and standardized C1-C4 engine gates. The primary
-  qualification repository holds the measured results and exact-candidate
-  receipts.
+- Fix dropped attention candidates when a score bin fills or exceeds its temporary buffer, which could select the wrong context positions. Cover large ties and signed-zero cases with bounded exact selection in the carried DSA kernels.
+- Include the upstream first-request multimodal NextN fix so speculative decoding receives the required image embeddings. Harden tool-result media ordering and video-worker cleanup, keeping GLM video preprocessing on CPU.
+- Preserve request-admission limits when recurrent-state slots are exhausted. Refresh SGLang and FlashInfer sources and audited carry PRs; use fresh compiled-cache schema `v63`.
+- Known issue identified after release: HiCache host restoration can corrupt long-context output. Keep HiCache disabled on v0.2.1. The original release gates did not force host restoration.
+- Promoted on 2026-09-04 without a rebuild. The internal candidate and stable tag resolve to `sha256:9bc64968dcf3b43b974ab95189ea0f208d2d60cfda9203d0b59942470451578e`; the independently built ghcr candidate and stable tag resolve to `sha256:e292b3677ac8085d087fb2503fb8b42c143abe1d2739c360ee776a669f53b424`.
+- The internal candidate passed its source, exact-image GPU, first-boot, crash, full GSM8K, long-context, and standardized C1-C4 engine gates. Measured results and exact-candidate receipts remain in the primary qualification repository.
 
 ## v0.2.1-rc.8 (exact-tail test stride correction; internally qualified)
 

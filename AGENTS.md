@@ -63,6 +63,13 @@ at the exact stable-doc commit. Pass the same full commit SHA as the required
 unless its checked-out `main` is that commit. Do not push stable source tags
 manually.
 
+Release bodies must contain the actual behavior changes and relevant known
+issues, not just an artifact list or a pointer to CHANGELOG.md. Maintain a
+self-contained summary in each stable CHANGELOG section; publication copies
+that exact section into both providers' release notes and rejects missing or
+empty change lists. Only PR bodies carry assistance attribution, never
+repository release notes. Do not hard-wrap release-note prose at 80 columns.
+
 Internal and public publication are independent. Forgejo validates the
 README's `Internal image` row and `current internal stable image` sentence;
 GitHub validates the public `Image` row and `current published stable image`
