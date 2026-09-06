@@ -12,9 +12,9 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Candidate | `sglang-glm53-flash-sm120:v0.3.1-rc.1` (not built or qualified) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.1-rc.1` (built internally; not qualified) |
 
-`v0.3.1-rc.1` tests a smaller W4A16 MoE route-prefix kernel for concurrent decoding. It retains the `v0.3.0` SGLang runtime, model, quantization and serving settings. The changed FlashInfer source passed isolated GPU correctness and graph replay checks; serving performance and exact-candidate qualification are pending.
+`v0.3.1-rc.1` tests a smaller W4A16 MoE route-prefix kernel for concurrent decoding. It retains the `v0.3.0` SGLang runtime, model, quantization and serving settings. The changed FlashInfer source passed isolated GPU correctness, graph replay and sanitizer checks. The internal candidate at `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d` completed sampled first-boot, image/cold-cohort and matched application checks. Concurrent decode improved, while the single-request decrease remains unresolved. [Measurements and limits](https://git.home.corenode.com/homelab/sglang-glm53-flash-sm120/src/branch/main/evidence/v0.3.1-rc.1-route-pack-20260906/README.md) are recorded in the primary project. Full exact-candidate qualification and promotion have not been performed.
 
 The preceding `v0.3.0-rc.4` refreshes SGLang to main `febb360519` and retains current
 FlashInfer main `6c14bbd5ff` and the audited carry heads. It preserves the

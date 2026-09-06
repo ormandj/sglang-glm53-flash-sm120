@@ -1,10 +1,10 @@
 # Changelog
 
-## v0.3.1-rc.1 (small route-prefix experiment; not built or qualified)
+## v0.3.1-rc.1 (small route-prefix experiment; built internally, not qualified)
 
 - Replace the small W4A16 route-prefix expert-by-route count tile with a masked histogram and its expert-by-block ownership tile with an upper-bound lookup. Preserve route padding, mapped/invalid expert handling, CUDA graph workspaces and dispatch limits.
 - Add CUDA graph regressions that change expert distributions and overwrite workspaces between replays. Retain the exact `v0.3.0` SGLang integration, model, quantization and serving settings.
-- Use a separate `v68` cache. Full serving comparison and exact-candidate qualification are pending; isolated kernel timings are recorded only in the primary project evidence.
+- Use a separate `v68` cache. The internal image at `sha256:5c2c6fb8f5616d3b451d45d944f56248f0e81c6cc403b80aa8c296f8391b5e2d` completed fresh-cache sampled startup, image/cold-C4 acceptance and the matched application comparison. Concurrent gains and the unresolved C1 decrease are recorded in the primary project evidence. Full release qualification and promotion have not been performed.
 
 ## v0.3.0-rc.4 (lifecycle corrections and source refresh; internally qualified)
 

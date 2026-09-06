@@ -1,5 +1,7 @@
 # Running `v0.3.1-rc.1`
 
+This candidate is built internally and has completed the route-prefix experiment. It is not release-qualified; the qualified internal serving release remains `v0.3.0`. See the primary project evidence for the concurrent gains and unresolved single-request decrease.
+
 ```bash
 export MODEL_REPO=ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
 export MODEL_DIR=/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
