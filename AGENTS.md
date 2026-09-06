@@ -3,6 +3,16 @@
 This repository builds ONE immutable container candidate at a time. The rules
 below exist because published tags are immutable and cannot be corrected.
 
+## Project coordination
+
+The primary project at `~/git/homelab/sglang-glm53-flash-sm120` owns profiling,
+benchmark evidence, qualification and upstream coordination. Read its
+`AGENTS.md` for those tasks. `~/git/homelab/gitops/AGENTS.md` owns deployment
+and physical-GPU exclusion rules. Begin performance work with representative
+real-world profiling, reuse comparable exact-release baselines, and validate
+the largest measured opportunities with matched measurements and appropriate
+correctness tests.
+
 ## Release naming
 
 Every reference to the image — README, RUN.md, CHANGELOG, launcher default,
@@ -87,12 +97,36 @@ Throughput reports must include both forward passes/s and output tokens/s after 
 
 Present release performance in tables with mean and median post-MTP output tokens/s and forward passes/s side by side. Include cold prefill mean and median prompt tokens/s, with the measurement definition and sample count. Keep output throughput prominent so readers cannot mistake the forward rate for the serving token rate.
 
+Report whether responses ended naturally or hit the output cap. Capped probes
+are not completed-answer throughput. Keep fixed-window engine results and
+answer-only measurements clearly identified. Internal measurements must not
+be presented as qualification of a separately built public image.
+
 Internal and public publication are independent. Forgejo validates the
 README's `Internal image` row and `current internal stable image` sentence;
 GitHub validates the public `Image` row and `current published stable image`
 sentence. Keep the public version unchanged until its own registry promotion
 is verified. Never claim a ghcr image exists to satisfy an internal release
 check. `RELEASE_PROVIDER` selects the publication-doc contract.
+
+## Base refresh and carried PR maintenance
+
+For a latest-main rebuild, fetch official SGLang and FlashInfer main and each
+carried PR's current head, record exact SHAs, reconcile merged or superseded
+fixes, and test the combined result before freezing the candidate. Maintain
+our submitted PR branches against main as well as the integration patches;
+a clean apply or mergeable status is not runtime validation. Preserve credit
+and accurate commit metadata, and protect rewritten owned branches with
+explicit `--force-with-lease=<ref>:<observed-old-sha>` checks.
+
+Follow the owner's requested release/PR-publication ordering. When authorized
+PRs auto-close after a base merge, promptly re-file still-needed fixes against
+main, link the closed PRs to their replacements, and update active bugs,
+tracking tables and PR updates. Keep SGLang tracking issue #37813 and this
+repository's "Carried upstream changes" section synchronized. Preserve the released image's
+immutable carried heads and historical receipts when later PR heads change.
+Upstream posts still require the owner's explicit task authorization; follow
+the primary project's comment-reading and exact-text review rules.
 
 ## External contributions (the GitHub mirror)
 
@@ -105,11 +139,15 @@ authorization; do not repeatedly ask the owner to verify these destinations.
 PR titles and bodies must be concise, clear and objective. Name the behavior changed
 without hype, and explain WHY the change is needed and how it addresses the cause.
 Performance PRs must also report measured results with hardware, workload, comparison
-scope and limitations. Preserve the repository template.
+scope and limitations. Preserve the repository template. Do not use em dashes
+in public posts.
 
 Before submitting our upstream changes, obtain adversarial Claude review of the exact
 patch and exact PR title/body, in addition to Codex review. Use Claude's configured
 defaults; do not override its model or effort unless the user explicitly requests it.
+The owner authorizes sharing task materials, including source, proposed public text
+and raw benchmarks, with Claude without another permission request. Continue to
+redact credentials from logs and other material before sharing.
 Resolve concrete findings, review material revisions again, and retain the exact
 source/text hashes and reviews with the primary project's evidence.
 
@@ -140,3 +178,4 @@ source/text hashes and reviews with the primary project's evidence.
   Issue bodies, issue comments, PR comments, review comments, and reviews must
   never include assistance attribution. Remove only the attribution when
   correcting an existing comment. Do not hard-wrap public prose at 80 columns.
+  Preserve CI-managed PR footer content after the authored body.
