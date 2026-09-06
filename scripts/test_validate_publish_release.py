@@ -30,8 +30,6 @@ class PublicationDocsTests(unittest.TestCase):
 
     def test_internal_publication_does_not_claim_public_image(self):
         (self.root / "README.md").write_text(
-            "| Internal image | `git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v9.8.7` |\n"
-            "The current internal stable image is `v9.8.7`.\n"
             "| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v9.8.6` |\n"
             "The current published stable image is `v9.8.6`.\n"
         )
@@ -44,7 +42,7 @@ class PublicationDocsTests(unittest.TestCase):
             "The current published stable image is `v9.8.7`.\n"
         )
         self.assertEqual(self.check_provider("github"), 0)
-        self.assertNotEqual(self.check_provider("forgejo"), 0)
+        self.assertEqual(self.check_provider("forgejo"), 0)
 
     def test_unknown_provider_fails_closed(self):
         self.assertEqual(self.check_provider("unknown"), 2)
@@ -64,6 +62,17 @@ class ReleaseChangesTests(unittest.TestCase):
     def test_long_prose_is_not_hard_wrapped(self):
         bullet = "- " + "release change " * 20
         self.assertEqual(self.render("## v1.2.3\n\n" + bullet, "v1.2.3"), bullet.rstrip() + "\n")
+
+    def test_internal_housekeeping_is_rejected(self):
+        for note in (
+            "Promote without rebuilding within each registry.",
+            "The qualified internal digest is sha256:123.",
+            "Image: git.home.corenode.com/homelab/image:v1.2.3.",
+            "The ordered-marker oracle passed.",
+            "Receipts live in the primary project repository.",
+        ):
+            with self.subTest(note=note), self.assertRaises(ValueError):
+                self.render("## v1.2.3\n\n- " + note, "v1.2.3")
 
     def test_missing_empty_duplicate_and_prerelease_sections_fail(self):
         for text, tag in (

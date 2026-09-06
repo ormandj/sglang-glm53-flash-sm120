@@ -19,6 +19,14 @@ def release_changes(changelog: str, tag: str) -> str:
     changes = "\n".join(lines[start:end]).strip()
     if not changes or not re.search(r"(?m)^- \S", changes):
         raise ValueError(f"{tag} must contain release-change bullets")
+    if re.search(
+        r"git\.home\.corenode\.com|/Users/ormandj/|~/git/homelab/|"
+        r"qualified internal digest|promote without rebuilding|"
+        r"primary project repository|MEMORY-CHECK:|ordered-marker oracle",
+        changes,
+        re.IGNORECASE,
+    ):
+        raise ValueError(f"{tag} contains internal housekeeping; write public release notes")
     return changes + "\n"
 
 

@@ -220,10 +220,7 @@ fi
     --tag "$RELEASE_TAG"
   printf '\n## Artifacts\n\n'
   printf 'Image: `%s`, digest `%s`.\n\n' "$RELEASE_IMAGE" "$RELEASE_DIGEST"
-  printf 'This is a digest-identical promotion of `%s` within this registry.\n\n' "$RELEASE_CANDIDATE_IMAGE"
   printf 'Image source revision: `%s`.\n\n' "$RELEASE_IMAGE_SOURCE_REVISION"
-  printf 'Release tag target: `%s`.\n\n' "$RELEASE_TARGET"
-  printf 'Measured qualification evidence is maintained in the primary project repository.\n'
 } >"$release_tmp/body.md"
 
 if (( ! release_exists )); then

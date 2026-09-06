@@ -77,8 +77,6 @@ jobs:
             echo "stable image differs from candidate: $candidate_digest -> $stable_digest" >&2
             exit 1
           }
-          grep -F -- "$stable_digest" README.md >/dev/null
-          grep -F -- "$stable_digest" CHANGELOG.md >/dev/null
           image_source_revision=$(skopeo inspect \
             --creds "$REGISTRY_CREDS" \
             --config "docker://${repository}:${stable_tag}" \

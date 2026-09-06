@@ -28,8 +28,20 @@ require_text "$repo/README.md" "$local_image"
 require_text "$repo/RUN.md" "IMAGE=${local_image}"
 require_text "$launcher" "IMAGE=\${IMAGE:-${local_image}}"
 require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${cache_schema}"
-require_text "$repo/CHANGELOG.md" "## ${candidate_tag}"
+require_text "$repo/CHANGELOG.md" "# Changelog"
 require_text "$repo/AGENTS.md" 'always uses the complete release name'
+
+if grep -E -- '^## Releases$|git\.home\.corenode\.com|current internal stable image|^\| Qualified internal candidate \|' "$repo/README.md" >/dev/null; then
+  echo "README must not contain internal registry bookkeeping or a release-history section; keep operational records in the private project" >&2
+  exit 1
+fi
+
+for file in README.md CHANGELOG.md AGENTS.md; do
+  if grep -E -- 'git\.home\.corenode\.com|/Users/ormandj/|~/git/homelab/' "$repo/$file" >/dev/null; then
+    echo "$file contains private operational details" >&2
+    exit 1
+  fi
+done
 
 critical=(
   'TP_SIZE=${TP_SIZE:-2}'

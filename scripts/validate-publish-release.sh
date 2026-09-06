@@ -15,9 +15,8 @@ require_text() {
 
 case "$provider" in
   forgejo)
-    internal_image="git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:${stable_tag}"
-    require_text "$repo/README.md" "| Internal image | \`${internal_image}\` |"
-    require_text "$repo/README.md" "The current internal stable image is \`${stable_tag}\`"
+    # Registry identity is verified by the promotion/publication workflow.
+    # Public documentation must not contain private registry status.
     ;;
   github)
     public_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
