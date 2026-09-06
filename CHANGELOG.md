@@ -1,12 +1,12 @@
 # Changelog
 
-## v0.3.0-rc.4 (lifecycle corrections and source refresh; not built or qualified)
+## v0.3.0-rc.4 (lifecycle corrections and source refresh; internally qualified)
 
 - Refresh to SGLang main `febb360519`, including upstream aborted-prefill retirement and the AMD unified-KV revert. FlashInfer main remains `6c14bbd5ff`; all carried PR heads were rechecked on 2026-09-06.
 - Remove the obsolete encoder cleanup call that fails during timeout/cancellation. Retain upstream task joins and socket cleanup.
 - Expire preallocation waits through receiver polling before rank consensus, preserving consistent failure handling across TP/PP workers. Include the submitted regression tests for #38161, #38162 and #38164.
 - Carry #38157's synchronized TP host-memory readings before pool allocation. Correct host-tier documentation to 32 GB per rank, 64 GB across TP2.
-- Use fresh cache namespace `v67`. Require full exact-image qualification before promotion; the preceding candidate's measurements do not qualify this source.
+- Use fresh cache namespace `v67`. The internal image at `sha256:86dc493a8d64df2f1beae4b15e3224cad7f6b9fb741183affb18ff5d1882c0c3` completed the isolated GPU, sampled first-boot, image/cold-cohort, full GSM8K, standardized C1-C4/prefill, 400k-context and forced-host restoration checks. Exact-candidate receipts remain in the primary qualification repository. Public publication is pending.
 
 ## v0.3.0-rc.3 (diagnostic assertion correction; serving gates complete, promotion withheld)
 

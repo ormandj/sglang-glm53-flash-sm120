@@ -12,13 +12,13 @@ reasoning and tool calling.
 | Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.2.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
-| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.4` (source prepared; not built or qualified) |
+| Candidate | `sglang-glm53-flash-sm120:v0.3.0-rc.4` (built and qualified internally) |
 
 `v0.3.0-rc.4` refreshes SGLang to main `febb360519` and retains current
 FlashInfer main `6c14bbd5ff` and the audited carry heads. It preserves the
 hybrid HiCache index fix, removes obsolete encoder cleanup, moves receive
 timeouts before rank consensus and synchronizes host-memory budget readings.
-It is not built or qualified yet. `v0.3.0-rc.3` completed its serving gates but
+The internal image is built and qualified at `sha256:86dc493a8d64df2f1beae4b15e3224cad7f6b9fb741183affb18ff5d1882c0c3`. Its exact-image GPU, sampled first-boot, image/cold-cohort, full GSM8K, standardized C1-C4/prefill, long-context and forced-host restoration checks completed. Public publication is pending. `v0.3.0-rc.3` completed its serving gates but
 is withheld from promotion because the subsequent lifecycle corrections are
 absent from that immutable image. Validation and measured results belong in
 the primary qualification repository; no previous release qualifies new source.
@@ -199,7 +199,7 @@ traffic. A load that takes seconds would be a compile and is worth reporting.
 
 ## Carried upstream changes
 
-Status checked 2026-09-06. This table describes the `v0.3.0-rc.4` integration source, not an unmodified collection of PR heads and not the immutable `v0.3.0-rc.3` image. Context, API and test-fixture adaptations are retained in the integration patch. The three newly submitted PRs and the host-memory startup fix are included; this candidate is not built or qualified yet.
+Status checked 2026-09-06. This table describes the `v0.3.0-rc.4` integration source, not an unmodified collection of PR heads and not the immutable `v0.3.0-rc.3` image. Context, API and test-fixture adaptations are retained in the integration patch. The three newly submitted PRs and the host-memory startup fix are included. This candidate completed internal exact-image qualification; public publication remains pending.
 
 Audited source bases: SGLang `main` `febb360519`, GLM #36507 `be2e63c2f1`, FlashInfer `main` `6c14bbd5ff`. Main includes #38163's AMD unified-KV revert and #36988's aborted disaggregated-prefill retirement. Image provenance is the exact pins and patch checksums in `stack.lock.json`.
 
