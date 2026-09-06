@@ -1,0 +1,19 @@
+[1/4] ccache c++ -MMD -MF sgl_topk_patch_wrapper.o.d -DTORCH_EXTENSION_NAME=sgl_topk_pr37625_ext -DTORCH_API_INCLUDE_EXTENSION_H -I/tmp/sglang-maintain-37625/python/sglang/kernels/aot/include -I/tmp/sglang-maintain-37625/python/sglang/kernels/aot/csrc -I/tmp/sglang-maintain-37625/python/sglang/kernels/jit/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/include/python3.12 -fPIC -std=c++20 -O2 -c /test-harness/sgl_topk_patch_wrapper.cc -o sgl_topk_patch_wrapper.o 
+[2/4] ccache /usr/local/cuda/bin/nvcc -MD -MF deepseek_v4_topk.cuda.o.d -DTORCH_EXTENSION_NAME=sgl_topk_pr37625_ext -DTORCH_API_INCLUDE_EXTENSION_H -I/tmp/sglang-maintain-37625/python/sglang/kernels/aot/include -I/tmp/sglang-maintain-37625/python/sglang/kernels/aot/csrc -I/tmp/sglang-maintain-37625/python/sglang/kernels/jit/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_120,code=sm_120 --compiler-options '-fPIC' -O2 -std=c++20 -c /tmp/sglang-maintain-37625/python/sglang/kernels/aot/csrc/elementwise/deepseek_v4_topk.cu -o deepseek_v4_topk.cuda.o 
+[3/4] ccache /usr/local/cuda/bin/nvcc -MD -MF topk.cuda.o.d -DTORCH_EXTENSION_NAME=sgl_topk_pr37625_ext -DTORCH_API_INCLUDE_EXTENSION_H -I/tmp/sglang-maintain-37625/python/sglang/kernels/aot/include -I/tmp/sglang-maintain-37625/python/sglang/kernels/aot/csrc -I/tmp/sglang-maintain-37625/python/sglang/kernels/jit/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include -isystem /opt/sglang/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_120,code=sm_120 --compiler-options '-fPIC' -O2 -std=c++20 -c /tmp/sglang-maintain-37625/python/sglang/kernels/aot/csrc/elementwise/topk.cu -o topk.cuda.o 
+[4/4] ccache c++ sgl_topk_patch_wrapper.o topk.cuda.o deepseek_v4_topk.cuda.o -shared -L/opt/sglang/lib/python3.12/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda/lib64 -lcudart -o sgl_topk_pr37625_ext.so
+AOT legacy top-k case passed: exact-capacity-ascending
+AOT legacy top-k case passed: exact-capacity-reversed
+AOT legacy top-k case passed: exact-capacity-negative
+AOT legacy top-k case passed: exact-capacity-after-higher-values
+AOT legacy top-k case passed: overflow
+AOT legacy top-k case passed: all-equal-overflow
+AOT legacy top-k case passed: positive-zero-overflow
+AOT legacy top-k case passed: negative-zero-overflow
+AOT DeepSeek-V4 top-k case passed: exact-capacity
+AOT DeepSeek-V4 top-k case passed: exact-capacity-negative
+AOT DeepSeek-V4 top-k case passed: exact-capacity-after-higher-values
+AOT DeepSeek-V4 top-k case passed: all-equal-overflow
+AOT DeepSeek-V4 top-k case passed: positive-zero-overflow
+AOT DeepSeek-V4 top-k case passed: negative-zero-overflow
+AOT top-k runtime validation passed

@@ -170,6 +170,8 @@ Already merged dependencies include SGLang #37317, #36958, #36798 and #37477. Th
 
 Downstream work still awaiting submission: the small W4A16 route-prefix histogram/inverse-prefix change (reviewed FlashInfer fork branch `pr/sm12x-route-prefix-histogram`, PR prepared), SM120 MoE/NoPE integration and defaults, ModelOpt E4M3-K32 preparation, static Mamba admission/accounting, adaptive-MTP chain-buffer lifetime, GLM video/DP/media-ordering and stricter NEXTN multimodal handling, PCIe IPC all-reduce wiring, mixed-precision KDA gate fusion beyond #37744, optional FP8 lm_head, recurrent-kernel tuning, and additional diagnostics. FlashInfer #4802's merge removes that dependency blocker but does not upstream the SGLang integration. Not every retained local change has an upstream PR yet.
 
+After release qualification, review branches #37168, #37538 and #37625 were repaired against main `2c05ed4e77`. The table above retains the source heads integrated into the immutable image; [maintenance source bindings and author test logs](evidence/v0.3.2/pr-maintenance/README.md) identify the later review heads.
+
 ## Releases
 
 `v0.3.2` (2026-09-06) is the current stable image in both registries. It promotes each registry's `v0.3.2-rc.1` candidate digest-identically. See the [current changelog](CHANGELOG.md) for behavior changes, measured validation and limitations.

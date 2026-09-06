@@ -1,0 +1,70 @@
+diff --git a/python/sglang/srt/arg_groups/model_hook.py b/python/sglang/srt/arg_groups/model_hook.py
+index f11033d6ac..0c2157679e 100644
+--- a/python/sglang/srt/arg_groups/model_hook.py
++++ b/python/sglang/srt/arg_groups/model_hook.py
+@@ -68,6 +68,14 @@ def _validate_dsa_tbo_index_sharing(server_args: Any, hf_config: Any) -> None:
+         )
+ 
+ 
++def _apply_sm120_fp8_wo_a_gemm_default() -> None:
++    """Keep an explicit setting or the global default on capable builds."""
++    from sglang.srt.layers.deep_gemm_wrapper.configurer import DEEPGEMM_SCALE_UE8M0
++
++    if not DEEPGEMM_SCALE_UE8M0:
++        envs.SGLANG_OPT_FP8_WO_A_GEMM.set(False)
++
++
+ def _rocm_fp8_wo_a_supported() -> bool:
+     """True when ROCm can run the DeepSeek-V4 fp8 wo_a GEMM (gfx950 + aiter)."""
+     try:
+@@ -368,9 +376,8 @@ def handle_model_specific_adjustments(server_args: Any):
+         validate_deepseek_v4_mega_moe_token_budget(server_args)
+ 
+         if get_platform().is_sm120:
+-            # SM120 lacks tcgen05/TMEM: disable features that depend on
+-            # DeepGEMM or require >99KB SMEM (topk_v2).
+-            envs.SGLANG_OPT_FP8_WO_A_GEMM.set(False)
++            # Preserve the FP8 W_o_A default only on capable DeepGEMM builds.
++            _apply_sm120_fp8_wo_a_gemm_default()
+             envs.SGLANG_OPT_USE_TOPK_V2.set(False)
+             if not envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.is_set():
+                 envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.set(False)
+diff --git a/test/registered/unit/test_model_overrides.py b/test/registered/unit/test_model_overrides.py
+index dc82825f14..f8c6797b4f 100644
+--- a/test/registered/unit/test_model_overrides.py
++++ b/test/registered/unit/test_model_overrides.py
+@@ -1685,6 +1685,34 @@ class TestGoldenModelOverrides(_IsolatedPublish):
+             "flashinfer_trtllm_routed",
+         )
+ 
++    def test_sm120_fp8_wo_a_gemm_default_gates_on_deepgemm_capability(self):
++        """The SM120 FP8 W_o_A GEMM override is capability-gated, not a force.
++
++        Only a build without the DeepGEMM ue8m0 capability gets the GEMM turned
++        off; a capable build must be left untouched so the global default or an
++        explicit setting survives to the later DeepGEMM capability check.
++        """
++        from sglang.srt.arg_groups.model_hook import _apply_sm120_fp8_wo_a_gemm_default
++        from sglang.srt.environ import envs
++        from sglang.srt.layers.deep_gemm_wrapper import configurer
++
++        field = envs.SGLANG_OPT_FP8_WO_A_GEMM
++
++        def _run(capable):
++            """Call the helper with a stubbed capability; return recorded set()."""
++            with (
++                patch.object(configurer, "DEEPGEMM_SCALE_UE8M0", capable),
++                patch.object(field, "set") as mock_set,
++            ):
++                _apply_sm120_fp8_wo_a_gemm_default()
++                return mock_set
++
++        # Incapable build: forced off.
++        _run(capable=False).assert_called_once_with(False)
++
++        # Capable build: untouched, keeping the default or explicit setting.
++        _run(capable=True).assert_not_called()
++
+     def test_nemotron_h_overrides_at_callable_level(self):
+         from sglang.srt.arg_groups.model_overrides.nemotron_h import (
+             _nemotron_h_overrides,
