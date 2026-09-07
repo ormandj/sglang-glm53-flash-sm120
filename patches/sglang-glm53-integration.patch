@@ -11275,7 +11275,7 @@ index 95582e079f..4d20f21d72 100644
          self.lm_head = ParallelLMHead(
              config.vocab_size,
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
-index f5253cfdf0..42c4d90a77 100644
+index f5253cfdf0..bcbf4b42e3 100644
 --- a/python/sglang/srt/models/glm5_next.py
 +++ b/python/sglang/srt/models/glm5_next.py
 @@ -32,6 +32,7 @@ from sglang.srt.layers.communicator import (
@@ -11309,7 +11309,7 @@ index f5253cfdf0..42c4d90a77 100644
  from sglang.srt.model_executor.forward_batch_info import (
      ForwardBatch,
      PPProxyTensors,
-@@ -117,6 +127,51 @@ if _use_aiter_gfx95:
+@@ -117,6 +127,58 @@ if _use_aiter_gfx95:
  logger = logging.getLogger(__name__)
  
  
@@ -11355,13 +11355,20 @@ index f5253cfdf0..42c4d90a77 100644
 +        layer_scatter_modes=layer_scatter_modes,
 +        prev_topk_indices=prev_topk_indices,
 +    )
-+    return hidden_states, residual
++    # prepare_attn also produces MHC mixing tensors consumed by the following
++    # captured prepare_mlp segment. Include them in the bridge outputs so BCG
++    # retains their capture-time storage and copies fresh replay values into
++    # those exact addresses. Updating only communicator.mhc's Python fields
++    # leaves the captured segment reading stale (or reclaimed) storage.
++    mhc = getattr(communicator, "mhc", None)
++    mhc_aux = (mhc.h_res, mhc.h_post) if mhc is not None else None
++    return hidden_states, residual, mhc_aux
 +
 +
  @torch.compile
  def swiglu_clamped(y: torch.Tensor, limit: float):
      gate, up = torch.chunk(y, 2, dim=-1)
-@@ -336,7 +391,24 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -336,7 +398,24 @@ class Glm5NextLinearAttention(nn.Module):
          projection_size = self.head_dim * self.num_heads
          self.conv_size = config.linear_attn_config["short_conv_kernel_size"]
  
@@ -11387,7 +11394,7 @@ index f5253cfdf0..42c4d90a77 100644
          if self.do_fuse_qkvbfg:
              self.qkvb_sizes = [
                  projection_size,
-@@ -350,7 +422,12 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -350,7 +429,12 @@ class Glm5NextLinearAttention(nn.Module):
                  self.hidden_size,
                  self.qkvb_sizes,
                  self.fg_sizes,
@@ -11401,7 +11408,7 @@ index f5253cfdf0..42c4d90a77 100644
                  prefix=f"{prefix}.fused_qkvbfg_a_proj",
              )
              self.split_sizes = [
-@@ -424,6 +501,54 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -424,6 +508,54 @@ class Glm5NextLinearAttention(nn.Module):
                  tp_size=head_shard_size,
              )
  
@@ -11456,7 +11463,7 @@ index f5253cfdf0..42c4d90a77 100644
          self.dt_bias = nn.Parameter(
              torch.empty(divide(projection_size, head_shard_size), dtype=torch.float32)
          )
-@@ -490,6 +615,14 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -490,6 +622,14 @@ class Glm5NextLinearAttention(nn.Module):
      def forward_qkvbfg(self, hidden_states: torch.Tensor, forward_batch: ForwardBatch):
          qkv, _ = self.qkv_proj(hidden_states)
  
@@ -11471,7 +11478,7 @@ index f5253cfdf0..42c4d90a77 100644
          beta = self.b_proj(hidden_states)[0]
          forget_gate = self.f_b_proj(self.f_a_proj(hidden_states)[0])[0]
          g_proj_states = self.g_b_proj(self.g_a_proj(hidden_states)[0])[0]
-@@ -772,20 +905,35 @@ class Glm5NextDecoderLayer(nn.Module):
+@@ -772,20 +912,35 @@ class Glm5NextDecoderLayer(nn.Module):
      ):
          hidden_states_orig = hidden_states
  
@@ -11483,7 +11490,7 @@ index f5253cfdf0..42c4d90a77 100644
 +        # MLA preparation stores Python-side latent inputs. Recreate that
 +        # state together with attention on each breakable-graph replay.
 +        if not self.is_linear_attn and is_in_breakable_cuda_graph():
-+            hidden_states, residual = _bcg_eager_mla_attention_block(
++            hidden_states, residual, _mhc_aux = _bcg_eager_mla_attention_block(
 +                self.layer_communicator,
 +                self.self_attn,
 +                hidden_states,
@@ -11520,7 +11527,7 @@ index f5253cfdf0..42c4d90a77 100644
          if isinstance(hidden_states, tuple):
              hidden_states, topk_indices = hidden_states
          else:
-@@ -980,7 +1128,7 @@ class Glm5NextModel(nn.Module):
+@@ -980,7 +1135,7 @@ class Glm5NextModel(nn.Module):
          else:
              assert pp_proxy_tensors is not None
              hidden_states = pp_proxy_tensors["hidden_states"]
@@ -11529,7 +11536,7 @@ index f5253cfdf0..42c4d90a77 100644
          device = hidden_states.device
          zero_allocator = BumpAllocator(
              buffer_size=total_num_layers * 2 * (2 if forward_batch.can_run_tbo else 1),
-@@ -1058,12 +1206,10 @@ class Glm5NextModel(nn.Module):
+@@ -1058,12 +1213,10 @@ class Glm5NextModel(nn.Module):
              )
  
          if not self.pp_group.is_last_rank:
@@ -11546,7 +11553,7 @@ index f5253cfdf0..42c4d90a77 100644
          else:
              if not forward_batch.forward_mode.is_idle():
                  if residual is None:
-@@ -1088,6 +1234,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1088,6 +1241,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
              "g_a_proj",
          ],
          "fused_fg_b_proj": ["f_b_proj", "g_b_proj"],
@@ -11554,7 +11561,7 @@ index f5253cfdf0..42c4d90a77 100644
          "qkv_proj": ["q_proj", "k_proj", "v_proj"],
          "qkv_conv1d": ["q_conv1d", "k_conv1d", "v_conv1d"],
          "gate_up_proj": ["gate_proj", "up_proj"],
-@@ -1174,6 +1321,205 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1174,6 +1328,205 @@ class Glm5NextForConditionalGeneration(nn.Module):
              self.config.rope_scaling or {}
          )
  
@@ -11760,7 +11767,7 @@ index f5253cfdf0..42c4d90a77 100644
      def get_input_embeddings(self) -> nn.Embedding:
          if self.model is None:
              raise AttributeError(
-@@ -1253,6 +1599,34 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1253,6 +1606,34 @@ class Glm5NextForConditionalGeneration(nn.Module):
          # Capturing before layer k + 1 gives the completed output of layer k.
          self.model.layers_to_capture = [val + 1 for val in layer_ids]
  
@@ -11795,7 +11802,7 @@ index f5253cfdf0..42c4d90a77 100644
      def pad_input_ids(self, input_ids: List[int], mm_inputs: MultimodalInputs):
          pattern = MultiModalityDataPaddingPatternMultimodalTokens()
          return pattern.pad_input_tokens(input_ids, mm_inputs)
-@@ -1370,6 +1744,9 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1370,6 +1751,9 @@ class Glm5NextForConditionalGeneration(nn.Module):
              (".fused_qkvbfg_a_proj", ".g_a_proj", 5),
              (".fused_fg_b_proj", ".f_b_proj", 0),
              (".fused_fg_b_proj", ".g_b_proj", 1),
@@ -11805,7 +11812,7 @@ index f5253cfdf0..42c4d90a77 100644
              (".qkv_proj", ".q_proj", "q"),
              (".qkv_proj", ".k_proj", "k"),
              (".qkv_proj", ".v_proj", "v"),
-@@ -1471,6 +1848,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1471,6 +1855,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
                      in {
                          ".fused_qkvbfg_a_proj",
                          ".fused_fg_b_proj",
@@ -13920,6 +13927,85 @@ index d669c95709..c78e1a81cb 100644
      def test_eager_on_graph_disabled(self):
          """@eager_on_graph(enable=False) should be a no-op passthrough."""
  
+diff --git a/test/registered/cuda_graph/breakable/test_glm5_next_mhc_bridge.py b/test/registered/cuda_graph/breakable/test_glm5_next_mhc_bridge.py
+new file mode 100644
+index 0000000000..07137488f6
+--- /dev/null
++++ b/test/registered/cuda_graph/breakable/test_glm5_next_mhc_bridge.py
+@@ -0,0 +1,73 @@
++"""MHC side outputs must remain live across segmented graph replays."""
++
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import torch
++
++from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph import (
++    BreakableCUDAGraph,
++    BreakableCUDAGraphCapture,
++)
++from sglang.srt.models.glm5_next import _bcg_eager_mla_attention_block
++from sglang.test.ci.ci_register import register_cuda_ci
++
++register_cuda_ci(est_time=10, stage="base-b", runner_config="1-gpu-small")
++
++
++def test_mhc_bridge_alternating_shapes_and_changed_inputs():
++    context = SimpleNamespace(forward_batch=SimpleNamespace(value=2))
++    mhc = SimpleNamespace(h_res=None, h_post=None)
++
++    def prepare(hidden, residual, batch):
++        mhc.h_res = hidden * batch.value
++        mhc.h_post = hidden + batch.value
++        return hidden + 1, residual
++
++    communicator = SimpleNamespace(prepare_attn=prepare, mhc=mhc)
++    stream = torch.cuda.Stream()
++    graphs = []
++    with patch(
++        "sglang.srt.models.glm5_next.get_tc_piecewise_forward_context",
++        return_value=context,
++    ):
++        for n in (512, 256, 128, 64, 32):
++            x = torch.ones(n, device="cuda")
++            y = torch.empty_like(x)
++            stream.wait_stream(torch.cuda.current_stream())
++            graph = BreakableCUDAGraph()
++            with BreakableCUDAGraphCapture(
++                graph, stream=stream, pool=torch.cuda.graph_pool_handle()
++            ):
++                out = _bcg_eager_mla_attention_block(
++                    communicator,
++                    lambda **kwargs: kwargs["hidden_states"] * 2,
++                    x,
++                    None,
++                    None,
++                    context.forward_batch,
++                    None,
++                    None,
++                    None,
++                )
++                # Like captured prepare_mlp, consume the side outputs through
++                # MHC's Python state at capture time, then drop that state.
++                y.copy_(out[0] + mhc.h_res * mhc.h_post)
++                mhc.h_res = mhc.h_post = None
++            graphs.append((graph, x, y))
++        torch.cuda.current_stream().wait_stream(stream)
++        for value in (7, 3, 11):
++            context.forward_batch = SimpleNamespace(value=value)
++            for graph, x, y in graphs + list(reversed(graphs)):
++                x.fill_(value + x.numel() / 32)
++                graph.replay()
++                expected = (x + 1) * 2 + (x * value) * (x + value)
++                torch.testing.assert_close(y, expected, rtol=0, atol=0)
++
++
++if __name__ == "__main__":
++    import sys
++
++    import pytest
++
++    sys.exit(pytest.main([__file__, "-v"]))
 diff --git a/test/registered/dcp/test_dcp_layout_unit.py b/test/registered/dcp/test_dcp_layout_unit.py
 index a98ad8325f..4f0108d918 100644
 --- a/test/registered/dcp/test_dcp_layout_unit.py
@@ -22531,14 +22617,16 @@ index b9bdba6f07..f4a87e5459 100644
  if __name__ == "__main__":
 diff --git a/test/registered/unit/models/test_glm5_next_bcg_bridge.py b/test/registered/unit/models/test_glm5_next_bcg_bridge.py
 new file mode 100644
-index 0000000000..e667d15d16
+index 0000000000..58009439c0
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_bcg_bridge.py
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,108 @@
 +"""The eager MLA bridge must use live replay metadata and latent inputs."""
 +
 +from types import SimpleNamespace
 +from unittest.mock import patch
++
++import torch
 +
 +from sglang.srt.models.glm5_next import _bcg_eager_mla_attention_block
 +from sglang.test.ci.ci_register import register_cpu_ci
@@ -22571,7 +22659,76 @@ index 0000000000..e667d15d16
 +            result = _bcg_eager_mla_attention_block(
 +                communicator, attend, 1, None, None, captured, None, None, None
 +            )
-+            assert result == ((value + 1) * 2, None)
++            assert result == ((value + 1) * 2, None, None)
++
++
++def test_mla_bridge_copies_mhc_side_outputs_into_captured_storage():
++    """The captured consumer reads original tensor addresses, not Python fields."""
++    import importlib
++
++    bcg = importlib.import_module(
++        "sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph.breakable_cuda_graph"
++    )
++    context = SimpleNamespace(forward_batch=SimpleNamespace(value=2))
++    mhc = SimpleNamespace(h_res=None, h_post=None)
++
++    def prepare(hidden, residual, batch):
++        # Deliberately allocate new side outputs on every eager invocation.
++        mhc.h_res = hidden * batch.value
++        mhc.h_post = hidden + batch.value
++        return hidden + 1, residual
++
++    communicator = SimpleNamespace(prepare_attn=prepare, mhc=mhc)
++    graph = SimpleNamespace(_break_fns=[])
++    capture = SimpleNamespace(
++        cuda_graph=graph,
++        _end_current_segment=lambda: None,
++        _begin_new_segment=lambda: None,
++        _barrier_fn=None,
++    )
++    hidden = torch.tensor([1.0, 3.0])
++    with patch(
++        "sglang.srt.models.glm5_next.get_tc_piecewise_forward_context",
++        return_value=context,
++    ):
++        token = bcg._current_capture_var.set(capture)
++        try:
++            captured_output = _bcg_eager_mla_attention_block(
++                communicator,
++                lambda **kwargs: kwargs["hidden_states"] * 2,
++                hidden,
++                None,
++                None,
++                context.forward_batch,
++                None,
++                None,
++                None,
++            )
++            captured_res, captured_post = mhc.h_res, mhc.h_post
++            consumer_addresses = (captured_res.data_ptr(), captured_post.data_ptr())
++        finally:
++            bcg._current_capture_var.reset(token)
++        for value in (7, 3, 11):
++            context.forward_batch = SimpleNamespace(value=value)
++            hidden.add_(1)
++            graph._break_fns[0]()
++            # A graph consumer still reads these original objects after replay.
++            assert consumer_addresses == (
++                captured_res.data_ptr(),
++                captured_post.data_ptr(),
++            )
++            assert mhc.h_res.data_ptr() != captured_res.data_ptr()
++            torch.testing.assert_close(captured_res, hidden * value)
++            torch.testing.assert_close(captured_post, hidden + value)
++            torch.testing.assert_close(captured_output[0], (hidden + 1) * 2)
++
++
++if __name__ == "__main__":
++    import sys
++
++    import pytest
++
++    sys.exit(pytest.main([__file__, "-v"]))
 diff --git a/test/registered/unit/models/test_glm5_next_dflash_capture.py b/test/registered/unit/models/test_glm5_next_dflash_capture.py
 index 4d896b4e9b..ed2873ec87 100644
 --- a/test/registered/unit/models/test_glm5_next_dflash_capture.py
