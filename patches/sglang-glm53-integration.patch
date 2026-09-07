@@ -3613,7 +3613,7 @@ index 9975619bc8..49932936a3 100644
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 906d4aa22d..dc4f02e0dc 100644
+index 906d4aa22d..158c44c331 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 @@ -28,8 +28,13 @@ _is_hip = is_hip()
@@ -3625,7 +3625,7 @@ index 906d4aa22d..dc4f02e0dc 100644
  )
  
 +_GLM53_NOPE_FLASHINFER_TOPK = 2176
-+_GLM53_NOPE_FLASHINFER_KV_DIMS = (528, 656)
++_GLM53_NOPE_FLASHINFER_KV_DIM = 656
 +
  # Page layout constants for DSv4-Flash (MODEL1):
  #   nope_dim = 448, rope_dim = 64, quantize_block_size = 64
@@ -3680,8 +3680,8 @@ index 906d4aa22d..dc4f02e0dc 100644
 +    GLM-5.3 emits 2,051 candidates (2,048 selected plus its three-token KPool
 +    tail).  FlashInfer's native NoPE kernels use the 2,176-wide physical
 +    contract, so the unused right edge is padded with ``-1`` sentinels.  KV
-+    rows contain 512 FP8 latent values and four inline FP32 scales. Both
-+    compact 528-byte rows and the padded 656-byte fp8_ds_mla ABI are supported.
++    rows follow the 656-byte fp8_ds_mla ABI: 512 FP8 latent values, four
++    inline FP32 scales, then reserved padding the kernels never read.
 +    """
 +    if skip_softmax_threshold_scale_factor is not None:
 +        raise ValueError(
@@ -3696,7 +3696,7 @@ index 906d4aa22d..dc4f02e0dc 100644
 +        q.shape[-1] == 512
 +        and kv_lora_rank == 512
 +        and qk_rope_head_dim == 0
-+        and kv_cache_dim in _GLM53_NOPE_FLASHINFER_KV_DIMS
++        and kv_cache_dim == _GLM53_NOPE_FLASHINFER_KV_DIM
 +    )
 +    if is_glm53_nope:
 +        topk = indices.shape[-1]
@@ -6979,7 +6979,7 @@ index 673e1cb3f0..398eb99b96 100644
      @property
      def data_type(self):
 diff --git a/python/sglang/srt/layers/attention/linear/kda_backend.py b/python/sglang/srt/layers/attention/linear/kda_backend.py
-index 44acc6600a..dc3302b4fb 100644
+index 44acc6600a..d5176d5819 100644
 --- a/python/sglang/srt/layers/attention/linear/kda_backend.py
 +++ b/python/sglang/srt/layers/attention/linear/kda_backend.py
 @@ -19,7 +19,7 @@ from sglang.srt.layers.attention.linear.utils import (
@@ -7002,23 +7002,7 @@ index 44acc6600a..dc3302b4fb 100644
      # KDA gets graph padding explicitly and never uses ReplaySSM's host-seqlen
      # force-flush path.
      needs_cpu_seq_lens: bool = False
-@@ -817,7 +821,14 @@ class KDAAttnBackend(MambaAttnBackendBase):
-         has_initial_state = forward_batch.extend_prefix_lens > 0
- 
-         physical_num_tokens = mixed_qkv.shape[0]
--        logical_num_tokens = int(query_start_loc[-1])
-+        # These host lengths also build query_start_loc. Reading its final
-+        # device element synchronizes every KDA layer with the GPU. Keep the
-+        # fallback for batches whose extend metadata exists only on device.
-+        logical_num_tokens = (
-+            sum(forward_batch.extend_seq_lens_cpu)
-+            if forward_batch.extend_seq_lens_cpu is not None
-+            else int(query_start_loc[-1])
-+        )
-         if logical_num_tokens < physical_num_tokens:
-             mixed_qkv = mixed_qkv[:logical_num_tokens]
-             a = a[:, :logical_num_tokens]
-@@ -833,20 +844,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -833,20 +837,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  self.forward_metadata.conv_states_mask_indices
              ] = mixed_qkv[self.forward_metadata.track_conv_indices]
  
@@ -7054,7 +7038,7 @@ index 44acc6600a..dc3302b4fb 100644
  
          q = q.unflatten(-1, (-1, layer.head_q_dim)).unsqueeze(0)  # n (h d) -> 1 n h d
          k = k.unflatten(-1, (-1, layer.head_k_dim)).unsqueeze(0)  # n (h d) -> 1 n h d
-@@ -857,31 +869,32 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -857,31 +862,32 @@ class KDAAttnBackend(MambaAttnBackendBase):
              a = a.unflatten(-1, (-1, layer.head_k_dim))
  
          track_ssm = self.forward_metadata.has_mamba_track_mask
@@ -7112,7 +7096,7 @@ index 44acc6600a..dc3302b4fb 100644
          if track_ssm:
              # Snapshot the SSM state at the last track-aligned chunk boundary
              # from the kernel's per-chunk states (h) / final states into the
-@@ -950,6 +963,27 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -950,6 +956,27 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  "KDA target_verify requires a speculative mamba cache "
                  "(MambaPool.SpeculativeState); none found."
              )
@@ -7140,7 +7124,7 @@ index 44acc6600a..dc3302b4fb 100644
          intermediate_conv_window_cache = mamba_cache_params.intermediate_conv_window[0]
          intermediate_state_indices = self.verify_intermediate_state_indices
  
-@@ -1009,6 +1043,9 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1009,6 +1036,9 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  retrieve_next_sibling=retrieve_next_sibling,
                  retrieve_parent_token=retrieve_parent_token,
                  replayssm_rawv=replayssm_rawv,
@@ -7150,7 +7134,7 @@ index 44acc6600a..dc3302b4fb 100644
              ):
                  return self._fused_chain_verify_fn(
                      mixed_qkv=mixed_qkv,
-@@ -1039,6 +1076,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1039,6 +1069,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
                      head_k_dim=layer.head_k_dim,
                      head_v_dim=layer.head_v_dim,
                      lower_bound=layer.lower_bound,
@@ -7158,7 +7142,7 @@ index 44acc6600a..dc3302b4fb 100644
                  )
              dense_token_indices = None
              mixed_qkv_dense = mixed_qkv.view(batch_size, draft_token_num, -1)
-@@ -1097,22 +1135,6 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1097,22 +1128,6 @@ class KDAAttnBackend(MambaAttnBackendBase):
          k = k.unflatten(-1, (-1, layer.head_k_dim)).unsqueeze(0)
          v = v.unflatten(-1, (-1, layer.head_v_dim)).unsqueeze(0)
  
@@ -7181,7 +7165,7 @@ index 44acc6600a..dc3302b4fb 100644
          core_attn_out = self.kernel_dispatcher.target_verify(
              A_log=layer.A_log,
              dt_bias=layer.dt_bias,
-@@ -1172,10 +1194,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1172,10 +1187,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
          retrieve_next_sibling: Optional[torch.Tensor],
          retrieve_parent_token: Optional[torch.Tensor],
          replayssm_rawv: Optional[torch.Tensor],
@@ -7196,7 +7180,7 @@ index 44acc6600a..dc3302b4fb 100644
              value is not None
              for value in (
                  retrieve_next_token,
-@@ -1184,6 +1209,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1184,6 +1202,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              )
          ):
              return False
@@ -7204,7 +7188,7 @@ index 44acc6600a..dc3302b4fb 100644
          if draft_token_num < 3 or mixed_qkv.shape[0] % draft_token_num != 0:
              return False
          if (
-@@ -1235,7 +1261,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1235,7 +1254,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
              layer.A_log.dtype != torch.float32
              or layer.dt_bias.dtype != torch.float32
              or ssm_states.dtype != torch.float32
@@ -7227,7 +7211,7 @@ index 44acc6600a..dc3302b4fb 100644
              or intermediate_state_cache.dtype != torch.float32
          ):
              return False
-@@ -1245,7 +1285,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1245,7 +1278,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              or b.stride(-1) != 1
              or not conv_states.is_contiguous()
              or not ssm_states.is_contiguous()
@@ -7236,7 +7220,7 @@ index 44acc6600a..dc3302b4fb 100644
          ):
              return False
          if (
-@@ -1263,10 +1303,15 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1263,10 +1296,15 @@ class KDAAttnBackend(MambaAttnBackendBase):
              or ssm_states.ndim != 4
              or tuple(ssm_states.shape[-3:])
              != (layer.num_v_heads, layer.head_v_dim, layer.head_k_dim)
@@ -7256,7 +7240,7 @@ index 44acc6600a..dc3302b4fb 100644
          ):
              return False
          if (
-@@ -1286,15 +1331,76 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1286,15 +1324,76 @@ class KDAAttnBackend(MambaAttnBackendBase):
              b,
              conv_states,
              ssm_states,
@@ -9420,7 +9404,7 @@ index 2d9e5ad778..9a08cfad5a 100644
  
  
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index d3c615a03b..00c4410328 100644
+index d3c615a03b..b5d9cce5ed 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,7 +12,6 @@ import torch
@@ -9553,12 +9537,14 @@ index d3c615a03b..00c4410328 100644
              replay_req_slots = (
                  get_schedule().max_running_requests // self.ps.attn_dp_size + 1
              )
-@@ -2483,6 +2505,24 @@ def calculate_mla_kv_cache_dim(
+@@ -2483,6 +2505,23 @@ def calculate_mla_kv_cache_dim(
      if uses_trtllm_kv_layout:
          return kv_cache_dim
  
-+    # NoPE needs 512 FP8 values and four FP32 scales. Use compact rows when
-+    # FlashInfer advertises them; older kernels require 128 padding bytes.
++    # FlashInfer's native GLM-5.3 NoPE SM120 kernels follow the fp8_ds_mla
++    # cache ABI: 656 bytes per token. SGLang's scaled FP8 writer fills the
++    # first 528 bytes (512 FP8 latent values plus four inline FP32 scales);
++    # the trailing 128 bytes are reserved padding the kernels never read.
 +    uses_flashinfer_sparse_mla = (
 +        get_exec().kernel.dsa_prefill_backend == "flashinfer_sparse_mla"
 +        or get_exec().kernel.dsa_decode_backend == "flashinfer_sparse_mla"
@@ -9570,15 +9556,12 @@ index d3c615a03b..00c4410328 100644
 +        and kv_lora_rank == 512
 +        and uses_flashinfer_sparse_mla
 +    ):
-+        from flashinfer.mla import supported_sparse_mla_sm120_configs
-+
-+        config = supported_sparse_mla_sm120_configs()["glm53_nope"]
-+        return getattr(config, "compact_bytes_per_token", None) or 656
++        return 656
 +
      # On HIP, TileLang and AITER DSA kernels consume the raw MLA KV layout:
      # nope(512 fp8) + rope(64 fp8), without extra per-block scales.
      if _is_hip and (
-@@ -2491,6 +2531,16 @@ def calculate_mla_kv_cache_dim(
+@@ -2491,6 +2530,16 @@ def calculate_mla_kv_cache_dim(
      ):
          return kv_cache_dim
  
@@ -23199,7 +23182,7 @@ index fe062eb256..b93e74f7ab 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index 1b72d94403..9efd65e4de 100644
+index 1b72d94403..f3418cff92 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
 @@ -1,6 +1,5 @@
@@ -23350,35 +23333,37 @@ index 1b72d94403..9efd65e4de 100644
  
      def test_reports_unsupported_configuration(self):
          with self.assertRaises(ValueError) as error:
-@@ -119,5 +113,32 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -119,5 +113,34 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          self.assertIn("kv_cache_dtype=torch.float8_e4m3fn", message)
  
  
 +class TestFlashInferSparseMLAKVLayout(unittest.TestCase):
-+    def test_glm53_nope_layout_follows_kernel_capability(self):
++    def test_glm53_nope_uses_native_528_byte_row(self):
 +        model_config = SimpleNamespace(
-+            hf_config=SimpleNamespace(), kv_lora_rank=512, qk_rope_head_dim=0,
++            hf_config=SimpleNamespace(),
++            kv_lora_rank=512,
++            qk_rope_head_dim=0,
 +        )
-+        execution = SimpleNamespace(kernel=SimpleNamespace(
-+            dsa_prefill_backend="flashinfer_sparse_mla",
-+            dsa_decode_backend="flashinfer_sparse_mla",
-+        ))
-+        for capability, expected in [
-+            (SimpleNamespace(), 656),
-+            (SimpleNamespace(compact_bytes_per_token=None), 656),
-+            (SimpleNamespace(compact_bytes_per_token=528), 528),
-+        ]:
-+            with (
-+                self.subTest(expected=expected),
-+                patch.object(kv_cache_configurator, "is_deepseek_dsa", return_value=True),
-+                patch.object(kv_cache_configurator, "get_exec", return_value=execution),
-+                patch.object(kv_cache_configurator, "get_disagg", return_value=SimpleNamespace(disaggregation_mode="null")),
-+                patch.object(kv_cache_configurator, "_is_hip", False),
-+                patch("flashinfer.mla.supported_sparse_mla_sm120_configs", return_value={"glm53_nope": capability}),
-+            ):
-+                self.assertEqual(kv_cache_configurator.calculate_mla_kv_cache_dim(
-+                    model_config=model_config, kv_cache_dtype=torch.float8_e4m3fn,
-+                ), expected)
++        execution = SimpleNamespace(
++            kernel=SimpleNamespace(
++                dsa_prefill_backend="flashinfer_sparse_mla",
++                dsa_decode_backend="flashinfer_sparse_mla",
++            )
++        )
++        with (
++            patch.object(
++                kv_cache_configurator, "is_deepseek_dsa", return_value=True
++            ),
++            patch.object(kv_cache_configurator, "get_exec", return_value=execution),
++            patch.object(kv_cache_configurator, "_is_hip", False),
++        ):
++            self.assertEqual(
++                kv_cache_configurator.calculate_mla_kv_cache_dim(
++                    model_config=model_config,
++                    kv_cache_dtype=torch.float8_e4m3fn,
++                ),
++                528,
++            )
 +
 +
  if __name__ == "__main__":

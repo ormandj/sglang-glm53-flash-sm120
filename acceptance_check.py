@@ -23,7 +23,7 @@ from sglang.srt.mem_cache.allocator.paged import PagedTokenToKVPoolAllocator
 from sglang.srt.mem_cache import unified_radix_cache
 from sglang.srt.mem_cache.unified_cache.components import full_component
 from sglang.srt.utils import async_probe
-from flashinfer.mla import SparseMLASm120Wrapper, supported_sparse_mla_sm120_configs
+from flashinfer.mla import SparseMLASm120Wrapper
 from flashinfer.mla._sparse_mla_sm120 import _bytes_per_token_for_model_type, _MODEL_TYPE_GLM53_NOPE
 from flashinfer.fused_moe.cute_dsl.b12x_moe import b12x_fused_moe
 from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights
@@ -80,14 +80,11 @@ assert 'GLM' not in inspect.getsource(chunk_intra._get_kda_intra_static_config)
 assert 'precompile_kda_prefill_kernels' in inspect.getsource(Glm5NextForConditionalGeneration.precompile_kernels_after_loading)
 assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCHS
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176
-assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIMS == (528, 656)
-glm_kv_config = supported_sparse_mla_sm120_configs()["glm53_nope"]
-assert glm_kv_config.bytes_per_token == 656
-assert glm_kv_config.compact_bytes_per_token == 528
+assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIM == 656
 assert 'q.shape[-1] == 512' in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward)
 assert 'qk_nope_head_dim == 512' not in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward)
 assert 'if uses_flashinfer_sparse_mla and is_glm_sm12_fp8:' in inspect.getsource(flash_mla_sm120._validate_flashinfer_sparse_mla_backend)
-assert 'compact_bytes_per_token' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim)
+assert 'return 656' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim)
 alloc_extend_source=inspect.getsource(PagedTokenToKVPoolAllocator.alloc_extend)
 assert 'alloc_extend last_loc' in alloc_extend_source
 assert 'alloc_extend free_pages' in alloc_extend_source
