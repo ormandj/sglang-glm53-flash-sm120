@@ -6,8 +6,8 @@
 # official bases plus checksummed project patches. No vendor-byte patches are
 # carried forward.
 ARG GLM53_RELEASE_VERSION=0.4.0
-ARG GLM53_RELEASE_CANDIDATE=7
-ARG GLM53_CACHE_SCHEMA=v76
+ARG GLM53_RELEASE_CANDIDATE=8
+ARG GLM53_CACHE_SCHEMA=v77
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:3c084d27b90118351c6b586615a586fc9f2541ba8aa1d18c6a33d643414d0165
 ARG GLM53_SGLANG_BASE_TAG=glm-5.3-flash
 ARG GLM53_SGLANG_BASE_INDEX=sha256:aa9210e3507fef64ded0c78afc571d9412b53417c6e271721a095fbde754ad40
@@ -15,8 +15,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:3c084d27b90118351c6b586615a586fc9f25
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=dcebe8c4733a5cb802fb679e0c8fbb886e2801b0
 ARG GLM53_SGLANG_UPSTREAM_TREE=3974fbf5bc597fa961ac6f458dfa22a1040aac0b
-ARG GLM53_SGLANG_TREE=1ff6bface15ca429a4056e32414b1a36f0c60d15
-ARG GLM53_SGLANG_PATCH_SHA256=98bb5af83e5bb7f90f0b52e6fa0d2a701dab7c61cf14babdbd03f239c01915f7
+ARG GLM53_SGLANG_TREE=ce5b625241f16c0199535659171829177b29598d
+ARG GLM53_SGLANG_PATCH_SHA256=23681c9372744a07c8f95221e3e8a96aadf0457706eb46e82674f37464fe58a0
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.6.18
 ARG GLM53_FLASHINFER_HEAD=91bda04c66f7cb851e1ab3b78b9fecea644b9844
@@ -71,7 +71,7 @@ ENV SGLANG_SOURCE_ROOT=/opt/sglang-source \
     SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1 \
     SGLANG_LM_HEAD_FP8=1
 
-# Project-owned integration deltas remain in this internal build repository.
+# Project integration patches and their resulting source trees are verified below.
 # Each patch is applied to an exact official-upstream tree and the resulting
 # complete source tree is verified before it can shadow the vendor tree.
 COPY patches/sglang-glm53-integration.patch /tmp/sglang-glm53-integration.patch
@@ -198,7 +198,7 @@ LABEL org.opencontainers.image.title="sglang-glm53-flash-sm120" \
       ai.hardware.target-architecture="sm120" \
       ai.model.repository=${GLM53_MODEL_REPOSITORY} \
       ai.model.revision=${GLM53_MODEL_REVISION} \
-      ai.model.quantization="planned ModelOpt E2M1 weights/E4M3 K32 scales, W4A16" \
+      ai.model.quantization="ModelOpt E2M1 weights/E4M3 K32 scales, W4A16" \
       ai.sglang.repository=${GLM53_SGLANG_REPOSITORY} \
       ai.sglang.head=${GLM53_SGLANG_HEAD} \
       ai.sglang.tree=${GLM53_SGLANG_TREE} \

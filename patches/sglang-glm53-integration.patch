@@ -2130,10 +2130,10 @@ index 0000000000..52c06da1a0
 +
 +}  // namespace sglang::device::legacy_radix_topk
 diff --git a/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py b/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py
-index 58dcd749a2..f3ba419989 100644
+index 58dcd749a2..c46f7b36ab 100644
 --- a/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py
 +++ b/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py
-@@ -71,6 +71,24 @@ def fast_round_scale(amax, fp8_max_inv):
+@@ -71,6 +71,23 @@ def fast_round_scale(amax, fp8_max_inv):
      return fast_pow2(fast_log2_ceil(amax * fp8_max_inv))
  
  
@@ -2148,21 +2148,21 @@ index 58dcd749a2..f3ba419989 100644
 +def _cuda_sparse_attention_num_stages() -> int:
 +    """Fit the v1 BF16 sparse kernel to the device's dynamic-SMEM limit."""
 +    props = torch.cuda.get_device_properties(torch.cuda.current_device())
-+    # The default two-stage v1 schedule needs 169,984 B for GLM's NoPE
-+    # geometry. SM120/SM121 expose about 99 KiB per block; one stage needs
-+    # about 86 KiB and is the independently validated consumer-Blackwell
-+    # schedule. Datacenter Blackwell/Hopper retain the two-stage default.
++    # Consumer GPUs need one stage and a smaller index tile (selected by the
++    # caller). One stage with the default 64-entry tile can still exceed
++    # their roughly 99 KiB per-block limit after compiler lowering.
 +    return 1 if props.shared_memory_per_block_optin < 120 * 1024 else 2
 +
 +
  @lru_cache(maxsize=8)
  def _pick_inner_iter(seq: int, ni: int, cu: int, block_per_cu: int) -> int:
      """
-@@ -271,6 +289,7 @@ def sparse_attention_fwd_kernel_v1(
+@@ -271,6 +288,8 @@ def sparse_attention_fwd_kernel_v1(
      block_I=64,
      num_stages=2,
      threads=256,
 +    return_lse=False,
++    max_heads_per_block=64,
  ):
      assert dim == tilelang.math.next_power_of_2(dim) or dim % 64 == 0, (
          f"dim={dim} must be a power of 2 or a multiple of 64"
@@ -2174,7 +2174,24 @@ index 58dcd749a2..f3ba419989 100644
      indices_shape = [batch, seq_len, kv_group, topk]
      indices_dtype = "int32"
      dtype = "bfloat16"
-@@ -323,6 +343,7 @@ def sparse_attention_fwd_kernel_v1(
+@@ -310,19 +330,20 @@ def sparse_attention_fwd_kernel_v1(
+     D = dim
+     D_tail = tail_dim
+ 
+-    if head_kv > 64:
+-        assert head_kv % 64 == 0, "head_kv should be a multiple of 64"
+-        REPLICATE_H = head_kv // 64
++    if head_kv > max_heads_per_block:
++        assert head_kv % max_heads_per_block == 0
++        REPLICATE_H = head_kv // max_heads_per_block
+     else:
+         REPLICATE_H = 1
+ 
+-    H_per_block = padded_H if REPLICATE_H == 1 else 64
++    H_per_block = padded_H if REPLICATE_H == 1 else max_heads_per_block
+ 
+     @T.prim_func
+     def main(
          Q: T.Tensor(q_shape, dtype),  # type: ignore
          KV: T.Tensor(kv_shape, dtype),  # type: ignore
          Indices: T.Tensor(indices_shape, indices_dtype),  # type: ignore
@@ -2182,7 +2199,18 @@ index 58dcd749a2..f3ba419989 100644
          Output: T.Tensor(o_shape, dtype),  # type: ignore
      ):
          with T.Kernel(seq_len * REPLICATE_H, batch, kv_group, threads=threads) as (
-@@ -422,6 +443,8 @@ def sparse_attention_fwd_kernel_v1(
+@@ -357,7 +378,9 @@ def sparse_attention_fwd_kernel_v1(
+             q_i = s_i
+             max_kv_i = q_i
+ 
+-            H0 = g_i * padded_H + (0 if REPLICATE_H == 1 else (bx % REPLICATE_H) * 64)
++            H0 = g_i * padded_H + (
++                0 if REPLICATE_H == 1 else (bx % REPLICATE_H) * max_heads_per_block
++            )
+             H1 = H0 + H_per_block
+ 
+             T.copy(Q[b_i, s_i, H0:H1, :D], Q_shared)
+@@ -422,6 +445,8 @@ def sparse_attention_fwd_kernel_v1(
                  acc_o[h_i, d_i] /= sumexp[h_i]
              for h_i in T.Parallel(H_per_block):
                  sumexp[h_i] = T.log2(sumexp[h_i]) + m_i[h_i] * sm_scale
@@ -2191,7 +2219,7 @@ index 58dcd749a2..f3ba419989 100644
  
              T.copy(acc_o, O_shared)
              T.copy(acc_o, Output[b_i, s_i, H0:H1, :])
-@@ -453,6 +476,7 @@ def sparse_attention_fwd_kernel_v2(
+@@ -453,6 +478,7 @@ def sparse_attention_fwd_kernel_v2(
      kv_group: int = 1,
      sm_scale: Optional[float] = None,
      block_I: int = 64,
@@ -2199,7 +2227,7 @@ index 58dcd749a2..f3ba419989 100644
  ):
      assert dim == tilelang.math.next_power_of_2(dim), (
          f"haven't check padding correctness yet, dim={dim}"
-@@ -476,6 +500,7 @@ def sparse_attention_fwd_kernel_v2(
+@@ -476,6 +502,7 @@ def sparse_attention_fwd_kernel_v2(
      q_shape = [batch, qo_len, num_heads, dim + tail_dim]
      kv_shape = [batch, num_pages, kv_group, dim + tail_dim]
      o_shape = [batch, qo_len, num_heads, dim]
@@ -2207,7 +2235,7 @@ index 58dcd749a2..f3ba419989 100644
      indices_shape = [batch, qo_len, kv_group, topk]
  
      indices_dtype = "int32"
-@@ -504,6 +529,7 @@ def sparse_attention_fwd_kernel_v2(
+@@ -504,6 +531,7 @@ def sparse_attention_fwd_kernel_v2(
          Q: T.Tensor(q_shape, dtype),  # type: ignore
          KV: T.Tensor(kv_shape, dtype),  # type: ignore
          Indices: T.Tensor(indices_shape, indices_dtype),  # type: ignore
@@ -2215,7 +2243,7 @@ index 58dcd749a2..f3ba419989 100644
          Output: T.Tensor(o_shape, dtype),  # type: ignore
      ):
          """
-@@ -671,6 +697,8 @@ def sparse_attention_fwd_kernel_v2(
+@@ -671,6 +699,8 @@ def sparse_attention_fwd_kernel_v2(
                      acc_o_l[h_i, d_i] /= sumexp[h_i]
                  for h_i in T.Parallel(H_per_block):
                      sumexp[h_i] = T.log2(sumexp[h_i]) + m_i[h_i] * sm_scale
@@ -2224,7 +2252,7 @@ index 58dcd749a2..f3ba419989 100644
                  T.copy(acc_o_l, O_shared_l)
                  T.copy(O_shared_l, Output[b_i, s_i, H0:H1, 0 : D // 2])
              elif tx >= 128 and tx < 256:
-@@ -1086,6 +1114,7 @@ def sparse_mla_fwd_decode_partial_fp8(
+@@ -1086,6 +1116,7 @@ def sparse_mla_fwd_decode_partial_fp8(
      threads=256,
  ):
      assert d_v == 512, f"only support d_v=512"
@@ -2232,7 +2260,7 @@ index 58dcd749a2..f3ba419989 100644
      assert topk % block_I == 0, (
          "otherwise will load some index=0 thus causing wrong kv to be loaded"
      )
-@@ -1160,8 +1189,9 @@ def sparse_mla_fwd_decode_partial_fp8(
+@@ -1160,8 +1191,9 @@ def sparse_mla_fwd_decode_partial_fp8(
              kv_tile1 = T.alloc_shared([BI, group_size], fp8_dtype)
              kv_tile2 = T.alloc_shared([BI, group_size], fp8_dtype)
              kv_tile3 = T.alloc_shared([BI, group_size], fp8_dtype)
@@ -2244,7 +2272,7 @@ index 58dcd749a2..f3ba419989 100644
              s_fp8_shared = T.alloc_shared([h_per_block, BI], fp8_dtype)
              page_idx_shared = T.alloc_shared([BI], T.int32)
  
-@@ -1188,7 +1218,8 @@ def sparse_mla_fwd_decode_partial_fp8(
+@@ -1188,7 +1220,8 @@ def sparse_mla_fwd_decode_partial_fp8(
              T.fill(sumexp, 0)
              T.fill(m_i, -(2**30))
  
@@ -2254,7 +2282,7 @@ index 58dcd749a2..f3ba419989 100644
              T.copy(q_fp8[b_i, s_i, H0:H1, 0 * group_size : 1 * group_size], q_tile0)
              T.copy(q_fp8[b_i, s_i, H0:H1, 1 * group_size : 2 * group_size], q_tile1)
              T.copy(q_fp8[b_i, s_i, H0:H1, 2 * group_size : 3 * group_size], q_tile2)
-@@ -1210,9 +1241,12 @@ def sparse_mla_fwd_decode_partial_fp8(
+@@ -1210,9 +1243,12 @@ def sparse_mla_fwd_decode_partial_fp8(
                      kv_tile2[bi_i, j] = kv_fp8[b_i, page, g_i, 2 * group_size + j]
                      kv_tile3[bi_i, j] = kv_fp8[b_i, page, g_i, 3 * group_size + j]
  
@@ -2270,7 +2298,7 @@ index 58dcd749a2..f3ba419989 100644
  
                  for h_i, bi_i in T.Parallel(h_per_block, BI):
                      acc_s[h_i, bi_i] = T.if_then_else(
-@@ -1229,13 +1263,18 @@ def sparse_mla_fwd_decode_partial_fp8(
+@@ -1229,13 +1265,18 @@ def sparse_mla_fwd_decode_partial_fp8(
                  T.gemm(q_tile3, kv_tile3, acc_tile, transpose_B=True, clear_accum=True)
                  for h_i, bi_i in T.Parallel(h_per_block, BI):
                      acc_s[h_i, bi_i] += acc_tile[h_i, bi_i]
@@ -2296,7 +2324,7 @@ index 58dcd749a2..f3ba419989 100644
  
                  T.copy(m_i, m_i_prev)
                  T.reduce_max(acc_s, m_i, dim=1, clear=False)
-@@ -1328,6 +1367,7 @@ def tilelang_sparse_fwd(
+@@ -1328,6 +1369,7 @@ def tilelang_sparse_fwd(
      indices: torch.Tensor,
      sm_scale: float,
      d_v: int = 512,
@@ -2304,7 +2332,7 @@ index 58dcd749a2..f3ba419989 100644
  ) -> torch.Tensor:
      assert q.dim() == 3 and kv.dim() == 3 and indices.dim() == 3
      num_heads = q.shape[1]
-@@ -1336,12 +1376,20 @@ def tilelang_sparse_fwd(
+@@ -1336,12 +1378,20 @@ def tilelang_sparse_fwd(
      topk = indices.shape[-1]
      assert topk % 64 == 0, "topk must be padded to a multiple of 64"
  
@@ -2328,7 +2356,7 @@ index 58dcd749a2..f3ba419989 100644
                  block_I, threads, block_per_cu, cu = 64, 256, 2, 256
              else:
                  block_I, threads, block_per_cu, cu = 64, 256, 1, 304
-@@ -1393,8 +1441,21 @@ def tilelang_sparse_fwd(
+@@ -1393,8 +1443,28 @@ def tilelang_sparse_fwd(
              if tail_dim == 0
              else sparse_attention_fwd_kernel_v2
          )
@@ -2339,7 +2367,14 @@ index 58dcd749a2..f3ba419989 100644
 +            "return_lse": return_lse,
 +        }
 +        if tail_dim == 0:
-+            kernel_kwargs["num_stages"] = _cuda_sparse_attention_num_stages()
++            num_stages = _cuda_sparse_attention_num_stages()
++            kernel_kwargs["num_stages"] = num_stages
++            if num_stages == 1:
++                # Bound both query and KV tiles as well as pipeline depth.
++                # Split larger head groups into independent 32-head blocks.
++                kernel_kwargs["block_I"] = 32
++                kernel_kwargs["max_heads_per_block"] = 32
++                kernel_kwargs["threads"] = 128
 +        kernel = kernel_factory(num_heads, d_v, tail_dim, topk, **kernel_kwargs)
 +        # Caller-allocated LSE (in-place kernel arg): written only by kernels
 +        # traced with return_lse=True, but the prim_func signature always has it.
@@ -3292,23 +3327,32 @@ index 908384d9d9..ac6eec0fcc 100644
 +    )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py b/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py
-index dfb5bc0efc..5d4a0147ba 100644
+index dfb5bc0efc..959dd45da2 100644
 --- a/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py
 +++ b/python/sglang/kernels/ops/attention/fla/fused_kda_conv_recurrent_verify.py
-@@ -16,6 +16,12 @@ kernels. Requires ``T >= kernel_width - 1`` (the rolled conv state is then
+@@ -16,11 +16,16 @@ kernels. Requires ``T >= kernel_width - 1`` (the rolled conv state is then
  exactly the last ``kernel_width - 1`` input tokens, matching the reference
  kernel's store).
  
+-Numerics: deliberately bit-aligned with the unfused pair. The conv output is
+-rounded to the activation dtype (bf16) before entering the recurrence —
+-exactly what the unfused path does through its intermediate tensor — and all
+-expressions mirror the reference kernels line by line, with the same
+-num_warps so reduction order matches.
 +ReplaySSM (``cache_ring``): instead of per-step [HV, V, K] fp32 state
 +snapshots, stash each step's raw inputs (pre-l2norm k, pre-delta v, gate,
 +beta) into the per-slot rings the commit-time exact fold replays
 +(kda_replayssm_spec_decode.py) -- same CACHE_RING contract as the unfused
 +fused_sigmoid_gating_delta_rule_update, so the two paths fill identical rings.
 +
- Numerics: deliberately bit-aligned with the unfused pair. The conv output is
- rounded to the activation dtype (bf16) before entering the recurrence —
- exactly what the unfused path does through its intermediate tensor — and all
-@@ -83,6 +89,18 @@ def fused_kda_conv_gating_verify_kernel(
++Numerics: convolution and replay-ring inputs match the unfused pair bitwise.
++The conv output rounds to BF16 before entering the recurrence, as in the
++unfused path. One warp reproduces the reference reduction order; four warps
++can change FP32 recurrent state and round a BF16 output to an adjacent value.
+ """
+ 
+ from typing import Optional
+@@ -83,6 +88,18 @@ def fused_kda_conv_gating_verify_kernel(
      SAVE_INTERMEDIATE_WINDOW: tl.constexpr,
      CACHE_INTERMEDIATE_STATES: tl.constexpr,
      USE_GDC: tl.constexpr = False,
@@ -3327,7 +3371,7 @@ index dfb5bc0efc..5d4a0147ba 100644
  ):
      # PDL: overlap prologue with the tail of the producer qkv-projection GEMM;
      # every global load (conv_state_indices, mixed_qkv, weights) happens after
-@@ -289,6 +307,53 @@ def fused_kda_conv_gating_verify_kernel(
+@@ -289,6 +306,53 @@ def fused_kda_conv_gating_verify_kernel(
  
          b_beta = 1.0 / (1.0 + tl.exp(-b_b))
  
@@ -3381,7 +3425,18 @@ index dfb5bc0efc..5d4a0147ba 100644
          if USE_QK_L2NORM_IN_KERNEL:
              b_q = b_q / (tl.sqrt(tl.sum(b_q * b_q) + 1e-6))
              b_k = b_k / (tl.sqrt(tl.sum(b_k * b_k) + 1e-6))
-@@ -366,7 +431,16 @@ def fused_kda_conv_gating_verify(
+@@ -358,15 +422,25 @@ def fused_kda_conv_gating_verify(
+     softplus_beta: float = 1.0,
+     softplus_threshold: float = 20.0,
+     use_qk_l2norm_in_kernel: bool = True,
+-    # num_warps=4 is ~1.3x faster than the unfused pair in-graph; the output,
++    # num_warps=4 was measured ~1.3x faster than the unfused pair in-graph;
+     # conv_state and conv-window caches stay bit-identical to the reference.
+-    # Only the fp32 intermediate-ssm rollback cache differs: the tl.sum
++    # Output can round to an adjacent BF16 value. The fp32 intermediate-ssm
++    # rollback cache also differs: the tl.sum
+     # reduction-order delta (~1 ulp/step) compounds through the delta-rule
+     # recurrence — measured ~6e-8 at T=4 standard gate (the production MTP
      # shape), ~1.5e-5 at T=4 safe gate, ~2e-3 at T=8 safe gate. num_warps=1
      # reproduces the reference reduction order exactly (all buffers
      # bit-identical) but is ~2.4x slower in-graph — numerics debugging only.
@@ -3747,7 +3802,7 @@ index 906d4aa22d..39c5246272 100644
 -    return result.squeeze(1)
 +    return output
 diff --git a/python/sglang/kernels/ops/layernorm/mhc.py b/python/sglang/kernels/ops/layernorm/mhc.py
-index 4784ebf0db..7f86171771 100644
+index 4784ebf0db..c088b36c85 100644
 --- a/python/sglang/kernels/ops/layernorm/mhc.py
 +++ b/python/sglang/kernels/ops/layernorm/mhc.py
 @@ -18,8 +18,24 @@ from sglang.srt.environ import envs
@@ -3810,14 +3865,7 @@ index 4784ebf0db..7f86171771 100644
          mhc_pre_big_fuse_with_norm_tilelang(
              gemm_out_mul,
              gemm_out_sqrsum,
-@@ -1610,11 +1633,14 @@ def mhc_fused_post_pre(
-         dtype=torch.float32,
-         device=residual.device,
-     )
-+    retain_full_cuda_graph_owner(gemm_out_mul)
-+    retain_full_cuda_graph_owner(gemm_out_sqrsum)
-     residual_cur = torch.empty_like(residual_flat)
- 
+@@ -1615,6 +1638,7 @@ def mhc_fused_post_pre(
      if num_tokens <= fma_token_threshold:
          # Small-batch path: one TileLang launch computes hc_post, the bf16
          # residual write, GEMM partials, and the RMS square-sum partials.
@@ -3825,7 +3873,7 @@ index 4784ebf0db..7f86171771 100644
          mhc_fused_post_pre_fma_tilelang(
              comb_res_mix.view(num_tokens, hc_mult, hc_mult),
              residual_flat,
-@@ -1646,6 +1672,7 @@ def mhc_fused_post_pre(
+@@ -1646,6 +1670,7 @@ def mhc_fused_post_pre(
          if envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get():
              import deep_gemm
  
@@ -3833,7 +3881,7 @@ index 4784ebf0db..7f86171771 100644
              deep_gemm.tf32_hc_prenorm_gemm(
                  residual_cur.view(num_tokens, hc_hidden_size),
                  fn,
-@@ -1662,6 +1689,7 @@ def mhc_fused_post_pre(
+@@ -1662,6 +1687,7 @@ def mhc_fused_post_pre(
              gemm_out_sqrsum_1d = torch.empty(
                  num_tokens, dtype=torch.float32, device=residual.device
              )
@@ -3841,7 +3889,7 @@ index 4784ebf0db..7f86171771 100644
              _mhc_pre_gemm_sqrsum_dispatch()(
                  residual_cur.view(num_tokens, hc_hidden_size),
                  fn,
-@@ -1708,6 +1736,10 @@ def mhc_fused_post_pre(
+@@ -1708,6 +1734,10 @@ def mhc_fused_post_pre(
          )
          if not norm_weight_bf.is_contiguous():
              norm_weight_bf = norm_weight_bf.contiguous()
@@ -9585,7 +9633,7 @@ index d3c615a03b..00c4410328 100644
      rope_storage_dtype = DSATokenToKVPool.rope_storage_dtype
      # Calculate override_kv_cache_dim for FP8 storage in backends that use scaled KV layout
 diff --git a/python/sglang/srt/mem_cache/mamba_radix_cache.py b/python/sglang/srt/mem_cache/mamba_radix_cache.py
-index e98bdec52d..4f2ff54c26 100644
+index e98bdec52d..e395387c80 100644
 --- a/python/sglang/srt/mem_cache/mamba_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/mamba_radix_cache.py
 @@ -1002,6 +1002,29 @@ class MambaRadixCache(BasePrefixCache):
@@ -9618,34 +9666,29 @@ index e98bdec52d..4f2ff54c26 100644
  
      def evictable_size(self) -> Tuple[int, int]:
          # Note: use full_evictable_size() and mamba_evictable_size() instead.
-@@ -1225,6 +1248,17 @@ class MambaRadixCache(BasePrefixCache):
+@@ -1225,6 +1248,13 @@ class MambaRadixCache(BasePrefixCache):
          )
  
      def _split_node(self, key: RadixKey, child: TreeNode, split_len: int) -> TreeNode:
-+        # A split must consume at least one full page. `match()` rounds down to a
-+        # page multiple, so a caller that only splits when the child's first page
-+        # already matched can never land here with 0 -- and a 0 would build a
-+        # node whose key is empty, which `child_key()` renders as `()` for
-+        # page_size > 1 instead of raising. Such a node is unfindable in its
-+        # parent's `children` and only surfaces much later, as an eviction-time
-+        # "parent does not have child key, ()". Fail at the corruption instead.
-+        assert split_len > 0, (
-+            f"_split_node with split_len=0 would create an empty-key node, "
-+            f"{child.id=}, {len(child.key)=}, {self.page_size=}"
++        # Matching only splits at page boundaries. Reject an invalid private
++        # call before changing child keys, parent pointers, or the LRU lists:
++        # both resulting nodes must retain a complete first page for child_key.
++        assert 0 < split_len < len(child.key) and split_len % self.page_size == 0, (
++            f"_split_node requires a nonempty page-aligned split, "
++            f"{split_len=}, {child.id=}, {len(child.key)=}, {self.page_size=}"
 +        )
          # new_node -> child
          new_node = TreeNode()
          new_node.children = {key[split_len:].child_key(self.page_size): child}
-@@ -1245,7 +1279,12 @@ class MambaRadixCache(BasePrefixCache):
+@@ -1245,7 +1275,11 @@ class MambaRadixCache(BasePrefixCache):
          child.parent = new_node
          child.key = child.key[split_len:]
          child.value = child.value[split_len:].clone()
 -        new_node.parent.children[key.child_key(self.page_size)] = new_node
 +        # Register under the node's OWN key: `_delete_leaf` / `_delete_tombstone_leaf`
 +        # look the node up with `node.key.child_key(...)`, so deriving the slot from
-+        # anything else (here: the pre-split `key`) lets the two drift apart whenever
-+        # `split_len < page_size`, leaving a node that can never be removed. Equal to
-+        # `key.child_key(...)` in the healthy `split_len >= page_size` case.
++        # anything else can let the two drift apart. For the page-aligned splits
++        # accepted above, this equals the original key's first-page slot.
 +        new_node.parent.children[new_node.key.child_key(self.page_size)] = new_node
          new_node.hash_value, child.hash_value = split_node_hash_value(
              child.hash_value, split_len, self.page_size
@@ -15351,10 +15394,10 @@ index 0000000000..28caff6900
 +    torch.testing.assert_close(owner, expected_owner)
 diff --git a/test/registered/kernel/attention/test_dsa_tilelang_fp8_kv_cuda.py b/test/registered/kernel/attention/test_dsa_tilelang_fp8_kv_cuda.py
 new file mode 100644
-index 0000000000..410befc4c5
+index 0000000000..034c75f64c
 --- /dev/null
 +++ b/test/registered/kernel/attention/test_dsa_tilelang_fp8_kv_cuda.py
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,113 @@
 +"""Execution test for the CUDA raw-fp8 tilelang DSA sparse path.
 +
 +Ported from the probe validated on sm_121 (DGX Spark GB10); requires SM89+
@@ -15435,15 +15478,17 @@ index 0000000000..410befc4c5
 +
 +
 +@requires_fp8_cuda
-+def test_bf16_one_hot_exact_uses_device_smem_schedule():
++@pytest.mark.parametrize("heads", [8, 32, 64, 128])
++def test_bf16_one_hot_exact_uses_device_smem_schedule(heads):
 +    q, kv, _ = _make_inputs(2)
++    q = q[:, :1].expand(S, heads, DV).contiguous()
 +    idx_hot = torch.full((S, 1, TOPK), -1, device="cuda", dtype=torch.int32)
 +    hot = torch.randint(1, POOL, (S,), device="cuda")
 +    idx_hot[:, 0, 0] = hot.to(torch.int32)
 +    out = tilelang_kernel.tilelang_sparse_fwd(q, kv, idx_hot, SM_SCALE, d_v=DV)
 +    torch.cuda.synchronize()
-+    expect = kv.float().squeeze(1)[hot.long()].unsqueeze(1).expand(S, H, DV)
-+    rel = _rel_err(out.reshape(S, H, DV), expect)
++    expect = kv.float().squeeze(1)[hot.long()].unsqueeze(1).expand(S, heads, DV)
++    rel = _rel_err(out.reshape(S, heads, DV), expect)
 +    assert rel < 1e-3, f"bf16 one-hot rel err {rel:.6f} exceeds 1e-3"
 +
 +
@@ -17033,7 +17078,7 @@ index f284cf84d2..b3bb631fb0 100644
      import sys
  
 diff --git a/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py b/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py
-index f67fe4634d..1c957d09f1 100644
+index f67fe4634d..8ce2194298 100644
 --- a/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py
 +++ b/test/registered/kernels/test_fused_kda_conv_recurrent_verify.py
 @@ -29,6 +29,35 @@ _CASES = [
@@ -17152,8 +17197,20 @@ index f67fe4634d..1c957d09f1 100644
      )
  
      idx_vals = inp["idx_vals"]
-@@ -173,9 +220,17 @@ def _compare_case(case, num_warps):
-     assert torch.equal(o_ref_v, o_fus_v)
+@@ -170,17 +217,42 @@ def _compare_case(case, num_warps):
+ 
+     o_ref_v = o_ref.reshape(B, T, HV, V)[valid_rows]
+     o_fus_v = o_fus.reshape(B, T, HV, V)[valid_rows]
+-    assert torch.equal(o_ref_v, o_fus_v)
++    if num_warps == 1:
++        assert torch.equal(o_ref_v, o_fus_v)
++    else:
++        # Four-warps reduction order differs from the one-warp reference.
++        # Require each output to remain within one adjacent BF16 value;
++        # convolution, windows and replay-ring inputs remain bit-exact below.
++        lower = torch.nextafter(o_ref_v, torch.full_like(o_ref_v, -float("inf")))
++        upper = torch.nextafter(o_ref_v, torch.full_like(o_ref_v, float("inf")))
++        assert bool(((o_fus_v >= lower) & (o_fus_v <= upper)).all())
      assert torch.equal(conv_ref[touched_slots], conv_fus[touched_slots])
      assert torch.equal(win_ref[valid_rows], win_fus[valid_rows])
 -    torch.testing.assert_close(
@@ -17166,6 +17223,8 @@ index f67fe4634d..1c957d09f1 100644
 +        # negative-slot scribble a mismatch.
 +        for name in ("rawv", "rawk", "g", "beta"):
 +            assert torch.equal(rings_ref[name], rings_fus[name]), name
++    elif num_warps == 1:
++        assert torch.equal(ic_ref[valid_rows], ic_fus[valid_rows])
 +    else:
 +        torch.testing.assert_close(
 +            ic_ref[valid_rows], ic_fus[valid_rows], atol=4e-3, rtol=0
@@ -17173,17 +17232,20 @@ index f67fe4634d..1c957d09f1 100644
  
  
  @pytest.mark.parametrize("case", _CASES)
-@@ -183,5 +238,10 @@ def test_matches_unfused_reference(case):
-     _compare_case(case, num_warps=4)
- 
- 
+-def test_matches_unfused_reference(case):
+-    _compare_case(case, num_warps=4)
++@pytest.mark.parametrize("num_warps", [1, 4])
++def test_matches_unfused_reference(case, num_warps):
++    _compare_case(case, num_warps=num_warps)
++
++
 +@pytest.mark.parametrize("case", _RING_CASES)
-+def test_replayssm_ring_matches_unfused(case):
-+    _compare_case(case, num_warps=4, use_ring=True)
-+
-+
++@pytest.mark.parametrize("num_warps", [1, 4])
++def test_replayssm_ring_matches_unfused(case, num_warps):
++    _compare_case(case, num_warps=num_warps, use_ring=True)
+ 
+ 
  if __name__ == "__main__":
-     sys.exit(pytest.main([__file__]))
 diff --git a/test/registered/unit/attention/test_dsa_trtllm_fp8_cp.py b/test/registered/unit/attention/test_dsa_trtllm_fp8_cp.py
 new file mode 100644
 index 0000000000..7fc709b79e
@@ -21369,22 +21431,19 @@ index 0000000000..f9b145fa8a
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_mamba_radix_child_key.py b/test/registered/unit/mem_cache/test_mamba_radix_child_key.py
 new file mode 100644
-index 0000000000..64540d8f01
+index 0000000000..ab008b0c4a
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_mamba_radix_child_key.py
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,147 @@
 +"""Child-slot bookkeeping of MambaRadixCache._split_node.
 +
 +Regression for an eviction-time crash on Ling-3.0-Flash (hybrid KDA + radix cache,
 +page_size > 1): `AssertionError: parent does not have child key, ()` raised from
 +`_delete_tombstone_leaf` during `alloc_req_slots -> evict -> evict_mamba`.
 +
-+A node is filed in `parent.children` under a slot computed at registration, but
-+removed with a slot recomputed from `node.key`. `_split_node` used to register the
-+new intermediate node under the *pre-split* key while giving it the *post-split*
-+(truncated) key, so the two agree only when `split_len >= page_size`. Below that the
-+node becomes unremovable; at `split_len == 0` its key is empty and `child_key()`
-+renders it as `()` -- the exact crash signature.
++A node's parent slot must agree with the first page of its post-split key.
++Current RadixKey requires that complete page. Valid splits remain removable;
++invalid private calls must be rejected before they modify the existing tree.
 +"""
 +
 +import unittest
@@ -21421,7 +21480,7 @@ index 0000000000..64540d8f01
 +
 +
 +class TestMambaRadixChildKey(unittest.TestCase):
-+    def _split_and_get(self, split_len: int):
++    def _split_and_get(self, split_len: int, expect_rejected: bool = False):
 +        """Split a child at `split_len`; return (cache, new_node)."""
 +        cache = _bare_cache()
 +        child = TreeNode()
@@ -21438,6 +21497,16 @@ index 0000000000..64540d8f01
 +        child.hash_value = []
 +        child.event_hash_value = []
 +
++        if expect_rejected:
++            original_key, original_value = child.key, child.value
++            original_children = dict(cache.root_node.children)
++            with self.assertRaisesRegex(AssertionError, "page-aligned split"):
++                cache._split_node(child.key, child, split_len)
++            self.assertIs(child.key, original_key)
++            self.assertIs(child.value, original_value)
++            self.assertIs(child.parent, cache.root_node)
++            self.assertEqual(cache.root_node.children, original_children)
++            return cache, child
 +        new_node = cache._split_node(child.key, child, split_len)
 +        return cache, new_node
 +
@@ -21451,33 +21520,23 @@ index 0000000000..64540d8f01
 +                )
 +                self.assertEqual(slot, new_node.key.child_key(PAGE_SIZE))
 +
-+    def test_sub_page_split_stays_removable(self):
-+        """The bug: a sub-page split filed the node under a slot its key never derives.
++                popped = cache.root_node.children.pop(
++                    new_node.key.child_key(PAGE_SIZE), None
++                )
++                self.assertIs(popped, new_node)
 +
-+        Pre-fix the registered slot came from the pre-split key, so this lookup --
-+        the one `_delete_tombstone_leaf` performs -- missed and the node could never
-+        be removed.
-+        """
-+        cache, new_node = self._split_and_get(PAGE_SIZE // 2)
-+        slot = next(k for k, v in cache.root_node.children.items() if v is new_node)
-+        self.assertEqual(
-+            slot,
-+            new_node.key.child_key(PAGE_SIZE),
-+            "node is filed under a slot its own key does not derive; "
-+            "_delete_tombstone_leaf would raise 'parent does not have child key'",
-+        )
-+        # And the removal itself must find it.
-+        popped = cache.root_node.children.pop(new_node.key.child_key(PAGE_SIZE), None)
-+        self.assertIs(popped, new_node)
-+
-+    def test_zero_split_is_rejected(self):
-+        """split_len == 0 builds an empty-key node, whose slot renders as `()`.
-+
-+        `child_key()` returns `()` for an empty key at page_size > 1 rather than
-+        raising, so without this guard the corruption is silent until eviction.
-+        """
-+        with self.assertRaises(AssertionError):
-+            self._split_and_get(0)
++    def test_invalid_split_is_rejected_before_tree_mutation(self):
++        """A split must leave both nodes with a complete first page."""
++        for split_len in (
++            -1,
++            0,
++            PAGE_SIZE // 2,
++            PAGE_SIZE + 1,
++            3 * PAGE_SIZE,
++            4 * PAGE_SIZE,
++        ):
++            with self.subTest(split_len=split_len):
++                self._split_and_get(split_len, expect_rejected=True)
 +
 +    def test_sanity_check_detects_a_drifted_slot(self):
 +        """The tree-wide invariant catches a mis-filed node directly."""
