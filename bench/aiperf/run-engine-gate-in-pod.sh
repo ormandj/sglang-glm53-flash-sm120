@@ -6,7 +6,7 @@ if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   exit 2
 fi
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|publication" >&2
+  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|publication" >&2
   exit 2
 fi
 
@@ -19,7 +19,7 @@ for value in "$campaign" "$build_id"; do
   esac
 done
 case "$mode" in
-  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|publication) ;;
+  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|publication) ;;
   *) echo "error: unsupported engine-gate mode: $mode" >&2; exit 2 ;;
 esac
 
@@ -107,9 +107,14 @@ run_decode() {
     # equal-context window only spans the initial overlap, which on
     # long-prefill models is shorter than the analyzer minimum. Refill
     # requests keep occupancy pinned while the plateau is measured.
+    #
     # Cohort-only modes disable refills: every mid-plateau refill prefills
-    # its 16k shared prefix inside the analyzer window, so the
-    # prefill-counter-unchanged and context-bounds checks reject the cell.
+    # its 16k shared prefix INSIDE the analyzer window, so the
+    # prefill-counter-unchanged and context-bounds checks reject the cell
+    # deterministically. A single cohort prefills up front, decodes
+    # together through the context band, and ends via the terminal
+    # occupancy drop; the in-band stretch (~3k decode tokens per request)
+    # comfortably exceeds the window minimums.
     if [ "${decode_cohort_only:-0}" = 1 ]; then
       export DECODE_REQUESTS="${DECODE_REQUESTS_OVERRIDE:-$concurrency}"
     else
@@ -177,7 +182,11 @@ run_prefill() {
     --expected-requests "$requests" \
     --isl-tolerance "$isl_tolerance" \
     --engine "$bench_engine" \
-    --output "$cell/prefill-analysis.json"
+    --output "$cell/prefill-analysis.json" \
+    || touch "$cell/analyzer-rejected"
+  # Mark-and-continue (matching the decode cells): a rejected cell must not
+  # silently kill the whole campaign under set -e — the summarize step at
+  # the end is the gate that fails loudly on any invalid cell.
 }
 
 decode_cohort_only=0
@@ -216,11 +225,18 @@ case "$mode" in
     prefill_shapes=''
     decode_cohort_only=1
     ;;
+  glm-c2)
+    # C2 x5 uses the qualification workload and exact-occupancy analyzer.
+    decode_shapes='2:5:4096'
+    prefill_shapes=''
+    decode_cohort_only=1
+    ;;
   glm-qualification)
-    # GLM-5.3-Flash mamba admission uses about four state slots per decoding
-    # request plus transients for in-flight prefills. The production profile
-    # reserves 28 slots and supports the standardized C1/C2/C3/C4 cohort
-    # panel. C5+ cells are outside the four-request serving contract.
+    # GLM-5.3-Flash mamba admission: ~4 state slots per decoding request
+    # plus transients for in-flight prefills. The production profile reserves
+    # 28 slots and supports the standardized C1/C2/C3/C4 cohort panel. C5+
+    # cells are outside the four-request serving contract. The prefill panel
+    # is unchanged from qualification.
     decode_shapes='1:5:4096 2:5:4096 3:5:4096 4:5:4096'
     prefill_shapes='8k-c1:8192:1:5 32k-c1:32768:1:5 64k-c1:65536:1:5 128k-c1:130816:1:5'
     decode_cohort_only=1

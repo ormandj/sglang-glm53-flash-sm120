@@ -289,8 +289,9 @@ def test_decode_supplement_requires_only_mid_concurrency_cells(tmp_path) -> None
     assert result["prefill"] == {}
 
 
-def test_repeat_c2_c4_requires_five_independent_repetitions(tmp_path) -> None:
-    for concurrency in (2, 4):
+@pytest.mark.parametrize("mode,concurrencies", [("repeat-c2-c4", (2, 4)), ("glm-c2", (2,))])
+def test_repeat_c2_c4_requires_five_independent_repetitions(tmp_path, mode, concurrencies) -> None:
+    for concurrency in concurrencies:
         for repetition in range(1, 6):
             run = tmp_path / "decode" / f"c{concurrency}" / f"r{repetition:02d}"
             _write(
@@ -326,11 +327,15 @@ def test_repeat_c2_c4_requires_five_independent_repetitions(tmp_path) -> None:
                 },
             )
 
-    result = summarize(tmp_path, mode="repeat-c2-c4", build_id="rc2-repeat")
+    result = summarize(tmp_path, mode=mode, build_id="rc2-repeat")
 
-    assert set(result["decode"]) == {"c2", "c4"}
+    assert set(result["decode"]) == {f"c{c}" for c in concurrencies}
     assert result["decode"]["c2"]["engine_forward_passes_per_second"]["count"] == 5
     assert result["prefill"] == {}
+
+    (tmp_path / "decode/c2/r05/decode-analysis.json").unlink()
+    with pytest.raises(SummaryError):
+        summarize(tmp_path, mode=mode, build_id="incomplete")
 
 
 def test_repeat_c8_requires_five_independent_repetitions(tmp_path) -> None:
