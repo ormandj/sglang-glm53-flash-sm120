@@ -124,3 +124,7 @@ The vendor base image supplies the pinned CUDA/PyTorch dependency stack; the SGL
 
 See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md). Upstream SGLang,
 FlashInfer, ModelOpt and GLM-5.3-Flash retain their own licenses.
+
+## Building from source
+
+This checkout builds `sglang-glm53-flash-sm120:v0.4.0-rc.1`. See [RUN.md](RUN.md) for the matching launcher and cache directory. Published-image measurements above apply to `v0.3.2`.

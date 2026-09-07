@@ -1046,7 +1046,7 @@ index 00000000..c64e28bb
 +  "gpu_status": "uuid, temperature.gpu, clocks.current.sm [MHz], power.draw [W], power.limit [W]\nGPU-4b6a1e3a-4e8f-95c7-9f90-be37abc0b7a4, 72, 2355 MHz, 111.28 W, 300.00 W\nGPU-bfdf4699-e4d9-b46a-6503-21a001973e6c, 42, 180 MHz, 16.00 W, 300.00 W\n"
 +}
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index 7b368af7..2c85b66d 100644
+index f67203c7..4baf49d6 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -1417,6 +1417,9 @@ class B12xW4A16Config:
