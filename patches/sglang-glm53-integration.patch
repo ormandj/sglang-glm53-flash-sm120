@@ -3613,7 +3613,7 @@ index 9975619bc8..49932936a3 100644
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 906d4aa22d..158c44c331 100644
+index 906d4aa22d..dc4f02e0dc 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 @@ -28,8 +28,13 @@ _is_hip = is_hip()
@@ -3625,7 +3625,7 @@ index 906d4aa22d..158c44c331 100644
  )
  
 +_GLM53_NOPE_FLASHINFER_TOPK = 2176
-+_GLM53_NOPE_FLASHINFER_KV_DIM = 656
++_GLM53_NOPE_FLASHINFER_KV_DIMS = (528, 656)
 +
  # Page layout constants for DSv4-Flash (MODEL1):
  #   nope_dim = 448, rope_dim = 64, quantize_block_size = 64
@@ -3680,8 +3680,8 @@ index 906d4aa22d..158c44c331 100644
 +    GLM-5.3 emits 2,051 candidates (2,048 selected plus its three-token KPool
 +    tail).  FlashInfer's native NoPE kernels use the 2,176-wide physical
 +    contract, so the unused right edge is padded with ``-1`` sentinels.  KV
-+    rows follow the 656-byte fp8_ds_mla ABI: 512 FP8 latent values, four
-+    inline FP32 scales, then reserved padding the kernels never read.
++    rows contain 512 FP8 latent values and four inline FP32 scales. Both
++    compact 528-byte rows and the padded 656-byte fp8_ds_mla ABI are supported.
 +    """
 +    if skip_softmax_threshold_scale_factor is not None:
 +        raise ValueError(
@@ -3696,7 +3696,7 @@ index 906d4aa22d..158c44c331 100644
 +        q.shape[-1] == 512
 +        and kv_lora_rank == 512
 +        and qk_rope_head_dim == 0
-+        and kv_cache_dim == _GLM53_NOPE_FLASHINFER_KV_DIM
++        and kv_cache_dim in _GLM53_NOPE_FLASHINFER_KV_DIMS
 +    )
 +    if is_glm53_nope:
 +        topk = indices.shape[-1]
@@ -3932,6 +3932,28 @@ index 10342899ce..0d8af0d935 100644
 +        HAS_TRACK=has_track,
 +    )
 +    return last_correct, (steps_to_track if has_track else None)
+diff --git a/python/sglang/srt/arg_groups/cuda_graph_hook.py b/python/sglang/srt/arg_groups/cuda_graph_hook.py
+index a15ffb3004..95b754ee57 100644
+--- a/python/sglang/srt/arg_groups/cuda_graph_hook.py
++++ b/python/sglang/srt/arg_groups/cuda_graph_hook.py
+@@ -6,6 +6,7 @@ from __future__ import annotations
+ import logging
+ from typing import Any
+ 
++from sglang.srt.environ import envs
+ from sglang.srt.arg_groups.overrides import (
+     attention_backends_of,
+     declare_resolution,
+@@ -284,7 +285,8 @@ def disable_breakable_cudagraph_if_incompatible(server_args: Any):
+     rules = [
+         (
+             "KDA hybrid linear attention",
+-            lambda: uses_kda_attention(model_config_of(server_args).hf_config),
++            lambda: uses_kda_attention(model_config_of(server_args).hf_config)
++            and not envs.SGLANG_BCG_RAGGED_SHAPES.get(),
+         ),
+         # DSV4 is BCG-compatible but introduces heavy memory pressure: the
+         # c4 indexer scratch is pinned in the capture pool and OOMs. Disable.
 diff --git a/python/sglang/srt/arg_groups/field_order.py b/python/sglang/srt/arg_groups/field_order.py
 index c1a914ca83..c1b9628f5c 100644
 --- a/python/sglang/srt/arg_groups/field_order.py
@@ -5392,7 +5414,7 @@ index 2608621f6a..a8b41b59ff 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index cc262fee0b..aed5a246ea 100644
+index cc262fee0b..73401296de 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -450,6 +450,21 @@ class Envs:
@@ -5448,7 +5470,20 @@ index cc262fee0b..aed5a246ea 100644
      SGLANG_CRASH_ON_TRITON_LOAD_AFTER_READY = EnvBool(False)
      SGLANG_TRITON_SLOW_COMPILE_THRESHOLD_SECS = EnvFloat(1.0)
      SGLANG_TRITON_LOAD_WARNING_THRESHOLD_GB = EnvFloat(1.0)
-@@ -1333,6 +1359,14 @@ class Envs:
+@@ -1322,6 +1348,12 @@ class Envs:
+     # CUDA graphs and execution buffers
+     # ===================================================================
+     SGLANG_USE_BREAKABLE_CUDA_GRAPH = EnvBool(False)
++    # Opt-in ragged request-axis captures for hybrid KDA/DSA prefill.
++    SGLANG_BCG_RAGGED_SHAPES = EnvBool(False)
++    SGLANG_BCG_RAGGED_MAX_BS = EnvInt(16)
++    # Use an independent capture session for each ragged shape (recommended
++    # with DeepGEMM, whose capture workspace is process-global).
++    SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS = EnvBool(False)
+     # Guards CUDA graph executable dedup via cudaGraphExecUpdate.
+     SGLANG_ENABLE_CUDA_GRAPH_DEDUP = EnvBool(False)
+     SGLANG_MEMORY_SAVER_CUDA_GRAPH = EnvBool(False)
+@@ -1333,6 +1365,14 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -5463,7 +5498,7 @@ index cc262fee0b..aed5a246ea 100644
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1506,6 +1540,8 @@ class Envs:
+@@ -1506,6 +1546,8 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -6979,7 +7014,7 @@ index 673e1cb3f0..398eb99b96 100644
      @property
      def data_type(self):
 diff --git a/python/sglang/srt/layers/attention/linear/kda_backend.py b/python/sglang/srt/layers/attention/linear/kda_backend.py
-index 44acc6600a..d5176d5819 100644
+index 44acc6600a..dc3302b4fb 100644
 --- a/python/sglang/srt/layers/attention/linear/kda_backend.py
 +++ b/python/sglang/srt/layers/attention/linear/kda_backend.py
 @@ -19,7 +19,7 @@ from sglang.srt.layers.attention.linear.utils import (
@@ -7002,7 +7037,23 @@ index 44acc6600a..d5176d5819 100644
      # KDA gets graph padding explicitly and never uses ReplaySSM's host-seqlen
      # force-flush path.
      needs_cpu_seq_lens: bool = False
-@@ -833,20 +837,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -817,7 +821,14 @@ class KDAAttnBackend(MambaAttnBackendBase):
+         has_initial_state = forward_batch.extend_prefix_lens > 0
+ 
+         physical_num_tokens = mixed_qkv.shape[0]
+-        logical_num_tokens = int(query_start_loc[-1])
++        # These host lengths also build query_start_loc. Reading its final
++        # device element synchronizes every KDA layer with the GPU. Keep the
++        # fallback for batches whose extend metadata exists only on device.
++        logical_num_tokens = (
++            sum(forward_batch.extend_seq_lens_cpu)
++            if forward_batch.extend_seq_lens_cpu is not None
++            else int(query_start_loc[-1])
++        )
+         if logical_num_tokens < physical_num_tokens:
+             mixed_qkv = mixed_qkv[:logical_num_tokens]
+             a = a[:, :logical_num_tokens]
+@@ -833,20 +844,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  self.forward_metadata.conv_states_mask_indices
              ] = mixed_qkv[self.forward_metadata.track_conv_indices]
  
@@ -7038,7 +7089,7 @@ index 44acc6600a..d5176d5819 100644
  
          q = q.unflatten(-1, (-1, layer.head_q_dim)).unsqueeze(0)  # n (h d) -> 1 n h d
          k = k.unflatten(-1, (-1, layer.head_k_dim)).unsqueeze(0)  # n (h d) -> 1 n h d
-@@ -857,31 +862,32 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -857,31 +869,32 @@ class KDAAttnBackend(MambaAttnBackendBase):
              a = a.unflatten(-1, (-1, layer.head_k_dim))
  
          track_ssm = self.forward_metadata.has_mamba_track_mask
@@ -7096,7 +7147,7 @@ index 44acc6600a..d5176d5819 100644
          if track_ssm:
              # Snapshot the SSM state at the last track-aligned chunk boundary
              # from the kernel's per-chunk states (h) / final states into the
-@@ -950,6 +956,27 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -950,6 +963,27 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  "KDA target_verify requires a speculative mamba cache "
                  "(MambaPool.SpeculativeState); none found."
              )
@@ -7124,7 +7175,7 @@ index 44acc6600a..d5176d5819 100644
          intermediate_conv_window_cache = mamba_cache_params.intermediate_conv_window[0]
          intermediate_state_indices = self.verify_intermediate_state_indices
  
-@@ -1009,6 +1036,9 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1009,6 +1043,9 @@ class KDAAttnBackend(MambaAttnBackendBase):
                  retrieve_next_sibling=retrieve_next_sibling,
                  retrieve_parent_token=retrieve_parent_token,
                  replayssm_rawv=replayssm_rawv,
@@ -7134,7 +7185,7 @@ index 44acc6600a..d5176d5819 100644
              ):
                  return self._fused_chain_verify_fn(
                      mixed_qkv=mixed_qkv,
-@@ -1039,6 +1069,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1039,6 +1076,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
                      head_k_dim=layer.head_k_dim,
                      head_v_dim=layer.head_v_dim,
                      lower_bound=layer.lower_bound,
@@ -7142,7 +7193,7 @@ index 44acc6600a..d5176d5819 100644
                  )
              dense_token_indices = None
              mixed_qkv_dense = mixed_qkv.view(batch_size, draft_token_num, -1)
-@@ -1097,22 +1128,6 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1097,22 +1135,6 @@ class KDAAttnBackend(MambaAttnBackendBase):
          k = k.unflatten(-1, (-1, layer.head_k_dim)).unsqueeze(0)
          v = v.unflatten(-1, (-1, layer.head_v_dim)).unsqueeze(0)
  
@@ -7165,7 +7216,7 @@ index 44acc6600a..d5176d5819 100644
          core_attn_out = self.kernel_dispatcher.target_verify(
              A_log=layer.A_log,
              dt_bias=layer.dt_bias,
-@@ -1172,10 +1187,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1172,10 +1194,13 @@ class KDAAttnBackend(MambaAttnBackendBase):
          retrieve_next_sibling: Optional[torch.Tensor],
          retrieve_parent_token: Optional[torch.Tensor],
          replayssm_rawv: Optional[torch.Tensor],
@@ -7180,7 +7231,7 @@ index 44acc6600a..d5176d5819 100644
              value is not None
              for value in (
                  retrieve_next_token,
-@@ -1184,6 +1202,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1184,6 +1209,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              )
          ):
              return False
@@ -7188,7 +7239,7 @@ index 44acc6600a..d5176d5819 100644
          if draft_token_num < 3 or mixed_qkv.shape[0] % draft_token_num != 0:
              return False
          if (
-@@ -1235,7 +1254,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1235,7 +1261,21 @@ class KDAAttnBackend(MambaAttnBackendBase):
              layer.A_log.dtype != torch.float32
              or layer.dt_bias.dtype != torch.float32
              or ssm_states.dtype != torch.float32
@@ -7211,7 +7262,7 @@ index 44acc6600a..d5176d5819 100644
              or intermediate_state_cache.dtype != torch.float32
          ):
              return False
-@@ -1245,7 +1278,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1245,7 +1285,7 @@ class KDAAttnBackend(MambaAttnBackendBase):
              or b.stride(-1) != 1
              or not conv_states.is_contiguous()
              or not ssm_states.is_contiguous()
@@ -7220,7 +7271,7 @@ index 44acc6600a..d5176d5819 100644
          ):
              return False
          if (
-@@ -1263,10 +1296,15 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1263,10 +1303,15 @@ class KDAAttnBackend(MambaAttnBackendBase):
              or ssm_states.ndim != 4
              or tuple(ssm_states.shape[-3:])
              != (layer.num_v_heads, layer.head_v_dim, layer.head_k_dim)
@@ -7240,7 +7291,7 @@ index 44acc6600a..d5176d5819 100644
          ):
              return False
          if (
-@@ -1286,15 +1324,76 @@ class KDAAttnBackend(MambaAttnBackendBase):
+@@ -1286,15 +1331,76 @@ class KDAAttnBackend(MambaAttnBackendBase):
              b,
              conv_states,
              ssm_states,
@@ -9404,7 +9455,7 @@ index 2d9e5ad778..9a08cfad5a 100644
  
  
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index d3c615a03b..b5d9cce5ed 100644
+index d3c615a03b..00c4410328 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,7 +12,6 @@ import torch
@@ -9537,14 +9588,12 @@ index d3c615a03b..b5d9cce5ed 100644
              replay_req_slots = (
                  get_schedule().max_running_requests // self.ps.attn_dp_size + 1
              )
-@@ -2483,6 +2505,23 @@ def calculate_mla_kv_cache_dim(
+@@ -2483,6 +2505,24 @@ def calculate_mla_kv_cache_dim(
      if uses_trtllm_kv_layout:
          return kv_cache_dim
  
-+    # FlashInfer's native GLM-5.3 NoPE SM120 kernels follow the fp8_ds_mla
-+    # cache ABI: 656 bytes per token. SGLang's scaled FP8 writer fills the
-+    # first 528 bytes (512 FP8 latent values plus four inline FP32 scales);
-+    # the trailing 128 bytes are reserved padding the kernels never read.
++    # NoPE needs 512 FP8 values and four FP32 scales. Use compact rows when
++    # FlashInfer advertises them; older kernels require 128 padding bytes.
 +    uses_flashinfer_sparse_mla = (
 +        get_exec().kernel.dsa_prefill_backend == "flashinfer_sparse_mla"
 +        or get_exec().kernel.dsa_decode_backend == "flashinfer_sparse_mla"
@@ -9556,12 +9605,15 @@ index d3c615a03b..b5d9cce5ed 100644
 +        and kv_lora_rank == 512
 +        and uses_flashinfer_sparse_mla
 +    ):
-+        return 656
++        from flashinfer.mla import supported_sparse_mla_sm120_configs
++
++        config = supported_sparse_mla_sm120_configs()["glm53_nope"]
++        return getattr(config, "compact_bytes_per_token", None) or 656
 +
      # On HIP, TileLang and AITER DSA kernels consume the raw MLA KV layout:
      # nope(512 fp8) + rope(64 fp8), without extra per-block scales.
      if _is_hip and (
-@@ -2491,6 +2530,16 @@ def calculate_mla_kv_cache_dim(
+@@ -2491,6 +2531,16 @@ def calculate_mla_kv_cache_dim(
      ):
          return kv_cache_dim
  
@@ -10670,6 +10722,350 @@ index 1bc6b3e8d5..939f5bb5f3 100644
              ):
                  # prepare kv cache buffer for dcp to gather kv cache
                  forward_batch.attn_dcp_metadata = (
+diff --git a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
+index 6bb8f30fb1..5d26425d95 100644
+--- a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
++++ b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
+@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+ import torch
+ import tqdm
+ 
++from sglang.srt.environ import envs
+ from sglang.kernels.ops.kvcache.kv_indices import (
+     create_chunked_prefix_cache_kv_indices,
+ )
+@@ -392,6 +393,29 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+         self.has_mha_companion_layers = any(
+             layer is not None for layer in self.mha_companion_layers
+         )
++        # Hybrid KDA/GDN prefill has a real request-axis shape. A graph
++        # captured for one ragged row cannot safely be replayed for a batch
++        # with a different number of rows: DSA/MLA kernels may bake that row
++        # count into their launch geometry. Keep this experimental path
++        # opt-in; uncovered request counts fall back to eager.
++        self._bcg_ragged_shapes = (
++            self.prefill_backend_name == Backend.BREAKABLE
++            and self.has_mha_companion_layers
++            and envs.SGLANG_BCG_RAGGED_SHAPES.get()
++        )
++        if self._bcg_ragged_shapes:
++            configured_max_bs = envs.SGLANG_BCG_RAGGED_MAX_BS.get()
++            self._bcg_ragged_max_bs = max(1, min(configured_max_bs, self.max_bs))
++        else:
++            self._bcg_ragged_max_bs = 1
++        # DeepGEMM keeps process-global shape/workspace state.  Capturing
++        # several ragged BCG variants inside one breakable capture session
++        # can leave later captures mutating state used by earlier graphs.
++        # An opt-in per-shape session gives each capture a fresh backend
++        # capture context while retaining all graph artifacts for replay.
++        self._bcg_separate_capture_sessions = (
++            self._bcg_ragged_shapes and envs.SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS.get()
++        )
+         self.moe_layers = self.model_runner.moe_layers
+         self.moe_fusions = self.model_runner.moe_fusions
+         self.dsa_indexers = getattr(self.model_runner, "dsa_indexers", None)
+@@ -548,7 +572,13 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             self.use_captured_attn_metadata = model_runner.attn_backend.use_captured_forward_metadata_for_breakable_cuda_graph
+         else:
+             self.use_captured_attn_metadata = False
+-        self.attn_metadata_buffers: Optional[Dict[int, object]] = (
++        # Ragged BCG variants can share the same token bucket while having
++        # different request-axis metadata (e.g. bs=1 and bs=2 both map to an
++        # 8-token bucket).  Keep one captured metadata object per variant;
++        # indexing only by num_tokens lets the last capture overwrite the
++        # earlier object's static pointers and makes the earlier graph replay
++        # with the wrong KDA/DSA metadata.
++        self.attn_metadata_buffers: Optional[Dict[Any, object]] = (
+             {} if self.use_captured_attn_metadata else None
+         )
+ 
+@@ -911,6 +941,8 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+ 
+     def _shape_key(self, num_tokens: int, forward_batch: ForwardBatch) -> ShapeKey:
+         variant = None
++        if self._bcg_ragged_shapes:
++            variant = f"bcg_bs_{forward_batch.batch_size}"
+         if self._capture_chunked_prefix:
+             prefix_lens = forward_batch.extend_prefix_lens_cpu
+             local_max_prefix_len = (
+@@ -928,6 +960,12 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+                 variant = _chunked_prefix_variant(captured_n)
+         return ShapeKey(size=num_tokens, variant_label=variant)
+ 
++    def _capture_shape_variant(self, capture_bs: Optional[int]) -> Optional[str]:
++        if not self._bcg_ragged_shapes:
++            return None
++        assert capture_bs is not None
++        return f"bcg_bs_{capture_bs}"
++
+     def _create_chunked_prefix_buffers(self) -> _ChunkedPrefixCaptureBuffers:
+         """Allocate the stable chunk-metadata tensors shared by all variants."""
+         max_chunks = max(self._prefix_capture_variants)
+@@ -1079,7 +1117,19 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+                 )
+             )
+             assert self.attn_metadata_buffers is not None
+-            self.attn_metadata_buffers[num_tokens] = metadata
++            metadata_key = self._attn_metadata_key(num_tokens, forward_batch)
++            self.attn_metadata_buffers[metadata_key] = metadata
++
++    def _attn_metadata_key(self, num_tokens: int, forward_batch: ForwardBatch):
++        """Return the metadata cache key for a captured BCG shape.
++
++        For ordinary BCG there is one request-axis shape per token bucket.
++        Experimental ragged BCG intentionally captures multiple request-axis
++        shapes in the same bucket, so batch size must participate in the key.
++        """
++        if self._bcg_ragged_shapes:
++            return (num_tokens, forward_batch.batch_size)
++        return num_tokens
+ 
+     def _prepare_forward_metadata_for_replay(
+         self,
+@@ -1120,7 +1170,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             )
+             return
+         assert self.attn_metadata_buffers is not None
+-        metadata = self.attn_metadata_buffers[num_tokens]
++        metadata = self.attn_metadata_buffers[
++            self._attn_metadata_key(num_tokens, static_forward_batch)
++        ]
+         attn_backend.prepare_forward_metadata_for_breakable_cuda_graph_replay(
+             metadata,
+             forward_batch,
+@@ -1192,6 +1244,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             return True
+         if num_tokens > self.max_num_tokens:
+             return False
++        if self._bcg_ragged_shapes:
++            if batch_size > self._bcg_ragged_max_bs:
++                return False
+         # No exact-shape check: load_batch bucket-pads; only reject
+         # disproportionate padding waste.
+         padded_num_tokens = self._pad_to_bucket(num_tokens, self.capture_num_tokens)
+@@ -1232,6 +1287,14 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             ),
+         ):
+             return False
++        if self._bcg_ragged_shapes:
++            static_num_tokens = self._pad_to_bucket(
++                len(forward_batch.input_ids), self.capture_num_tokens
++            )
++            if not self.backend.can_run(
++                forward_batch, self._shape_key(static_num_tokens, forward_batch)
++            ):
++                return False
+         if getattr(self, "enable_cp_v2_bcg_capture", False) and is_cp_v2_active(
+             forward_batch
+         ):
+@@ -1261,7 +1324,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             hidden_states=self.static_draft_hidden_states[:num_tokens],
+         )
+ 
+-    def capture_prepare(self, num_tokens: int) -> tuple[ForwardBatch, AttentionBackend]:
++    def capture_prepare(
++        self, num_tokens: int, capture_bs: Optional[int] = None
++    ) -> tuple[ForwardBatch, AttentionBackend]:
+         """Build a dummy prefill ForwardBatch for capture/warmup at this shape.
+ 
+         Default tensor inputs are fresh literals; under a Breakable
+@@ -1275,10 +1340,19 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+         # A prefill bucket is an aggregate token count. Capture it as the
+         # fewest synthetic requests, with every request containing no more
+         # than context_length tokens.
+-        capture_seq_lens = [
+-            min(context_length, num_tokens - start)
+-            for start in range(0, num_tokens, context_length)
+-        ]
++        if capture_bs is None:
++            capture_seq_lens = [
++                min(context_length, num_tokens - start)
++                for start in range(0, num_tokens, context_length)
++            ]
++        else:
++            if not self._bcg_ragged_shapes:
++                raise ValueError("capture_bs is only valid for ragged BCG capture")
++            capture_bs = min(capture_bs, num_tokens)
++            quotient, remainder = divmod(num_tokens, capture_bs)
++            capture_seq_lens = [quotient + 1] * remainder + [quotient] * (
++                capture_bs - remainder
++            )
+         if self.prefill_backend_name == Backend.FULL:
+             # Full captures a fixed request-axis shape; unused slots are
+             # zero-length sentinels after the context-bounded real requests.
+@@ -1419,8 +1493,11 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+                 stream=get_or_create_global_graph_capture_stream()
+             ) as graph_capture_context:
+                 self.stream = graph_capture_context.stream
+-                with self.backend.capture_session(self.stream):
++                if self._bcg_separate_capture_sessions:
+                     self._capture_one_stream()
++                else:
++                    with self.backend.capture_session(self.stream):
++                        self._capture_one_stream()
+ 
+     def _capture_one_stream(self) -> None:
+         avail_mem = get_available_gpu_memory(
+@@ -1443,17 +1520,40 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+                 capture_range.set_description(
+                     f"Capturing num tokens ({num_tokens=} {avail_mem=:.2f} GB)"
+                 )
+-            self.capture_one_shape(num_tokens)
++            if self._bcg_ragged_shapes:
++                capture_bs_values = range(
++                    1, min(self._bcg_ragged_max_bs, num_tokens) + 1
++                )
++            else:
++                capture_bs_values = (None,)
++            for capture_bs in capture_bs_values:
++                if self._bcg_separate_capture_sessions:
++                    with self.backend.capture_session(self.stream):
++                        self.capture_one_shape(num_tokens, capture_bs=capture_bs)
++                else:
++                    self.capture_one_shape(num_tokens, capture_bs=capture_bs)
+             if self._capture_chunked_prefix:
+                 for captured_n in self._prefix_capture_variants:
+-                    self.capture_one_shape(num_tokens, prefix_num_chunks=captured_n)
+-
+-    def capture_one_shape(self, size: int, *, prefix_num_chunks: int = 0) -> None:
++                    if self._bcg_separate_capture_sessions:
++                        with self.backend.capture_session(self.stream):
++                            self.capture_one_shape(
++                                num_tokens, prefix_num_chunks=captured_n
++                            )
++                    else:
++                        self.capture_one_shape(num_tokens, prefix_num_chunks=captured_n)
++
++    def capture_one_shape(
++        self,
++        size: int,
++        *,
++        prefix_num_chunks: int = 0,
++        capture_bs: Optional[int] = None,
++    ) -> None:
+         """Per-shape capture: build dummy ForwardBatch + run_once,
+         delegate to backend. size is the prefill token count.
+         """
+         num_tokens = size
+-        forward_batch, attn_backend = self.capture_prepare(num_tokens)
++        forward_batch, attn_backend = self.capture_prepare(num_tokens, capture_bs)
+         if self.enable_cp_v2_bcg_capture:
+             assert self.prefill_cp_bcg_input is not None
+             self.prefill_cp_bcg_input.prepare(
+@@ -1477,7 +1577,7 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             variant_label=(
+                 _chunked_prefix_variant(prefix_num_chunks)
+                 if prefix_num_chunks
+-                else None
++                else self._capture_shape_variant(capture_bs)
+             ),
+         )
+         if prefix_num_chunks:
+@@ -1517,7 +1617,7 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             shape_key,
+             run_once,
+             # DP padding can install capture-only tensors on this dummy batch;
+-            # BCG retains it so their recorded addresses remain valid.
++            # retain it so their recorded addresses remain valid.
+             capture_inputs=(
+                 forward_batch
+                 if forward_batch.global_num_tokens_gpu is not None
+@@ -1905,8 +2005,13 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+             static_num_tokens = len(static_forward_batch.input_ids)
+             raw_num_tokens = self.raw_num_tokens
+             shape_key = self._shape_key(static_num_tokens, forward_batch)
+-            # The only variants this runner records are chunked-prefix ones.
+-            if shape_key.variant_label is not None:
++            # Select a request-axis BCG variant when ragged capture is enabled;
++            # otherwise this is the ordinary chunked-prefix selection.
++            if (
++                shape_key.variant_label is not None
++                and self._capture_chunked_prefix
++                and self._has_prefix_hit(forward_batch)
++            ):
+                 self._prepare_chunked_prefix_replay(shape_key, forward_batch)
+             # Replay prep, including the optional chunked-prefix gather above,
+             # has finished every scheduler-shared read.
+diff --git a/python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py b/python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py
+index 368db2ebc7..6785a331b3 100644
+--- a/python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py
++++ b/python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py
+@@ -79,6 +79,12 @@ class BreakableCudaGraphBackend(DedupedCudaGraphMixin, BaseCudaGraphBackend):
+         self._debug_eager = debug_eager
+         self._shared_output_buffer: Optional[Any] = None
+         self._precarve = GraphPoolPrecarve()
++        self._shape_output_buffers: Dict[Any, Any] = {}
++        # Ragged KDA/DSA experiments may capture several request-axis shapes
++        # in one runner.  Keep their CUDA graph pools disjoint: CUDA's shared
++        # pool can legally alias allocations across graphs, but BCG break
++        # bridges are eager between segments and need per-shape addresses.
++        self._shape_pools: Dict[Any, Any] = {}
+         self._memory_saver_adapter: Optional[Any] = TorchMemorySaverAdapter.create(
+             enable=enable_memory_saver
+             and get_bool_env_var("SGLANG_MEMORY_SAVER_CUDA_GRAPH")
+@@ -98,6 +104,7 @@ class BreakableCudaGraphBackend(DedupedCudaGraphMixin, BaseCudaGraphBackend):
+         set_graph_pool_id(self._pool)
+         self._capture_stream = stream
+         self._shared_output_buffer = None
++        self._shape_output_buffers.clear()
+         self.begin_cuda_graph_capture()
+         try:
+             with self.replay_session():
+@@ -129,13 +136,33 @@ class BreakableCudaGraphBackend(DedupedCudaGraphMixin, BaseCudaGraphBackend):
+             eager_on_graph(True)(forward_fn) if self._debug_eager else forward_fn
+         )
+         size = shape_key.size
+-        if self._shared_output_buffer is None:
+-            self._shared_output_buffer = self._alloc_full_buffer(warmup_out, size)
++        is_ragged_variant = isinstance(
++            shape_key.variant_label, str
++        ) and shape_key.variant_label.startswith("bcg_bs_")
++        capture_pool = self._pool
++        if is_ragged_variant:
++            capture_pool = self._device_module.graph_pool_handle()
++            self._shape_pools[shape_key] = capture_pool
++            # Allocate the per-shape output buffer from the same pool that
++            # owns this graph; otherwise the buffer can alias an earlier
++            # shape's capture allocation.
++            set_graph_pool_id(capture_pool)
++        if is_ragged_variant:
++            # Each ragged request-axis graph has its own final output buffer.
++            # The graph pool is also per-shape; sharing this buffer across
++            # captures would record later graphs against an earlier pool's
++            # allocation and invalidate the earlier graph's bridge.
++            output_buffer = self._alloc_full_buffer(warmup_out, size)
++            self._shape_output_buffers[shape_key] = output_buffer
++        else:
++            if self._shared_output_buffer is None:
++                self._shared_output_buffer = self._alloc_full_buffer(warmup_out, size)
++            output_buffer = self._shared_output_buffer
+         with (
+             graph_pool_capture_scope(),
+             BreakableCUDAGraphCapture(
+                 cuda_graph=graph,
+-                pool=self._pool,
++                pool=capture_pool,
+                 stream=self._capture_stream,
+                 barrier_fn=self._tp_group.barrier,
+             ),
+@@ -143,9 +170,9 @@ class BreakableCudaGraphBackend(DedupedCudaGraphMixin, BaseCudaGraphBackend):
+             self._precarve.mint()
+             out = captured_fn()
+             out_rows = self._output_rows(out, size)
+-            self._copy_output_to_buffer(out, self._shared_output_buffer, out_rows)
++            self._copy_output_to_buffer(out, output_buffer, out_rows)
+ 
+-        stored = self._slice_output(self._shared_output_buffer, out_rows)
++        stored = self._slice_output(output_buffer, out_rows)
+         self._graphs[shape_key] = graph
+         self._outputs[shape_key] = stored
+         # CUDA graphs retain tensor addresses, not Python tensor lifetimes.
+@@ -265,3 +292,5 @@ class BreakableCudaGraphBackend(DedupedCudaGraphMixin, BaseCudaGraphBackend):
+         self._capture_inputs.clear()
+         self._pool = None
+         self._shared_output_buffer = None
++        self._shape_output_buffers.clear()
++        self._shape_pools.clear()
 diff --git a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py b/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
 index 3a047c8ffa..38d405c05f 100644
 --- a/python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py
@@ -10717,6 +11113,49 @@ index 3a047c8ffa..38d405c05f 100644
 +
 +        self._capture_owners.clear()
          self._pool = None
+diff --git a/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py b/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
+index 0f4847ca21..9bbffba804 100644
+--- a/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
++++ b/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py
+@@ -69,6 +69,10 @@ _current_stream_var: ContextVar[torch.Stream | None] = ContextVar(
+ _forked_streams_var: ContextVar[set[torch.Stream] | None] = ContextVar(
+     "forked_streams", default=None
+ )
++# An eager BCG bridge may contain operations that are themselves marked as
++# eager breaks.  Track nesting so an inner marker executes eagerly without
++# attempting to end the already-ended outer capture segment.
++_eager_break_depth_var: ContextVar[int] = ContextVar("eager_break_depth", default=0)
+ 
+ 
+ def get_current_stream(device: torch.device | None = None) -> torch.Stream:
+@@ -223,7 +227,7 @@ def eager_on_graph(enable: bool, capture_stub: Optional[Callable] = None):
+ 
+         def wrapper(*args, **kwargs):
+             capture = _current_capture_var.get()
+-            if capture is None:
++            if capture is None or _eager_break_depth_var.get() > 0:
+                 return inner(*args, **kwargs)
+ 
+             # End the segment that captured up to this break point.
+@@ -240,10 +244,14 @@ def eager_on_graph(enable: bool, capture_stub: Optional[Callable] = None):
+             # addresses recorded. A capture_stub replaces the body during
+             # capture (contents are never consumed; warmup and replay run
+             # the real inner), letting rank-coupled bodies skip the work.
+-            if capture_stub is not None:
+-                output = capture_stub(*args, **kwargs)
+-            else:
+-                output = inner(*args, **kwargs)
++            depth_token = _eager_break_depth_var.set(_eager_break_depth_var.get() + 1)
++            try:
++                if capture_stub is not None:
++                    output = capture_stub(*args, **kwargs)
++                else:
++                    output = inner(*args, **kwargs)
++            finally:
++                _eager_break_depth_var.reset(depth_token)
+ 
+             # Weak-ref captured inputs produced by graph segments. Their storage
+             # is pinned by the segment CUDAGraphs' mempool use-count, so Python
 diff --git a/python/sglang/srt/model_executor/runner_utils/capture_owner.py b/python/sglang/srt/model_executor/runner_utils/capture_owner.py
 new file mode 100644
 index 0000000000..74c0ab7420
@@ -10836,7 +11275,7 @@ index 95582e079f..4d20f21d72 100644
          self.lm_head = ParallelLMHead(
              config.vocab_size,
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
-index f5253cfdf0..e7c2042ab0 100644
+index f5253cfdf0..42c4d90a77 100644
 --- a/python/sglang/srt/models/glm5_next.py
 +++ b/python/sglang/srt/models/glm5_next.py
 @@ -32,6 +32,7 @@ from sglang.srt.layers.communicator import (
@@ -10856,7 +11295,73 @@ index f5253cfdf0..e7c2042ab0 100644
  from sglang.srt.layers.radix_linear_attention import RadixLinearAttention
  from sglang.srt.layers.rotary_embedding import get_rope
  from sglang.srt.layers.utils.common import PPMissingLayer
-@@ -336,7 +339,24 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -67,6 +70,13 @@ from sglang.srt.model_executor.cuda_graph_config import (
+     Phase,
+     check_cuda_graph_backend,
+ )
++from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph import (
++    eager_on_graph,
++    is_in_breakable_cuda_graph,
++)
++from sglang.srt.model_executor.runner_backend_utils.tc_piecewise_cuda_graph import (
++    get_tc_piecewise_forward_context,
++)
+ from sglang.srt.model_executor.forward_batch_info import (
+     ForwardBatch,
+     PPProxyTensors,
+@@ -117,6 +127,51 @@ if _use_aiter_gfx95:
+ logger = logging.getLogger(__name__)
+ 
+ 
++@eager_on_graph(True)
++def _bcg_eager_mla_attention_block(
++    communicator,
++    attn,
++    hidden_states,
++    residual,
++    positions,
++    forward_batch,
++    zero_allocator,
++    layer_scatter_modes,
++    prev_topk_indices,
++):
++    """Execute MLA preparation and attention as one BCG eager region.
++
++    The communicator stores qkv-latent inputs in Python-side context; replaying
++    only the attention module after a captured prepare_attn graph leaves that
++    context unset. Keeping both operations in one bridge makes the replay
++    state complete. The nested MLA/DSA graph breaks are suppressed by the
++    outer eager region and their bodies execute eagerly inside it.
++    """
++    # The eager break is replayed without re-running the enclosing model
++    # forward. Resolve the live static batch from the piecewise context so
++    # request-dependent metadata (cache locations, sequence lengths, CP
++    # descriptors) is refreshed for every replay instead of retaining the
++    # capture-only ForwardBatch object passed through the graph closure.
++    runtime_context = get_tc_piecewise_forward_context()
++    runtime_batch = (
++        runtime_context.forward_batch
++        if runtime_context is not None and runtime_context.forward_batch is not None
++        else forward_batch
++    )
++    hidden_states, residual = communicator.prepare_attn(
++        hidden_states, residual, runtime_batch
++    )
++    hidden_states = attn(
++        positions=positions,
++        hidden_states=hidden_states,
++        forward_batch=runtime_batch,
++        zero_allocator=zero_allocator,
++        layer_scatter_modes=layer_scatter_modes,
++        prev_topk_indices=prev_topk_indices,
++    )
++    return hidden_states, residual
++
++
+ @torch.compile
+ def swiglu_clamped(y: torch.Tensor, limit: float):
+     gate, up = torch.chunk(y, 2, dim=-1)
+@@ -336,7 +391,24 @@ class Glm5NextLinearAttention(nn.Module):
          projection_size = self.head_dim * self.num_heads
          self.conv_size = config.linear_attn_config["short_conv_kernel_size"]
  
@@ -10882,7 +11387,7 @@ index f5253cfdf0..e7c2042ab0 100644
          if self.do_fuse_qkvbfg:
              self.qkvb_sizes = [
                  projection_size,
-@@ -350,7 +370,12 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -350,7 +422,12 @@ class Glm5NextLinearAttention(nn.Module):
                  self.hidden_size,
                  self.qkvb_sizes,
                  self.fg_sizes,
@@ -10896,7 +11401,7 @@ index f5253cfdf0..e7c2042ab0 100644
                  prefix=f"{prefix}.fused_qkvbfg_a_proj",
              )
              self.split_sizes = [
-@@ -424,6 +449,54 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -424,6 +501,54 @@ class Glm5NextLinearAttention(nn.Module):
                  tp_size=head_shard_size,
              )
  
@@ -10951,7 +11456,7 @@ index f5253cfdf0..e7c2042ab0 100644
          self.dt_bias = nn.Parameter(
              torch.empty(divide(projection_size, head_shard_size), dtype=torch.float32)
          )
-@@ -490,6 +563,14 @@ class Glm5NextLinearAttention(nn.Module):
+@@ -490,6 +615,14 @@ class Glm5NextLinearAttention(nn.Module):
      def forward_qkvbfg(self, hidden_states: torch.Tensor, forward_batch: ForwardBatch):
          qkv, _ = self.qkv_proj(hidden_states)
  
@@ -10966,7 +11471,56 @@ index f5253cfdf0..e7c2042ab0 100644
          beta = self.b_proj(hidden_states)[0]
          forget_gate = self.f_b_proj(self.f_a_proj(hidden_states)[0])[0]
          g_proj_states = self.g_b_proj(self.g_a_proj(hidden_states)[0])[0]
-@@ -980,7 +1061,7 @@ class Glm5NextModel(nn.Module):
+@@ -772,20 +905,35 @@ class Glm5NextDecoderLayer(nn.Module):
+     ):
+         hidden_states_orig = hidden_states
+ 
+-        hidden_states, residual = self.layer_communicator.prepare_attn(
+-            hidden_states,
+-            residual,
+-            forward_batch,
+-        )
++        # MLA preparation stores Python-side latent inputs. Recreate that
++        # state together with attention on each breakable-graph replay.
++        if not self.is_linear_attn and is_in_breakable_cuda_graph():
++            hidden_states, residual = _bcg_eager_mla_attention_block(
++                self.layer_communicator,
++                self.self_attn,
++                hidden_states,
++                residual,
++                positions,
++                forward_batch,
++                zero_allocator,
++                self.layer_scatter_modes,
++                prev_topk_indices,
++            )
++        else:
++            hidden_states, residual = self.layer_communicator.prepare_attn(
++                hidden_states,
++                residual,
++                forward_batch,
++            )
+ 
+-        hidden_states = self.self_attn(
+-            positions=positions,
+-            hidden_states=hidden_states,
+-            forward_batch=forward_batch,
+-            zero_allocator=zero_allocator,
+-            layer_scatter_modes=self.layer_scatter_modes,
+-            prev_topk_indices=prev_topk_indices,
+-        )
++            hidden_states = self.self_attn(
++                positions=positions,
++                hidden_states=hidden_states,
++                forward_batch=forward_batch,
++                zero_allocator=zero_allocator,
++                layer_scatter_modes=self.layer_scatter_modes,
++                prev_topk_indices=prev_topk_indices,
++            )
+         if isinstance(hidden_states, tuple):
+             hidden_states, topk_indices = hidden_states
+         else:
+@@ -980,7 +1128,7 @@ class Glm5NextModel(nn.Module):
          else:
              assert pp_proxy_tensors is not None
              hidden_states = pp_proxy_tensors["hidden_states"]
@@ -10975,7 +11529,7 @@ index f5253cfdf0..e7c2042ab0 100644
          device = hidden_states.device
          zero_allocator = BumpAllocator(
              buffer_size=total_num_layers * 2 * (2 if forward_batch.can_run_tbo else 1),
-@@ -1058,12 +1139,10 @@ class Glm5NextModel(nn.Module):
+@@ -1058,12 +1206,10 @@ class Glm5NextModel(nn.Module):
              )
  
          if not self.pp_group.is_last_rank:
@@ -10992,7 +11546,7 @@ index f5253cfdf0..e7c2042ab0 100644
          else:
              if not forward_batch.forward_mode.is_idle():
                  if residual is None:
-@@ -1088,6 +1167,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1088,6 +1234,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
              "g_a_proj",
          ],
          "fused_fg_b_proj": ["f_b_proj", "g_b_proj"],
@@ -11000,7 +11554,7 @@ index f5253cfdf0..e7c2042ab0 100644
          "qkv_proj": ["q_proj", "k_proj", "v_proj"],
          "qkv_conv1d": ["q_conv1d", "k_conv1d", "v_conv1d"],
          "gate_up_proj": ["gate_proj", "up_proj"],
-@@ -1174,6 +1254,205 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1174,6 +1321,205 @@ class Glm5NextForConditionalGeneration(nn.Module):
              self.config.rope_scaling or {}
          )
  
@@ -11206,20 +11760,7 @@ index f5253cfdf0..e7c2042ab0 100644
      def get_input_embeddings(self) -> nn.Embedding:
          if self.model is None:
              raise AttributeError(
-@@ -1222,9 +1501,9 @@ class Glm5NextForConditionalGeneration(nn.Module):
-         )
-         if self.num_fused_shared_experts == 0:
-             return
--        assert self.num_fused_shared_experts == 1, (
--            f"Only 1 fused shared expert is supported for {type(self).__name__}"
--        )
-+        assert (
-+            self.num_fused_shared_experts == 1
-+        ), f"Only 1 fused shared expert is supported for {type(self).__name__}"
-         log_info_on_rank0(logger, "Shared experts fusion optimization enabled.")
- 
-     def set_eagle3_layers_to_capture(self, layer_ids: Optional[List[int]] = None):
-@@ -1253,6 +1532,34 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1253,6 +1599,34 @@ class Glm5NextForConditionalGeneration(nn.Module):
          # Capturing before layer k + 1 gives the completed output of layer k.
          self.model.layers_to_capture = [val + 1 for val in layer_ids]
  
@@ -11254,7 +11795,7 @@ index f5253cfdf0..e7c2042ab0 100644
      def pad_input_ids(self, input_ids: List[int], mm_inputs: MultimodalInputs):
          pattern = MultiModalityDataPaddingPatternMultimodalTokens()
          return pattern.pad_input_tokens(input_ids, mm_inputs)
-@@ -1370,6 +1677,9 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1370,6 +1744,9 @@ class Glm5NextForConditionalGeneration(nn.Module):
              (".fused_qkvbfg_a_proj", ".g_a_proj", 5),
              (".fused_fg_b_proj", ".f_b_proj", 0),
              (".fused_fg_b_proj", ".g_b_proj", 1),
@@ -11264,7 +11805,7 @@ index f5253cfdf0..e7c2042ab0 100644
              (".qkv_proj", ".q_proj", "q"),
              (".qkv_proj", ".k_proj", "k"),
              (".qkv_proj", ".v_proj", "v"),
-@@ -1471,6 +1781,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1471,6 +1848,7 @@ class Glm5NextForConditionalGeneration(nn.Module):
                      in {
                          ".fused_qkvbfg_a_proj",
                          ".fused_fg_b_proj",
@@ -13344,6 +13885,41 @@ index 0000000000..86332a6f9b
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/test/registered/cuda_graph/breakable/test_breakable_cuda_graph.py b/test/registered/cuda_graph/breakable/test_breakable_cuda_graph.py
+index d669c95709..c78e1a81cb 100644
+--- a/test/registered/cuda_graph/breakable/test_breakable_cuda_graph.py
++++ b/test/registered/cuda_graph/breakable/test_breakable_cuda_graph.py
+@@ -115,6 +115,30 @@ class TestBreakableCUDAGraphBasic(CustomTestCase):
+         torch.cuda.synchronize()
+         self.assertTrue(torch.allclose(y, torch.full((4,), 16.0, device=self.device)))
+ 
++    def test_nested_breaks_stay_inside_outer_eager_bridge(self):
++        """Nested BCG breaks must not split an already-ended outer segment."""
++        x = torch.zeros(4, device=self.device)
++        y = torch.zeros(4, device=self.device)
++
++        @self.eager_on_graph(enable=True)
++        def inner(src):
++            return src * 2.0
++
++        @self.eager_on_graph(enable=True)
++        def outer(src):
++            return inner(src) + 1.0
++
++        graph = self.BreakableCUDAGraph()
++        stream = torch.cuda.Stream(self.device)
++        with self.BreakableCUDAGraphCapture(graph, stream=stream):
++            y.copy_(outer(x))
++
++        x.fill_(3.0)
++        graph.replay()
++        torch.cuda.synchronize()
++        self.assertTrue(torch.allclose(y, torch.full((4,), 7.0, device=self.device)))
++        self.assertEqual(len(graph._segments), 2)
++
+     def test_eager_on_graph_disabled(self):
+         """@eager_on_graph(enable=False) should be a no-op passthrough."""
+ 
 diff --git a/test/registered/dcp/test_dcp_layout_unit.py b/test/registered/dcp/test_dcp_layout_unit.py
 index a98ad8325f..4f0108d918 100644
 --- a/test/registered/dcp/test_dcp_layout_unit.py
@@ -21203,6 +21779,55 @@ index a48604188f..cb7c2fc41b 100644
  if __name__ == "__main__":
 -    sys.exit(pytest.main([__file__, "-v"]))
 +    sys.exit(pytest.main([__file__]))
+diff --git a/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py b/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py
+index af402b7077..a344d39f80 100644
+--- a/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py
++++ b/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py
+@@ -19,6 +19,7 @@ register_cpu_ci(est_time=11, suite="base-a-test-cpu")
+ class TestPrefillCudaGraphPadding(CustomTestCase):
+     def _make_runner(self):
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner._is_full_backend = False
+         runner.enable_lora = False
+         runner._capture_chunked_prefix = False
+@@ -53,6 +54,36 @@ class TestPrefillCudaGraphPadding(CustomTestCase):
+ 
+         self.assertTrue(runner.can_run_graph(self._make_forward_batch(8)))
+ 
++    def test_ragged_graph_falls_back_for_uncaptured_request_count(self):
++        runner = self._make_runner()
++        runner._bcg_ragged_shapes = True
++        runner._bcg_ragged_max_bs = 1
++        runner.backend = mock.Mock()
++        runner.backend.can_run.return_value = True
++        batch = self._make_forward_batch(8)
++        self.assertTrue(runner.can_run_graph(batch))
++        key = runner.backend.can_run.call_args.args[1]
++        self.assertEqual((key.size, key.variant_label), (16, "bcg_bs_1"))
++        batch.batch_size = 4
++        batch.extend_prefix_lens_cpu = [0] * 4
++        runner.backend.can_run.reset_mock()
++        self.assertFalse(runner.can_run_graph(batch))
++        runner.backend.can_run.assert_not_called()
++
++    def test_ragged_metadata_keeps_request_counts_separate(self):
++        runner = self._make_runner()
++        runner._bcg_ragged_shapes = True
++        one = self._make_forward_batch(8)
++        two = self._make_forward_batch(8)
++        two.batch_size = 2
++        saved = {runner._attn_metadata_key(16, one): object()}
++        saved[runner._attn_metadata_key(16, two)] = object()
++        self.assertEqual(len(saved), 2)
++        self.assertIsNot(
++            saved[runner._attn_metadata_key(16, one)],
++            saved[runner._attn_metadata_key(16, two)],
++        )
++
+     def test_replay_snapshot_uses_padded_token_count(self):
+         runner = self._make_runner()
+         runner.use_captured_attn_metadata = False
 diff --git a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 index f653c8d9b0..bf4c96831e 100644
 --- a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
@@ -21602,7 +22227,7 @@ index 86914d6b17..5acb248006 100644
          cfg.sliding_window_size = 128
          cfg.swa_page_size = 128
 diff --git a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
-index 07a2c5f057..287fb38df0 100644
+index 07a2c5f057..f94c4cfe6b 100644
 --- a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 +++ b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 @@ -16,6 +16,8 @@ from sglang.srt.model_executor.forward_batch_info import (
@@ -21641,7 +22266,7 @@ index 07a2c5f057..287fb38df0 100644
  class _FakeKVIndexKernel:
      def __getitem__(self, grid):
          del grid
-@@ -168,6 +183,26 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+@@ -168,6 +183,27 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
  
          self.assertIs(capture.runner, prefill_runner)
  
@@ -21658,6 +22283,7 @@ index 07a2c5f057..287fb38df0 100644
 +    def test_capture_metadata_initialization_has_forward_context(self):
 +        backend = _ContextReadingAttentionBackend()
 +        runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
 +        runner.model_runner = SimpleNamespace(attn_backend=backend)
 +        runner.use_captured_attn_metadata = False
 +
@@ -21668,6 +22294,74 @@ index 07a2c5f057..287fb38df0 100644
      def test_eagle_target_tc_piecewise_skips_last_mode_capture(self):
          eager_runner = object()
          # The server-side hidden-state ceiling and graph config are bag leaves.
+@@ -194,6 +230,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+ 
+     def test_pp_proxy_output_is_trimmed_to_raw_prefill_tokens(self):
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner.raw_num_tokens = 3
+         output = PPProxyTensors(
+             {
+@@ -210,6 +247,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+ 
+     def test_static_batch_preserves_consumed_multimodal_embeddings(self):
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner.capture_num_tokens = [4]
+         runner.buffer_registry = _FakeBatchRegistry()
+         runner.model_runner = SimpleNamespace(attn_tp_sequence_sharded=lambda _: False)
+@@ -348,6 +386,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+     def test_buffers_are_shared_across_token_buckets(self):
+         backend = _FakeAttentionBackend()
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner._capture_req_slots = 3
+         runner._prefix_chunk_len = 2
+         runner._prefix_chunk_capacity = 6
+@@ -439,6 +478,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+ 
+     def test_prefix_gate_only_applies_to_chunked_prefix_variant(self):
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner._capture_req_slots = 4
+         runner.enable_lora = False
+         runner.capture_hidden_mode = CaptureHiddenMode.NULL
+diff --git a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner_helpers.py b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner_helpers.py
+index 9e37648106..d2355c207a 100644
+--- a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner_helpers.py
++++ b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner_helpers.py
+@@ -72,6 +72,7 @@ class TestPrefillCudaGraphRunnerHelpers(CustomTestCase):
+         fill(pp_proxy_tensors=full_proxy)
+ 
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner.buffers = buffers
+         runner.model_runner = SimpleNamespace(
+             pp_group=SimpleNamespace(is_first_rank=False)
+@@ -112,6 +113,7 @@ class TestPrefillCudaGraphRunnerHelpers(CustomTestCase):
+ 
+     def test_finalize_pp_proxy_trims_padded_token_rows(self):
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner.raw_num_tokens = 3
+         output = PPProxyTensors({"hidden_states": torch.arange(10).reshape(5, 2)})
+         trimmed = runner._finalize_execute_output(output)
+@@ -182,6 +184,7 @@ class TestPrefillCudaGraphRunnerHelpers(CustomTestCase):
+ 
+     def test_pipeline_proxy_output_is_supported(self):
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner.raw_num_tokens = 3
+         output = PPProxyTensors({"hidden_states": torch.zeros((8, 8))})
+ 
+@@ -198,6 +201,7 @@ class TestPrefillCudaGraphRunnerHelpers(CustomTestCase):
+         )
+ 
+         runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
++        runner._bcg_ragged_shapes = False
+         runner._is_full_backend = False
+         runner._input_embeds_arg_idx = None
+         runner.buffer_registry = SimpleNamespace(has_slot=lambda _name: False)
 diff --git a/test/registered/unit/models/test_deepseek_nextn_mm_embed.py b/test/registered/unit/models/test_deepseek_nextn_mm_embed.py
 index b9bdba6f07..f4a87e5459 100644
 --- a/test/registered/unit/models/test_deepseek_nextn_mm_embed.py
@@ -21835,6 +22529,49 @@ index b9bdba6f07..f4a87e5459 100644
  
  
  if __name__ == "__main__":
+diff --git a/test/registered/unit/models/test_glm5_next_bcg_bridge.py b/test/registered/unit/models/test_glm5_next_bcg_bridge.py
+new file mode 100644
+index 0000000000..e667d15d16
+--- /dev/null
++++ b/test/registered/unit/models/test_glm5_next_bcg_bridge.py
+@@ -0,0 +1,37 @@
++"""The eager MLA bridge must use live replay metadata and latent inputs."""
++
++from types import SimpleNamespace
++from unittest.mock import patch
++
++from sglang.srt.models.glm5_next import _bcg_eager_mla_attention_block
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=3, suite="base-a-test-cpu")
++
++
++def test_mla_bridge_refreshes_live_batch_and_preparation():
++    captured = SimpleNamespace(value=-1)
++    context = SimpleNamespace(forward_batch=None)
++    latent = {}
++
++    def prepare(hidden, residual, batch):
++        latent["batch"] = batch
++        latent["value"] = hidden + batch.value
++        return latent["value"], residual
++
++    def attend(**kwargs):
++        assert kwargs["forward_batch"] is latent["batch"]
++        assert kwargs["hidden_states"] == latent["value"]
++        return latent["value"] * 2
++
++    communicator = SimpleNamespace(prepare_attn=prepare)
++    with patch(
++        "sglang.srt.models.glm5_next.get_tc_piecewise_forward_context",
++        return_value=context,
++    ):
++        for value in (3, 7):
++            context.forward_batch = SimpleNamespace(value=value)
++            result = _bcg_eager_mla_attention_block(
++                communicator, attend, 1, None, None, captured, None, None, None
++            )
++            assert result == ((value + 1) * 2, None)
 diff --git a/test/registered/unit/models/test_glm5_next_dflash_capture.py b/test/registered/unit/models/test_glm5_next_dflash_capture.py
 index 4d896b4e9b..ed2873ec87 100644
 --- a/test/registered/unit/models/test_glm5_next_dflash_capture.py
@@ -23182,7 +23919,7 @@ index fe062eb256..b93e74f7ab 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index 1b72d94403..f3418cff92 100644
+index 1b72d94403..9efd65e4de 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
 @@ -1,6 +1,5 @@
@@ -23333,37 +24070,35 @@ index 1b72d94403..f3418cff92 100644
  
      def test_reports_unsupported_configuration(self):
          with self.assertRaises(ValueError) as error:
-@@ -119,5 +113,34 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -119,5 +113,32 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          self.assertIn("kv_cache_dtype=torch.float8_e4m3fn", message)
  
  
 +class TestFlashInferSparseMLAKVLayout(unittest.TestCase):
-+    def test_glm53_nope_uses_native_528_byte_row(self):
++    def test_glm53_nope_layout_follows_kernel_capability(self):
 +        model_config = SimpleNamespace(
-+            hf_config=SimpleNamespace(),
-+            kv_lora_rank=512,
-+            qk_rope_head_dim=0,
++            hf_config=SimpleNamespace(), kv_lora_rank=512, qk_rope_head_dim=0,
 +        )
-+        execution = SimpleNamespace(
-+            kernel=SimpleNamespace(
-+                dsa_prefill_backend="flashinfer_sparse_mla",
-+                dsa_decode_backend="flashinfer_sparse_mla",
-+            )
-+        )
-+        with (
-+            patch.object(
-+                kv_cache_configurator, "is_deepseek_dsa", return_value=True
-+            ),
-+            patch.object(kv_cache_configurator, "get_exec", return_value=execution),
-+            patch.object(kv_cache_configurator, "_is_hip", False),
-+        ):
-+            self.assertEqual(
-+                kv_cache_configurator.calculate_mla_kv_cache_dim(
-+                    model_config=model_config,
-+                    kv_cache_dtype=torch.float8_e4m3fn,
-+                ),
-+                528,
-+            )
++        execution = SimpleNamespace(kernel=SimpleNamespace(
++            dsa_prefill_backend="flashinfer_sparse_mla",
++            dsa_decode_backend="flashinfer_sparse_mla",
++        ))
++        for capability, expected in [
++            (SimpleNamespace(), 656),
++            (SimpleNamespace(compact_bytes_per_token=None), 656),
++            (SimpleNamespace(compact_bytes_per_token=528), 528),
++        ]:
++            with (
++                self.subTest(expected=expected),
++                patch.object(kv_cache_configurator, "is_deepseek_dsa", return_value=True),
++                patch.object(kv_cache_configurator, "get_exec", return_value=execution),
++                patch.object(kv_cache_configurator, "get_disagg", return_value=SimpleNamespace(disaggregation_mode="null")),
++                patch.object(kv_cache_configurator, "_is_hip", False),
++                patch("flashinfer.mla.supported_sparse_mla_sm120_configs", return_value={"glm53_nope": capability}),
++            ):
++                self.assertEqual(kv_cache_configurator.calculate_mla_kv_cache_dim(
++                    model_config=model_config, kv_cache_dtype=torch.float8_e4m3fn,
++                ), expected)
 +
 +
  if __name__ == "__main__":
