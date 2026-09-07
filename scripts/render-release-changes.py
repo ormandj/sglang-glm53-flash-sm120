@@ -20,7 +20,7 @@ def release_changes(changelog: str, tag: str) -> str:
     if not changes or not re.search(r"(?m)^- \S", changes):
         raise ValueError(f"{tag} must contain release-change bullets")
     if re.search(
-        r"git\.home\.corenode\.com|/Users/ormandj/|~/git/homelab/|"
+        r"(?:[a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal\.example|/Users/[^/]+/|~/git/[^/]+/|"
         r"qualified internal digest|promote without rebuilding|"
         r"primary project repository|MEMORY-CHECK:|ordered-marker oracle",
         changes,

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-forgejo_url=${FORGEJO_URL:-https://git.home.corenode.com}
-package_owner=${PACKAGE_OWNER:-homelab}
-package_name=${PACKAGE_NAME:-sglang-glm53-flash-sm120-container}
+forgejo_url=${FORGEJO_URL:-}
+package_owner=${PACKAGE_OWNER:-}
+package_name=${PACKAGE_NAME:-}
 keep_releases=${KEEP_RELEASES:-6}
 apply=false
 
@@ -16,9 +16,9 @@ one Forgejo container package. The default is a dry run.
 
 Environment:
   FORGEJO_TOKEN  Required Forgejo token with package read/delete access
-  FORGEJO_URL    Forgejo base URL (default: https://git.home.corenode.com)
-  PACKAGE_OWNER  Package owner (default: homelab)
-  PACKAGE_NAME   Container package name (default: sglang-glm53-flash-sm120-container)
+  FORGEJO_URL    Required Forgejo base URL
+  PACKAGE_OWNER  Required package owner
+  PACKAGE_NAME   Required container package name
   KEEP_RELEASES  Number of release tags and build aliases to keep (default: 6)
 EOF
 }
@@ -40,6 +40,10 @@ while (($#)); do
   esac
   shift
 done
+
+: "${forgejo_url:?FORGEJO_URL is required}"
+: "${package_owner:?PACKAGE_OWNER is required}"
+: "${package_name:?PACKAGE_NAME is required}"
 
 for tool in curl cut jq sort; do
   command -v "$tool" >/dev/null || {

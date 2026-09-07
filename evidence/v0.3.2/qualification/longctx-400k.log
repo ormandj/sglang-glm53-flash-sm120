@@ -1,9 +1,0 @@
-prefix chars=2320170 questions=150
-warm request done, prompt_tokens=400432
-25/150 running-acc=0.920
-50/150 running-acc=0.940
-75/150 running-acc=0.960
-100/150 running-acc=0.960
-125/150 running-acc=0.960
-150/150 running-acc=0.960
-ACCURACY 144/150 = 0.960

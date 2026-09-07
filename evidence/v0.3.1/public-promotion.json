@@ -1,9 +1,0 @@
-{
-  "image": "ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.1",
-  "candidate": "ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.3.1-rc.1",
-  "digest": "sha256:6c5b7e6701fb64e1890f067cbad5bff2d5c979fb3952f520862a7dfb858cdea3",
-  "workflow_url": "https://github.com/ormandj/sglang-glm53-flash-sm120/actions/runs/34044896387",
-  "workflow_status": "success",
-  "candidate_stable_digest_identical": true,
-  "independently_built_from_internal": true
-}

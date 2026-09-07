@@ -67,7 +67,7 @@ class ReleaseChangesTests(unittest.TestCase):
         for note in (
             "Promote without rebuilding within each registry.",
             "The qualified internal digest is sha256:123.",
-            "Image: git.home.corenode.com/homelab/image:v1.2.3.",
+            "Image: registry.internal.example/owner/image:v1.2.3.",
             "The ordered-marker oracle passed.",
             "Receipts live in the primary project repository.",
         ):

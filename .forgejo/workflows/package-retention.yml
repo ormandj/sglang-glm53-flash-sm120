@@ -24,8 +24,9 @@ jobs:
       - name: Retain six releases and build aliases
         env:
           FORGEJO_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
-          FORGEJO_URL: https://git.home.corenode.com
-          PACKAGE_OWNER: homelab
-          PACKAGE_NAME: sglang-glm53-flash-sm120-container
+          FORGEJO_URL: ${{ github.server_url }}
           KEEP_RELEASES: '6'
-        run: ./scripts/prune-container-releases.sh --apply
+        run: |
+          export PACKAGE_OWNER="${GITHUB_REPOSITORY%%/*}"
+          export PACKAGE_NAME="${GITHUB_REPOSITORY#*/}"
+          ./scripts/prune-container-releases.sh --apply

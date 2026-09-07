@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
 env:
-  CONTAINER_REGISTRY: git.home.corenode.com
   IMAGE_NAME: ${{ github.repository }}
 
 concurrency:
@@ -32,6 +31,7 @@ jobs:
 
       - name: Promote the tested digest
         run: |
+          CONTAINER_REGISTRY="${GITHUB_SERVER_URL#*://}"
           repository="${CONTAINER_REGISTRY}/${IMAGE_NAME}"
           candidate_tag=$(jq -er '.candidate_tag' release.json)
           stable_tag=$(jq -er '.stable_tag' release.json)

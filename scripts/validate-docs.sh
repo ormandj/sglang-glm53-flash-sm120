@@ -31,13 +31,13 @@ require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${cache_schema}
 require_text "$repo/CHANGELOG.md" "# Changelog"
 require_text "$repo/AGENTS.md" 'always uses the complete release name'
 
-if grep -E -- '^## Releases$|git\.home\.corenode\.com|current internal stable image|^\| Qualified internal candidate \|' "$repo/README.md" >/dev/null; then
+if grep -E -- '^## Releases$|([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal\.example|current internal stable image|^\| Qualified internal candidate \|' "$repo/README.md" >/dev/null; then
   echo "README must not contain internal registry bookkeeping or a release-history section; keep operational records in the private project" >&2
   exit 1
 fi
 
 for file in README.md CHANGELOG.md AGENTS.md; do
-  if grep -E -- 'git\.home\.corenode\.com|/Users/ormandj/|~/git/homelab/' "$repo/$file" >/dev/null; then
+  if grep -E -- '([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal\.example|/Users/[^/]+/|~/git/[^/]+/' "$repo/$file" >/dev/null; then
     echo "$file contains private operational details" >&2
     exit 1
   fi
@@ -45,11 +45,16 @@ done
 
 critical=(
   'TP_SIZE=${TP_SIZE:-2}'
-  'CONTEXT_LENGTH=${CONTEXT_LENGTH:-450560}'
-  'MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-450560}'
+  'CONTEXT_LENGTH=${CONTEXT_LENGTH:-524288}'
+  'MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-524288}'
   'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}'
   'MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}'
   'CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-4}'
+  '--cuda-graph-backend-prefill breakable'
+  '--cuda-graph-bs-prefill 64 128'
+  '--env SGLANG_BCG_RAGGED_SHAPES=1'
+  '--env SGLANG_BCG_RAGGED_MAX_BS=1'
+  '--env SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS=1'
   '--enable-multimodal'
   '--image-processor-backend torchvision'
   '--mm-preprocessing-device cpu'

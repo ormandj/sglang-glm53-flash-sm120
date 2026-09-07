@@ -74,7 +74,7 @@ profile. Two settings matter more than they look:
 
 ## What to expect
 
-The following measurements use two RTX PRO 6000 Blackwell Max-Q GPUs at 300 W, with the launcher settings and 32 GB of HiCache per rank. They were collected on the `v0.3.2` validation build; the GHCR image was built separately from the same pinned inputs. [Benchmark provenance and quality results](BENCHMARKS.md#v032-qualification-2026-09-06) identify the tested artifact and limitations.
+The following measurements use two RTX PRO 6000 Blackwell Max-Q GPUs at 300 W, with the launcher settings and 32 GB of HiCache per rank. They were collected on the `v0.3.2` validation build; the GHCR image was built separately from the same pinned inputs. [Benchmark provenance and quality results](BENCHMARKS.md#v032-measurements-2026-09-06) identify the tested artifact and limitations.
 
 | Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
 |---|---|---:|---:|---:|---:|---:|
@@ -89,7 +89,7 @@ The following measurements use two RTX PRO 6000 Blackwell Max-Q GPUs at 300 W, w
 
 Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 10.7-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
 
-Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Decode uses a fixed 4,096-token response window; its post-answer tail can increase speculative acceptance. Prefill tok/s is the per-request prompt-token count divided by time to first token, reported as mean and median over five cold requests. These controlled measurements do not necessarily represent real-world performance. [Latency and supplemental decode measurements](BENCHMARKS.md#v032-qualification-2026-09-06) provide the other measured views.
+Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Decode uses a fixed 4,096-token response window; its post-answer tail can increase speculative acceptance. Prefill tok/s is the per-request prompt-token count divided by time to first token, reported as mean and median over five cold requests. These controlled measurements do not necessarily represent real-world performance. [Latency and supplemental decode measurements](BENCHMARKS.md#v032-measurements-2026-09-06) provide the other measured views.
 
 ## Limitations
 
@@ -127,4 +127,4 @@ FlashInfer, ModelOpt and GLM-5.3-Flash retain their own licenses.
 
 ## Building from source
 
-This checkout builds `sglang-glm53-flash-sm120:v0.4.0-rc.6`. See [RUN.md](RUN.md) for the matching launcher and cache directory. Published-image measurements above apply to `v0.3.2`.
+This checkout builds `sglang-glm53-flash-sm120:v0.4.0-rc.7`. See [RUN.md](RUN.md) for the matching launcher and cache directory. Published-image measurements above apply to `v0.3.2`.

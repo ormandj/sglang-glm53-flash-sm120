@@ -63,7 +63,7 @@ jobs:
         env:
           REGISTRY_CREDS: ${{ secrets.PACKAGE_USER }}:${{ secrets.PACKAGE_TOKEN }}
         run: |
-          repository="git.home.corenode.com/${FORGEJO_REPOSITORY}"
+          repository="${GITHUB_SERVER_URL#*://}/${FORGEJO_REPOSITORY}"
           candidate_tag=$(jq -er '.candidate_tag' release.json)
           stable_tag=$(jq -er '.stable_tag' release.json)
           candidate_digest=$(skopeo inspect \
@@ -93,7 +93,7 @@ jobs:
           RELEASE_TOKEN: ${{ github.token }}
           RELEASE_TARGET: ${{ inputs.release_target }}
         run: |
-          repository="git.home.corenode.com/${FORGEJO_REPOSITORY}"
+          repository="${GITHUB_SERVER_URL#*://}/${FORGEJO_REPOSITORY}"
           export RELEASE_TAG RELEASE_IMAGE RELEASE_CANDIDATE_IMAGE
           RELEASE_TAG=$(jq -er '.stable_tag' release.json)
           candidate_tag=$(jq -er '.candidate_tag' release.json)

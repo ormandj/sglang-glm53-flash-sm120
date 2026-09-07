@@ -1,7 +1,0 @@
-{
-  "image": "git.home.corenode.com/homelab/sglang-glm53-flash-sm120-container:v0.3.2-rc.1",
-  "digest": "sha256:6b5ed4f7f8e6a56076f8446a11240dd1a4d9d49fdf62c07ad345026678890dc5",
-  "source": "55ae7c65ee1e2cf02b4f3a85b00d06b5d8c839b0",
-  "build_run": 329,
-  "status": "built; not yet qualified"
-}

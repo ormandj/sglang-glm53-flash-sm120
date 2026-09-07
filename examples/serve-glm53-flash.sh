@@ -5,14 +5,14 @@
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
-: "${CACHE_DIR:?set CACHE_DIR to a candidate-specific persistent cache directory}"
+: "${CACHE_DIR:?set CACHE_DIR to a version-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.4.0-rc.6}
+IMAGE=${IMAGE:-sglang-glm53-flash-sm120:v0.4.0-rc.7}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
-CONTEXT_LENGTH=${CONTEXT_LENGTH:-450560}
-MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-450560}
+CONTEXT_LENGTH=${CONTEXT_LENGTH:-524288}
+MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-524288}
 MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}
 # GLM's hybrid recurrent state uses up to five slots per live request (four
 # in steady decode plus MTP intermediates). Recurrent-state slots are model
@@ -45,7 +45,7 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   exit 2
 fi
 if [[ "$TP_SIZE" != 2 ]]; then
-  echo "v0.3.2 is scoped to TP_SIZE=2" >&2
+  echo "v0.4.0 is scoped to TP_SIZE=2" >&2
   exit 2
 fi
 for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do
@@ -100,6 +100,9 @@ exec docker run --rm \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
   --env SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048 \
+  --env SGLANG_BCG_RAGGED_SHAPES=1 \
+  --env SGLANG_BCG_RAGGED_MAX_BS=1 \
+  --env SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS=1 \
   "$IMAGE" \
   serve \
   --model-path "$container_model_path" \
@@ -124,7 +127,8 @@ exec docker run --rm \
   --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
   --mamba-ssm-dtype bfloat16 \
   $HICACHE_ARGS \
-  --cuda-graph-backend-prefill disabled \
+  --cuda-graph-backend-prefill breakable \
+  --cuda-graph-bs-prefill 64 128 \
   --cuda-graph-backend-decode full \
   --cuda-graph-bs-decode $(seq -s ' ' 1 "$CUDA_GRAPH_MAX_BS") \
   --dsa-prefill-backend flashinfer_sparse_mla \

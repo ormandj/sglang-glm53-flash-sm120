@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.0",
-    "candidate": 6,
-    "candidate_tag": "v0.4.0-rc.6",
+    "candidate": 7,
+    "candidate_tag": "v0.4.0-rc.7",
     "stable_tag": "v0.4.0",
-    "cache_schema": "v75"
+    "cache_schema": "v76"
   },
   "image": {
-    "tag": "v0.4.0-rc.6",
+    "tag": "v0.4.0-rc.7",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 6
+      "value": 7
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v75"
+      "value": "v76"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -83,11 +83,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "9d97216aa2e1d5dad8f61f8407a91bd9675f23fa"
+      "value": "1ff6bface15ca429a4056e32414b1a36f0c60d15"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "3d9233c0da3ef62df57da5952fc153205c5ec0f1c392b1d516f2b28a7add14c2"
+      "value": "98bb5af83e5bb7f90f0b52e6fa0d2a701dab7c61cf14babdbd03f239c01915f7"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -147,9 +147,9 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0",
       "upstream_tree": "3974fbf5bc597fa961ac6f458dfa22a1040aac0b",
-      "tree": "9d97216aa2e1d5dad8f61f8407a91bd9675f23fa",
+      "tree": "1ff6bface15ca429a4056e32414b1a36f0c60d15",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "3d9233c0da3ef62df57da5952fc153205c5ec0f1c392b1d516f2b28a7add14c2",
+      "patch_sha256": "98bb5af83e5bb7f90f0b52e6fa0d2a701dab7c61cf14babdbd03f239c01915f7",
       "upstream_main_base": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion",
@@ -169,7 +169,7 @@
         "sglang#37980 at a340acbe5b2aa723b60a02d32d00c2e283c00728: [Spec] Gate plan-stream verify prep on the draft/tree handoff frontier (stacked on #36507)",
         "sglang#38157 at 8128658833901ec644a53c369ba975155f34c084: [HiCache] Read host memory once per TP group before splitting the budget",
         "sglang#38164 at 7c2a64780494dfc00fe92c5c7c00024f5413c79b: Time out stuck decode requests and correct prefill queue handling",
-        "sglang#38212 at eaff3aebff60e687bda8921e18985f7dfc67bdd5: Fix incomplete HiCache restores that can corrupt GLM-5.3-Flash output",
+        "sglang#38212 at adfb47254a8b4b082cc732f796f9d9b0421d43a4: Fix incomplete HiCache restores that can corrupt GLM-5.3-Flash output",
         "sglang#38213 at 1c16dd8dd6e451e01684ae6bbcf1777a77242fc8: Reduce repeated attention setup during speculative decoding",
         "sglang#38214 at af3b87dd551d81bfae7a5a93c26bf6a41fd0765c: Precompile GLM vision kernels before KV allocation to avoid first-image OOMs",
         "sglang#38126 at 6a0444c619c9785b170c196b9467e37f15099e5b: opt-in ragged breakable graphs, adapted to current runner and CP-v2 interfaces"
@@ -202,10 +202,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "3d9233c0da3ef62df57da5952fc153205c5ec0f1c392b1d516f2b28a7add14c2",
+      "sha256": "98bb5af83e5bb7f90f0b52e6fa0d2a701dab7c61cf14babdbd03f239c01915f7",
       "base_head": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0",
       "base_tree": "3974fbf5bc597fa961ac6f458dfa22a1040aac0b",
-      "result_tree": "9d97216aa2e1d5dad8f61f8407a91bd9675f23fa"
+      "result_tree": "1ff6bface15ca429a4056e32414b1a36f0c60d15"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -221,13 +221,12 @@
     "expert_parallel": 1,
     "vision": true,
     "kv_cache_dtype": "fp8_e4m3",
-    "dsa_backend": "native FlashInfer SM120 sparse MLA with 656-byte scaled-FP8 NoPE rows",
+    "dsa_backend": "native FlashInfer SM120 sparse MLA with 528-byte scaled-FP8 NoPE rows",
     "speculation": "native EAGLE/NextN MTP, adaptive 5/1/6",
     "reasoning_parser": "glm45",
     "tool_call_parser": "glm47",
-    "target_total_token_pool": 450560,
+    "target_total_token_pool": 524288,
     "target_concurrency": 4,
-    "burst_concurrency_to_measure": 8,
     "mamba_state_slots_at_c4": 28,
     "cublas_workspace_config": ":4096:2:16:8",
     "image_env_defaults": {
@@ -235,7 +234,13 @@
       "SGLANG_PCIE_IPC_MAX_NUMEL": "786432",
       "SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION": "1",
       "SGLANG_LM_HEAD_FP8": "1"
-    }
+    },
+    "prefill_cuda_graph_backend": "breakable",
+    "prefill_cuda_graph_tokens": [
+      64,
+      128
+    ],
+    "prefill_cuda_graph_max_batch_size": 1
   },
   "verification": {
     "sglang_source_verifiable": true,

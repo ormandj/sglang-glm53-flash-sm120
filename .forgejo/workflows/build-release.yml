@@ -14,7 +14,6 @@ on:
       - acceptance_check.py
 
 env:
-  CONTAINER_REGISTRY: git.home.corenode.com
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -40,6 +39,7 @@ jobs:
 
       - name: Build and push immutable candidate tags
         run: |
+          CONTAINER_REGISTRY="${GITHUB_SERVER_URL#*://}"
           repository="${CONTAINER_REGISTRY}/${IMAGE_NAME}"
           candidate_tag=$(jq -er '.candidate_tag' release.json)
           candidate_image="${repository}:${candidate_tag}"
@@ -70,7 +70,7 @@ jobs:
           podman build --layers=true \
             --file "${GITHUB_WORKSPACE}/Containerfile" \
             --target runtime \
-            --build-arg "IMAGE_SOURCE=https://git.home.corenode.com/${GITHUB_REPOSITORY}" \
+            --build-arg "IMAGE_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             --build-arg "IMAGE_SOURCE_REVISION=${GITHUB_SHA}" \
             -t "${candidate_image}" \
             -t "${build_image}" \

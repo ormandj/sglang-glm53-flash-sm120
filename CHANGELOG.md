@@ -23,7 +23,7 @@ Measured on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor paralle
 
 Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 10.7-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
 
-Decode tok/s is aggregate output after MTP, including reasoning, over a fixed 4,096-token response window. Its post-answer tail can increase speculative acceptance. Forward passes/s counts target-model iterations. Prefill values summarize each cold request's prompt tokens divided by time to first token. These controlled measurements do not necessarily represent real-world performance. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/main/BENCHMARKS.md#v032-qualification-2026-09-06) for latency and supplemental decode measurements.
+Decode tok/s is aggregate output after MTP, including reasoning, over a fixed 4,096-token response window. Its post-answer tail can increase speculative acceptance. Forward passes/s counts target-model iterations. Prefill values summarize each cold request's prompt tokens divided by time to first token. These controlled measurements do not necessarily represent real-world performance. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/main/BENCHMARKS.md#v032-measurements-2026-09-06) for latency and supplemental decode measurements.
 
 ### Known limitations
 
