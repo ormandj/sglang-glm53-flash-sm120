@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.0",
-    "candidate": 8,
-    "candidate_tag": "v0.4.0-rc.8",
+    "candidate": 9,
+    "candidate_tag": "v0.4.0-rc.9",
     "stable_tag": "v0.4.0",
-    "cache_schema": "v77"
+    "cache_schema": "v78"
   },
   "image": {
-    "tag": "v0.4.0-rc.8",
+    "tag": "v0.4.0-rc.9",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 8
+      "value": 9
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v77"
+      "value": "v78"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -75,19 +75,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0"
+      "value": "5a5d8e47c5080530321ddd984a392941195b2c1f"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "3974fbf5bc597fa961ac6f458dfa22a1040aac0b"
+      "value": "f77b5a83b9790d78311dad6bdccae92c095d1502"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "ce5b625241f16c0199535659171829177b29598d"
+      "value": "23761abbabbea5322537989d3d45fc1708594adf"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "23681c9372744a07c8f95221e3e8a96aadf0457706eb46e82674f37464fe58a0"
+      "value": "d16103076958359c5c063e8c3087832c79e603424490646c5401093980bbe5c5"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -107,11 +107,11 @@
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "33a05bceb897115ec7e75800c3dc84910e8821ab"
+      "value": "485628cb8e844e4937feb14f7da12b1de79ef280"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "2efa0461e05d55382f5b41989b2c4a91e53bc40496aa89029fe99a3fc678bbd4"
+      "value": "71e77956201c0afcb94e38a911a211ad10abd3099ae73679e4acbf6be317ff44"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -145,12 +145,12 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0",
-      "upstream_tree": "3974fbf5bc597fa961ac6f458dfa22a1040aac0b",
-      "tree": "ce5b625241f16c0199535659171829177b29598d",
+      "head": "5a5d8e47c5080530321ddd984a392941195b2c1f",
+      "upstream_tree": "f77b5a83b9790d78311dad6bdccae92c095d1502",
+      "tree": "23761abbabbea5322537989d3d45fc1708594adf",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "23681c9372744a07c8f95221e3e8a96aadf0457706eb46e82674f37464fe58a0",
-      "upstream_main_base": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0",
+      "patch_sha256": "d16103076958359c5c063e8c3087832c79e603424490646c5401093980bbe5c5",
+      "upstream_main_base": "5a5d8e47c5080530321ddd984a392941195b2c1f",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion",
         "sglang#36696 at 1ff89343694a1265516b6147160a78e25f382f1d: [Mamba][Fix] Register a split node under its own key in the mamba radix cache",
@@ -180,9 +180,9 @@
       "package_version": "0.6.18",
       "head": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "upstream_tree": "4263387190a7cc8b102308083bd60811bd493ef2",
-      "tree": "33a05bceb897115ec7e75800c3dc84910e8821ab",
+      "tree": "485628cb8e844e4937feb14f7da12b1de79ef280",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "2efa0461e05d55382f5b41989b2c4a91e53bc40496aa89029fe99a3fc678bbd4",
+      "patch_sha256": "71e77956201c0afcb94e38a911a211ad10abd3099ae73679e4acbf6be317ff44",
       "upstream_main_base": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing",
@@ -202,18 +202,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "23681c9372744a07c8f95221e3e8a96aadf0457706eb46e82674f37464fe58a0",
-      "base_head": "dcebe8c4733a5cb802fb679e0c8fbb886e2801b0",
-      "base_tree": "3974fbf5bc597fa961ac6f458dfa22a1040aac0b",
-      "result_tree": "ce5b625241f16c0199535659171829177b29598d"
+      "sha256": "d16103076958359c5c063e8c3087832c79e603424490646c5401093980bbe5c5",
+      "base_head": "5a5d8e47c5080530321ddd984a392941195b2c1f",
+      "base_tree": "f77b5a83b9790d78311dad6bdccae92c095d1502",
+      "result_tree": "23761abbabbea5322537989d3d45fc1708594adf"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "2efa0461e05d55382f5b41989b2c4a91e53bc40496aa89029fe99a3fc678bbd4",
+      "sha256": "71e77956201c0afcb94e38a911a211ad10abd3099ae73679e4acbf6be317ff44",
       "base_head": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "base_tree": "4263387190a7cc8b102308083bd60811bd493ef2",
-      "result_tree": "33a05bceb897115ec7e75800c3dc84910e8821ab"
+      "result_tree": "485628cb8e844e4937feb14f7da12b1de79ef280"
     }
   ],
   "runtime_profile": {

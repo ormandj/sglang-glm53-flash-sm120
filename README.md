@@ -127,4 +127,4 @@ FlashInfer, ModelOpt and GLM-5.3-Flash retain their own licenses.
 
 ## Building from source
 
-This checkout builds `sglang-glm53-flash-sm120:v0.4.0-rc.8`. See [RUN.md](RUN.md) for the matching launcher and cache directory. Published-image measurements above apply to `v0.3.2`.
+This checkout builds `sglang-glm53-flash-sm120:v0.4.0-rc.9`. See [RUN.md](RUN.md) for the matching launcher and cache directory. Published-image measurements above apply to `v0.3.2`.

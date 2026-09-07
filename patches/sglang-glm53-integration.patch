@@ -3649,7 +3649,7 @@ index 9975619bc8..49932936a3 100644
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 906d4aa22d..39c5246272 100644
+index 906d4aa22d..9715dcb3b0 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 @@ -28,8 +28,13 @@ _is_hip = is_hip()
@@ -3666,7 +3666,35 @@ index 906d4aa22d..39c5246272 100644
  # Page layout constants for DSv4-Flash (MODEL1):
  #   nope_dim = 448, rope_dim = 64, quantize_block_size = 64
  #   nope_rope_stride = 448 + 64*2 = 576 bytes per token
-@@ -670,7 +675,10 @@ def _validate_flashinfer_sparse_mla_backend(
+@@ -646,6 +651,27 @@ def _flash_mla_flashinfer(
+     return (output.unsqueeze(1), None)
+ 
+ 
++def _flashinfer_sparse_mla_max_tokens(
++    *,
++    chunked_prefill_size: Optional[int],
++    max_prefill_tokens: int,
++    context_len: int,
++    max_running_requests: int,
++    speculative_num_draft_tokens: Optional[int],
++) -> int:
++    chunk_size = int(chunked_prefill_size or 0)
++    prefill_tokens = max(64, chunk_size, max_prefill_tokens)
++    if chunk_size <= 0:
++        # Unchunked admission can add one whole prompt before observing that
++        # the budget is exhausted (including ignore_eos without a radix cache).
++        # Reserve the budget plus one context-sized prompt for that overshoot.
++        prefill_tokens += context_len
++    # Mixed batches can add decode or verify tokens to the prefill budget.
++    return prefill_tokens + max_running_requests * max(
++        1, speculative_num_draft_tokens or 1
++    )
++
++
+ def _validate_flashinfer_sparse_mla_backend(
+     *,
+     model_arch: str,
+@@ -670,7 +696,10 @@ def _validate_flashinfer_sparse_mla_backend(
              f"kv_cache_dtype={kv_cache_dtype}, prefill_impl={prefill_impl!r}, "
              f"decode_impl={decode_impl!r}."
          )
@@ -3678,7 +3706,7 @@ index 906d4aa22d..39c5246272 100644
          unsupported = selected - {"flashinfer_sparse_mla"}
          if unsupported:
              raise ValueError(
-@@ -687,6 +695,7 @@ def flashinfer_sparse_mla_forward(
+@@ -687,6 +716,7 @@ def flashinfer_sparse_mla_forward(
      indices: torch.Tensor,
      seq_lens: torch.Tensor,
      workspace_buffer: torch.Tensor,
@@ -3686,7 +3714,7 @@ index 906d4aa22d..39c5246272 100644
      *,
      page_size: int,
      kv_cache_dim: int,
-@@ -696,26 +705,92 @@ def flashinfer_sparse_mla_forward(
+@@ -696,26 +726,94 @@ def flashinfer_sparse_mla_forward(
      sm_scale: float,
      skip_softmax_threshold_scale_factor: float | None,
  ) -> torch.Tensor:
@@ -3741,14 +3769,16 @@ index 906d4aa22d..39c5246272 100644
 +                "GLM-5.3 native NoPE sparse MLA supports at most "
 +                f"{_GLM53_NOPE_FLASHINFER_TOPK} candidates, got {topk}"
 +            )
-+        # Pass the EXACT per-row valid candidate count, not seq_lens. Raw
-+        # seq_lens exceeds the index width for long rows, which turns -1
-+        # pad columns into "active" candidates: their logits are masked,
-+        # but the slot-0-clamped gathered rows still feed the value MMA,
-+        # so one NaN-decoding byte in that row poisons the whole output
-+        # row (0 * NaN). Valid entries are a contiguous prefix by the
-+        # top-k transform's construction, so the count bounds them all.
-+        seq_lens = (indices >= 0).sum(dim=-1, dtype=seq_lens.dtype)
++        # A valid tail can follow -1 holes from defensive top-k selection.
++        # Bound by the last valid column, not the number of valid columns.
++        # FlashInfer must mask the invalid KV payload as well as its logit.
++        if topk:
++            columns = torch.arange(
++                1, topk + 1, device=indices.device, dtype=seq_lens.dtype
++            )
++            seq_lens = torch.where(indices >= 0, columns, 0).amax(dim=-1)
++        else:
++            seq_lens = torch.zeros_like(seq_lens)
 +        if topk < _GLM53_NOPE_FLASHINFER_TOPK:
 +            indices = torch.nn.functional.pad(
 +                indices,
@@ -5469,7 +5499,7 @@ index 2608621f6a..803e0d94f3 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index cc262fee0b..73401296de 100644
+index 1239dd34de..9001863082 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -450,6 +450,21 @@ class Envs:
@@ -6525,7 +6555,7 @@ index db8d3a88a3..78a1919a8b 100644
      return (num_draft_tokens + pool_size - 1) // pool_size
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 939c45f753..d3cf8f7b62 100644
+index 939c45f753..c05ddbfb70 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -57,6 +57,7 @@ from sglang.srt.environ import envs
@@ -6609,18 +6639,26 @@ index 939c45f753..d3cf8f7b62 100644
          self.dsa_topk_backend: DSATopKBackend = DSATopKBackend.resolve(model_runner)
          if self.num_q_heads <= 64:
              self.flashmla_kv_num_q_heads = 64
-@@ -586,6 +632,22 @@ class DeepseekSparseAttnBackend(
+@@ -566,6 +612,7 @@ class DeepseekSparseAttnBackend(
+         self._q8kv8_born_q_tbo = get_exec().overlap.enable_two_batch_overlap
+ 
+         from sglang.kernels.ops.attention.flash_mla_sm120 import (
++            _flashinfer_sparse_mla_max_tokens,
+             _validate_flashinfer_sparse_mla_backend,
+         )
+ 
+@@ -586,6 +633,22 @@ class DeepseekSparseAttnBackend(
                      device=model_runner.device,
                  ),
              )
 +            from flashinfer.mla import SparseMLASm120Wrapper
 +
-+            max_runner_tokens = max(
-+                64,
-+                int(getattr(model_runner.server_args, "chunked_prefill_size", 0) or 0),
-+                int(getattr(model_runner.server_args, "max_prefill_tokens", 0) or 0),
-+                model_runner.max_running_requests
-+                * max(1, self.speculative_num_draft_tokens or 1),
++            max_runner_tokens = _flashinfer_sparse_mla_max_tokens(
++                chunked_prefill_size=model_runner.server_args.chunked_prefill_size,
++                max_prefill_tokens=model_runner.server_args.max_prefill_tokens,
++                context_len=model_runner.model_config.context_len,
++                max_running_requests=model_runner.max_running_requests,
++                speculative_num_draft_tokens=self.speculative_num_draft_tokens,
 +            )
 +            self.flashinfer_sparse_mla_runner = SparseMLASm120Wrapper(
 +                max_num_tokens=max_runner_tokens,
@@ -6632,7 +6670,7 @@ index 939c45f753..d3cf8f7b62 100644
          # Allocate global workspace buffer for TRT-LLM kernels (ragged attention on SM100/B200, or trtllm decode)
          elif self.device_sm_major >= 10 or self.dsa_decode_impl == "trtllm":
              self.workspace_buffer = get_buffer(
-@@ -1588,7 +1650,13 @@ class DeepseekSparseAttnBackend(
+@@ -1588,7 +1651,13 @@ class DeepseekSparseAttnBackend(
              # Normal Decode
              max_len = self._graph_page_table_width(metadata)
  
@@ -6647,7 +6685,7 @@ index 939c45f753..d3cf8f7b62 100644
                  fused_dsa_decode_metadata(
                      seq_lens=seq_lens,
                      req_pool_indices=req_pool_indices,
-@@ -1603,6 +1671,7 @@ class DeepseekSparseAttnBackend(
+@@ -1603,6 +1672,7 @@ class DeepseekSparseAttnBackend(
                      max_len=max_len,
                      dsa_index_topk=self.dsa_index_topk,
                      real_page_size=self.real_page_size,
@@ -6655,7 +6693,7 @@ index 939c45f753..d3cf8f7b62 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  dsa_cache_seqlens = metadata.dsa_cache_seqlens_int32
-@@ -1628,7 +1697,13 @@ class DeepseekSparseAttnBackend(
+@@ -1628,7 +1698,13 @@ class DeepseekSparseAttnBackend(
          elif forward_mode.is_target_verify():
              max_seqlen_k = self._graph_page_table_width(metadata)
  
@@ -6670,7 +6708,7 @@ index 939c45f753..d3cf8f7b62 100644
                  paged_mqa_ctx_lens_2d = None
                  if (
                      self.speculative_num_draft_tokens >= 2
-@@ -1658,6 +1733,7 @@ class DeepseekSparseAttnBackend(
+@@ -1658,6 +1734,7 @@ class DeepseekSparseAttnBackend(
                      real_page_size=self.real_page_size,
                      next_n=self.speculative_num_draft_tokens,
                      paged_mqa_ctx_lens_2d=paged_mqa_ctx_lens_2d,
@@ -6678,7 +6716,7 @@ index 939c45f753..d3cf8f7b62 100644
                  )
                  target_verify_ctx_lens_written = paged_mqa_ctx_lens_2d is not None
                  cache_seqlens = metadata.cache_seqlens_int32
-@@ -1724,7 +1800,13 @@ class DeepseekSparseAttnBackend(
+@@ -1724,7 +1801,13 @@ class DeepseekSparseAttnBackend(
                  device=self.device,
              )
  
@@ -6693,7 +6731,7 @@ index 939c45f753..d3cf8f7b62 100644
                  fused_dsa_draft_extend_metadata(
                      seq_lens=seq_lens,
                      extend_seq_lens=extend_seq_lens,
-@@ -1745,6 +1827,7 @@ class DeepseekSparseAttnBackend(
+@@ -1745,6 +1828,7 @@ class DeepseekSparseAttnBackend(
                      max_extend_len=self.speculative_num_draft_tokens,
                      max_total_len=bs * self.speculative_num_draft_tokens,
                      static_extend_len=True,
@@ -6701,7 +6739,7 @@ index 939c45f753..d3cf8f7b62 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  seqlens_expanded = metadata.dsa_seqlens_expanded[:total_extend_len]
-@@ -1876,6 +1959,43 @@ class DeepseekSparseAttnBackend(
+@@ -1876,6 +1960,43 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.decode_cuda_graph_metadata[bs]
  
@@ -6745,7 +6783,7 @@ index 939c45f753..d3cf8f7b62 100644
          # Track whether fused kernel succeeded
          fused_kernel_succeeded = False
  
-@@ -1996,28 +2116,86 @@ class DeepseekSparseAttnBackend(
+@@ -1996,28 +2117,86 @@ class DeepseekSparseAttnBackend(
                  flashmla_metadata = metadata.flashmla_metadata.slice(slice(0, size + 1))
                  flashmla_metadata.copy_(precomputed.flashmla_metadata)
  
@@ -6847,7 +6885,7 @@ index 939c45f753..d3cf8f7b62 100644
  
          self.forward_metadata = metadata
  
-@@ -2093,12 +2271,13 @@ class DeepseekSparseAttnBackend(
+@@ -2093,12 +2272,13 @@ class DeepseekSparseAttnBackend(
                      if not layer.is_cross_attention
                      else forward_batch.encoder_out_cache_loc
                  )
@@ -6867,7 +6905,7 @@ index 939c45f753..d3cf8f7b62 100644
  
          # Use MHA kernel if in MHA_ONE_SHOT mode
          if self.use_mha:
-@@ -2218,6 +2397,10 @@ class DeepseekSparseAttnBackend(
+@@ -2218,6 +2398,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -6878,7 +6916,7 @@ index 939c45f753..d3cf8f7b62 100644
              )
          elif dsa_impl in ("flashmla_sparse", "flashmla_sparse_q8"):
              if topk_transform_method == TopkTransformMethod.RAGGED:
-@@ -2304,14 +2487,15 @@ class DeepseekSparseAttnBackend(
+@@ -2304,14 +2488,15 @@ class DeepseekSparseAttnBackend(
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              if topk_transform_method == TopkTransformMethod.RAGGED:
                  page_table_1 = topk_indices
@@ -6902,7 +6940,7 @@ index 939c45f753..d3cf8f7b62 100644
          elif dsa_impl == "flashmla_kv":
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
-@@ -2514,6 +2698,10 @@ class DeepseekSparseAttnBackend(
+@@ -2514,6 +2699,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -6913,7 +6951,7 @@ index 939c45f753..d3cf8f7b62 100644
              )
          elif dsa_impl == "fa3":
              return self._forward_fa3(
-@@ -3005,6 +3193,7 @@ class DeepseekSparseAttnBackend(
+@@ -3005,6 +3194,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -6921,7 +6959,7 @@ index 939c45f753..d3cf8f7b62 100644
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -3149,6 +3338,7 @@ class DeepseekSparseAttnBackend(
+@@ -3149,6 +3339,7 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -6929,7 +6967,7 @@ index 939c45f753..d3cf8f7b62 100644
      ) -> torch.Tensor:
          from sglang.kernels.ops.attention.dsa.tilelang_kernel import tilelang_sparse_fwd
  
-@@ -3165,6 +3355,17 @@ class DeepseekSparseAttnBackend(
+@@ -3165,6 +3356,17 @@ class DeepseekSparseAttnBackend(
                  dim=-1,
              )
  
@@ -6947,7 +6985,7 @@ index 939c45f753..d3cf8f7b62 100644
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3628,6 +3829,10 @@ class DeepseekSparseAttnBackend(
+@@ -3628,6 +3830,10 @@ class DeepseekSparseAttnBackend(
              skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              sparse_mla_top_k_lens=sparse_mla_top_k_lens,
              multi_ctas_kv_counter_buffer=self._multi_ctas_kv_counter_buffer,
@@ -6958,7 +6996,7 @@ index 939c45f753..d3cf8f7b62 100644
          )
  
          return out
-@@ -3812,6 +4017,12 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3812,6 +4018,12 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -6971,7 +7009,7 @@ index 939c45f753..d3cf8f7b62 100644
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3983,15 +4194,31 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3983,15 +4195,31 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:
@@ -8364,10 +8402,10 @@ index 6996b8e77c..45ef72a2c7 100644
          if self.need_topk:
              hidden_states_buf = (
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index 3f9e5dd0f2..adaeb25889 100644
+index ceb9d56aec..1c55fa44f4 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
-@@ -576,6 +576,20 @@ class PrefillAdder:
+@@ -579,6 +579,20 @@ class PrefillAdder:
              self.rem_mamba_slots = self.token_to_kv_pool_allocator.mamba_allocator.schedulable_available_size()
              if self.is_hybrid_ssm_cache:
                  self.rem_mamba_slots += self.tree_cache.mamba_evictable_size()
@@ -8388,7 +8426,7 @@ index 3f9e5dd0f2..adaeb25889 100644
  
          self.priority_scheduling_preemption_threshold = (
              priority_scheduling_preemption_threshold
-@@ -786,6 +800,13 @@ class PrefillAdder:
+@@ -798,6 +812,13 @@ class PrefillAdder:
              >= capacity
          )
  
@@ -8402,7 +8440,7 @@ index 3f9e5dd0f2..adaeb25889 100644
      def _mamba_gap_budget_for_req(self, req: Req) -> int:
          """Shared-gap reservation (full-token-equivalents) for a request's new
          mamba state. Charged only on the SHARED Mamba pool (`_mamba_slot_cost > 0`)
-@@ -804,6 +825,11 @@ class PrefillAdder:
+@@ -816,6 +837,11 @@ class PrefillAdder:
      def ceil_paged_tokens(self, tokens: int) -> int:
          return -(-tokens // self.page_size) * self.page_size
  
@@ -8414,15 +8452,15 @@ index 3f9e5dd0f2..adaeb25889 100644
      def budget_state(self):
          no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
          if not no_token and self.is_hybrid_swa:
-@@ -834,6 +860,7 @@ class PrefillAdder:
+@@ -846,6 +872,7 @@ class PrefillAdder:
          max_new_tokens: int,
          retracted_stain: bool,
          mamba_gap_reserve: int = 0,
 +        needs_mamba_slot: bool = False,
+         is_chunked_continuation: bool = False,
      ):
          # TODO(lsyin): check this workaround logic, which only ensures the prefill will not out of memory, and may be too conservative
-         extend_input_len = self.ceil_paged_tokens(extend_input_len)
-@@ -852,7 +879,7 @@ class PrefillAdder:
+@@ -865,7 +892,7 @@ class PrefillAdder:
          )
          # The new mamba slot also consumes one mamba-recoverable slot (gated
          # separately so full_evictable can't cover it — see __init__).
@@ -8431,7 +8469,7 @@ index 3f9e5dd0f2..adaeb25889 100644
              self.rem_mamba_slots -= 1
          self.rem_input_tokens -= extend_input_len
  
-@@ -939,6 +966,7 @@ class PrefillAdder:
+@@ -955,6 +982,7 @@ class PrefillAdder:
              0,
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8439,7 +8477,7 @@ index 3f9e5dd0f2..adaeb25889 100644
          )
          self._account_prefill_cache_admission(req, prefix_len)
  
-@@ -980,6 +1008,7 @@ class PrefillAdder:
+@@ -996,6 +1024,7 @@ class PrefillAdder:
              max_new_tokens,
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8447,15 +8485,15 @@ index 3f9e5dd0f2..adaeb25889 100644
          )
  
          # Return based on remaining token availability
-@@ -1035,6 +1064,7 @@ class PrefillAdder:
+@@ -1052,6 +1081,7 @@ class PrefillAdder:
              ),
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
 +            needs_mamba_slot=False,
+             is_chunked_continuation=True,
          )
  
-         # Return if chunked prefill not finished
-@@ -1166,6 +1196,7 @@ class PrefillAdder:
+@@ -1184,6 +1214,7 @@ class PrefillAdder:
                  min(req.sampling_params.max_new_tokens, CLIP_MAX_NEW_TOKENS),
                  req.retracted_stain,
                  mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8463,7 +8501,7 @@ index 3f9e5dd0f2..adaeb25889 100644
              )
          else:
              if self.rem_chunk_tokens <= 0:
-@@ -1189,6 +1220,7 @@ class PrefillAdder:
+@@ -1207,6 +1238,7 @@ class PrefillAdder:
                  0,
                  req.retracted_stain,
                  mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8471,7 +8509,7 @@ index 3f9e5dd0f2..adaeb25889 100644
              )
  
          return self.budget_state()
-@@ -1218,6 +1250,7 @@ class PrefillAdder:
+@@ -1236,6 +1268,7 @@ class PrefillAdder:
          # Read before `init_load_back` binds `req.mamba_pool_idx` — after that
          # this returns 0, so the debit sites below reuse the value.
          mamba_gap_reserve = self._mamba_gap_budget_for_req(req)
@@ -8479,7 +8517,7 @@ index 3f9e5dd0f2..adaeb25889 100644
          total_tokens += mamba_gap_reserve
  
          # adjusting the input_tokens based on host_hit_length and page_size
-@@ -1366,6 +1399,7 @@ class PrefillAdder:
+@@ -1394,6 +1427,7 @@ class PrefillAdder:
                      ),
                      req.retracted_stain,
                      mamba_gap_reserve=mamba_gap_reserve,
@@ -8487,7 +8525,7 @@ index 3f9e5dd0f2..adaeb25889 100644
                  )
                  self._account_prefill_cache_admission(req, prefix_len)
              else:
-@@ -1413,6 +1447,7 @@ class PrefillAdder:
+@@ -1441,6 +1475,7 @@ class PrefillAdder:
                      0,
                      req.retracted_stain,
                      mamba_gap_reserve=mamba_gap_reserve,
@@ -9457,7 +9495,7 @@ index 2d9e5ad778..e91fd328bd 100644
  
  
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index d3c615a03b..00c4410328 100644
+index 33b58fe59f..f93d395109 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,7 +12,6 @@ import torch
@@ -9468,7 +9506,7 @@ index d3c615a03b..00c4410328 100644
      mambaish_config,
  )
  from sglang.srt.configs.model_config import (
-@@ -366,6 +365,12 @@ class KVCacheConfigurator:
+@@ -379,6 +378,12 @@ class KVCacheConfigurator:
      def pool_page_size(self) -> int:
          return get_schedule().page_size * self.loc_space_scale
  
@@ -9481,7 +9519,7 @@ index d3c615a03b..00c4410328 100644
      def _derive_pool_sizes(self, *, config: MemoryPoolConfig) -> _PoolSizes:
          max_total_num_tokens = config.max_total_num_tokens
          max_running_requests = config.max_running_requests
-@@ -1011,6 +1016,18 @@ class KVCacheConfigurator:
+@@ -1024,6 +1029,18 @@ class KVCacheConfigurator:
                      mamba_layer_ids.append(layer_id)
          return mamba_layer_ids
  
@@ -9500,7 +9538,7 @@ index d3c615a03b..00c4410328 100644
      def _build_hybrid_mamba_decode_req_pool(
          self,
          *,
-@@ -1044,10 +1061,7 @@ class KVCacheConfigurator:
+@@ -1057,10 +1074,7 @@ class KVCacheConfigurator:
              # flag set stays byte-identical to flag-off.
              enable_linear_replayssm_spec=(
                  get_exec().mamba.enable_linear_replayssm_spec
@@ -9512,7 +9550,7 @@ index d3c615a03b..00c4410328 100644
              ),
          )
          return req_to_token_pool
-@@ -1087,7 +1101,7 @@ class KVCacheConfigurator:
+@@ -1100,7 +1114,7 @@ class KVCacheConfigurator:
          if (
              get_exec().mamba.enable_linear_replayssm_spec
              and _algo in ("DSPARK", "DFLASH")
@@ -9521,7 +9559,7 @@ index d3c615a03b..00c4410328 100644
          ):
              raise ValueError(
                  "--enable-linear-replayssm-spec with DSPARK/DFLASH requires a KDA "
-@@ -1124,10 +1138,7 @@ class KVCacheConfigurator:
+@@ -1137,10 +1151,7 @@ class KVCacheConfigurator:
              # flag set stays byte-identical to flag-off.
              enable_linear_replayssm_spec=(
                  get_exec().mamba.enable_linear_replayssm_spec
@@ -9533,7 +9571,7 @@ index d3c615a03b..00c4410328 100644
              ),
          )
          return req_to_token_pool
-@@ -1527,6 +1538,9 @@ class KVCacheConfigurator:
+@@ -1546,6 +1557,9 @@ class KVCacheConfigurator:
      ) -> KVCache:
          from sglang.srt.layers.cp.utils import get_glm_dsa_cp_layer_shard_info
  
@@ -9543,7 +9581,7 @@ index d3c615a03b..00c4410328 100644
          (
              dsa_cp_layer_shard_rank,
              dsa_cp_layer_shard_size,
-@@ -1559,7 +1573,7 @@ class KVCacheConfigurator:
+@@ -1578,7 +1592,7 @@ class KVCacheConfigurator:
              ]
          token_to_kv_pool = PoolCls(
              max_total_num_tokens,
@@ -9552,7 +9590,7 @@ index d3c615a03b..00c4410328 100644
              dtype=self.kv_cache_dtype,
              kv_lora_rank=self.model_config.kv_lora_rank,
              qk_rope_head_dim=self.model_config.qk_rope_head_dim,
-@@ -2314,14 +2328,22 @@ class KVCacheConfigurator:
+@@ -2340,14 +2354,22 @@ class KVCacheConfigurator:
          # no longer reserves the (1 + D/ratio) intermediate factor -- the whole
          # budget goes to persistent slots (K sized like non-spec), which is how the
          # freed ~9GB turns into higher max_running.
@@ -9581,7 +9619,7 @@ index d3c615a03b..00c4410328 100644
              replayssm_ring_per_req = (
                  config.mamba2_cache_params.replayssm_ring_bytes_per_req(
                      record_len=record_len
-@@ -2330,7 +2352,7 @@ class KVCacheConfigurator:
+@@ -2356,7 +2378,7 @@ class KVCacheConfigurator:
          else:
              replayssm_ring_per_req = 0
          replayssm_ring_per_req = int(replayssm_ring_per_req * pp_layer_scale)
@@ -9590,7 +9628,7 @@ index d3c615a03b..00c4410328 100644
              replay_req_slots = (
                  get_schedule().max_running_requests // self.ps.attn_dp_size + 1
              )
-@@ -2483,6 +2505,24 @@ def calculate_mla_kv_cache_dim(
+@@ -2509,6 +2531,24 @@ def calculate_mla_kv_cache_dim(
      if uses_trtllm_kv_layout:
          return kv_cache_dim
  
@@ -9615,7 +9653,7 @@ index d3c615a03b..00c4410328 100644
      # On HIP, TileLang and AITER DSA kernels consume the raw MLA KV layout:
      # nope(512 fp8) + rope(64 fp8), without extra per-block scales.
      if _is_hip and (
-@@ -2491,6 +2531,16 @@ def calculate_mla_kv_cache_dim(
+@@ -2517,6 +2557,16 @@ def calculate_mla_kv_cache_dim(
      ):
          return kv_cache_dim
  
@@ -9694,10 +9732,10 @@ index e98bdec52d..e395387c80 100644
              child.hash_value, split_len, self.page_size
          )
 diff --git a/python/sglang/srt/mem_cache/memory_pool.py b/python/sglang/srt/mem_cache/memory_pool.py
-index 5607bcd074..27322bd837 100644
+index 1ec550735a..8b606ab783 100644
 --- a/python/sglang/srt/mem_cache/memory_pool.py
 +++ b/python/sglang/srt/mem_cache/memory_pool.py
-@@ -4391,9 +4391,12 @@ class MLATokenToKVPool(KVCache):
+@@ -4400,9 +4400,12 @@ class MLATokenToKVPool(KVCache):
              self.write_loc_is_dcp_resolved
              and (self.use_dsa or self.dsa_kv_cache_store_fp8)
          ), "the DSA write paths have no resolved-loc variant"
@@ -10074,7 +10112,7 @@ index db7125902c..63114badf4 100644
      def walk_for_kv_canary(
          self, unlocked_only: bool, swa_resident_only: bool
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 6c13b7cafc..cd03e41a89 100644
+index 3eb51fa610..9fd692d773 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -2,6 +2,7 @@ from __future__ import annotations
@@ -10526,10 +10564,10 @@ index b843fe27a7..b800bd9777 100644
          return observer_state
  
 diff --git a/python/sglang/srt/model_executor/pool_configurator.py b/python/sglang/srt/model_executor/pool_configurator.py
-index cc7cbfeb96..dc761682b9 100644
+index 473f099e28..287d3dc832 100644
 --- a/python/sglang/srt/model_executor/pool_configurator.py
 +++ b/python/sglang/srt/model_executor/pool_configurator.py
-@@ -251,16 +251,23 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
+@@ -252,16 +252,23 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
                      target_kv_num_layers = get_glm_dsa_layer_split_effective_num_layers(
                          kvc, num_layers
                      )
@@ -10559,7 +10597,7 @@ index cc7cbfeb96..dc761682b9 100644
                      self._cell_size = int(
                          self._cell_size * (1 + draft_num_layers / int(num_layers))
                      )
-@@ -603,6 +610,10 @@ class HybridSWAPoolConfigurator(MemoryPoolConfigurator):
+@@ -604,6 +611,10 @@ class HybridSWAPoolConfigurator(MemoryPoolConfigurator):
                      - self._draft_swa_layers_num
                      - self._draft_swa_full_layers_num
                  )
@@ -22334,7 +22372,7 @@ index 0000000000..9a632520b2
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/model_executor/test_pool_configurator.py b/test/registered/unit/model_executor/test_pool_configurator.py
-index 86914d6b17..5acb248006 100644
+index 5a6b532925..aa1d1e35c9 100644
 --- a/test/registered/unit/model_executor/test_pool_configurator.py
 +++ b/test/registered/unit/model_executor/test_pool_configurator.py
 @@ -704,18 +704,51 @@ class TestEagleConfigurator(CustomTestCase):
@@ -22398,20 +22436,16 @@ index 86914d6b17..5acb248006 100644
  
      @patch(
          "sglang.srt.mem_cache.kv_cache_configurator.calculate_mla_kv_cache_dim",
-@@ -1045,11 +1078,11 @@ class TestSWAPoolFloor(CustomTestCase):
+@@ -1045,8 +1078,7 @@ class TestSWAPoolFloor(CustomTestCase):
          self.assertEqual(config.swa_max_total_num_tokens, 3072)
  
-     def _dsv4_sizes(self, max_tokens, page_size):
+     def _dsv4_sizes(self, max_tokens, page_size, unified=False):
 -        """Exercise the DSV4 size arithmetic without a full V4 model fixture:
--        _compute_dsv4_sizes reads only these five attributes."""
-+        """Exercise non-unified DSV4 size arithmetic without a model fixture."""
+-        _compute_dsv4_sizes reads only these six attributes."""
++        """Exercise DSV4 size arithmetic without a model fixture."""
          from sglang.srt.model_executor.pool_configurator import DSV4PoolConfigurator
  
          cfg = object.__new__(DSV4PoolConfigurator)
-+        cfg._unified = False
-         cfg.swa_ratio = 0.1
-         cfg.sliding_window_size = 128
-         cfg.swa_page_size = 128
 diff --git a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 index 07a2c5f057..09f2187068 100644
 --- a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
@@ -24025,10 +24059,10 @@ index fe062eb256..9920b51459 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index 1b72d94403..4e4e8c752c 100644
+index 1b72d94403..93d101aad3 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
-@@ -1,6 +1,5 @@
+@@ -1,73 +1,67 @@
 -import sys
  import unittest
 -from types import ModuleType
@@ -24036,10 +24070,13 @@ index 1b72d94403..4e4e8c752c 100644
  from unittest.mock import patch
  
  import torch
-@@ -9,65 +8,58 @@ from sglang.kernels.ops.attention.flash_mla_sm120 import (
+ 
+ from sglang.kernels.ops.attention.flash_mla_sm120 import (
++    _flashinfer_sparse_mla_max_tokens,
      _validate_flashinfer_sparse_mla_backend,
      flashinfer_sparse_mla_forward,
  )
++from sglang.srt.managers.schedule_policy import AddReqResult, PrefillAdder
 +from sglang.srt.mem_cache import kv_cache_configurator
  from sglang.test.ci.ci_register import register_cpu_ci
  
@@ -24084,13 +24121,6 @@ index 1b72d94403..4e4e8c752c 100644
 -                sm_scale=0.125,
 -                skip_softmax_threshold_scale_factor=0.25,
 -            )
--
--        self.assertEqual(tuple(captured["query"].shape), (2, 1, 8, 576))
--        self.assertEqual(tuple(captured["kv_cache"].shape), (2, 1, 64, 656))
--        self.assertEqual(tuple(captured["block_tables"].shape), (2, 1, 4))
--        self.assertEqual(
--            captured["block_tables"].tolist(),
--            [[[7, 9, -1, -1]], [[4, 6, 8, -1]]],
 +        class FakeRunner:
 +            def run(self, q, kv_cache, indices, output, sm_scale, **kwargs):
 +                captured.update(
@@ -24102,7 +24132,13 @@ index 1b72d94403..4e4e8c752c 100644
 +                    **kwargs,
 +                )
 +                output.fill_(2)
-+
+ 
+-        self.assertEqual(tuple(captured["query"].shape), (2, 1, 8, 576))
+-        self.assertEqual(tuple(captured["kv_cache"].shape), (2, 1, 64, 656))
+-        self.assertEqual(tuple(captured["block_tables"].shape), (2, 1, 4))
+-        self.assertEqual(
+-            captured["block_tables"].tolist(),
+-            [[[7, 9, -1, -1]], [[4, 6, 8, -1]]],
 +        indices = torch.full((2, 2051), -1, dtype=torch.int32)
 +        indices[0, :2] = torch.tensor([7, 9], dtype=torch.int32)
 +        indices[1, :3] = torch.tensor([4, 6, 8], dtype=torch.int32)
@@ -24145,7 +24181,7 @@ index 1b72d94403..4e4e8c752c 100644
          self.assertEqual(tuple(output.shape), (2, 8, 512))
          self.assertTrue(torch.all(output == 2))
  
-@@ -86,6 +78,8 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -86,6 +80,8 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          for model_arch in (
              "GlmMoeDsaForCausalLM",
              "GlmMoeDsaForCausalLMNextN",
@@ -24154,7 +24190,7 @@ index 1b72d94403..4e4e8c752c 100644
          ):
              with self.subTest(model_arch=model_arch):
                  self.assertTrue(
-@@ -96,14 +90,14 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -96,14 +92,14 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
                      )
                  )
  
@@ -24176,7 +24212,7 @@ index 1b72d94403..4e4e8c752c 100644
  
      def test_reports_unsupported_configuration(self):
          with self.assertRaises(ValueError) as error:
-@@ -119,5 +113,49 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -119,5 +115,184 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          self.assertIn("kv_cache_dtype=torch.float8_e4m3fn", message)
  
  
@@ -24222,6 +24258,141 @@ index 1b72d94403..4e4e8c752c 100644
 +                    ),
 +                    expected,
 +                )
++
++
++class TestFlashInferSparseMLARunnerCapacity(unittest.TestCase):
++    def test_unchunked_first_prompt_can_exceed_prefill_budget(self):
++        for chunk in (None, 0, -1):
++            with self.subTest(chunk=chunk):
++                capacity = _flashinfer_sparse_mla_max_tokens(
++                    chunked_prefill_size=chunk,
++                    max_prefill_tokens=16384,
++                    context_len=32768,
++                    max_running_requests=4,
++                    speculative_num_draft_tokens=6,
++                )
++                self.assertGreaterEqual(capacity, 32768 + 4 * 6)
++
++    def test_ignore_eos_last_prompt_can_overshoot_prefill_budget(self):
++        adder = PrefillAdder(
++            page_size=64,
++            tree_cache=SimpleNamespace(
++                disable=True, supports_mamba=lambda: False, evictable_size=lambda: 0
++            ),
++            token_to_kv_pool_allocator=SimpleNamespace(available_size=lambda: 450560),
++            running_batch=None,
++            new_token_ratio=1.0,
++            rem_input_tokens=16384,
++            rem_chunk_tokens=None,
++        )
++
++        class Request(SimpleNamespace):
++            def set_extend_range(self, start, end):
++                self.extend_range = SimpleNamespace(length=end - start)
++
++        for length, result in (
++            (8192, AddReqResult.CONTINUE),
++            (30000, AddReqResult.OTHER),
++        ):
++            req = Request(
++                full_untruncated_fill_ids=range(length),
++                origin_input_ids=range(length),
++                prefix_indices=[],
++                output_ids=[],
++                sampling_params=SimpleNamespace(ignore_eos=True, max_new_tokens=8),
++                retracted_stain=False,
++            )
++            self.assertIs(adder.add_one_req(req, False, None), result)
++        self.assertEqual(len(adder.can_run_list), 2)
++        admitted = sum(req.extend_range.length for req in adder.can_run_list)
++        self.assertEqual(admitted, 38192)
++        capacity = _flashinfer_sparse_mla_max_tokens(
++            chunked_prefill_size=None,
++            max_prefill_tokens=16384,
++            context_len=32768,
++            max_running_requests=4,
++            speculative_num_draft_tokens=6,
++        )
++        self.assertGreaterEqual(capacity, admitted + 4 * 6)
++
++    def test_chunked_mixed_batch_does_not_reserve_entire_context(self):
++        capacity = _flashinfer_sparse_mla_max_tokens(
++            chunked_prefill_size=4096,
++            max_prefill_tokens=4096,
++            context_len=524288,
++            max_running_requests=4,
++            speculative_num_draft_tokens=6,
++        )
++        self.assertEqual(capacity, 4120)
++
++    def test_unchunked_batch_budget_can_exceed_one_context(self):
++        capacity = _flashinfer_sparse_mla_max_tokens(
++            chunked_prefill_size=None,
++            max_prefill_tokens=65536,
++            context_len=32768,
++            max_running_requests=4,
++            speculative_num_draft_tokens=None,
++        )
++        self.assertGreaterEqual(capacity, 65536 + 4)
++
++
++class TestFlashInferSparseMLAIndexAndWorkspaceBounds(unittest.TestCase):
++    def _run(self, indices, heads=32, workspace_bytes=None):
++        captured = {}
++
++        class FakeRunner:
++            def run(self, q, kv_cache, indices, output, sm_scale, **kwargs):
++                captured.update(indices=indices, **kwargs)
++                output.zero_()
++
++        tokens = indices.shape[0]
++        scratch_heads = 8 if heads == 8 else ((heads + 15) // 16) * 16
++        required = tokens * scratch_heads * 34 * (512 * 2 + 4)
++        flashinfer_sparse_mla_forward(
++            q=torch.zeros(tokens, heads, 512, dtype=torch.bfloat16),
++            kv_cache=torch.zeros(1, 64, 528, dtype=torch.uint8),
++            indices=indices,
++            seq_lens=torch.full((tokens,), 8192, dtype=torch.int32),
++            workspace_buffer=torch.zeros(
++                required if workspace_bytes is None else workspace_bytes,
++                dtype=torch.uint8,
++            ),
++            runner=FakeRunner(),
++            page_size=64,
++            kv_cache_dim=528,
++            qk_nope_head_dim=256,
++            kv_lora_rank=512,
++            qk_rope_head_dim=0,
++            sm_scale=0.125,
++            skip_softmax_threshold_scale_factor=None,
++        )
++        return captured, required
++
++    def test_holes_do_not_exclude_kpool_tail(self):
++        indices = torch.full((1, 2051), -1, dtype=torch.int32)
++        indices[0, :2044] = torch.arange(1, 2045, dtype=torch.int32)
++        indices[0, 2048:] = torch.tensor([9000, 9001, 9002], dtype=torch.int32)
++        captured, _ = self._run(indices)
++        self.assertEqual(captured["topk_length"].tolist(), [2051])
++        torch.testing.assert_close(captured["indices"][:, :2051], indices)
++
++    def test_leading_holes_and_empty_rows(self):
++        indices = torch.tensor([[-1, 2, 3, -1], [-1, -1, -1, -1]], dtype=torch.int32)
++        captured, _ = self._run(indices)
++        self.assertEqual(captured["topk_length"].tolist(), [3, 0])
++
++    def test_exact_and_one_byte_short_workspace(self):
++        indices = torch.tensor([[2, -1]], dtype=torch.int32)
++        for heads in (8, 24, 32):
++            with self.subTest(heads=heads):
++                captured, required = self._run(indices, heads=heads)
++                expected_heads = 8 if heads == 8 else 32
++                self.assertEqual(
++                    captured["mid_out"].shape, (1, expected_heads, 34, 512)
++                )
++                self.assertEqual(captured["mid_lse"].shape, (1, expected_heads, 34))
++                with self.assertRaisesRegex(ValueError, "workspace is too small"):
++                    self._run(indices, heads=heads, workspace_bytes=required - 1)
 +
 +
  if __name__ == "__main__":

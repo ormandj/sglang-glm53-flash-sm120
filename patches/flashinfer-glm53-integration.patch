@@ -1068,6 +1068,20 @@ index 598199dc..515c6fb8 100644
          << "prefill for inline-scale KV caches (DSv3.2/GLM) requires densely packed blocks "
             "(stride_kv_block == page_block_size * bytes_per_token); padded block strides are "
             "decode-only";
+diff --git a/csrc/sparse_mla_sm120_decode_dsv3_2.cu b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
+index 368fdbb4..0111e7b8 100644
+--- a/csrc/sparse_mla_sm120_decode_dsv3_2.cu
++++ b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
+@@ -189,6 +189,9 @@ bool launch_sparse_mla_decode_dsv3_2(ModelType mt, int num_heads, int topk, int
+   // indexer window. The TP1 (64-head) and TP2 (32-head) shapes keep
+   // dedicated instantiations; any other shard rides the runtime-H fallback.
+   if (mt == ModelType::GLM53_NOPE) {
++    // The public scratch allocator uses eight rows for H=8. A dedicated
++    // instantiation preserves that ABI instead of the runtime-H padded stride.
++    DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 8)
+     DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 32)
+     DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 64)
+     DSV3_2_DISPATCH_RT_MT(ModelType::GLM53_NOPE)
 diff --git a/csrc/sparse_mla_sm120_jit_binding.cu b/csrc/sparse_mla_sm120_jit_binding.cu
 index d506f690..86e25980 100644
 --- a/csrc/sparse_mla_sm120_jit_binding.cu
@@ -2625,22 +2639,53 @@ index 55abc157..46dbee8d 100644
      if kv_cache.ndim == 2:
          block_bytes = int(kv_cache.shape[1])
          if block_bytes % bytes_per_token != 0:
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/glm53_padding.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/glm53_padding.cuh
+new file mode 100644
+index 00000000..1343b20f
+--- /dev/null
++++ b/include/flashinfer/attention/sparse_mla_sm120/common/glm53_padding.cuh
+@@ -0,0 +1,12 @@
++// Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: BSD-3-Clause
++#pragma once
++
++#include <cuda_runtime.h>
++#include <stdint.h>
++
++// Module-owned padding cannot be overwritten by cache allocation or graph
++// dummy writes. GLM NoPE gathers 512 FP8 bytes and four inline FP32 scales.
++// Both payload and scales are finite zero, so masked value MMA lanes cannot
++// produce 0 * NaN from an unrelated cache row.
++static __device__ __align__(16) const uint8_t glm53_padding_kv[528] = {};
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
-index 12268e94..bb5b221b 100644
+index 12268e94..02d285c9 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
-@@ -84,7 +84,9 @@ __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, int idx,
-   idx = (idx >= 0) ? idx : 0;
+@@ -31,6 +31,7 @@
+ #include "../arch/barrier.cuh"
+ #include "../arch/cp_async.cuh"
+ #include "../model/kv_cache_traits.cuh"
++#include "glm53_padding.cuh"
+ 
+ // KV cache IO: gather BI entries from global KV pool to smem.
+ //
+@@ -81,10 +82,13 @@ __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, int idx,
+   if (io_tid == 0) mbarrier_arrive_expect_tx(mbar, TILE_BI * COPY_BYTES);
+   if (io_tid >= TILE_BI) return;
+ 
+-  idx = (idx >= 0) ? idx : 0;
++  const bool valid = idx >= 0;
++  idx = valid ? idx : 0;
  
    const uint8_t* src;
 -  if constexpr (KV::SCALE_IN_KV_SMEM) {
 +  if constexpr (MT == ModelType::GLM53_NOPE) {
-+    src = kv_ptr + (size_t)idx * (stride_kv_block / PAGE_BLOCK_SIZE);
++    src = valid ? kv_ptr + (size_t)idx * (stride_kv_block / PAGE_BLOCK_SIZE) : glm53_padding_kv;
 +  } else if constexpr (KV::SCALE_IN_KV_SMEM) {
      src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
    } else {
      constexpr int pbs = PAGE_BLOCK_SIZE;
-@@ -113,7 +115,9 @@ __device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __re
+@@ -113,7 +117,9 @@ __device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __re
    if (io_tid >= TILE_BI || idx < 0) return;
  
    const uint8_t* src;
@@ -2651,7 +2696,7 @@ index 12268e94..bb5b221b 100644
      src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
    } else {
      constexpr int pbs = PAGE_BLOCK_SIZE;
-@@ -123,10 +127,12 @@ __device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __re
+@@ -123,10 +129,12 @@ __device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __re
                              (size_t)(idx % pbs) * KV::SCALE_BYTES_PER_TOKEN;
      prefetch_l2_line(footer);
    }
@@ -2681,6 +2726,28 @@ index 4c7c9d69..c36a7c97 100644
    static constexpr int P_TILE_BYTES = CT::HEADS_PER_WARP * BI;  // 512
  
    // nope + inline scales + rope, one linear tile per candidate.
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
+index dd54a0c9..73617a01 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv3_2_kernel.cuh
+@@ -11,6 +11,7 @@
+ #include "arch/mma_sm120.cuh"
+ #include "common/d2_load_b.cuh"
+ #include "common/fp8_quant.cuh"
++#include "common/glm53_padding.cuh"
+ #include "common/online_softmax.cuh"
+ #include "common/scale_mma.cuh"
+ #include "model/kv_cache_traits.cuh"
+@@ -268,6 +269,9 @@ __global__ void __launch_bounds__(DSV3_2_BLOCK_THREADS) sparse_mla_decode_dsv3_2
+       const int local_idx_g = idx - block_idx_g * pbs;
+       const uint8_t* data_base = KV_cache + (size_t)block_idx_g * stride_kv_block +
+                                  (size_t)local_idx_g * (size_t)stride_kv_row;
++      if constexpr (MT == ModelType::GLM53_NOPE) {
++        if (idx_raw < 0) data_base = glm53_padding_kv;
++      }
+       // Bulk 1: NoPE + INLINE scales (528 B) → sm_kv_fp8 slot.
+       cp_async_bulk_g2s(kv_fp8_dst + (size_t)entry_idx * KV_SMEM_STRIDE, data_base,
+                         V2_BULK_NOPESC_BYTES, sm.mbar_full(buf));
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
 index 250ade9a..deea3db6 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
@@ -2712,11 +2779,35 @@ index d02b2c18..af4601bc 100644
      const int bi = idx / PAGE_BLOCK_SIZE;
      const int li = idx % PAGE_BLOCK_SIZE;
      return kv_global + (size_t)bi * stride_kv_block + (size_t)li * IO::IO_STRIDE;
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
+index 140d1c06..94e5135b 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
+@@ -575,6 +575,9 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
+     // This thread's candidate index for tile t, staged a tile ahead of use so
+     // the index LDG latency is hidden behind the previous tile's gather.
+     auto load_idx = [&](int t) -> int {
++      if constexpr (MT == ModelType::GLM53_NOPE) {
++        if (t * Cfg::BI + io_tid >= topk_len) return -1;
++      }
+       return (t < actual_ni && io_tid < Cfg::BI) ? __ldg(idx_base + t * Cfg::BI + io_tid) : -1;
+     };
+     // Scales first (plain stores, no mbar signal), then bulk gather
+@@ -1260,6 +1263,9 @@ __device__ __forceinline__ void prefill_mg_impl(
+     // split needs no branch on the tile-length mode.
+     auto load_idx = [&](int t) -> int {
+       if (t >= loop_bound || io_tid >= BI) return -1;
++      if constexpr (MT == ModelType::GLM53_NOPE) {
++        if (t * BI + io_tid >= topk_len) return -1;
++      }
+       if constexpr (DUAL_CACHE) {
+         const bool is_main = t < main_ni;
+         const int32_t* p = is_main ? (idx_base + t * BI) : (idx_base_extra + (t - main_ni) * BI);
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
-index 3e956b6e..2e13638e 100644
+index 3e956b6e..743b0638 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
-@@ -56,14 +56,16 @@ template <ModelType MT>
+@@ -56,14 +56,19 @@ template <ModelType MT>
  __device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, int idx,
                                                             const uint8_t* __restrict__ kv_ptr,
                                                             uint64_t* mbar, int io_tid,
@@ -2732,10 +2823,13 @@ index 3e956b6e..2e13638e 100644
 -  const uint8_t* src = kv_ptr + (size_t)(idx >= 0 ? idx : 0) * STRIDE;
 +  const size_t row_stride = MT == ModelType::GLM53_NOPE ? stride_kv_row : STRIDE;
 +  const uint8_t* src = kv_ptr + (size_t)(idx >= 0 ? idx : 0) * row_stride;
++  if constexpr (MT == ModelType::GLM53_NOPE) {
++    if (idx < 0) src = glm53_padding_kv;
++  }
    cp_async_bulk_g2s_l2hint(dst + io_tid * STRIDE, src, STRIDE, mbar, cache_policy);
  }
  
-@@ -72,10 +74,12 @@ __device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, int idx
+@@ -72,10 +77,12 @@ __device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, int idx
  template <ModelType MT>
  __device__ __forceinline__ void io_bulk_prefetch_l2_swapab(int idx,
                                                             const uint8_t* __restrict__ kv_ptr,
@@ -2750,7 +2844,17 @@ index 3e956b6e..2e13638e 100644
  }
  
  template <ModelType MT, int NUM_HEADS>
-@@ -142,8 +146,8 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+@@ -131,6 +138,9 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+     // `pf` (tile ti+1) warms L2 after the gather issue: this pipeline is one
+     // tile deep, so the prefetch must not delay the gather the math waits on.
+     auto ld_idx = [&](int t) -> int {
++      if constexpr (MT == ModelType::GLM53_NOPE) {
++        if (t * BI + io_tid >= topk_len) return -1;
++      }
+       return (t < actual_ni && io_tid < BI) ? __ldg(idx_base + t * BI + io_tid) : -1;
+     };
+     int staged = ld_idx(0);
+@@ -142,8 +152,8 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
        const int next = ld_idx(ti + 2);
        mbarrier_wait_parity(sm.mbar_wr + buf, wr_phase);
        io_bulk_gather_tile_swapab<MT>(sm.kv_bufs[buf], staged, KV_cache, sm.mbar_kv + buf, io_tid,
@@ -2762,10 +2866,10 @@ index 3e956b6e..2e13638e 100644
        pf = next;
        if (buf == 1) wr_phase ^= 1;
 diff --git a/tests/attention/test_sparse_mla_sm120.py b/tests/attention/test_sparse_mla_sm120.py
-index e334e6f8..f3bda1e9 100644
+index e334e6f8..6863f497 100644
 --- a/tests/attention/test_sparse_mla_sm120.py
 +++ b/tests/attention/test_sparse_mla_sm120.py
-@@ -3581,3 +3581,87 @@ def test_sparse_mla_sm120_envelope_consistency(
+@@ -3581,3 +3581,184 @@ def test_sparse_mla_sm120_envelope_consistency(
      else:
          with pytest.raises(RuntimeError, match="sparse-MLA"):
              call()
@@ -2853,6 +2957,103 @@ index e334e6f8..f3bda1e9 100644
 +    run(padded, a, la)
 +    torch.testing.assert_close(b, a, rtol=0, atol=0)
 +    torch.testing.assert_close(lb, la, rtol=0, atol=0)
++
++
++@pytest.mark.parametrize("layout", [528, 656])
++@pytest.mark.parametrize(
++    "num_tokens,num_heads,impl",
++    [
++        (1, 8, None),
++        (4, 8, None),
++        (1, 32, None),
++        (1, 64, None),
++        (65, 8, "mg"),
++        (65, 32, "mg"),
++        (65, 64, "swapab"),
++        (65, 128, "swapab"),
++    ],
++)
++@pytest.mark.parametrize("pattern", ["partial", "holes", "bounded", "empty"])
++def test_glm53_masked_cache_rows_ignore_poisoned_slot_zero(
++    layout, num_tokens, num_heads, impl, pattern
++):
++    from flashinfer.mla import SparseMLASm120Wrapper
++
++    kv = torch.full((1, 64, 1, 512), 0.5, device="cuda", dtype=torch.bfloat16)
++    packed = quantize_kv_glm53_nope(kv)[..., :layout].contiguous()
++    q = torch.zeros((num_tokens, num_heads, 512), device="cuda", dtype=torch.bfloat16)
++    indices = torch.full((num_tokens, 2176), -1, device="cuda", dtype=torch.int32)
++    lengths = torch.ones(num_tokens, device="cuda", dtype=torch.int32)
++    if pattern == "empty":
++        lengths.zero_()
++    else:
++        indices[:, 0] = 1
++        if pattern == "holes":
++            indices[:, 2048:2051] = torch.tensor(
++                [2, 3, 4], device="cuda", dtype=torch.int32
++            )
++            lengths.fill_(2051)
++        elif pattern == "bounded":
++            # Even non-negative candidates beyond topk_length must be ignored.
++            indices[:, 1:] = 0
++    wrapper = SparseMLASm120Wrapper(
++        max_num_tokens=num_tokens,
++        max_num_heads=num_heads,
++        d_v=512,
++        kv_scale_format="arbitrary_fp32",
++        device="cuda",
++    )
++    clean, poisoned = torch.empty_like(q), torch.empty_like(q)
++    clean_lse = torch.empty((num_tokens, num_heads), device="cuda", dtype=torch.float32)
++    poisoned_lse = torch.empty_like(clean_lse)
++    wrapper.run(
++        q,
++        packed,
++        indices,
++        clean,
++        512**-0.5,
++        topk_length=lengths,
++        prefill_impl=impl,
++        out_lse=clean_lse,
++    )
++    expected = torch.full_like(clean, 0.0 if pattern == "empty" else 0.5)
++    torch.testing.assert_close(clean, expected, atol=1e-3, rtol=1e-3)
++    # E4M3 0x7f is NaN. Cache slot zero is never a valid candidate here.
++    packed.reshape(-1, layout)[0, :512] = 0x7F
++    wrapper.run(
++        q,
++        packed,
++        indices,
++        poisoned,
++        512**-0.5,
++        topk_length=lengths,
++        prefill_impl=impl,
++        out_lse=poisoned_lse,
++    )
++    assert torch.isfinite(poisoned).all()
++    torch.testing.assert_close(poisoned, clean, atol=0, rtol=0)
++    torch.testing.assert_close(poisoned_lse, clean_lse, atol=0, rtol=0)
++
++    if pattern == "holes":
++        graph = torch.cuda.CUDAGraph()
++        with torch.cuda.graph(graph):
++            wrapper.run(
++                q,
++                packed,
++                indices,
++                poisoned,
++                512**-0.5,
++                topk_length=lengths,
++                prefill_impl=impl,
++                out_lse=poisoned_lse,
++            )
++        # Preserve addresses while changing valid payloads between replays.
++        packed.copy_(quantize_kv_glm53_nope(kv * 0.5)[..., :layout])
++        packed.reshape(-1, layout)[0, :512] = 0x7F
++        graph.replay()
++        torch.testing.assert_close(
++            poisoned, torch.full_like(poisoned, 0.25), atol=1e-3, rtol=1e-3
++        )
 diff --git a/tests/attention/test_sparse_mla_sm120_dispatch.py b/tests/attention/test_sparse_mla_sm120_dispatch.py
 index 64f111c5..b826c09d 100644
 --- a/tests/attention/test_sparse_mla_sm120_dispatch.py

@@ -1,11 +1,11 @@
 # Running a source build
 
-Build the immutable image from this checkout with `docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.0-rc.8 .`.
+Build the immutable image from this checkout with `docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.0-rc.9 .`.
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-export IMAGE=sglang-glm53-flash-sm120:v0.4.0-rc.8
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v77
+export IMAGE=sglang-glm53-flash-sm120:v0.4.0-rc.9
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v78
 ./examples/serve-glm53-flash.sh
 ```
 
