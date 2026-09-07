@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.0",
-    "candidate": 2,
-    "candidate_tag": "v0.4.0-rc.2",
+    "candidate": 3,
+    "candidate_tag": "v0.4.0-rc.3",
     "stable_tag": "v0.4.0",
-    "cache_schema": "v71"
+    "cache_schema": "v72"
   },
   "image": {
-    "tag": "v0.4.0-rc.2",
+    "tag": "v0.4.0-rc.3",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 2
+      "value": 3
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v71"
+      "value": "v72"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -83,11 +83,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "3c763a4b499efc745591429311a6847f3450f4d6"
+      "value": "e9df46eea8673871f8461c88109a092ab1aad8f9"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "3316e8ab6cbb6df6e3101decbf952979728e1db98a2a8d6447df81efed4b8ea2"
+      "value": "3086a7e9eea55a83f618f99267f2f3c65fa14a5eda7fea59b7eca5fcf8abcbe7"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -107,11 +107,11 @@
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "33e32aa9103cb5215c2ee023a3f9dfb973770654"
+      "value": "31649aa3bfef8d7ae824e54acb101ba1e75625e2"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "f179746448ff5b88dc8ca4cb3f670a564e4b0f7946114425908f263034c86d94"
+      "value": "f57c6f570a64f8c5b2a77246fe231be0508be065b2107dd50130c06a31978fc4"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -147,9 +147,9 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "b5c9b68f03c0552c94b717e200e7c2e6166c6741",
       "upstream_tree": "3aa7113c6abd963399bc769de8608b52760a5c28",
-      "tree": "3c763a4b499efc745591429311a6847f3450f4d6",
+      "tree": "e9df46eea8673871f8461c88109a092ab1aad8f9",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "3316e8ab6cbb6df6e3101decbf952979728e1db98a2a8d6447df81efed4b8ea2",
+      "patch_sha256": "3086a7e9eea55a83f618f99267f2f3c65fa14a5eda7fea59b7eca5fcf8abcbe7",
       "upstream_main_base": "b5c9b68f03c0552c94b717e200e7c2e6166c6741",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion",
@@ -179,9 +179,9 @@
       "package_version": "0.6.18",
       "head": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "upstream_tree": "4263387190a7cc8b102308083bd60811bd493ef2",
-      "tree": "33e32aa9103cb5215c2ee023a3f9dfb973770654",
+      "tree": "31649aa3bfef8d7ae824e54acb101ba1e75625e2",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "f179746448ff5b88dc8ca4cb3f670a564e4b0f7946114425908f263034c86d94",
+      "patch_sha256": "f57c6f570a64f8c5b2a77246fe231be0508be065b2107dd50130c06a31978fc4",
       "upstream_main_base": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing",
@@ -201,18 +201,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "3316e8ab6cbb6df6e3101decbf952979728e1db98a2a8d6447df81efed4b8ea2",
+      "sha256": "3086a7e9eea55a83f618f99267f2f3c65fa14a5eda7fea59b7eca5fcf8abcbe7",
       "base_head": "b5c9b68f03c0552c94b717e200e7c2e6166c6741",
       "base_tree": "3aa7113c6abd963399bc769de8608b52760a5c28",
-      "result_tree": "3c763a4b499efc745591429311a6847f3450f4d6"
+      "result_tree": "e9df46eea8673871f8461c88109a092ab1aad8f9"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "f179746448ff5b88dc8ca4cb3f670a564e4b0f7946114425908f263034c86d94",
+      "sha256": "f57c6f570a64f8c5b2a77246fe231be0508be065b2107dd50130c06a31978fc4",
       "base_head": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "base_tree": "4263387190a7cc8b102308083bd60811bd493ef2",
-      "result_tree": "33e32aa9103cb5215c2ee023a3f9dfb973770654"
+      "result_tree": "31649aa3bfef8d7ae824e54acb101ba1e75625e2"
     }
   ],
   "runtime_profile": {

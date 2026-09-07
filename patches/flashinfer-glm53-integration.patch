@@ -1045,6 +1045,43 @@ index 00000000..c64e28bb
 +  ],
 +  "gpu_status": "uuid, temperature.gpu, clocks.current.sm [MHz], power.draw [W], power.limit [W]\nGPU-4b6a1e3a-4e8f-95c7-9f90-be37abc0b7a4, 72, 2355 MHz, 111.28 W, 300.00 W\nGPU-bfdf4699-e4d9-b46a-6503-21a001973e6c, 42, 180 MHz, 16.00 W, 300.00 W\n"
 +}
+diff --git a/csrc/sparse_mla_sm120.cu b/csrc/sparse_mla_sm120.cu
+index 598199dc..515c6fb8 100644
+--- a/csrc/sparse_mla_sm120.cu
++++ b/csrc/sparse_mla_sm120.cu
+@@ -184,15 +184,15 @@ void SparseMlaSm120PagedAttention(
+   const int d_qk = static_cast<int>(q.size(2));
+   const int topk = check_dense_indices_2d_or_s_q_3d(indices, "indices", num_tokens);
+   const ModelType mt = resolve_model_type(d_qk, model_type);
+-  const PagedKVLayout kv_layout = parse_paged_kv_layout(kv_cache, bytes_per_token(mt), "kv_cache");
++  const int bpt = bytes_per_token(mt, kv_cache.ndim() >= 3 ? kv_cache.size(-1) : 0);
++  const PagedKVLayout kv_layout = parse_paged_kv_layout(kv_cache, bpt, "kv_cache");
+   const int page_block_size = kv_layout.page_block_size;
+   // Inline-scale models (DSV3_2 / GLM_NSA / GLM53_NOPE) are addressed by the
+   // prefill kernels as a flat token array (prefill_kv_entry_base), so a
+   // padded block stride would be silently misread; only footer-scale models
+   // honor stride_kv_block. Padded strides remain a decode-path capability.
+   if (mt == ModelType::DSV3_2 || mt == ModelType::GLM_NSA || mt == ModelType::GLM53_NOPE) {
+-    TVM_FFI_ICHECK_EQ(kv_layout.stride_kv_block,
+-                      static_cast<size_t>(page_block_size) * bytes_per_token(mt))
++    TVM_FFI_ICHECK_EQ(kv_layout.stride_kv_block, static_cast<size_t>(page_block_size) * bpt)
+         << "prefill for inline-scale KV caches (DSv3.2/GLM) requires densely packed blocks "
+            "(stride_kv_block == page_block_size * bytes_per_token); padded block strides are "
+            "decode-only";
+diff --git a/csrc/sparse_mla_sm120_jit_binding.cu b/csrc/sparse_mla_sm120_jit_binding.cu
+index d506f690..86e25980 100644
+--- a/csrc/sparse_mla_sm120_jit_binding.cu
++++ b/csrc/sparse_mla_sm120_jit_binding.cu
+@@ -263,7 +263,8 @@ void SparseMlaSm120DecodeDsv3_2(TensorView q, TensorView kv_cache, TensorView in
+       << "decode-v32 expects DSV3_2/GLM_NSA d_qk=576 or GLM53_NOPE d_qk=512; got d_qk=" << d_qk
+       << " model_type=" << model_type;
+ 
+-  const PagedKVLayout kv_layout = parse_paged_kv_layout(kv_cache, bytes_per_token(mt), "kv_cache");
++  const int bpt = bytes_per_token(mt, kv_cache.ndim() >= 3 ? kv_cache.size(-1) : 0);
++  const PagedKVLayout kv_layout = parse_paged_kv_layout(kv_cache, bpt, "kv_cache");
+ 
+   const int* topk_len_ptr =
+       topk_length.has_value() ? static_cast<const int*>(topk_length.value().data_ptr()) : nullptr;
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
 index f67203c7..4baf49d6 100644
 --- a/flashinfer/fused_moe/api.py
@@ -2542,6 +2579,324 @@ index 603807d4..f340eab1 100644
      )
      return {
          "w1_weight": w1_fp4,
+diff --git a/flashinfer/mla/_sparse_mla_sm120.py b/flashinfer/mla/_sparse_mla_sm120.py
+index 55abc157..46dbee8d 100644
+--- a/flashinfer/mla/_sparse_mla_sm120.py
++++ b/flashinfer/mla/_sparse_mla_sm120.py
+@@ -176,7 +176,10 @@ class SparseMLASm120DecodeConfig:
+         Packed cache format described by this entry (``"fp8"`` or
+         ``"nvfp4"``).
+     bytes_per_token : int
+-        Logical packed-cache bytes per token.
++        Default packed-cache bytes per token, including for flat 2-D caches.
++    compact_bytes_per_token : Optional[int]
++        Optional smaller lossless row layout for explicitly shaped 3-D or
++        4-D caches. GLM53_NOPE can omit its 128 unused RoPE padding bytes.
+     head_counts : Optional[frozenset[int]]
+         Exact instantiated head counts when the kernel has no runtime-head
+         fallback. ``None`` means every count in ``[1, max_num_heads]``.
+@@ -199,6 +202,7 @@ class SparseMLASm120DecodeConfig:
+     head_counts: Optional[frozenset[int]] = None
+     topk_is_runtime: bool = True
+     extra_page_block_sizes: frozenset[int] = frozenset()
++    compact_bytes_per_token: Optional[int] = None
+ 
+     def supported_num_heads(self) -> tuple[int, ...]:
+         """Sorted instantiated head counts, including any runtime-H envelope."""
+@@ -336,6 +340,7 @@ def supported_sparse_mla_sm120_configs(
+             min_topk=1,
+             max_num_heads=_DECODE_MAX_HEADS,
+             bytes_per_token=_BPT_DSV3_2,
++            compact_bytes_per_token=528,
+         ),
+         "dots3_swa": SparseMLASm120DecodeConfig(
+             d_qk=1088,
+@@ -519,6 +524,12 @@ def _packed_kv_page_block_size(
+     name: str,
+ ) -> int:
+     bytes_per_token = _bytes_per_token_for_model_type(model_type)
++    if (
++        model_type == _MODEL_TYPE_GLM53_NOPE
++        and kv_cache.ndim >= 3
++        and kv_cache.shape[-1] == 528
++    ):
++        bytes_per_token = 528
+     if kv_cache.ndim == 2:
+         block_bytes = int(kv_cache.shape[1])
+         if block_bytes % bytes_per_token != 0:
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
+index 12268e94..bb5b221b 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
+@@ -84,7 +84,9 @@ __device__ __forceinline__ void io_bulk_gather_tile(uint8_t* dst, int idx,
+   idx = (idx >= 0) ? idx : 0;
+ 
+   const uint8_t* src;
+-  if constexpr (KV::SCALE_IN_KV_SMEM) {
++  if constexpr (MT == ModelType::GLM53_NOPE) {
++    src = kv_ptr + (size_t)idx * (stride_kv_block / PAGE_BLOCK_SIZE);
++  } else if constexpr (KV::SCALE_IN_KV_SMEM) {
+     src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
+   } else {
+     constexpr int pbs = PAGE_BLOCK_SIZE;
+@@ -113,7 +115,9 @@ __device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __re
+   if (io_tid >= TILE_BI || idx < 0) return;
+ 
+   const uint8_t* src;
+-  if constexpr (KV::SCALE_IN_KV_SMEM) {
++  if constexpr (MT == ModelType::GLM53_NOPE) {
++    src = kv_ptr + (size_t)idx * (stride_kv_block / PAGE_BLOCK_SIZE);
++  } else if constexpr (KV::SCALE_IN_KV_SMEM) {
+     src = kv_ptr + (size_t)idx * IO::IO_STRIDE;
+   } else {
+     constexpr int pbs = PAGE_BLOCK_SIZE;
+@@ -123,10 +127,12 @@ __device__ __forceinline__ void io_bulk_prefetch_l2(int idx, const uint8_t* __re
+                             (size_t)(idx % pbs) * KV::SCALE_BYTES_PER_TOKEN;
+     prefetch_l2_line(footer);
+   }
++  constexpr int PREFETCH_BYTES =
++      MT == ModelType::GLM53_NOPE ? KV::KV_SMEM_COPY_BYTES : IO::IO_STRIDE;
+   if constexpr (USE_L2_HINT)
+-    cp_async_bulk_prefetch_l2_hint(src, IO::IO_STRIDE, cache_policy);
++    cp_async_bulk_prefetch_l2_hint(src, PREFETCH_BYTES, cache_policy);
+   else
+-    cp_async_bulk_prefetch_l2(src, IO::IO_STRIDE);
++    cp_async_bulk_prefetch_l2(src, PREFETCH_BYTES);
+ }
+ 
+ // `idx` is the same per-thread staged value passed to io_bulk_gather_tile, so
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
+index 4c7c9d69..c36a7c97 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
+@@ -255,7 +255,9 @@ struct SmemLayoutSwapAB {
+   using KV = KVCacheTraits<MT>;
+   using CT = ComputeTraitsSwapAB<MT>;
+ 
+-  static constexpr int KV_STRIDE = KV::KV_GMEM_STRIDE;          // 656
++  // NoPE has no RoPE payload to stage, including with a padded global row.
++  static constexpr int KV_STRIDE =
++      MT == ModelType::GLM53_NOPE ? KV::KV_SMEM_COPY_BYTES : KV::KV_GMEM_STRIDE;
+   static constexpr int P_TILE_BYTES = CT::HEADS_PER_WARP * BI;  // 512
+ 
+   // nope + inline scales + rope, one linear tile per candidate.
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
+index 250ade9a..deea3db6 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
++++ b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
+@@ -45,7 +45,10 @@
+ enum class ModelType { DSV3_2, DSV4, GLM_NSA, GLM53_NOPE, DOTS3_SWA };
+ 
+ // Bytes per packed KV cache token row, per model type.
+-constexpr int bytes_per_token(ModelType mt) {
++constexpr int bytes_per_token(ModelType mt, int row_width = 0) {
++  // Explicitly shaped NoPE caches may omit the unused 128-byte RoPE pad.
++  // A flat 2D cache retains the historical 656-byte interpretation.
++  if (mt == ModelType::GLM53_NOPE && row_width == 528) return 528;
+   switch (mt) {
+     case ModelType::DSV3_2:
+     case ModelType::GLM_NSA:
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
+index d02b2c18..af4601bc 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
+@@ -197,7 +197,9 @@ __device__ __forceinline__ const uint8_t* prefill_kv_entry_base(
+   // This matches io_bulk_gather_tile. Keying it on V_HAS_ROPE happened to agree
+   // for the three DeepSeek-family models and disagrees for DOTS3_SWA, which is
+   // footer-scaled with no rope in V.
+-  if constexpr (!KV::SCALE_IN_KV_SMEM) {
++  if constexpr (MT == ModelType::GLM53_NOPE) {
++    return kv_global + (size_t)idx * (stride_kv_block / PAGE_BLOCK_SIZE);
++  } else if constexpr (!KV::SCALE_IN_KV_SMEM) {
+     const int bi = idx / PAGE_BLOCK_SIZE;
+     const int li = idx % PAGE_BLOCK_SIZE;
+     return kv_global + (size_t)bi * stride_kv_block + (size_t)li * IO::IO_STRIDE;
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
+index 3e956b6e..2e13638e 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_swapab_kernel.cuh
+@@ -56,14 +56,16 @@ template <ModelType MT>
+ __device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, int idx,
+                                                            const uint8_t* __restrict__ kv_ptr,
+                                                            uint64_t* mbar, int io_tid,
+-                                                           uint64_t cache_policy) {
++                                                           uint64_t cache_policy,
++                                                           size_t stride_kv_row) {
+   constexpr int STRIDE = SmemLayoutSwapAB<MT>::KV_STRIDE;
+   static_assert(BI <= IO_THREADS, "per-thread index staging assumes one candidate per IO thread");
+ 
+   if (io_tid == 0) mbarrier_arrive_expect_tx(mbar, BI * STRIDE);
+   if (io_tid >= BI) return;
+ 
+-  const uint8_t* src = kv_ptr + (size_t)(idx >= 0 ? idx : 0) * STRIDE;
++  const size_t row_stride = MT == ModelType::GLM53_NOPE ? stride_kv_row : STRIDE;
++  const uint8_t* src = kv_ptr + (size_t)(idx >= 0 ? idx : 0) * row_stride;
+   cp_async_bulk_g2s_l2hint(dst + io_tid * STRIDE, src, STRIDE, mbar, cache_policy);
+ }
+ 
+@@ -72,10 +74,12 @@ __device__ __forceinline__ void io_bulk_gather_tile_swapab(uint8_t* dst, int idx
+ template <ModelType MT>
+ __device__ __forceinline__ void io_bulk_prefetch_l2_swapab(int idx,
+                                                            const uint8_t* __restrict__ kv_ptr,
+-                                                           int io_tid, uint64_t cache_policy) {
++                                                           int io_tid, uint64_t cache_policy,
++                                                           size_t stride_kv_row) {
+   constexpr int STRIDE = SmemLayoutSwapAB<MT>::KV_STRIDE;
+   if (io_tid >= BI || idx < 0) return;
+-  cp_async_bulk_prefetch_l2_hint(kv_ptr + (size_t)idx * STRIDE, STRIDE, cache_policy);
++  const size_t row_stride = MT == ModelType::GLM53_NOPE ? stride_kv_row : STRIDE;
++  cp_async_bulk_prefetch_l2_hint(kv_ptr + (size_t)idx * row_stride, STRIDE, cache_policy);
+ }
+ 
+ template <ModelType MT, int NUM_HEADS>
+@@ -142,8 +146,8 @@ __global__ void __launch_bounds__(BLOCK_THREADS, 1)
+       const int next = ld_idx(ti + 2);
+       mbarrier_wait_parity(sm.mbar_wr + buf, wr_phase);
+       io_bulk_gather_tile_swapab<MT>(sm.kv_bufs[buf], staged, KV_cache, sm.mbar_kv + buf, io_tid,
+-                                     kv_l2_policy);
+-      io_bulk_prefetch_l2_swapab<MT>(pf, KV_cache, io_tid, kv_l2_policy);
++                                     kv_l2_policy, cold.stride_kv_block / 64);
++      io_bulk_prefetch_l2_swapab<MT>(pf, KV_cache, io_tid, kv_l2_policy, cold.stride_kv_block / 64);
+       staged = pf;
+       pf = next;
+       if (buf == 1) wr_phase ^= 1;
+diff --git a/tests/attention/test_sparse_mla_sm120.py b/tests/attention/test_sparse_mla_sm120.py
+index e334e6f8..f3bda1e9 100644
+--- a/tests/attention/test_sparse_mla_sm120.py
++++ b/tests/attention/test_sparse_mla_sm120.py
+@@ -3581,3 +3581,87 @@ def test_sparse_mla_sm120_envelope_consistency(
+     else:
+         with pytest.raises(RuntimeError, match="sparse-MLA"):
+             call()
++
++
++@pytest.mark.parametrize("layout", ["3d", "nhd", "hnd"])
++@pytest.mark.parametrize(
++    "num_tokens,num_heads,impl",
++    [
++        (1, 32, None),
++        (6, 64, None),
++        (65, 32, None),
++        (65, 8, None),
++        (65, 64, "mg"),
++        (65, 64, "swapab"),
++    ],
++)
++def test_glm53_compact_rows_match_padded_rows(layout, num_tokens, num_heads, impl):
++    """Compaction preserves payload bits, attention, LSE and graph replay."""
++    torch.manual_seed(53)
++    device = torch.device("cuda")
++    pages, page_size, topk = 32, 64, 2176
++    kv = torch.randn(pages, page_size, 1, 512, device=device, dtype=torch.bfloat16) / 10
++    padded = quantize_kv_glm53_nope(kv)
++    compact = padded[..., :528].contiguous()
++    assert compact.numel() * 656 == padded.numel() * 528
++    # Poison the unused padded bytes. Neither layout may use them as values.
++    padded[..., 528:] = 255
++    q = (
++        torch.randn(num_tokens, num_heads, 512, device=device, dtype=torch.bfloat16)
++        / 10
++    )
++    indices = torch.randint(
++        pages * page_size, (num_tokens, topk), device=device, dtype=torch.int32
++    )
++    indices[:, 0] = pages * page_size - 1
++    counts = torch.arange(num_tokens, device=device, dtype=torch.int32) % 3
++    lengths = torch.where(counts == 0, 1, torch.where(counts == 1, 70, topk)).to(
++        torch.int32
++    )
++    indices.masked_fill_(
++        torch.arange(topk, device=device)[None, :] >= lengths[:, None], -1
++    )
++    scratch = (
++        _make_decode_scratch(num_tokens, num_heads, topk, 512, device)
++        if num_tokens <= 64
++        else (None, None)
++    )
++
++    def reshape(cache):
++        if layout == "3d":
++            return cache.squeeze(2)
++        if layout == "hnd":
++            return cache.transpose(1, 2)
++        return cache
++
++    def run(cache, out, lse):
++        sparse_mla_sm120_paged_attention(
++            q,
++            reshape(cache),
++            indices,
++            out,
++            lse,
++            512**-0.5,
++            d_v=512,
++            kv_scale_format="arbitrary_fp32",
++            prefill_impl=impl,
++            topk_length=lengths,
++            mid_out=scratch[0],
++            mid_lse=scratch[1],
++        )
++
++    a, b = torch.empty_like(q), torch.empty_like(q)
++    la = torch.empty((num_tokens, num_heads), device=device, dtype=torch.float32)
++    lb = torch.empty_like(la)
++    run(padded, a, la)
++    run(compact, b, lb)
++    torch.testing.assert_close(b, a, rtol=0, atol=0)
++    torch.testing.assert_close(lb, la, rtol=0, atol=0)
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        run(compact, b, lb)
++    q.mul_(0.75)
++    graph.replay()
++    run(padded, a, la)
++    torch.testing.assert_close(b, a, rtol=0, atol=0)
++    torch.testing.assert_close(lb, la, rtol=0, atol=0)
+diff --git a/tests/attention/test_sparse_mla_sm120_dispatch.py b/tests/attention/test_sparse_mla_sm120_dispatch.py
+index 64f111c5..b826c09d 100644
+--- a/tests/attention/test_sparse_mla_sm120_dispatch.py
++++ b/tests/attention/test_sparse_mla_sm120_dispatch.py
+@@ -60,6 +60,7 @@ from flashinfer.mla._sparse_mla_sm120 import (
+     _decode_scratch_views,
+     _decode_dispatch_error_message,
+     _resolve_model_type,
++    _packed_kv_page_block_size,
+ )
+ from flashinfer.mla._sparse_mla_sm120_plan import (
+     _PREFILL_IMPL_SWAPAB,
+@@ -73,6 +74,9 @@ def test_supported_configs_families() -> None:
+     """The query API mirrors the decode dispatch envelopes exactly."""
+     configs = supported_sparse_mla_sm120_configs()
+     assert set(configs) == {"dsv4", "dsv3_2", "glm_nsa", "glm53_nope", "dots3_swa"}
++    assert configs["glm53_nope"].bytes_per_token == 656
++    assert configs["glm53_nope"].compact_bytes_per_token == 528
++    assert configs["glm_nsa"].compact_bytes_per_token is None
+     assert all(
+         isinstance(config, SparseMLASm120DecodeConfig) for config in configs.values()
+     )
+@@ -889,3 +893,22 @@ def test_sparse_mla_sm120_wrapper_public_export() -> None:
+ 
+     assert SparseMLASm120Wrapper is _SparseMLAPagedAttentionRunner
+     assert "SparseMLASm120Wrapper" in dir(flashinfer.mla)
++
++
++@pytest.mark.parametrize("shape", [(2, 64, 528), (2, 1, 64, 528), (2, 64, 1, 528)])
++def test_glm53_compact_page_shape(shape):
++    cache = torch.empty(shape, dtype=torch.uint8)
++    assert (
++        _packed_kv_page_block_size(cache, model_type=_MODEL_TYPE_GLM53_NOPE, name="kv")
++        == 64
++    )
++    with pytest.raises(ValueError):
++        _packed_kv_page_block_size(cache, model_type=_MODEL_TYPE_GLM_NSA, name="kv")
++
++
++def test_glm53_flat_cache_keeps_legacy_layout():
++    cache = torch.empty((2, 64 * 656), dtype=torch.uint8)
++    assert (
++        _packed_kv_page_block_size(cache, model_type=_MODEL_TYPE_GLM53_NOPE, name="kv")
++        == 64
++    )
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
 index 7d822ce3..0808b9ab 100644
 --- a/tests/moe/test_b12x_fused_moe.py
