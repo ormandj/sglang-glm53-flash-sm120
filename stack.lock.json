@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.0",
-    "candidate": 1,
-    "candidate_tag": "v0.4.0-rc.1",
+    "candidate": 2,
+    "candidate_tag": "v0.4.0-rc.2",
     "stable_tag": "v0.4.0",
-    "cache_schema": "v70"
+    "cache_schema": "v71"
   },
   "image": {
-    "tag": "v0.4.0-rc.1",
+    "tag": "v0.4.0-rc.2",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 1
+      "value": 2
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v70"
+      "value": "v71"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -107,11 +107,11 @@
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "ab6993bd0abcbbb8ec13008ff6893f44e94d4214"
+      "value": "33e32aa9103cb5215c2ee023a3f9dfb973770654"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "461f1f2964e43402a29c838d625dcc55798248d8b3640b85dd32d69d8ccff2aa"
+      "value": "f179746448ff5b88dc8ca4cb3f670a564e4b0f7946114425908f263034c86d94"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -179,13 +179,14 @@
       "package_version": "0.6.18",
       "head": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "upstream_tree": "4263387190a7cc8b102308083bd60811bd493ef2",
-      "tree": "ab6993bd0abcbbb8ec13008ff6893f44e94d4214",
+      "tree": "33e32aa9103cb5215c2ee023a3f9dfb973770654",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "461f1f2964e43402a29c838d625dcc55798248d8b3640b85dd32d69d8ccff2aa",
+      "patch_sha256": "f179746448ff5b88dc8ca4cb3f670a564e4b0f7946114425908f263034c86d94",
       "upstream_main_base": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing",
-        "flashinfer#4827 at 21fb169ff2a664b90c6ea5e13b4da4446b675534: Prevent SM12x MoE graph replays from corrupting memory after workspace growth"
+        "flashinfer#4827 at 21fb169ff2a664b90c6ea5e13b4da4446b675534: Prevent SM12x MoE graph replays from corrupting memory after workspace growth",
+        "flashinfer#4910 at 7b0e8004b87d70431a7d172aa1793c14f3dc9929: SM12x W4A16 persistent kernel cache and TVM-FFI launches"
       ]
     },
     "modelopt": {
@@ -208,10 +209,10 @@
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "461f1f2964e43402a29c838d625dcc55798248d8b3640b85dd32d69d8ccff2aa",
+      "sha256": "f179746448ff5b88dc8ca4cb3f670a564e4b0f7946114425908f263034c86d94",
       "base_head": "91bda04c66f7cb851e1ab3b78b9fecea644b9844",
       "base_tree": "4263387190a7cc8b102308083bd60811bd493ef2",
-      "result_tree": "ab6993bd0abcbbb8ec13008ff6893f44e94d4214"
+      "result_tree": "33e32aa9103cb5215c2ee023a3f9dfb973770654"
     }
   ],
   "runtime_profile": {
