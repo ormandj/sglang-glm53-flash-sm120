@@ -34,8 +34,14 @@ The last check needs network access to verify pinned source trees and base image
 
 Matched GLM performance comparisons use fixed native MTP: three draft steps,
 top-k one and four verification tokens, with adaptive switching disabled.
-Include reasoning in output throughput. Label adaptive serving measurements
-separately and compare each configuration against a matching baseline.
+Include reasoning in output throughput. Publish only fixed-MTP performance
+measurements and comparisons against a matching fixed-MTP baseline. Current
+README, BENCHMARKS, changelog, release notes and performance updates must not
+include adaptive throughput panels or older adaptive/supplemental rates.
+Preserve immutable published history. Adaptive serving remains the launcher
+default and is qualified separately; its throughput is not a second published
+benchmark series. Quality scores and reliability checks identify the serving
+configuration used.
 
 Performance and quality claims require measured evidence for the stated artifact, hardware, configuration and workload. If measurements use a validation build produced separately from the public image, say so plainly. Do not imply the public image was tested. Keep detailed private artifact bindings and operational receipts in the private qualification project.
 
