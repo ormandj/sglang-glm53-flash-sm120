@@ -32,6 +32,11 @@ The last check needs network access to verify pinned source trees and base image
 
 ## Measurements
 
+Matched GLM performance comparisons use fixed native MTP: three draft steps,
+top-k one and four verification tokens, with adaptive switching disabled.
+Include reasoning in output throughput. Label adaptive serving measurements
+separately and compare each configuration against a matching baseline.
+
 Performance and quality claims require measured evidence for the stated artifact, hardware, configuration and workload. If measurements use a validation build produced separately from the public image, say so plainly. Do not imply the public image was tested. Keep detailed private artifact bindings and operational receipts in the private qualification project.
 
 Report mean and median output tokens/s after MTP alongside target forward passes/s, with concurrency, measurement window and accepted output tokens per forward. Report cold prefill mean and median prompt tokens/s, its measurement definition and sample count. Distinguish naturally completed responses from output-capped responses, and disclose the post-answer tail in fixed-output gates. These controlled measurements do not necessarily represent real-world performance.
