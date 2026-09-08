@@ -2288,7 +2288,7 @@ index 021bd5af..2c04c186 100644
  
  
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
-index ce043109..205f064f 100644
+index ce043109..71351036 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 @@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -2381,7 +2381,7 @@ index ce043109..205f064f 100644
              dtype=torch.float8_e4m3fn,
              device=scales.device,
          )
-@@ -729,6 +760,106 @@ def prepare_w4a16_modelopt_nvfp4_weights(
+@@ -729,6 +760,104 @@ def prepare_w4a16_modelopt_nvfp4_weights(
      )
  
  
@@ -2431,9 +2431,7 @@ index ce043109..205f064f 100644
 +        cols=intermediate_size,
 +        name="w2_blockscale",
 +    )
-+    w13_row_rotation = (
-+        intermediate_size if is_gated and w13_layout == "w13" else None
-+    )
++    w13_row_rotation = intermediate_size if is_gated and w13_layout == "w13" else None
 +
 +    packed_w13 = _repack_weight(
 +        w13_fp4 if reuse_input_storage else w13_fp4.contiguous(),
@@ -2488,7 +2486,7 @@ index ce043109..205f064f 100644
  def prepare_w4a16_compressed_tensors_weights(
      w13_fp4: torch.Tensor,
      w13_blockscale: torch.Tensor,
-@@ -872,6 +1003,10 @@ def prepare_w4a16_packed_weights(
+@@ -872,6 +1001,10 @@ def prepare_w4a16_packed_weights(
          return prepare_w4a16_modelopt_nvfp4_weights(
              *args, w13_layout=w13_layout, **kwargs
          )

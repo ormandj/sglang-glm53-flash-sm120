@@ -1,11 +1,11 @@
 # Running GLM-5.3-Flash
 
-Download the checkpoint as described in [README.md](README.md), then start the published image:
+Download the checkpoint as described in [README.md](README.md), then start the locally built validation image:
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.0
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v78
+export IMAGE=sglang-glm53-flash-sm120:v0.4.1-rc.1
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v79
 ./examples/serve-glm53-flash.sh
 ```
 
@@ -13,4 +13,4 @@ The launcher uses TP2, vision, native adaptive MTP, packed FP8 KV, a 524,288-tok
 
 Prefill uses breakable CUDA graphs for single-request 64- and 128-token tails. Longer prefills retain 4,096-token chunks.
 
-To build from source, run `docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.0 .` and set `IMAGE=sglang-glm53-flash-sm120:v0.4.0` before invoking the launcher.
+To build from source, run `docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.1-rc.1 .` and set `IMAGE=sglang-glm53-flash-sm120:v0.4.1-rc.1` before invoking the launcher.

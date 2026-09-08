@@ -1,5 +1,7 @@
 # GLM-5.3-Flash on two RTX PRO 6000 Blackwell GPUs
 
+This source branch builds `sglang-glm53-flash-sm120:v0.4.1-rc.1`, which is under validation. The published release and measurements described below remain `v0.4.0`.
+
 A ready-to-run SGLang image and a matching quantized checkpoint for serving GLM-5.3-Flash on two NVIDIA RTX PRO 6000 Blackwell (96 GB, SM120) GPUs over PCIe. Download the checkpoint and run the launcher for an OpenAI-compatible server with a 524,288-token context limit and shared device token pool, up to four concurrent requests within that pool, speculative decoding, vision input, reasoning and tool calling.
 
 | | |
@@ -113,7 +115,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.4.0 .
+  -t sglang-glm53-flash-sm120:v0.4.1-rc.1 .
 ```
 
 The vendor base image supplies the pinned CUDA/PyTorch dependency stack; the SGLang and FlashInfer source trees are verified separately as described above.

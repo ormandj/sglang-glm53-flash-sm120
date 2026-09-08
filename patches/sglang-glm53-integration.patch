@@ -3989,7 +3989,7 @@ index 10342899ce..0d8af0d935 100644
 +    )
 +    return last_correct, (steps_to_track if has_track else None)
 diff --git a/python/sglang/srt/arg_groups/cuda_graph_hook.py b/python/sglang/srt/arg_groups/cuda_graph_hook.py
-index a15ffb3004..d9d5a476f6 100644
+index 2004ddcfb7..ddeaa4f6fe 100644
 --- a/python/sglang/srt/arg_groups/cuda_graph_hook.py
 +++ b/python/sglang/srt/arg_groups/cuda_graph_hook.py
 @@ -14,6 +14,7 @@ from sglang.srt.arg_groups.overrides import (
@@ -4000,7 +4000,7 @@ index a15ffb3004..d9d5a476f6 100644
  from sglang.srt.model_executor.cuda_graph_config import (
      ALLOWED_BACKENDS_PER_PHASE,
      Backend,
-@@ -284,7 +285,10 @@ def disable_breakable_cudagraph_if_incompatible(server_args: Any):
+@@ -280,7 +281,10 @@ def disable_breakable_cudagraph_if_incompatible(server_args: Any):
      rules = [
          (
              "KDA hybrid linear attention",
@@ -4013,10 +4013,10 @@ index a15ffb3004..d9d5a476f6 100644
          # DSV4 is BCG-compatible but introduces heavy memory pressure: the
          # c4 indexer scratch is pinned in the capture pool and OOMs. Disable.
 diff --git a/python/sglang/srt/arg_groups/field_order.py b/python/sglang/srt/arg_groups/field_order.py
-index c1a914ca83..c1b9628f5c 100644
+index 69656c6069..42c832d304 100644
 --- a/python/sglang/srt/arg_groups/field_order.py
 +++ b/python/sglang/srt/arg_groups/field_order.py
-@@ -391,6 +391,7 @@ POSITIONAL_FIELD_ORDER = (
+@@ -387,6 +387,7 @@ POSITIONAL_FIELD_ORDER = (
      "limit_mm_data_per_request",
      "enable_mm_global_cache",
      "image_processor_backend",
@@ -4044,7 +4044,7 @@ index c42832bef5..b2da23bf4f 100644
          str,
          Arg(
 diff --git a/python/sglang/srt/arg_groups/model_hook.py b/python/sglang/srt/arg_groups/model_hook.py
-index 00b7234b3b..63e9f4a08a 100644
+index e1678f3bf8..678ce004d6 100644
 --- a/python/sglang/srt/arg_groups/model_hook.py
 +++ b/python/sglang/srt/arg_groups/model_hook.py
 @@ -38,6 +38,7 @@ from sglang.srt.runtime_context import get_platform
@@ -4086,10 +4086,10 @@ index 00b7234b3b..63e9f4a08a 100644
      if model_arch == "InternS2MobiusForConditionalGeneration":
          unsupported = []
 diff --git a/python/sglang/srt/arg_groups/overrides.py b/python/sglang/srt/arg_groups/overrides.py
-index ad944e23ee..4444a8dae5 100644
+index bbfaf34eaa..1afd4932b7 100644
 --- a/python/sglang/srt/arg_groups/overrides.py
 +++ b/python/sglang/srt/arg_groups/overrides.py
-@@ -683,21 +683,51 @@ def _check_tilelang_dsa_fp8_kv(
+@@ -685,21 +685,51 @@ def _check_tilelang_dsa_fp8_kv(
      decode_backend: Optional[str],
      *,
      hip: bool,
@@ -4150,7 +4150,7 @@ index ad944e23ee..4444a8dae5 100644
  
  
  @register_post_process
-@@ -742,7 +772,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
+@@ -744,7 +774,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
      declared: Dict[str, Any] = {}
      model_arch = hf_config.architectures[0]
      is_glm_sm12_fp8 = (
@@ -4165,7 +4165,7 @@ index ad944e23ee..4444a8dae5 100644
          and major == 12
          and kv_cache_dtype == "fp8_e4m3"
          and not get_platform().is_hip
-@@ -817,7 +853,11 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
+@@ -819,7 +855,11 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
      prefill = declared.get("dsa_prefill_backend", view.dsa_prefill_backend)
      decode = declared.get("dsa_decode_backend", view.dsa_decode_backend)
      _check_tilelang_dsa_fp8_kv(
@@ -4179,7 +4179,7 @@ index ad944e23ee..4444a8dae5 100644
      logger.warning(
          f"Set DSA backends for {kv_cache_dtype} KV Cache: "
 diff --git a/python/sglang/srt/arg_groups/validation_hook.py b/python/sglang/srt/arg_groups/validation_hook.py
-index eef15b96da..73638310ab 100644
+index b9d807bc29..1c6dc8343d 100644
 --- a/python/sglang/srt/arg_groups/validation_hook.py
 +++ b/python/sglang/srt/arg_groups/validation_hook.py
 @@ -135,6 +135,7 @@ def check_server_args(server_args: Any):
@@ -4213,10 +4213,10 @@ index eef15b96da..73638310ab 100644
      if not buckets_rule:
          return
 diff --git a/python/sglang/srt/configs/model_config.py b/python/sglang/srt/configs/model_config.py
-index 43c6be0200..b128c06c34 100644
+index ff3b6d340e..6d6d6c1a3d 100644
 --- a/python/sglang/srt/configs/model_config.py
 +++ b/python/sglang/srt/configs/model_config.py
-@@ -207,6 +207,19 @@ def is_deepseek_v4(config) -> bool:
+@@ -215,6 +215,19 @@ def is_deepseek_v4(config) -> bool:
  def resolve_spec_hidden_size(
      hf_config, hidden_size: int, hc_mult: int
  ) -> tuple[int, Optional[int]]:
@@ -4236,7 +4236,7 @@ index 43c6be0200..b128c06c34 100644
      # Only DSV4 carries the hc-flattened stream across the target→draft
      # boundary; other hc models (hy_v4) collapse to hidden_size first.
      if hc_mult <= 1 or not is_deepseek_v4(hf_config):
-@@ -1194,19 +1207,9 @@ class ModelConfig:
+@@ -1201,19 +1214,9 @@ class ModelConfig:
              self.num_key_value_heads = self.num_attention_heads
          self.hidden_size = self.hf_text_config.hidden_size
          hc_mult = getattr(self.hf_text_config, "hc_mult", 1)
@@ -4259,10 +4259,10 @@ index 43c6be0200..b128c06c34 100644
          self.num_attention_layers = self.num_hidden_layers
          if "LongcatFlashForCausalLM" in self.hf_config.architectures:
 diff --git a/python/sglang/srt/disaggregation/common/conn.py b/python/sglang/srt/disaggregation/common/conn.py
-index 39763024a3..2b2ef4165c 100644
+index 7f486522e0..1fab01d9fb 100644
 --- a/python/sglang/srt/disaggregation/common/conn.py
 +++ b/python/sglang/srt/disaggregation/common/conn.py
-@@ -1593,7 +1593,9 @@ class CommonKVReceiver(BaseKVReceiver):
+@@ -1615,7 +1615,9 @@ class CommonKVReceiver(BaseKVReceiver):
  
      def _check_waiting_timeout(self) -> Optional[KVPoll]:
          if self.init_time is None:
@@ -4536,7 +4536,7 @@ index a7fc753ad0..2062d93d7e 100644
  
          # Drain notifications before enforcing the waiting deadline. The decode
 diff --git a/python/sglang/srt/distributed/parallel_state.py b/python/sglang/srt/distributed/parallel_state.py
-index b71a7c3a46..14e343cc36 100644
+index 1bcfe66bd0..cef9931910 100644
 --- a/python/sglang/srt/distributed/parallel_state.py
 +++ b/python/sglang/srt/distributed/parallel_state.py
 @@ -467,6 +467,18 @@ class GroupCoordinator:
@@ -5705,7 +5705,7 @@ index b6f1291a2f..97434438be 100644
              seqlens_expanded = cache_seqlens
              seqlens_expanded_size = bs
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
-index 6718a37a86..57ada23da4 100644
+index 285f663424..e43f793e56 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer.py
 @@ -38,6 +38,9 @@ from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph.context
@@ -5726,7 +5726,7 @@ index 6718a37a86..57ada23da4 100644
      get_bool_env_var,
      get_device_module,
      is_cuda,
-@@ -205,7 +209,14 @@ def rotate_activation(x: torch.Tensor) -> torch.Tensor:
+@@ -204,7 +208,14 @@ def rotate_activation(x: torch.Tensor) -> torch.Tensor:
      return hadamard_transform(x, scale=hidden_size**-0.5)
  
  
@@ -5742,7 +5742,7 @@ index 6718a37a86..57ada23da4 100644
      _MQA_LOGITS_BYTES_PER_ELEM = 4
      _MQA_LOGITS_STATIC_SKIP_ELEMS = 8_000_000
      _MQA_LOGITS_TOTAL_MEM_FRACTION = 0.3
-@@ -217,6 +228,71 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -216,6 +227,71 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
      def _mqa_logits_free_mem_fraction() -> float:
          return envs.SGLANG_DSA_MQA_LOGITS_FREE_MEM_FRACTION.get()
  
@@ -5814,7 +5814,7 @@ index 6718a37a86..57ada23da4 100644
      def __init__(
          self,
          hidden_size: int,
-@@ -251,6 +327,8 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -250,6 +326,8 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              and not is_neox_style
          )
          self.alt_stream = alt_stream
@@ -5823,7 +5823,7 @@ index 6718a37a86..57ada23da4 100644
          self.dsa_enable_prefill_cp = is_dsa_enable_prefill_cp()
          if self.dsa_enable_prefill_cp:
              self.cp_size = get_parallel().attn_cp_size
-@@ -760,8 +838,19 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -740,8 +818,19 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          target_heads = 32
          q_fp8 = torch.nn.functional.pad(q_fp8, (0, 0, 0, target_heads - num_heads))
          weights = torch.nn.functional.pad(weights, (0, target_heads - num_heads))
@@ -5843,7 +5843,7 @@ index 6718a37a86..57ada23da4 100644
      def _mask_init_and_local_tokens(
          self,
          logits: torch.Tensor,
-@@ -796,6 +885,21 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -776,6 +865,21 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              logits.scatter_(dim=1, index=local_idxs, value=float("inf"))
          return logits
  
@@ -5865,7 +5865,7 @@ index 6718a37a86..57ada23da4 100644
      def _get_topk_paged(
          self,
          forward_batch: ForwardBatch,
-@@ -807,6 +911,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -787,6 +891,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          if TYPE_CHECKING:
              assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
  
@@ -5873,7 +5873,7 @@ index 6718a37a86..57ada23da4 100644
          page_size = get_token_to_kv_pool().page_size
          # NOTE(dark): blocksize = 64 is hardcoded in deep_gemm
          if _is_hip:
-@@ -1025,6 +1130,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1005,6 +1110,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                  q_offset=q_offset,
              )
  
@@ -5881,7 +5881,7 @@ index 6718a37a86..57ada23da4 100644
          # NOTE(dark): logits should be cleaned in topk_transform
          self._mask_init_and_local_tokens(logits, seqlens_32)
          topk_result = metadata.topk_transform(logits, self.index_topk)
-@@ -1040,69 +1146,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1020,69 +1126,6 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              topk_result = torch.cat([topk_result, padding], dim=0)
          return topk_result
  
@@ -5951,7 +5951,7 @@ index 6718a37a86..57ada23da4 100644
      def _get_topk_ragged(
          self,
          enable_dual_stream: bool,
-@@ -1116,6 +1159,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1096,6 +1139,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          if TYPE_CHECKING:
              assert isinstance(get_token_to_kv_pool(), DSATokenToKVPool)
  
@@ -5959,7 +5959,7 @@ index 6718a37a86..57ada23da4 100644
          assert forward_batch.forward_mode.is_extend_without_speculative()
  
          page_size = get_token_to_kv_pool().page_size
-@@ -1240,6 +1284,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1220,6 +1264,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              assert logits.shape[0] == len(seq_lens_expanded)
              assert logits.shape[1] == k_offset
  
@@ -5967,7 +5967,7 @@ index 6718a37a86..57ada23da4 100644
              self._mask_init_and_local_tokens(logits, seq_lens_expanded, ks)
              raw_topk_result = metadata.topk_transform(logits, self.index_topk, ks=ks)
              topk_result[:q_offset] = raw_topk_result
-@@ -1318,6 +1363,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1298,6 +1343,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
                  cu_seqlens_q_chunk = cu_seqlens_q_full[start:end]
                  batch_idx_chunk = token_to_batch_idx[start:end]
  
@@ -5975,7 +5975,7 @@ index 6718a37a86..57ada23da4 100644
              raw_topk_chunk = metadata.topk_transform(
                  logits_chunk,
                  self.index_topk,
-@@ -1409,6 +1455,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1389,6 +1435,7 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
              dtype=torch.float32,
              device=x_meta.device,
          )
@@ -5983,7 +5983,7 @@ index 6718a37a86..57ada23da4 100644
          raw_topk_result = metadata.topk_transform(dummy_logits, self.index_topk)
          if topk_result is not None:
              # PCG/BCG: fill the valid prefix of the padded static buffer and
-@@ -1525,6 +1572,24 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
+@@ -1505,6 +1552,24 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
          forward_batch: ForwardBatch,
          layer_id: int,
          return_indices: bool = True,
@@ -6555,7 +6555,7 @@ index db8d3a88a3..78a1919a8b 100644
      return (num_draft_tokens + pool_size - 1) // pool_size
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 939c45f753..c05ddbfb70 100644
+index 22c35d3660..e60841cabf 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -57,6 +57,7 @@ from sglang.srt.environ import envs
@@ -6566,7 +6566,7 @@ index 939c45f753..c05ddbfb70 100644
      _KPoolForwardInputs,
  )
  from sglang.srt.layers.attention.dsa.dsa_backend_mtp_precompute import (
-@@ -96,6 +97,7 @@ from sglang.srt.layers.utils.cp_utils import (
+@@ -90,6 +91,7 @@ from sglang.srt.layers.cp.utils import is_cp_v2_active
  from sglang.srt.model_executor.forward_batch_info import ForwardBatch, ForwardMode
  from sglang.srt.runtime_context import get_buffer, get_exec, get_parallel, get_spec
  from sglang.srt.utils import (
@@ -6574,7 +6574,7 @@ index 939c45f753..c05ddbfb70 100644
      get_bool_env_var,
      is_cuda,
      is_gfx95_supported,
-@@ -165,6 +167,10 @@ def prepare_kv_for_attention(
+@@ -141,6 +143,10 @@ def prepare_kv_for_attention(
      )
  
  
@@ -6582,10 +6582,10 @@ index 939c45f753..c05ddbfb70 100644
 +    return dcp_enabled and (forward_mode.is_decode() or forward_mode.is_target_verify())
 +
 +
- def materialize_full_kv_cp(
-     attn_mla,
-     forward_batch: ForwardBatch,
-@@ -392,6 +398,36 @@ class DeepseekSparseAttnBackend(
+ _is_hip = is_hip()
+ _is_xpu = is_xpu()
+ 
+@@ -346,6 +352,36 @@ class DeepseekSparseAttnBackend(
          self.dsa_index_topk = get_dsa_index_topk(hf_config)
          self.dsa_index_kpool = get_dsa_index_kpool(hf_config)
          self.needs_cpu_seq_lens = self.dsa_index_kpool > 1
@@ -6622,7 +6622,7 @@ index 939c45f753..c05ddbfb70 100644
          self.max_context_len = model_runner.model_config.context_len
          self.num_q_heads = (
              model_runner.model_config.num_attention_heads // get_parallel().attn_tp_size
-@@ -411,6 +447,16 @@ class DeepseekSparseAttnBackend(
+@@ -365,6 +401,16 @@ class DeepseekSparseAttnBackend(
          self.supports_mha_one_shot: bool = True
          self.dsa_prefill_impl: _DSA_IMPL_T = get_exec().kernel.dsa_prefill_backend
          self.dsa_decode_impl: _DSA_IMPL_T = get_exec().kernel.dsa_decode_backend
@@ -6639,7 +6639,7 @@ index 939c45f753..c05ddbfb70 100644
          self.dsa_topk_backend: DSATopKBackend = DSATopKBackend.resolve(model_runner)
          if self.num_q_heads <= 64:
              self.flashmla_kv_num_q_heads = 64
-@@ -566,6 +612,7 @@ class DeepseekSparseAttnBackend(
+@@ -520,6 +566,7 @@ class DeepseekSparseAttnBackend(
          self._q8kv8_born_q_tbo = get_exec().overlap.enable_two_batch_overlap
  
          from sglang.kernels.ops.attention.flash_mla_sm120 import (
@@ -6647,7 +6647,7 @@ index 939c45f753..c05ddbfb70 100644
              _validate_flashinfer_sparse_mla_backend,
          )
  
-@@ -586,6 +633,22 @@ class DeepseekSparseAttnBackend(
+@@ -540,6 +587,22 @@ class DeepseekSparseAttnBackend(
                      device=model_runner.device,
                  ),
              )
@@ -6670,7 +6670,7 @@ index 939c45f753..c05ddbfb70 100644
          # Allocate global workspace buffer for TRT-LLM kernels (ragged attention on SM100/B200, or trtllm decode)
          elif self.device_sm_major >= 10 or self.dsa_decode_impl == "trtllm":
              self.workspace_buffer = get_buffer(
-@@ -1588,7 +1651,13 @@ class DeepseekSparseAttnBackend(
+@@ -1530,7 +1593,13 @@ class DeepseekSparseAttnBackend(
              # Normal Decode
              max_len = self._graph_page_table_width(metadata)
  
@@ -6685,7 +6685,7 @@ index 939c45f753..c05ddbfb70 100644
                  fused_dsa_decode_metadata(
                      seq_lens=seq_lens,
                      req_pool_indices=req_pool_indices,
-@@ -1603,6 +1672,7 @@ class DeepseekSparseAttnBackend(
+@@ -1545,6 +1614,7 @@ class DeepseekSparseAttnBackend(
                      max_len=max_len,
                      dsa_index_topk=self.dsa_index_topk,
                      real_page_size=self.real_page_size,
@@ -6693,7 +6693,7 @@ index 939c45f753..c05ddbfb70 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  dsa_cache_seqlens = metadata.dsa_cache_seqlens_int32
-@@ -1628,7 +1698,13 @@ class DeepseekSparseAttnBackend(
+@@ -1570,7 +1640,13 @@ class DeepseekSparseAttnBackend(
          elif forward_mode.is_target_verify():
              max_seqlen_k = self._graph_page_table_width(metadata)
  
@@ -6708,7 +6708,7 @@ index 939c45f753..c05ddbfb70 100644
                  paged_mqa_ctx_lens_2d = None
                  if (
                      self.speculative_num_draft_tokens >= 2
-@@ -1658,6 +1734,7 @@ class DeepseekSparseAttnBackend(
+@@ -1600,6 +1676,7 @@ class DeepseekSparseAttnBackend(
                      real_page_size=self.real_page_size,
                      next_n=self.speculative_num_draft_tokens,
                      paged_mqa_ctx_lens_2d=paged_mqa_ctx_lens_2d,
@@ -6716,7 +6716,7 @@ index 939c45f753..c05ddbfb70 100644
                  )
                  target_verify_ctx_lens_written = paged_mqa_ctx_lens_2d is not None
                  cache_seqlens = metadata.cache_seqlens_int32
-@@ -1724,7 +1801,13 @@ class DeepseekSparseAttnBackend(
+@@ -1666,7 +1743,13 @@ class DeepseekSparseAttnBackend(
                  device=self.device,
              )
  
@@ -6731,7 +6731,7 @@ index 939c45f753..c05ddbfb70 100644
                  fused_dsa_draft_extend_metadata(
                      seq_lens=seq_lens,
                      extend_seq_lens=extend_seq_lens,
-@@ -1745,6 +1828,7 @@ class DeepseekSparseAttnBackend(
+@@ -1687,6 +1770,7 @@ class DeepseekSparseAttnBackend(
                      max_extend_len=self.speculative_num_draft_tokens,
                      max_total_len=bs * self.speculative_num_draft_tokens,
                      static_extend_len=True,
@@ -6739,7 +6739,7 @@ index 939c45f753..c05ddbfb70 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  seqlens_expanded = metadata.dsa_seqlens_expanded[:total_extend_len]
-@@ -1876,6 +1960,43 @@ class DeepseekSparseAttnBackend(
+@@ -1818,6 +1902,43 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.decode_cuda_graph_metadata[bs]
  
@@ -6783,7 +6783,7 @@ index 939c45f753..c05ddbfb70 100644
          # Track whether fused kernel succeeded
          fused_kernel_succeeded = False
  
-@@ -1996,28 +2117,86 @@ class DeepseekSparseAttnBackend(
+@@ -1938,28 +2059,86 @@ class DeepseekSparseAttnBackend(
                  flashmla_metadata = metadata.flashmla_metadata.slice(slice(0, size + 1))
                  flashmla_metadata.copy_(precomputed.flashmla_metadata)
  
@@ -6885,7 +6885,7 @@ index 939c45f753..c05ddbfb70 100644
  
          self.forward_metadata = metadata
  
-@@ -2093,12 +2272,13 @@ class DeepseekSparseAttnBackend(
+@@ -2035,12 +2214,13 @@ class DeepseekSparseAttnBackend(
                      if not layer.is_cross_attention
                      else forward_batch.encoder_out_cache_loc
                  )
@@ -6905,7 +6905,7 @@ index 939c45f753..c05ddbfb70 100644
  
          # Use MHA kernel if in MHA_ONE_SHOT mode
          if self.use_mha:
-@@ -2218,6 +2398,10 @@ class DeepseekSparseAttnBackend(
+@@ -2160,6 +2340,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -6916,7 +6916,7 @@ index 939c45f753..c05ddbfb70 100644
              )
          elif dsa_impl in ("flashmla_sparse", "flashmla_sparse_q8"):
              if topk_transform_method == TopkTransformMethod.RAGGED:
-@@ -2304,14 +2488,15 @@ class DeepseekSparseAttnBackend(
+@@ -2246,14 +2430,15 @@ class DeepseekSparseAttnBackend(
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              if topk_transform_method == TopkTransformMethod.RAGGED:
                  page_table_1 = topk_indices
@@ -6940,7 +6940,7 @@ index 939c45f753..c05ddbfb70 100644
          elif dsa_impl == "flashmla_kv":
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
-@@ -2514,6 +2699,10 @@ class DeepseekSparseAttnBackend(
+@@ -2456,6 +2641,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -6951,7 +6951,7 @@ index 939c45f753..c05ddbfb70 100644
              )
          elif dsa_impl == "fa3":
              return self._forward_fa3(
-@@ -3005,6 +3194,7 @@ class DeepseekSparseAttnBackend(
+@@ -2947,6 +3136,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -6959,7 +6959,7 @@ index 939c45f753..c05ddbfb70 100644
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -3149,6 +3339,7 @@ class DeepseekSparseAttnBackend(
+@@ -3091,6 +3281,7 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -6967,7 +6967,7 @@ index 939c45f753..c05ddbfb70 100644
      ) -> torch.Tensor:
          from sglang.kernels.ops.attention.dsa.tilelang_kernel import tilelang_sparse_fwd
  
-@@ -3165,6 +3356,17 @@ class DeepseekSparseAttnBackend(
+@@ -3107,6 +3298,17 @@ class DeepseekSparseAttnBackend(
                  dim=-1,
              )
  
@@ -6985,7 +6985,7 @@ index 939c45f753..c05ddbfb70 100644
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3628,6 +3830,10 @@ class DeepseekSparseAttnBackend(
+@@ -3560,6 +3762,10 @@ class DeepseekSparseAttnBackend(
              skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              sparse_mla_top_k_lens=sparse_mla_top_k_lens,
              multi_ctas_kv_counter_buffer=self._multi_ctas_kv_counter_buffer,
@@ -6996,7 +6996,7 @@ index 939c45f753..c05ddbfb70 100644
          )
  
          return out
-@@ -3812,6 +4018,12 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3744,6 +3950,12 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -7009,7 +7009,7 @@ index 939c45f753..c05ddbfb70 100644
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3983,15 +4195,31 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3915,15 +4127,31 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:
@@ -8534,7 +8534,7 @@ index ceb9d56aec..1c55fa44f4 100644
                  self._account_prefill_cache_admission(req, prefix_len)
  
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 85b9c203c9..a546734748 100644
+index cf361cc8da..d91906a2cd 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -152,6 +152,8 @@ from sglang.srt.managers.io_struct import (
@@ -8586,7 +8586,7 @@ index 85b9c203c9..a546734748 100644
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1855,10 +1857,20 @@ class Scheduler(
+@@ -1840,10 +1842,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -8610,7 +8610,7 @@ index 85b9c203c9..a546734748 100644
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3559,6 +3571,7 @@ class Scheduler(
+@@ -3580,6 +3592,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -8618,7 +8618,7 @@ index 85b9c203c9..a546734748 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3687,8 +3700,16 @@ class Scheduler(
+@@ -3708,8 +3721,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -8637,7 +8637,7 @@ index 85b9c203c9..a546734748 100644
              running_batch.batch_is_full = False
  
          if (
-@@ -3789,6 +3810,9 @@ class Scheduler(
+@@ -3810,6 +3831,9 @@ class Scheduler(
              mamba_allocator.alloc_group_begin(len(self.waiting_queue))
          # Get requests from the waiting queue to a new prefill batch
          for req in self.waiting_queue:
@@ -8647,7 +8647,7 @@ index 85b9c203c9..a546734748 100644
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3831,6 +3855,17 @@ class Scheduler(
+@@ -3852,6 +3876,17 @@ class Scheduler(
                      # marks the staged span below once it is surfaced.
                      req.host_hit_is_storage = False
  
@@ -8665,7 +8665,7 @@ index 85b9c203c9..a546734748 100644
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4109,20 +4144,27 @@ class Scheduler(
+@@ -4130,20 +4165,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -8707,7 +8707,7 @@ index 85b9c203c9..a546734748 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4135,12 +4177,11 @@ class Scheduler(
+@@ -4156,12 +4198,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -8725,7 +8725,7 @@ index 85b9c203c9..a546734748 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4155,12 +4196,11 @@ class Scheduler(
+@@ -4176,12 +4217,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -8741,7 +8741,7 @@ index 85b9c203c9..a546734748 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4217,7 +4257,7 @@ class Scheduler(
+@@ -4238,7 +4278,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -8750,7 +8750,7 @@ index 85b9c203c9..a546734748 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4243,13 +4283,12 @@ class Scheduler(
+@@ -4264,13 +4304,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -8770,7 +8770,7 @@ index 85b9c203c9..a546734748 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4371,7 +4410,11 @@ class Scheduler(
+@@ -4392,7 +4431,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -8783,7 +8783,7 @@ index 85b9c203c9..a546734748 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4383,7 +4426,11 @@ class Scheduler(
+@@ -4404,7 +4447,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -8795,7 +8795,7 @@ index 85b9c203c9..a546734748 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4506,9 +4553,11 @@ class Scheduler(
+@@ -4527,9 +4574,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -8810,7 +8810,7 @@ index 85b9c203c9..a546734748 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4531,31 +4580,42 @@ class Scheduler(
+@@ -4552,31 +4601,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -8874,7 +8874,7 @@ index 85b9c203c9..a546734748 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4590,7 +4650,7 @@ class Scheduler(
+@@ -4611,7 +4671,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -8883,7 +8883,7 @@ index 85b9c203c9..a546734748 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5557,6 +5617,38 @@ class Scheduler(
+@@ -5588,6 +5648,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -9092,7 +9092,7 @@ index 2695df7d7c..8e52c6e640 100644
              if isinstance(self.pooled_hidden_states, list):
                  self.pooled_hidden_states = [
 diff --git a/python/sglang/srt/mem_cache/allocator/paged.py b/python/sglang/srt/mem_cache/allocator/paged.py
-index 4d77446c93..3ad6d40fe3 100755
+index ffc479e8ce..bf7c7cec2f 100755
 --- a/python/sglang/srt/mem_cache/allocator/paged.py
 +++ b/python/sglang/srt/mem_cache/allocator/paged.py
 @@ -23,6 +23,7 @@ from sglang.kernels.ops.memory.allocator import (
@@ -9246,7 +9246,7 @@ index 4d77446c93..3ad6d40fe3 100755
          ps = self.page_size
          assert start_pos % ps == 0, f"segment start {start_pos} is not page-aligned"
          reps = free_index[::ps]
-@@ -308,11 +361,101 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
+@@ -315,11 +368,101 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
          assert len(torch.unique(pages)) == len(pages)
  
      def _release_page_ids(self, *page_ids: torch.Tensor):
@@ -9348,7 +9348,7 @@ index 4d77446c93..3ad6d40fe3 100755
  
      def free_group_begin(self):
          super().free_group_begin()
-@@ -339,6 +482,8 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
+@@ -344,6 +487,8 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
          # need_sort only: freed pages wait here, unsorted, until an alloc runs short.
          self.staged_pages: list[torch.Tensor] = []
          self.num_staged_pages = 0
@@ -9358,10 +9358,10 @@ index 4d77446c93..3ad6d40fe3 100755
      def get_cpu_copy(self, indices, mamba_indices=None, req_pool_index=None):
          return self._kvcache.get_cpu_copy(
 diff --git a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-index 2d9e5ad778..e91fd328bd 100644
+index 2d9e5ad778..1348924694 100644
 --- a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 +++ b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-@@ -769,6 +769,59 @@ def build_deepseek_v4_hicache_stack(
+@@ -769,6 +769,65 @@ def build_deepseek_v4_hicache_stack(
      return host_pool_group, cache_controller
  
  
@@ -9379,7 +9379,13 @@ index 2d9e5ad778..e91fd328bd 100644
 +
 +
 +def _build_hybrid_dsa_index_entry(
-+    *, kv_pool, kv_host_pool, layer_mapping, transfer_layer_num, draft_pools=()
++    *,
++    kv_pool,
++    kv_host_pool,
++    layer_mapping,
++    transfer_layer_num,
++    draft_pools=(),
++    pool_name=PoolName.INDEXER,
 +):
 +    buffers = _hybrid_dsa_index_buffers(kv_pool, draft_pools)
 +    live_layers = [i for i, buffer in enumerate(buffers) if buffer.numel()]
@@ -9395,7 +9401,7 @@ index 2d9e5ad778..e91fd328bd 100644
 +    # KV-derived physical page indices remain valid for compressed index rows
 +    # when the radix tree only shares complete compression groups.
 +    host_pool = DeepSeekV4PagedHostPool(
-+        pool_name=str(PoolName.INDEXER),
++        pool_name=str(pool_name),
 +        device_buffers=live_buffers,
 +        item_bytes=item_bytes,
 +        num_host_pages=kv_host_pool.page_num,
@@ -9405,7 +9411,7 @@ index 2d9e5ad778..e91fd328bd 100644
 +        page_aligned_only=True,
 +    )
 +    return build_pool_entry(
-+        name=PoolName.INDEXER,
++        name=pool_name,
 +        host_pool=host_pool,
 +        device_pool=kv_pool,
 +        layer_mapping={
@@ -9421,7 +9427,7 @@ index 2d9e5ad778..e91fd328bd 100644
  def build_hybrid_mamba_stack(
      *,
      params: CacheInitParams,
-@@ -799,10 +852,30 @@ def build_hybrid_mamba_stack(
+@@ -799,10 +858,30 @@ def build_hybrid_mamba_stack(
          kv_host_size, mamba_host_size = _split_hicache_size(
              get_memory().hicache_size, (kv_pool, mamba_pool)
          )
@@ -9452,7 +9458,7 @@ index 2d9e5ad778..e91fd328bd 100644
          host_size=kv_host_size,
          mtp_draft_device_pools=mtp_draft_device_pools,
      )
-@@ -842,6 +915,15 @@ def build_hybrid_mamba_stack(
+@@ -842,6 +921,15 @@ def build_hybrid_mamba_stack(
              device_free_fn=mamba_allocator.free,
          ),
      ]
@@ -9468,7 +9474,33 @@ index 2d9e5ad778..e91fd328bd 100644
      host_pool_group = HostPoolGroup(entries)
      cache_controller = HybridCacheController(
          params.token_to_kv_pool_allocator,
-@@ -1410,6 +1492,7 @@ class _MambaStrategy(StackStrategy):
+@@ -1132,6 +1220,25 @@ def build_full_draft_pools(
+     ]
+ 
+     if isinstance(pool, DSATokenToKVPool) and pool.index_k_with_scale_buffer:
++        if pool.kpool_use_compress:
++            # As on the target, transfer actual page rows and omit empty
++            # shared-topk layers. The draft keeps its own host KV geometry.
++            entry = _build_hybrid_dsa_index_entry(
++                kv_pool=pool,
++                kv_host_pool=draft_host_pool,
++                layer_mapping=draft_layer_mapping,
++                transfer_layer_num=draft_host_pool.layer_num,
++                pool_name=PoolName.DRAFT_INDEXER,
++            )
++            if entry is not None:
++                specs.append(
++                    SidecarPoolSpec(
++                        pool_name=PoolName.DRAFT_INDEXER,
++                        indices_from_pool=PoolName.KV,
++                    )
++                )
++                entries.append(entry)
++            return specs, entries
+         indexer_host_pool = DSAIndexerPoolHost(
+             pool,
+             draft_host_pool,
+@@ -1410,6 +1517,7 @@ class _MambaStrategy(StackStrategy):
              storage_backend_extra_config=storage_backend_extra_config,
              enable_storage_metrics=enable_storage_metrics,
          )
@@ -9476,7 +9508,7 @@ index 2d9e5ad778..e91fd328bd 100644
          return StackBuildResult(
              host_pool_group=host_pool_group,
              cache_controller=cache_controller,
-@@ -1419,7 +1502,16 @@ class _MambaStrategy(StackStrategy):
+@@ -1419,7 +1527,16 @@ class _MambaStrategy(StackStrategy):
              },
              register_req_to_token_counter=True,
              transfer_layer_num=len(full_layer_mapping | mamba_layer_mapping),
@@ -9829,9 +9861,18 @@ index fa06cbf5b1..b0402a6007 100644
  
  def sync_fixed_hicache_size(size: int, host_size: int) -> int:
 diff --git a/python/sglang/srt/mem_cache/pool_host/mla.py b/python/sglang/srt/mem_cache/pool_host/mla.py
-index 41c651c3be..fef5948be9 100644
+index 41c651c3be..201959df0f 100644
 --- a/python/sglang/srt/mem_cache/pool_host/mla.py
 +++ b/python/sglang/srt/mem_cache/pool_host/mla.py
+@@ -18,7 +18,7 @@ from sglang.kernels.ops.kvcache.hicache import (
+ from sglang.kernels.ops.kvcache.hicache import (
+     transfer_hicache_one_layer_mla as jit_transfer_hicache_one_layer_mla,
+ )
+-from sglang.srt.mem_cache.memory_pool import MLATokenToKVPool
++from sglang.srt.mem_cache.memory_pool import MLATokenToKVPool, MLATokenToKVPoolFP4
+ from sglang.srt.mem_cache.pool_host.base import (
+     _WRITE_BACK_STAGING_PAGE_CHUNK,
+     HostKVCache,
 @@ -71,6 +71,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
      ):
          self.override_kv_cache_dim = override_kv_cache_dim
@@ -9840,7 +9881,7 @@ index 41c651c3be..fef5948be9 100644
          super().__init__(
              device_pool,
              host_to_device_ratio,
-@@ -114,6 +115,51 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -114,6 +115,60 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
              ]
          self._init_write_back_staging_buffers()
  
@@ -9860,6 +9901,15 @@ index 41c651c3be..fef5948be9 100644
 +        therefore match the target's row, and every packed draft pool must
 +        have the target's row geometry. Runs before any host allocation.
 +        """
++        # FP4 retains a logical kv_cache_dim but packs two values per byte and
++        # stores scales separately. Neither buffer follows this host layout.
++        if any(
++            isinstance(pool, MLATokenToKVPoolFP4)
++            for pool in (device_pool, *self.mtp_draft_device_pools)
++        ):
++            raise NotImplementedError(
++                "HiCache does not support FP4 MLA KV rows and their separate scale buffers."
++            )
 +        host_dim = self._host_kv_cache_dim(device_pool)
 +        target_dtype = device_pool.store_dtype
 +        # MLATokenToKVPool and its subclasses always set kv_cache_dim (a packed
@@ -9892,7 +9942,7 @@ index 41c651c3be..fef5948be9 100644
      def get_contiguous_buf_infos(self):
          """Return (data_ptrs, data_lens, item_lens) in the same format as device pool,
          for registering host memory with the disaggregation transfer engine."""
-@@ -127,9 +173,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -127,9 +182,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
          self.qk_rope_head_dim = self.device_pool.qk_rope_head_dim
          self.target_layer_num = self._effective_host_layer_num()
          self.layer_num = self.target_layer_num + len(self.mtp_draft_device_pools)
@@ -10112,7 +10162,7 @@ index db7125902c..63114badf4 100644
      def walk_for_kv_canary(
          self, unlocked_only: bool, swa_resident_only: bool
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 3eb51fa610..9fd692d773 100644
+index 482df86dfe..5f925aa1b8 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -2,6 +2,7 @@ from __future__ import annotations
@@ -11099,10 +11149,10 @@ index 0000000000..74c0ab7420
 +    owners.append(owner)
 +    return True
 diff --git a/python/sglang/srt/models/deepseek_nextn.py b/python/sglang/srt/models/deepseek_nextn.py
-index 95582e079f..4d20f21d72 100644
+index a95dda44b8..7d53955711 100644
 --- a/python/sglang/srt/models/deepseek_nextn.py
 +++ b/python/sglang/srt/models/deepseek_nextn.py
-@@ -98,11 +98,28 @@ _is_npu = is_npu()
+@@ -54,11 +54,28 @@ _is_npu = is_npu()
  
  
  class DeepseekModelNextN(nn.Module):
@@ -11131,7 +11181,7 @@ index 95582e079f..4d20f21d72 100644
      ) -> None:
          super().__init__()
          if enable_nextn_moe_bf16_cast_to_fp8(quant_config):
-@@ -114,11 +131,9 @@ class DeepseekModelNextN(nn.Module):
+@@ -70,11 +87,9 @@ class DeepseekModelNextN(nn.Module):
          else:
              moe_quant_config_override = None
  
@@ -11146,7 +11196,7 @@ index 95582e079f..4d20f21d72 100644
  
          self.vocab_size = config.vocab_size
  
-@@ -220,7 +235,11 @@ class DeepseekModelNextN(nn.Module):
+@@ -176,7 +191,11 @@ class DeepseekModelNextN(nn.Module):
                      and forward_batch.contains_mm_inputs()
                      and not forward_batch.forward_mode.is_draft_extend_v2()
                  ):
@@ -11159,7 +11209,7 @@ index 95582e079f..4d20f21d72 100644
                      last_indices = (
                          forward_batch.extend_start_loc
                          + forward_batch.extend_seq_lens
-@@ -311,6 +330,7 @@ class DeepseekModelNextN(nn.Module):
+@@ -244,6 +263,7 @@ class DeepseekModelNextN(nn.Module):
  class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
      # The draft checkpoint reports the NextN architecture name.
      fused_shared_experts_architecture = "DeepseekV3ForCausalLMNextN"
@@ -11167,7 +11217,7 @@ index 95582e079f..4d20f21d72 100644
  
      # Support amd/DeepSeek-R1-0528-MXFP4 renaming: model.layers.61*.
      # Ref: HF config.json for amd/DeepSeek-R1-0528-MXFP4
-@@ -353,7 +373,10 @@ class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
+@@ -286,7 +306,10 @@ class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
          nextn_quant_config = self._resolve_nextn_quant_config(config, quant_config)
  
          self.model = DeepseekModelNextN(
@@ -12086,7 +12136,7 @@ index dce42ffd81..1a2314d191 100644
          if filter_node.name not in attribute_filters:
              continue
 diff --git a/python/sglang/srt/speculative/base_spec_worker.py b/python/sglang/srt/speculative/base_spec_worker.py
-index c5f348d60f..515141f590 100644
+index c5f348d60f..e265141133 100644
 --- a/python/sglang/srt/speculative/base_spec_worker.py
 +++ b/python/sglang/srt/speculative/base_spec_worker.py
 @@ -12,6 +12,7 @@ from sglang.srt.model_executor.graph_memory_usage import (
@@ -12097,7 +12147,44 @@ index c5f348d60f..515141f590 100644
  
  if TYPE_CHECKING:
      from sglang.srt.managers.io_struct import (
-@@ -66,6 +67,42 @@ class EagleDraftWorkerBase(ABC):
+@@ -57,6 +58,36 @@ def _can_pack_hicache_mtp(
+     return is_nextn_mtp or is_dspark_dsv4
+ 
+ 
++def _hicache_mla_rows_match(target_pool, draft_pools) -> bool:
++    from sglang.srt.mem_cache.memory_pool import (
++        HybridLinearKVPool,
++        MLATokenToKVPool,
++        MLATokenToKVPoolFP4,
++    )
++
++    def unwrap(pool):
++        return pool.full_kv_pool if isinstance(pool, HybridLinearKVPool) else pool
++
++    target_pool = unwrap(target_pool)
++    draft_pools = tuple(map(unwrap, draft_pools))
++    if any(
++        isinstance(pool, MLATokenToKVPoolFP4) for pool in (target_pool, *draft_pools)
++    ):
++        raise NotImplementedError(
++            "HiCache does not support FP4 MLA KV rows and their separate scale buffers."
++        )
++    if not isinstance(target_pool, MLATokenToKVPool):
++        return True
++    # Packed MLA host layers share one element type and row stride. Separate
++    # draft KV precision can change both, even for the model's own MTP layer.
++    return all(
++        isinstance(pool, MLATokenToKVPool)
++        and pool.store_dtype == target_pool.store_dtype
++        and pool.kv_cache_dim == target_pool.kv_cache_dim
++        for pool in draft_pools
++    )
++
++
+ class EagleDraftWorkerBase(ABC):
+     # topk=1 chain constants for draft_forward's fast path; None when topk > 1.
+     _topk1_parents_prealloc: Optional[torch.Tensor] = None
+@@ -66,6 +97,42 @@ class EagleDraftWorkerBase(ABC):
          self._specialized_graph_memory_usage: dict[str, float] = {}
          self._specialized_graph_time_usage: dict[str, float] = {}
  
@@ -12140,7 +12227,7 @@ index c5f348d60f..515141f590 100644
      @abstractmethod
      def draft():
          pass
-@@ -140,15 +177,34 @@ class EagleDraftWorkerBase(ABC):
+@@ -140,15 +207,34 @@ class EagleDraftWorkerBase(ABC):
              get_schedule().max_running_requests or 0,
              1,
          )
@@ -12184,8 +12271,36 @@ index c5f348d60f..515141f590 100644
  
  
  class BaseSpecWorker(ABC):
+@@ -270,11 +356,22 @@ class BaseSpecWorker(ABC):
+             )
+ 
+         if _can_pack_hicache_mtp(spec_algorithm, draft_runners):
+-            target_model_runner.mtp_draft_device_pools = draft_pools
+-            return HiCacheDraftPlan(
+-                mode=HiCacheDraftMode.PACKED,
+-                device_pools=draft_pools,
+-            )
++            if _hicache_mla_rows_match(
++                target_model_runner.token_to_kv_pool, draft_pools
++            ):
++                target_model_runner.mtp_draft_device_pools = draft_pools
++                return HiCacheDraftPlan(
++                    mode=HiCacheDraftMode.PACKED,
++                    device_pools=draft_pools,
++                )
++            if len(draft_pools) > 1:
++                # The sidecar builder supports one runner. Do not silently
++                # omit later MTP depths through the legacy first-runner plan.
++                raise NotImplementedError(
++                    "HiCache with multiple MTP draft runners requires matching "
++                    "target and draft MLA KV row dimensions and storage dtypes. "
++                    "The sidecar fallback supports one draft runner."
++                )
+ 
+         return HiCacheDraftPlan(
+             mode=HiCacheDraftMode.SIDECAR,
 diff --git a/python/sglang/srt/speculative/eagle_utils.py b/python/sglang/srt/speculative/eagle_utils.py
-index 99875779be..1ba9a5c492 100644
+index 616f808d7b..3ed1e69f3e 100644
 --- a/python/sglang/srt/speculative/eagle_utils.py
 +++ b/python/sglang/srt/speculative/eagle_utils.py
 @@ -515,6 +515,7 @@ def eagle_prepare_for_verify(
@@ -13351,6 +13466,276 @@ index 27b74efea3..9309355c44 100644
  def install() -> None:
      """Install the diagnostics (idempotent; chains pre-existing hooks)."""
      global _installed, _prev_compile_listener
+diff --git a/test/manual/test_hicache_draft_sidecar_gpu.py b/test/manual/test_hicache_draft_sidecar_gpu.py
+new file mode 100755
+index 0000000000..a875ff38c7
+--- /dev/null
++++ b/test/manual/test_hicache_draft_sidecar_gpu.py
+@@ -0,0 +1,264 @@
++#!/usr/bin/env python3
++"""Byte-exact mixed-geometry HiCache fallback test; run on an isolated GPU.
++
++Uses real DSA device/host pools, the draft planner and sidecar assembler, and
++the controller's transfer lists and asynchronous L2 engine. Backs up in two
++pieces, poisons device storage, then restores onto shuffled physical pages.
++"""
++
++import json
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import torch
++
++from sglang.srt.mem_cache.hicache_storage import PoolName, PoolTransfer
++from sglang.srt.mem_cache.hybrid_cache.hybrid_cache_controller import (
++    HybridCacheController,
++)
++from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
++    _build_hybrid_dsa_index_entry,
++    _build_mha_mla_host_pool,
++    build_hicache_draft_sidecars,
++    build_pool_entry,
++)
++from sglang.srt.mem_cache.l2_transfer import L2TransferEngine
++from sglang.srt.mem_cache.memory_pool import DSATokenToKVPool, HybridLinearKVPool
++from sglang.srt.mem_cache.pool_host import HostPoolGroup
++from sglang.srt.runtime_context import publish, reset_context
++from sglang.srt.server_args import ServerArgs
++from sglang.srt.speculative.base_spec_worker import BaseSpecWorker, HiCacheDraftMode
++from sglang.srt.speculative.spec_info import SpeculativeAlgorithm
++
++
++def make_pool(dtype, dim, live, compress):
++    return DSATokenToKVPool(
++        size=1024,
++        page_size=64,
++        kv_lora_rank=512,
++        qk_rope_head_dim=64,
++        kv_cache_dim=dim,
++        dtype=dtype,
++        layer_num=len(live),
++        device="cuda",
++        index_head_dim=128,
++        enable_memory_saver=False,
++        index_kpool=4 if compress else 1,
++        index_kpool_compress=compress,
++        max_running_requests=4,
++        skip_topk_layers=[not x for x in live],
++    )
++
++
++def wrap(pool, hybrid):
++    if not hybrid:
++        return pool
++    result = object.__new__(HybridLinearKVPool)
++    result.full_kv_pool = pool
++    return result
++
++
++def tokens(pages):
++    return (pages[:, None] * 64 + torch.arange(64, device=pages.device)).flatten()
++
++
++def run_case(layout, backend, target_geometry, draft_geometry, hybrid, live, compress):
++    publish(
++        ServerArgs(
++            model_path="dummy",
++            enable_hierarchical_cache=True,
++            hicache_mem_layout=layout,
++            hicache_io_backend=backend,
++        ),
++        role="scheduler",
++    )
++    target = make_pool(*target_geometry, (True, False, True), compress)
++    draft = make_pool(*draft_geometry, (live,), compress)
++    target_runner = SimpleNamespace(
++        token_to_kv_pool=wrap(target, hybrid), spec_algorithm=SpeculativeAlgorithm.EAGLE
++    )
++    runner = SimpleNamespace(
++        token_to_kv_pool=wrap(draft, hybrid),
++        model_config=SimpleNamespace(
++            num_nextn_predict_layers=1,
++            hf_config=SimpleNamespace(architectures=["Glm5NextForCausalLMMTP"]),
++        ),
++    )
++    worker = SimpleNamespace(
++        target_worker=SimpleNamespace(model_runner=target_runner),
++        _draft_model_runners=lambda: (runner,),
++    )
++    plan = BaseSpecWorker._build_hicache_draft_plan(worker)
++    assert plan.mode == HiCacheDraftMode.SIDECAR
++    assert target_runner.mtp_draft_device_pools == ()
++    prefix = "sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler."
++    with patch(prefix + "_get_allocator_type", return_value="default"):
++        host = _build_mha_mla_host_pool(
++            pool=target,
++            host_to_device_ratio=2,
++            page_size=64,
++            layout=layout,
++            allocator_type="default",
++            pool_label="target",
++        )
++        mapping = dict(enumerate(range(target.layer_num)))
++        anchor = build_pool_entry(
++            name=PoolName.KV,
++            host_pool=host,
++            device_pool=target,
++            layer_mapping=mapping,
++            transfer_layer_num=target.layer_num,
++            is_anchor=True,
++        )
++        index = _build_hybrid_dsa_index_entry(
++            kv_pool=target,
++            kv_host_pool=host,
++            layer_mapping=mapping,
++            transfer_layer_num=target.layer_num,
++        )
++        group = HostPoolGroup([anchor, index])
++        controller = object.__new__(HybridCacheController)
++        controller.mem_pool_host = group
++        controller.page_size = 64
++        controller.layer_num = target.layer_num
++        specs, entries = build_hicache_draft_sidecars(
++            draft_device_pools=plan.device_pools,
++            tree_cache=SimpleNamespace(cache_controller=controller),
++        )
++        for entry in entries:
++            group.add_entry(entry)
++    assert group.get_pool(PoolName.DRAFT).dtype == draft.store_dtype
++    assert (
++        group.get_pool(PoolName.DRAFT)._host_kv_cache_dim(draft) == draft.kv_cache_dim
++    )
++    assert (PoolName.DRAFT_INDEXER in group.entry_map) == live
++    assert all(spec.indices_from_pool == PoolName.KV for spec in specs)
++
++    generator = torch.Generator().manual_seed(38212)
++    originals = []
++    for pool in (target, draft):
++        for buffer in pool.kv_buffer:
++            view = buffer.view(torch.uint8)
++            expected = torch.randint(
++                0, 256, view.shape, dtype=torch.uint8, generator=generator
++            )
++            view.copy_(expected)
++            originals.append((view, expected, False))
++        for buffer in pool.index_k_with_scale_buffer:
++            if not buffer.numel():
++                continue
++            expected = torch.randint(
++                0, 256, buffer.shape, dtype=torch.uint8, generator=generator
++            )
++            buffer.copy_(expected)
++            originals.append((buffer, expected, True))
++    source_pages = torch.tensor([0, 1, 2, 3, 8, 9, 10, 11])
++    host_pages = torch.tensor([16, 17, 18, 19, 4, 5, 6, 7])
++    dest_pages = torch.tensor([12, 13, 14, 15, 4, 5, 6, 7])
++    index_device = "cuda" if backend == "kernel" else "cpu"
++    src, cached, dst = [
++        tokens(p.to(index_device)) for p in (source_pages, host_pages, dest_pages)
++    ]
++    engine = L2TransferEngine(backend)
++
++    def transfers(host_indices, device_indices, backup):
++        aux = [
++            PoolTransfer(
++                name,
++                host_indices=host_indices,
++                device_indices=device_indices,
++                indices_from_pool=PoolName.KV,
++            )
++            for name in group.entry_map
++            if name != PoolName.KV
++        ]
++        result = controller._l2_load_transfers(host_indices, device_indices, aux)
++        if backup:
++            result = [
++                t._replace(host_indices=t.host_indices.cpu())
++                if t.host_pool.can_use_write_back_jit
++                else t
++                for t in result
++            ]
++        return result
++
++    for start in (0, 256):
++        completion = engine.submit_device_to_host(
++            transfers(cached[start : start + 256], src[start : start + 256], True)
++        )
++    torch.cuda.current_stream().wait_event(completion.finish_event)
++    for buffer, _, _ in originals:
++        buffer.fill_(173)
++    restored = engine.submit_host_to_device(
++        transfers(cached, dst, False), layer_num=target.layer_num
++    )
++    restored.finish_event.synchronize()
++    compared = 0
++    for buffer, expected, is_index in originals:
++        actual = buffer.cpu()[dest_pages if is_index else tokens(dest_pages)]
++        expected = expected[source_pages if is_index else tokens(source_pages)]
++        assert torch.equal(actual, expected), (
++            layout,
++            backend,
++            target_geometry,
++            draft_geometry,
++            is_index,
++        )
++        compared += actual.numel()
++    for entry in group.entries:
++        entry.host_pool.destroy()
++    reset_context()
++    print(
++        json.dumps(
++            dict(
++                layout=layout,
++                backend=backend,
++                target=str(target_geometry),
++                draft=str(draft_geometry),
++                hybrid=hybrid,
++                index_live=live,
++                compressed=compress,
++                bytes_compared=compared,
++                passed=True,
++            )
++        ),
++        flush=True,
++    )
++
++
++def main():
++    assert torch.cuda.is_available(), "requires an isolated CUDA test environment"
++    print(
++        json.dumps(
++            dict(
++                gpu=torch.cuda.get_device_name(),
++                capability=torch.cuda.get_device_capability(),
++            )
++        ),
++        flush=True,
++    )
++    fp8, bf16 = torch.float8_e4m3fn, torch.bfloat16
++    cases = 0
++    with torch.inference_mode():
++        for layout, backend in (
++            ("page_first", "kernel"),
++            ("layer_first", "kernel"),
++            ("layer_first", "direct"),
++            ("page_first_direct", "direct"),
++        ):
++            for target, draft in (
++                ((fp8, 656), (fp8, 528)),
++                ((fp8, 656), (bf16, 576)),
++                ((bf16, 576), (fp8, 576)),
++            ):
++                for hybrid in (False, True):
++                    for live in (False, True):
++                        run_case(layout, backend, target, draft, hybrid, live, True)
++                        cases += 1
++            run_case(layout, backend, (fp8, 656), (bf16, 576), False, True, False)
++            cases += 1
++    print(f"HiCache draft sidecar GPU byte oracle: {cases}/{cases} passed", flush=True)
++
++
++if __name__ == "__main__":
++    main()
 diff --git a/test/manual/test_hybrid_dsa_hicache_gpu.py b/test/manual/test_hybrid_dsa_hicache_gpu.py
 new file mode 100755
 index 0000000000..09c6594c5a
@@ -20676,12 +21061,200 @@ index 0000000000..9aedd03cab
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/test/registered/unit/mem_cache/test_hicache_draft_plan.py b/test/registered/unit/mem_cache/test_hicache_draft_plan.py
+new file mode 100644
+index 0000000000..b061392b4f
+--- /dev/null
++++ b/test/registered/unit/mem_cache/test_hicache_draft_plan.py
+@@ -0,0 +1,182 @@
++"""HiCache must select separate host rows before allocating incompatible MTP KV."""
++
++import unittest
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import torch
++
++from sglang.srt.mem_cache.memory_pool import (
++    HybridLinearKVPool,
++    MLATokenToKVPool,
++    MLATokenToKVPoolFP4,
++)
++from sglang.srt.speculative.base_spec_worker import BaseSpecWorker, HiCacheDraftMode
++from sglang.srt.speculative.spec_info import SpeculativeAlgorithm
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=1, suite="base-a-test-cpu")
++
++
++def mla_pool(dtype=torch.uint8, dim=656, *, hybrid=False):
++    pool = object.__new__(MLATokenToKVPool)
++    pool.store_dtype = dtype
++    pool.kv_cache_dim = dim
++    if hybrid:
++        wrapper = object.__new__(HybridLinearKVPool)
++        wrapper.full_kv_pool = pool
++        return wrapper
++    return pool
++
++
++def build_plan(
++    target_pool,
++    draft_pools,
++    *,
++    algorithm=SpeculativeAlgorithm.EAGLE,
++    nextn=1,
++    enabled=True,
++    backup="none",
++    architecture="Glm5NextForCausalLMMTP",
++):
++    target = SimpleNamespace(
++        token_to_kv_pool=target_pool,
++        spec_algorithm=algorithm,
++        mtp_draft_device_pools=("stale",),
++    )
++    runners = tuple(
++        SimpleNamespace(
++            token_to_kv_pool=pool,
++            model_config=SimpleNamespace(
++                num_nextn_predict_layers=nextn,
++                hf_config=SimpleNamespace(architectures=[architecture]),
++            ),
++        )
++        for pool in draft_pools
++    )
++    worker = SimpleNamespace(
++        target_worker=SimpleNamespace(model_runner=target),
++        _draft_model_runners=lambda: runners,
++    )
++    prefix = "sglang.srt.speculative.base_spec_worker."
++    with (
++        patch(
++            prefix + "get_memory",
++            return_value=SimpleNamespace(enable_hierarchical_cache=enabled),
++        ),
++        patch(
++            prefix + "get_disagg",
++            return_value=SimpleNamespace(
++                disaggregation_decode_retraction_backup=backup
++            ),
++        ),
++    ):
++        plan = BaseSpecWorker._build_hicache_draft_plan(worker)
++    return plan, target
++
++
++class TestHiCacheDraftPlan(unittest.TestCase):
++    def test_fp4_target_or_draft_is_rejected_before_selecting_a_plan(self):
++        fp4 = object.__new__(MLATokenToKVPoolFP4)
++        fp4.store_dtype = torch.uint8
++        fp4.kv_cache_dim = 656
++        for target, draft in (
++            (fp4, mla_pool(torch.bfloat16, 576)),
++            (mla_pool(torch.bfloat16, 576), fp4),
++            (fp4, mla_pool()),
++            (mla_pool(), fp4),
++        ):
++            for hybrid in (False, True):
++                with self.subTest(
++                    target_fp4=target is fp4,
++                    hybrid=hybrid,
++                    draft_dtype=draft.store_dtype,
++                ):
++                    if hybrid:
++                        wrapper = object.__new__(HybridLinearKVPool)
++                        wrapper.full_kv_pool = target
++                        target_pool = wrapper
++                    else:
++                        target_pool = target
++                    with self.assertRaisesRegex(NotImplementedError, "FP4 MLA KV"):
++                        build_plan(target_pool, (draft,))
++
++    def test_mismatched_mla_uses_sidecar(self):
++        for target_hybrid in (False, True):
++            for draft_hybrid in (False, True):
++                for dtype, dim in (
++                    (torch.uint8, 528),
++                    (torch.bfloat16, 656),
++                    (torch.bfloat16, 576),
++                    (torch.bfloat16, 328),
++                ):
++                    with self.subTest(
++                        target_hybrid=target_hybrid,
++                        draft_hybrid=draft_hybrid,
++                        dtype=dtype,
++                        dim=dim,
++                    ):
++                        draft = mla_pool(dtype, dim, hybrid=draft_hybrid)
++                        plan, target = build_plan(
++                            mla_pool(hybrid=target_hybrid), (draft,)
++                        )
++                        self.assertEqual(plan.mode, HiCacheDraftMode.SIDECAR)
++                        self.assertEqual(plan.device_pools, (draft,))
++                        self.assertEqual(target.mtp_draft_device_pools, ())
++
++    def test_matching_mla_keeps_all_packed_depths(self):
++        for hybrid in (False, True):
++            for count in (1, 3):
++                with self.subTest(hybrid=hybrid, count=count):
++                    drafts = tuple(mla_pool(hybrid=hybrid) for _ in range(count))
++                    plan, target = build_plan(mla_pool(hybrid=hybrid), drafts)
++                    self.assertEqual(plan.mode, HiCacheDraftMode.PACKED)
++                    self.assertEqual(plan.device_pools, drafts)
++                    self.assertEqual(target.mtp_draft_device_pools, drafts)
++
++    def test_later_mtp_depth_cannot_be_silently_dropped(self):
++        drafts = (mla_pool(), mla_pool(torch.bfloat16, 576))
++        with self.assertRaisesRegex(
++            NotImplementedError, "sidecar fallback supports one"
++        ):
++            build_plan(mla_pool(), drafts)
++
++    def test_disabled_cache_and_no_draft_clear_packed_state(self):
++        for drafts, enabled in (((mla_pool(),), False), ((), True)):
++            with self.subTest(enabled=enabled):
++                plan, target = build_plan(mla_pool(), drafts, enabled=enabled)
++                self.assertEqual(plan.mode, HiCacheDraftMode.NONE)
++                self.assertEqual(target.mtp_draft_device_pools, ())
++
++    def test_host_retraction_backup_also_uses_fallback(self):
++        plan, target = build_plan(
++            mla_pool(),
++            (mla_pool(torch.bfloat16, 576),),
++            enabled=False,
++            backup="host_pool",
++        )
++        self.assertEqual(plan.mode, HiCacheDraftMode.SIDECAR)
++        self.assertEqual(target.mtp_draft_device_pools, ())
++
++    def test_non_mtp_eagle_keeps_legacy_sidecar(self):
++        drafts = (mla_pool(), mla_pool())
++        plan, target = build_plan(mla_pool(), drafts, nextn=0)
++        self.assertEqual(plan.mode, HiCacheDraftMode.SIDECAR)
++        self.assertEqual(plan.device_pools, drafts[:1])
++        self.assertEqual(target.mtp_draft_device_pools, ())
++
++    def test_non_mla_dspark_packing_is_unchanged(self):
++        drafts = (object(),)
++        plan, target = build_plan(
++            object(),
++            drafts,
++            algorithm=SpeculativeAlgorithm.DSPARK,
++            nextn=0,
++            architecture="DeepseekV4ForCausalLMDSpark",
++        )
++        self.assertEqual(plan.mode, HiCacheDraftMode.PACKED)
++        self.assertEqual(target.mtp_draft_device_pools, drafts)
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hybrid_dsa_hicache.py b/test/registered/unit/mem_cache/test_hybrid_dsa_hicache.py
 new file mode 100644
-index 0000000000..e935b48d03
+index 0000000000..70655ccc68
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_hybrid_dsa_hicache.py
-@@ -0,0 +1,407 @@
+@@ -0,0 +1,454 @@
 +"""CPU regressions for hybrid DSA index ownership and HiCache assembly."""
 +
 +import unittest
@@ -20699,6 +21272,7 @@ index 0000000000..e935b48d03
 +from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
 +    _build_hybrid_dsa_index_entry,
 +    _MambaStrategy,
++    build_full_draft_pools,
 +    build_hybrid_mamba_stack,
 +    build_pool_entry,
 +)
@@ -20869,6 +21443,52 @@ index 0000000000..e935b48d03
 +    def setUp(self):
 +        self.prefix = "sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler."
 +        self.memory = SimpleNamespace(hicache_mem_layout="layer_first")
++
++    def test_draft_sidecar_omits_empty_index_layers(self):
++        for live in ((True, False, True), (False, False)):
++            with self.subTest(live=live):
++                pool = dsa_pool(live_layers=live)
++                pool.size = 512
++                draft_host = SimpleNamespace(layer_num=len(live), page_num=16)
++                cache = SimpleNamespace(
++                    cache_controller=SimpleNamespace(
++                        page_size=64, mem_pool_host=SimpleNamespace(logical_size=1024)
++                    )
++                )
++                with (
++                    patch(self.prefix + "get_memory", return_value=self.memory),
++                    patch(self.prefix + "_get_allocator_type", return_value="default"),
++                    patch(
++                        self.prefix + "_build_mha_mla_host_pool",
++                        return_value=draft_host,
++                    ),
++                    patch(self.prefix + "DeepSeekV4PagedHostPool") as host_cls,
++                    patch(self.prefix + "DSAIndexerPoolHost") as legacy,
++                ):
++                    specs, entries = build_full_draft_pools(
++                        draft_kv_pool=pool, tree_cache=cache
++                    )
++                legacy.assert_not_called()
++                expected = [PoolName.DRAFT] + (
++                    [PoolName.DRAFT_INDEXER] if any(live) else []
++                )
++                self.assertEqual([s.pool_name for s in specs], expected)
++                self.assertEqual([e.name for e in entries], expected)
++                self.assertTrue(all(s.indices_from_pool == PoolName.KV for s in specs))
++                if any(live):
++                    self.assertEqual(
++                        host_cls.call_args.kwargs["pool_name"],
++                        str(PoolName.DRAFT_INDEXER),
++                    )
++                    self.assertEqual(host_cls.call_args.kwargs["item_bytes"], 8448)
++                    self.assertEqual(
++                        len(host_cls.call_args.kwargs["device_buffers"]), 2
++                    )
++                    self.assertEqual(entries[-1].layer_mapper(0), 0)
++                    self.assertIsNone(entries[-1].layer_mapper(1))
++                    self.assertEqual(entries[-1].layer_mapper(2), 1)
++                else:
++                    host_cls.assert_not_called()
 +
 +    def build_entry(self, pool, *, drafts=(), mapping=None, layer_num=6):
 +        if mapping is None:
@@ -21090,7 +21710,7 @@ index 0000000000..e935b48d03
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
-index 8d203fc7a9..49ccb33b40 100644
+index 8d203fc7a9..a122128d64 100644
 --- a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 +++ b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 @@ -1,17 +1,23 @@
@@ -21111,13 +21731,14 @@ index 8d203fc7a9..49ccb33b40 100644
      build_full_draft_pools,
 +    build_hybrid_mamba_stack,
  )
- from sglang.srt.mem_cache.memory_pool import HybridLinearKVPool
+-from sglang.srt.mem_cache.memory_pool import HybridLinearKVPool
++from sglang.srt.mem_cache.memory_pool import HybridLinearKVPool, MLATokenToKVPoolFP4
 +from sglang.srt.mem_cache.pool_host.common import alloc_with_host_register
 +from sglang.srt.mem_cache.pool_host.mla import MLATokenToKVPoolHost
  from sglang.test.ci.ci_register import register_cpu_ci
  from sglang.test.test_utils import CustomTestCase
  
-@@ -128,5 +134,268 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
+@@ -128,5 +134,299 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
          self.assertIs(entries[0].host_pool, draft_host_pool)
  
  
@@ -21337,6 +21958,37 @@ index 8d203fc7a9..49ccb33b40 100644
 +                device="cpu",
 +                **kwargs,
 +            )
++
++    def test_fp4_rows_are_rejected_before_host_allocation(self):
++        fp4 = object.__new__(MLATokenToKVPoolFP4)
++        fp4.__dict__.update(self._fake_packed_device_pool(layer_num=1).__dict__)
++        # The logical dimension agrees, but the physical values use half a
++        # byte per element and scales live in a different buffer.
++        fp4.kv_buffer = [torch.zeros((68, 1, 8), dtype=torch.uint8)]
++        fp4.kv_scale_buffer = [torch.zeros((68, 1, 1), dtype=torch.uint8)]
++        ordinary = self._fake_packed_device_pool(layer_num=1)
++        for target, drafts in ((fp4, ()), (ordinary, (fp4,))):
++            with self.subTest(target_fp4=target is fp4):
++                allocate = MagicMock(side_effect=self._alloc_unpinned)
++                with (
++                    patch(
++                        "sglang.srt.mem_cache.pool_host.mla.ALLOC_MEMORY_FUNCS",
++                        {"cpu": allocate},
++                    ),
++                    self.assertRaisesRegex(NotImplementedError, "FP4 MLA KV"),
++                ):
++                    MLATokenToKVPoolHost(
++                        target,
++                        host_to_device_ratio=2,
++                        host_size=0,
++                        page_size=self.PAGE_SIZE,
++                        layout="layer_first",
++                        pin_memory=False,
++                        device="cpu",
++                        override_kv_cache_dim=target.kv_cache_dim,
++                        mtp_draft_device_pools=drafts,
++                    )
++                allocate.assert_not_called()
 +
 +    def test_packed_device_pool_without_override_is_rejected(self):
 +        kv_pool = self._fake_packed_device_pool()
@@ -21861,10 +22513,10 @@ index 6377f6c112..13c4c03a31 100644
          # d 512 + normalized k 512 + scalar g 128 + d/k low parts 1024 = 2176
          self.assertEqual(
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index df4e258f10..0f5fb10349 100644
+index 0ced1fc842..6944387af3 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-@@ -8007,6 +8007,46 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
+@@ -8009,6 +8009,46 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
              [mock.call(first), mock.call(second)]
          )
  
@@ -22582,7 +23234,7 @@ index 9e37648106..d2355c207a 100644
          runner._input_embeds_arg_idx = None
          runner.buffer_registry = SimpleNamespace(has_slot=lambda _name: False)
 diff --git a/test/registered/unit/models/test_deepseek_nextn_mm_embed.py b/test/registered/unit/models/test_deepseek_nextn_mm_embed.py
-index b9bdba6f07..7c49afcd11 100644
+index dad4ab6dd6..95ac7318f2 100644
 --- a/test/registered/unit/models/test_deepseek_nextn_mm_embed.py
 +++ b/test/registered/unit/models/test_deepseek_nextn_mm_embed.py
 @@ -38,6 +38,9 @@ def _make_forward_batch(
@@ -22643,16 +23295,7 @@ index b9bdba6f07..7c49afcd11 100644
          object.__setattr__(model, "embed_tokens", mock_embed)
  
          with (
-@@ -100,33 +127,19 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
-                 "sglang.srt.models.deepseek_nextn.mla_use_prefill_cp",
-                 return_value=False,
-             ),
--            patch(
--                "sglang.srt.models.deepseek_nextn.fused_eh_norm",
--                side_effect=lambda h, p, ew, hw, eps: torch.cat(
--                    [model.enorm(h), model.hnorm(p)], dim=-1
--                ),
--            ),
+@@ -101,24 +128,16 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
              patch(
                  "sglang.srt.models.deepseek_nextn.get_global_expert_distribution_recorder"
              ),
@@ -22682,7 +23325,7 @@ index b9bdba6f07..7c49afcd11 100644
          for call in mock_embed.call_args_list:
              call_ids = call[0][0]
              max_id = call_ids.max().item()
-@@ -137,6 +150,7 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
+@@ -129,6 +148,7 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
                  f"{VOCAB_SIZE}. MM sentinel values (MM_PAD_SHIFT_VALUE+hash) "
                  f"must not reach embed_tokens.",
              )
@@ -22690,7 +23333,7 @@ index b9bdba6f07..7c49afcd11 100644
  
      def test_no_mm_falls_back_to_embed_tokens(self):
          """Without mm_input_embeds, embed_tokens is called normally."""
-@@ -154,7 +168,6 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
+@@ -146,7 +166,6 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
          model = _make_model_nextn(VOCAB_SIZE, HIDDEN_SIZE)
          mock_embed = MagicMock(side_effect=model.embed_tokens)
          object.__setattr__(model, "embed_tokens", mock_embed)
@@ -22698,16 +23341,7 @@ index b9bdba6f07..7c49afcd11 100644
  
          with (
              patch(
-@@ -165,35 +178,20 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
-                 "sglang.srt.models.deepseek_nextn.mla_use_prefill_cp",
-                 return_value=False,
-             ),
--            patch(
--                "sglang.srt.models.deepseek_nextn.fused_eh_norm",
--                side_effect=lambda h, p, ew, hw, eps: torch.cat(
--                    [model.enorm(h), model.hnorm(p)], dim=-1
--                ),
--            ),
+@@ -158,26 +177,17 @@ class TestDeepseekNextNMmEmbed(CustomTestCase):
              patch(
                  "sglang.srt.models.deepseek_nextn.get_global_expert_distribution_recorder"
              ),
