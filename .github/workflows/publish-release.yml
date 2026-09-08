@@ -21,8 +21,22 @@ jobs:
     name: Verify stable image and publish GitHub Release
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Select reviewed release source
+        env:
+          RELEASE_TARGET: ${{ inputs.release_target }}
+          WORKFLOW_REVISION: ${{ github.sha }}
+        run: |
+          python3 scripts/test_verify_release_target.py
+          ./scripts/verify-release-target.sh "$RELEASE_TARGET" "$WORKFLOW_REVISION"
+          git checkout --detach "$RELEASE_TARGET"
 
       - name: Validate stable release source
         env:
@@ -35,9 +49,8 @@ jobs:
           ./scripts/validate-publish-release.sh
           ./scripts/verify-patches.sh
           [[ "$GITHUB_REF" == refs/heads/main ]]
-          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
           [[ "$EXPECTED_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$GITHUB_SHA" == "$EXPECTED_RELEASE_TARGET" ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_RELEASE_TARGET" ]]
 
       - name: Check repository release name and tag
         env:
@@ -59,30 +72,34 @@ jobs:
                 --password-stdin
 
       - name: Verify stable image is the candidate manifest
+        env:
+          RELEASE_TARGET: ${{ inputs.release_target }}
         run: |
           repository="ghcr.io/${GITHUB_REPOSITORY}"
           candidate_tag=$(jq -er '.candidate_tag' release.json)
           stable_tag=$(jq -er '.stable_tag' release.json)
           candidate_digest=$(
             docker buildx imagetools inspect "${repository}:${candidate_tag}" \
-              | awk '$1 == "Digest:" { print $2; exit }'
+              | awk '$1 == "Digest:" { print $2 }'
           )
           stable_digest=$(
             docker buildx imagetools inspect "${repository}:${stable_tag}" \
-              | awk '$1 == "Digest:" { print $2; exit }'
+              | awk '$1 == "Digest:" { print $2 }'
           )
           [[ "$candidate_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "$stable_digest" == "$candidate_digest" ]] || {
             echo "stable image differs from candidate: $candidate_digest -> $stable_digest" >&2
             exit 1
           }
-          grep -F -- "$stable_digest" CHANGELOG.md >/dev/null
           image_source_revision=$(
             docker buildx imagetools inspect "${repository}:${stable_tag}" \
               --format '{{json .Image}}' \
               | jq -er '.config.Labels["org.opencontainers.image.revision"]'
           )
           [[ "$image_source_revision" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$image_source_revision" "$RELEASE_TARGET"
+          git diff --exit-code "$image_source_revision" "$RELEASE_TARGET" -- \
+            Containerfile release.json stack.lock.json acceptance_check.py patches/
           echo "RELEASE_DIGEST=$stable_digest" >>"$GITHUB_ENV"
           echo "RELEASE_IMAGE_SOURCE_REVISION=$image_source_revision" >>"$GITHUB_ENV"
 
