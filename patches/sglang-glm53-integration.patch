@@ -3649,7 +3649,7 @@ index 9975619bc8..49932936a3 100644
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 906d4aa22d..9715dcb3b0 100644
+index 906d4aa22d..7bd1995621 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 @@ -28,8 +28,13 @@ _is_hip = is_hip()
@@ -3706,15 +3706,50 @@ index 906d4aa22d..9715dcb3b0 100644
          unsupported = selected - {"flashinfer_sparse_mla"}
          if unsupported:
              raise ValueError(
-@@ -687,6 +716,7 @@ def flashinfer_sparse_mla_forward(
+@@ -681,12 +710,42 @@ def _validate_flashinfer_sparse_mla_backend(
+     return uses_flashinfer_sparse_mla
+ 
+ 
++def create_flashinfer_sparse_mla_runner(
++    *,
++    qk_rope_head_dim: int,
++    kv_lora_rank: int,
++    max_num_tokens: int,
++    max_num_heads: int,
++    device: str,
++) -> object | None:
++    """Use native NoPE kernels when available; preserve the existing RoPE API."""
++    if qk_rope_head_dim != 0 or kv_lora_rank != 512:
++        return None
++    from flashinfer import mla
++
++    wrapper = getattr(mla, "SparseMLASm120Wrapper", None)
++    configs = getattr(mla, "supported_sparse_mla_sm120_configs", None)
++    if wrapper is None or configs is None or "glm53_nope" not in configs():
++        raise RuntimeError(
++            "GLM NoPE sparse MLA requires FlashInfer native SM120 support "
++            "with the glm53_nope configuration."
++        )
++    return wrapper(
++        max_num_tokens=max_num_tokens,
++        max_num_heads=max_num_heads,
++        d_v=kv_lora_rank,
++        kv_scale_format="arbitrary_fp32",
++        device=device,
++    )
++
++
+ def flashinfer_sparse_mla_forward(
+     q: torch.Tensor,
+     kv_cache: torch.Tensor,
      indices: torch.Tensor,
      seq_lens: torch.Tensor,
      workspace_buffer: torch.Tensor,
-+    runner: object,
++    runner: object | None = None,
      *,
      page_size: int,
      kv_cache_dim: int,
-@@ -696,26 +726,94 @@ def flashinfer_sparse_mla_forward(
+@@ -696,26 +755,123 @@ def flashinfer_sparse_mla_forward(
      sm_scale: float,
      skip_softmax_threshold_scale_factor: float | None,
  ) -> torch.Tensor:
@@ -3747,6 +3782,35 @@ index 906d4aa22d..9715dcb3b0 100644
 +    rows contain 512 FP8 latent values and four inline FP32 scales. Both
 +    compact 528-byte rows and the padded 656-byte fp8_ds_mla ABI are supported.
 +    """
++    if runner is None:
++        if qk_rope_head_dim == 0 and kv_lora_rank == 512:
++            raise RuntimeError(
++                "GLM NoPE sparse MLA requires FlashInfer native SM120 support "
++                "with the glm53_nope configuration."
++            )
++        from flashinfer.mla import trtllm_batch_decode_with_kv_cache_mla
++
++        topk = indices.shape[1]
++        result = trtllm_batch_decode_with_kv_cache_mla(
++            query=q.unsqueeze(1),
++            kv_cache=kv_cache.view(torch.uint8)
++            .view(-1, page_size, kv_cache_dim)
++            .unsqueeze(1),
++            workspace_buffer=workspace_buffer,
++            qk_nope_head_dim=qk_nope_head_dim,
++            kv_lora_rank=kv_lora_rank,
++            qk_rope_head_dim=qk_rope_head_dim,
++            block_tables=indices.unsqueeze(1),
++            seq_lens=seq_lens,
++            max_seq_len=topk,
++            sparse_mla_top_k=topk,
++            bmm1_scale=float(sm_scale),
++            bmm2_scale=1.0,
++            kv_scale_format="arbitrary_fp32",
++            skip_softmax_threshold_scale_factor=skip_softmax_threshold_scale_factor,
++        )
++        return result.squeeze(1)
++
 +    if skip_softmax_threshold_scale_factor is not None:
 +        raise ValueError(
 +            "flashinfer_sparse_mla does not support skip-softmax thresholds"
@@ -4179,10 +4243,10 @@ index bbfaf34eaa..1afd4932b7 100644
      logger.warning(
          f"Set DSA backends for {kv_cache_dtype} KV Cache: "
 diff --git a/python/sglang/srt/arg_groups/validation_hook.py b/python/sglang/srt/arg_groups/validation_hook.py
-index b9d807bc29..1c6dc8343d 100644
+index 44241c6337..c8971c4b2c 100644
 --- a/python/sglang/srt/arg_groups/validation_hook.py
 +++ b/python/sglang/srt/arg_groups/validation_hook.py
-@@ -135,6 +135,7 @@ def check_server_args(server_args: Any):
+@@ -154,6 +154,7 @@ def check_server_args(server_args: Any):
      assert cfg.detokenizer_worker_num > 0, "Detokenizer worker num must >= 1"
      assert cfg.mm_processor_worker_num >= 0, "Multimodal processor worker num must >= 0"
      assert cfg.mm_io_worker_num >= 0, "Multimodal I/O worker num must >= 0"
@@ -4190,7 +4254,7 @@ index b9d807bc29..1c6dc8343d 100644
      validate_buckets_rule("--prompt-tokens-buckets", cfg.prompt_tokens_buckets)
      validate_buckets_rule("--generation-tokens-buckets", cfg.generation_tokens_buckets)
  
-@@ -231,6 +232,21 @@ def check_server_args(server_args: Any):
+@@ -250,6 +251,21 @@ def check_server_args(server_args: Any):
      check_load_publish_args(server_args)
  
  
@@ -5499,7 +5563,7 @@ index 2608621f6a..803e0d94f3 100644
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 1239dd34de..9001863082 100644
+index 5767726654..eebdab4080 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -450,6 +450,21 @@ class Envs:
@@ -5541,7 +5605,7 @@ index 1239dd34de..9001863082 100644
  
      # ===================================================================
      # Scheduler token budgeting and admission
-@@ -1031,9 +1056,10 @@ class Envs:
+@@ -1037,9 +1062,10 @@ class Envs:
      # (parity with flash-attn's ragged-aware launch). The feature checks _is_hip
      # explicitly in code; this env var allows override (0=force off, 1=force on).
      SGLANG_TRITON_COMPACT_EXTEND_ATTENTION = EnvBool(True)
@@ -5555,7 +5619,7 @@ index 1239dd34de..9001863082 100644
      SGLANG_CRASH_ON_TRITON_LOAD_AFTER_READY = EnvBool(False)
      SGLANG_TRITON_SLOW_COMPILE_THRESHOLD_SECS = EnvFloat(1.0)
      SGLANG_TRITON_LOAD_WARNING_THRESHOLD_GB = EnvFloat(1.0)
-@@ -1322,6 +1348,12 @@ class Envs:
+@@ -1328,6 +1354,12 @@ class Envs:
      # CUDA graphs and execution buffers
      # ===================================================================
      SGLANG_USE_BREAKABLE_CUDA_GRAPH = EnvBool(False)
@@ -5568,7 +5632,7 @@ index 1239dd34de..9001863082 100644
      # Guards CUDA graph executable dedup via cudaGraphExecUpdate.
      SGLANG_ENABLE_CUDA_GRAPH_DEDUP = EnvBool(False)
      SGLANG_MEMORY_SAVER_CUDA_GRAPH = EnvBool(False)
-@@ -1333,6 +1365,14 @@ class Envs:
+@@ -1339,6 +1371,14 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -5583,7 +5647,7 @@ index 1239dd34de..9001863082 100644
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1506,6 +1546,8 @@ class Envs:
+@@ -1512,6 +1552,8 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -6555,7 +6619,7 @@ index db8d3a88a3..78a1919a8b 100644
      return (num_draft_tokens + pool_size - 1) // pool_size
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 22c35d3660..e60841cabf 100644
+index 22c35d3660..fc115c57ab 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
 @@ -57,6 +57,7 @@ from sglang.srt.environ import envs
@@ -6639,20 +6703,20 @@ index 22c35d3660..e60841cabf 100644
          self.dsa_topk_backend: DSATopKBackend = DSATopKBackend.resolve(model_runner)
          if self.num_q_heads <= 64:
              self.flashmla_kv_num_q_heads = 64
-@@ -520,6 +566,7 @@ class DeepseekSparseAttnBackend(
+@@ -520,7 +566,9 @@ class DeepseekSparseAttnBackend(
          self._q8kv8_born_q_tbo = get_exec().overlap.enable_two_batch_overlap
  
          from sglang.kernels.ops.attention.flash_mla_sm120 import (
 +            _flashinfer_sparse_mla_max_tokens,
              _validate_flashinfer_sparse_mla_backend,
++            create_flashinfer_sparse_mla_runner,
          )
  
-@@ -540,6 +587,22 @@ class DeepseekSparseAttnBackend(
+         uses_flashinfer_sparse_mla = _validate_flashinfer_sparse_mla_backend(
+@@ -540,6 +588,20 @@ class DeepseekSparseAttnBackend(
                      device=model_runner.device,
                  ),
              )
-+            from flashinfer.mla import SparseMLASm120Wrapper
-+
 +            max_runner_tokens = _flashinfer_sparse_mla_max_tokens(
 +                chunked_prefill_size=model_runner.server_args.chunked_prefill_size,
 +                max_prefill_tokens=model_runner.server_args.max_prefill_tokens,
@@ -6660,17 +6724,17 @@ index 22c35d3660..e60841cabf 100644
 +                max_running_requests=model_runner.max_running_requests,
 +                speculative_num_draft_tokens=self.speculative_num_draft_tokens,
 +            )
-+            self.flashinfer_sparse_mla_runner = SparseMLASm120Wrapper(
++            self.flashinfer_sparse_mla_runner = create_flashinfer_sparse_mla_runner(
++                qk_rope_head_dim=self.qk_rope_head_dim,
++                kv_lora_rank=self.kv_lora_rank,
 +                max_num_tokens=max_runner_tokens,
 +                max_num_heads=self.num_q_heads,
-+                d_v=self.kv_lora_rank,
-+                kv_scale_format="arbitrary_fp32",
 +                device=model_runner.device,
 +            )
          # Allocate global workspace buffer for TRT-LLM kernels (ragged attention on SM100/B200, or trtllm decode)
          elif self.device_sm_major >= 10 or self.dsa_decode_impl == "trtllm":
              self.workspace_buffer = get_buffer(
-@@ -1530,7 +1593,13 @@ class DeepseekSparseAttnBackend(
+@@ -1530,7 +1592,13 @@ class DeepseekSparseAttnBackend(
              # Normal Decode
              max_len = self._graph_page_table_width(metadata)
  
@@ -6685,7 +6749,7 @@ index 22c35d3660..e60841cabf 100644
                  fused_dsa_decode_metadata(
                      seq_lens=seq_lens,
                      req_pool_indices=req_pool_indices,
-@@ -1545,6 +1614,7 @@ class DeepseekSparseAttnBackend(
+@@ -1545,6 +1613,7 @@ class DeepseekSparseAttnBackend(
                      max_len=max_len,
                      dsa_index_topk=self.dsa_index_topk,
                      real_page_size=self.real_page_size,
@@ -6693,7 +6757,7 @@ index 22c35d3660..e60841cabf 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  dsa_cache_seqlens = metadata.dsa_cache_seqlens_int32
-@@ -1570,7 +1640,13 @@ class DeepseekSparseAttnBackend(
+@@ -1570,7 +1639,13 @@ class DeepseekSparseAttnBackend(
          elif forward_mode.is_target_verify():
              max_seqlen_k = self._graph_page_table_width(metadata)
  
@@ -6708,7 +6772,7 @@ index 22c35d3660..e60841cabf 100644
                  paged_mqa_ctx_lens_2d = None
                  if (
                      self.speculative_num_draft_tokens >= 2
-@@ -1600,6 +1676,7 @@ class DeepseekSparseAttnBackend(
+@@ -1600,6 +1675,7 @@ class DeepseekSparseAttnBackend(
                      real_page_size=self.real_page_size,
                      next_n=self.speculative_num_draft_tokens,
                      paged_mqa_ctx_lens_2d=paged_mqa_ctx_lens_2d,
@@ -6716,7 +6780,7 @@ index 22c35d3660..e60841cabf 100644
                  )
                  target_verify_ctx_lens_written = paged_mqa_ctx_lens_2d is not None
                  cache_seqlens = metadata.cache_seqlens_int32
-@@ -1666,7 +1743,13 @@ class DeepseekSparseAttnBackend(
+@@ -1666,7 +1742,13 @@ class DeepseekSparseAttnBackend(
                  device=self.device,
              )
  
@@ -6731,7 +6795,7 @@ index 22c35d3660..e60841cabf 100644
                  fused_dsa_draft_extend_metadata(
                      seq_lens=seq_lens,
                      extend_seq_lens=extend_seq_lens,
-@@ -1687,6 +1770,7 @@ class DeepseekSparseAttnBackend(
+@@ -1687,6 +1769,7 @@ class DeepseekSparseAttnBackend(
                      max_extend_len=self.speculative_num_draft_tokens,
                      max_total_len=bs * self.speculative_num_draft_tokens,
                      static_extend_len=True,
@@ -6739,7 +6803,7 @@ index 22c35d3660..e60841cabf 100644
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  seqlens_expanded = metadata.dsa_seqlens_expanded[:total_extend_len]
-@@ -1818,6 +1902,43 @@ class DeepseekSparseAttnBackend(
+@@ -1818,6 +1901,43 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.decode_cuda_graph_metadata[bs]
  
@@ -6783,7 +6847,7 @@ index 22c35d3660..e60841cabf 100644
          # Track whether fused kernel succeeded
          fused_kernel_succeeded = False
  
-@@ -1938,28 +2059,86 @@ class DeepseekSparseAttnBackend(
+@@ -1938,28 +2058,86 @@ class DeepseekSparseAttnBackend(
                  flashmla_metadata = metadata.flashmla_metadata.slice(slice(0, size + 1))
                  flashmla_metadata.copy_(precomputed.flashmla_metadata)
  
@@ -6885,7 +6949,7 @@ index 22c35d3660..e60841cabf 100644
  
          self.forward_metadata = metadata
  
-@@ -2035,12 +2214,13 @@ class DeepseekSparseAttnBackend(
+@@ -2035,12 +2213,13 @@ class DeepseekSparseAttnBackend(
                      if not layer.is_cross_attention
                      else forward_batch.encoder_out_cache_loc
                  )
@@ -6905,7 +6969,7 @@ index 22c35d3660..e60841cabf 100644
  
          # Use MHA kernel if in MHA_ONE_SHOT mode
          if self.use_mha:
-@@ -2160,6 +2340,10 @@ class DeepseekSparseAttnBackend(
+@@ -2160,6 +2339,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -6916,7 +6980,7 @@ index 22c35d3660..e60841cabf 100644
              )
          elif dsa_impl in ("flashmla_sparse", "flashmla_sparse_q8"):
              if topk_transform_method == TopkTransformMethod.RAGGED:
-@@ -2246,14 +2430,15 @@ class DeepseekSparseAttnBackend(
+@@ -2246,14 +2429,15 @@ class DeepseekSparseAttnBackend(
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              if topk_transform_method == TopkTransformMethod.RAGGED:
                  page_table_1 = topk_indices
@@ -6940,7 +7004,7 @@ index 22c35d3660..e60841cabf 100644
          elif dsa_impl == "flashmla_kv":
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
-@@ -2456,6 +2641,10 @@ class DeepseekSparseAttnBackend(
+@@ -2456,6 +2640,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -6951,7 +7015,7 @@ index 22c35d3660..e60841cabf 100644
              )
          elif dsa_impl == "fa3":
              return self._forward_fa3(
-@@ -2947,6 +3136,7 @@ class DeepseekSparseAttnBackend(
+@@ -2947,6 +3135,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -6959,7 +7023,7 @@ index 22c35d3660..e60841cabf 100644
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -3091,6 +3281,7 @@ class DeepseekSparseAttnBackend(
+@@ -3091,6 +3280,7 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -6967,7 +7031,7 @@ index 22c35d3660..e60841cabf 100644
      ) -> torch.Tensor:
          from sglang.kernels.ops.attention.dsa.tilelang_kernel import tilelang_sparse_fwd
  
-@@ -3107,6 +3298,17 @@ class DeepseekSparseAttnBackend(
+@@ -3107,6 +3297,17 @@ class DeepseekSparseAttnBackend(
                  dim=-1,
              )
  
@@ -6985,7 +7049,7 @@ index 22c35d3660..e60841cabf 100644
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3560,6 +3762,10 @@ class DeepseekSparseAttnBackend(
+@@ -3560,6 +3761,10 @@ class DeepseekSparseAttnBackend(
              skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              sparse_mla_top_k_lens=sparse_mla_top_k_lens,
              multi_ctas_kv_counter_buffer=self._multi_ctas_kv_counter_buffer,
@@ -6996,7 +7060,7 @@ index 22c35d3660..e60841cabf 100644
          )
  
          return out
-@@ -3744,6 +3950,12 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3744,6 +3949,12 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -7009,7 +7073,7 @@ index 22c35d3660..e60841cabf 100644
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3915,15 +4127,31 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3915,15 +4126,31 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:
@@ -7744,10 +7808,10 @@ index 8ecbad1589..30491678f8 100644
 +        return v, h_out
 +    return v
 diff --git a/python/sglang/srt/layers/dcp/comm.py b/python/sglang/srt/layers/dcp/comm.py
-index 915a29b7ac..a89bb2a3f2 100644
+index 8f2e1ef20d..c25b0b3ea4 100644
 --- a/python/sglang/srt/layers/dcp/comm.py
 +++ b/python/sglang/srt/layers/dcp/comm.py
-@@ -305,13 +305,16 @@ def all_gather_kv_cache_for_mla_extend(
+@@ -306,13 +306,16 @@ def all_gather_kv_cache_for_mla_extend(
  # all gather kv cache and re-org to query orders
  def all_gather_kv_cache_for_dcp(
      prefix_kv_a: torch.Tensor,
@@ -8384,7 +8448,7 @@ index 4a9d7a29e8..ddffd86d8d 100644
                                  precomputed_embeddings = getattr(
                                      mm_item, "precomputed_embeddings", None
 diff --git a/python/sglang/srt/managers/overlap_utils.py b/python/sglang/srt/managers/overlap_utils.py
-index 6996b8e77c..45ef72a2c7 100644
+index e43920cd41..8ac94dd02a 100644
 --- a/python/sglang/srt/managers/overlap_utils.py
 +++ b/python/sglang/srt/managers/overlap_utils.py
 @@ -421,8 +421,11 @@ class FutureMap:
@@ -8401,11 +8465,53 @@ index 6996b8e77c..45ef72a2c7 100644
          indices.record_stream(torch.get_device_module(self.device).current_stream())
          if self.need_topk:
              hidden_states_buf = (
+diff --git a/python/sglang/srt/managers/schedule_batch.py b/python/sglang/srt/managers/schedule_batch.py
+index d5683500e8..462780c2a5 100755
+--- a/python/sglang/srt/managers/schedule_batch.py
++++ b/python/sglang/srt/managers/schedule_batch.py
+@@ -2851,7 +2851,16 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
+             # to force the math calculation to retrieve the correct mamba state from h.
+             return i + 1
+ 
+-        mask = req.extend_range.length >= checkpoint_grid
++        prefix_len = len(req.prefix_indices)
++        extend_end = prefix_len + req.extend_range.length
++        checkpoint = extend_end // checkpoint_grid * checkpoint_grid
++        # Continuing chunks need not start on the widened tree grid. Select an
++        # absolute tree boundary, and only save a state available on this
++        # extend's kernel snapshot grid. A short extend can cross that boundary.
++        mask = (
++            checkpoint > prefix_len
++            and (checkpoint - prefix_len) % cache_chunk_size == 0
++        )
+         track_index = req.kv.mamba_ping_pong_track_buffer[
+             req.kv.mamba_next_track_idx
+         ].item()
+@@ -2868,10 +2877,7 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
+ 
+             # mamba_track_seqlen_aligned/mamba_last_track_seqlen is actual tracked seqlen. Used to pass to
+             # mamba radix cache to track which seqlen this mamba state should store at.
+-            mamba_track_seqlen_aligned = (
+-                len(req.prefix_indices)
+-                + (req.extend_range.length // checkpoint_grid) * checkpoint_grid
+-            )
++            mamba_track_seqlen_aligned = checkpoint
+ 
+             # A coarser checkpoint grid may not be a model-state boundary, so
+             # force retrieval from the intermediate h state in that case.
+@@ -2904,6 +2910,7 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
+                     req.mamba_branching_seqlen > len(req.prefix_indices)
+                     and req.mamba_branching_seqlen < mamba_track_seqlen
+                     and branching_seqlen_aligned_mask
++                    and req.mamba_branching_seqlen % checkpoint_grid == 0
+                 ):
+                     # We want to track mamba_track_seqlen_aligned, and it's not the last position,
+                     # so we need to add 1 to the seqlen to retrieve the correct mamba state from h.
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index ceb9d56aec..1c55fa44f4 100644
+index 1b884b6ecd..e56bbc3dd2 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
-@@ -579,6 +579,20 @@ class PrefillAdder:
+@@ -636,6 +636,20 @@ class PrefillAdder:
              self.rem_mamba_slots = self.token_to_kv_pool_allocator.mamba_allocator.schedulable_available_size()
              if self.is_hybrid_ssm_cache:
                  self.rem_mamba_slots += self.tree_cache.mamba_evictable_size()
@@ -8426,7 +8532,7 @@ index ceb9d56aec..1c55fa44f4 100644
  
          self.priority_scheduling_preemption_threshold = (
              priority_scheduling_preemption_threshold
-@@ -798,6 +812,13 @@ class PrefillAdder:
+@@ -855,6 +869,13 @@ class PrefillAdder:
              >= capacity
          )
  
@@ -8440,19 +8546,19 @@ index ceb9d56aec..1c55fa44f4 100644
      def _mamba_gap_budget_for_req(self, req: Req) -> int:
          """Shared-gap reservation (full-token-equivalents) for a request's new
          mamba state. Charged only on the SHARED Mamba pool (`_mamba_slot_cost > 0`)
-@@ -816,6 +837,11 @@ class PrefillAdder:
-     def ceil_paged_tokens(self, tokens: int) -> int:
-         return -(-tokens // self.page_size) * self.page_size
+@@ -891,7 +912,10 @@ class PrefillAdder:
+             if self.rem_dllm_tokens <= 0:
+                 return AddReqResult.OTHER
+         else:
+-            if self.rem_chunk_tokens is not None and self.rem_chunk_tokens <= 0:
++            if (
++                self.rem_chunk_tokens is not None
++                and self.rem_chunk_tokens < self.page_size
++            ):
+                 return AddReqResult.OTHER
  
-+    def chunk_budget_exhausted(self) -> bool:
-+        return (
-+            self.rem_chunk_tokens is not None and self.rem_chunk_tokens < self.page_size
-+        )
-+
-     def budget_state(self):
-         no_token = self.rem_total_tokens <= 0 or self.cur_rem_tokens <= 0
-         if not no_token and self.is_hybrid_swa:
-@@ -846,6 +872,7 @@ class PrefillAdder:
+         return AddReqResult.CONTINUE
+@@ -903,6 +927,7 @@ class PrefillAdder:
          max_new_tokens: int,
          retracted_stain: bool,
          mamba_gap_reserve: int = 0,
@@ -8460,7 +8566,7 @@ index ceb9d56aec..1c55fa44f4 100644
          is_chunked_continuation: bool = False,
      ):
          # TODO(lsyin): check this workaround logic, which only ensures the prefill will not out of memory, and may be too conservative
-@@ -865,7 +892,7 @@ class PrefillAdder:
+@@ -922,7 +947,7 @@ class PrefillAdder:
          )
          # The new mamba slot also consumes one mamba-recoverable slot (gated
          # separately so full_evictable can't cover it — see __init__).
@@ -8469,7 +8575,7 @@ index ceb9d56aec..1c55fa44f4 100644
              self.rem_mamba_slots -= 1
          self.rem_input_tokens -= extend_input_len
  
-@@ -955,6 +982,7 @@ class PrefillAdder:
+@@ -1012,6 +1037,7 @@ class PrefillAdder:
              0,
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8477,7 +8583,7 @@ index ceb9d56aec..1c55fa44f4 100644
          )
          self._account_prefill_cache_admission(req, prefix_len)
  
-@@ -996,6 +1024,7 @@ class PrefillAdder:
+@@ -1053,6 +1079,7 @@ class PrefillAdder:
              max_new_tokens,
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8485,7 +8591,7 @@ index ceb9d56aec..1c55fa44f4 100644
          )
  
          # Return based on remaining token availability
-@@ -1052,6 +1081,7 @@ class PrefillAdder:
+@@ -1109,6 +1136,7 @@ class PrefillAdder:
              ),
              req.retracted_stain,
              mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8493,7 +8599,7 @@ index ceb9d56aec..1c55fa44f4 100644
              is_chunked_continuation=True,
          )
  
-@@ -1184,6 +1214,7 @@ class PrefillAdder:
+@@ -1241,6 +1269,7 @@ class PrefillAdder:
                  min(req.sampling_params.max_new_tokens, CLIP_MAX_NEW_TOKENS),
                  req.retracted_stain,
                  mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8501,7 +8607,7 @@ index ceb9d56aec..1c55fa44f4 100644
              )
          else:
              if self.rem_chunk_tokens <= 0:
-@@ -1207,6 +1238,7 @@ class PrefillAdder:
+@@ -1264,6 +1293,7 @@ class PrefillAdder:
                  0,
                  req.retracted_stain,
                  mamba_gap_reserve=self._mamba_gap_budget_for_req(req),
@@ -8509,7 +8615,7 @@ index ceb9d56aec..1c55fa44f4 100644
              )
  
          return self.budget_state()
-@@ -1236,6 +1268,7 @@ class PrefillAdder:
+@@ -1293,6 +1323,7 @@ class PrefillAdder:
          # Read before `init_load_back` binds `req.mamba_pool_idx` — after that
          # this returns 0, so the debit sites below reuse the value.
          mamba_gap_reserve = self._mamba_gap_budget_for_req(req)
@@ -8517,7 +8623,7 @@ index ceb9d56aec..1c55fa44f4 100644
          total_tokens += mamba_gap_reserve
  
          # adjusting the input_tokens based on host_hit_length and page_size
-@@ -1394,6 +1427,7 @@ class PrefillAdder:
+@@ -1451,6 +1482,7 @@ class PrefillAdder:
                      ),
                      req.retracted_stain,
                      mamba_gap_reserve=mamba_gap_reserve,
@@ -8525,7 +8631,7 @@ index ceb9d56aec..1c55fa44f4 100644
                  )
                  self._account_prefill_cache_admission(req, prefix_len)
              else:
-@@ -1441,6 +1475,7 @@ class PrefillAdder:
+@@ -1498,6 +1530,7 @@ class PrefillAdder:
                      0,
                      req.retracted_stain,
                      mamba_gap_reserve=mamba_gap_reserve,
@@ -8534,7 +8640,7 @@ index ceb9d56aec..1c55fa44f4 100644
                  self._account_prefill_cache_admission(req, prefix_len)
  
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index cf361cc8da..d91906a2cd 100644
+index 461c28a654..adfb7d7ab9 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -152,6 +152,8 @@ from sglang.srt.managers.io_struct import (
@@ -8554,7 +8660,7 @@ index cf361cc8da..d91906a2cd 100644
  from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
  from sglang.srt.utils.numa_utils import get_numa_node_if_available, numa_bind_to_node
  from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
-@@ -686,6 +689,10 @@ class Scheduler(
+@@ -688,6 +691,10 @@ class Scheduler(
  
          self.init_weight_updater()
  
@@ -8565,7 +8671,7 @@ index cf361cc8da..d91906a2cd 100644
          # Init request dispatcher
          self.init_request_dispatcher()
  
-@@ -1649,12 +1656,6 @@ class Scheduler(
+@@ -1651,12 +1658,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -8578,7 +8684,7 @@ index cf361cc8da..d91906a2cd 100644
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1781,6 +1782,7 @@ class Scheduler(
+@@ -1783,6 +1784,7 @@ class Scheduler(
                  (ShutdownReq, self.handle_shutdown),
                  (GetInternalStateReq, self.get_internal_state),
                  (SetInternalStateReq, self.set_internal_state),
@@ -8586,7 +8692,7 @@ index cf361cc8da..d91906a2cd 100644
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1840,10 +1842,20 @@ class Scheduler(
+@@ -1842,10 +1844,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -8610,7 +8716,7 @@ index cf361cc8da..d91906a2cd 100644
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3580,6 +3592,7 @@ class Scheduler(
+@@ -3583,6 +3595,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -8618,7 +8724,7 @@ index cf361cc8da..d91906a2cd 100644
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3708,8 +3721,16 @@ class Scheduler(
+@@ -3711,8 +3724,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -8637,17 +8743,57 @@ index cf361cc8da..d91906a2cd 100644
              running_batch.batch_is_full = False
  
          if (
-@@ -3810,6 +3831,9 @@ class Scheduler(
-             mamba_allocator.alloc_group_begin(len(self.waiting_queue))
-         # Get requests from the waiting queue to a new prefill batch
-         for req in self.waiting_queue:
-+            if adder.chunk_budget_exhausted():
-+                break
+@@ -3795,10 +3816,33 @@ class Scheduler(
+             prefill_tile_block_m=prefill_tile_block_m,
+         )
+ 
+-        if self.chunked_req is not None:
++        resumed_chunk = self.chunked_req is not None
++        if resumed_chunk:
+             self.chunked_req.init_next_round_input()
+             self.chunked_req = adder.add_chunked_req(self.chunked_req)
+ 
++        # Mixed decode can leave less than one page even without a resumed chunk.
++        post_chunk_budget_state = adder.budget_state()
++        # NO_TOKEN takes precedence over chunk exhaustion in budget_state().
++        chunk_budget_exhausted = (
++            self.dllm_config is None
++            and adder.rem_chunk_tokens is not None
++            and adder.rem_chunk_tokens < adder.page_size
++        )
++        skip_waiting_admission = (
++            resumed_chunk and post_chunk_budget_state == AddReqResult.OTHER
++        ) or chunk_budget_exhausted
++        if skip_waiting_admission and post_chunk_budget_state == AddReqResult.NO_TOKEN:
++            if (
++                self.enable_hierarchical_cache
++                or self.enable_unified_cache_external_linker
++            ):
++                running_batch.batch_is_full = len(adder.can_run_list) > 0 or (
++                    not running_batch.is_empty()
++                )
++            else:
++                running_batch.batch_is_full = True
 +
+         if self.enable_lora:
+             running_loras = {
+                 req.lora_id for req in running_batch.reqs if not req.finished()
+@@ -3812,11 +3856,12 @@ class Scheduler(
+                     running_batch.reqs,
+                 )
+ 
++        waiting_reqs = () if skip_waiting_admission else self.waiting_queue
+         mamba_allocator = getattr(self.req_to_token_pool, "mamba_allocator", None)
+         if mamba_allocator is not None:
+-            mamba_allocator.alloc_group_begin(len(self.waiting_queue))
++            mamba_allocator.alloc_group_begin(len(waiting_reqs))
+         # Get requests from the waiting queue to a new prefill batch
+-        for req in self.waiting_queue:
++        for req in waiting_reqs:
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3852,6 +3876,17 @@ class Scheduler(
+@@ -3859,6 +3904,17 @@ class Scheduler(
                      # marks the staged span below once it is surfaced.
                      req.host_hit_is_storage = False
  
@@ -8665,7 +8811,7 @@ index cf361cc8da..d91906a2cd 100644
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4130,20 +4165,27 @@ class Scheduler(
+@@ -4137,20 +4193,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -8707,7 +8853,7 @@ index cf361cc8da..d91906a2cd 100644
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4156,12 +4198,11 @@ class Scheduler(
+@@ -4163,12 +4226,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -8725,7 +8871,7 @@ index cf361cc8da..d91906a2cd 100644
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4176,12 +4217,11 @@ class Scheduler(
+@@ -4183,12 +4245,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -8741,7 +8887,7 @@ index cf361cc8da..d91906a2cd 100644
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4238,7 +4278,7 @@ class Scheduler(
+@@ -4249,7 +4310,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -8750,7 +8896,7 @@ index cf361cc8da..d91906a2cd 100644
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4264,13 +4304,12 @@ class Scheduler(
+@@ -4275,13 +4336,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -8770,7 +8916,7 @@ index cf361cc8da..d91906a2cd 100644
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4392,7 +4431,11 @@ class Scheduler(
+@@ -4403,7 +4463,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -8783,7 +8929,7 @@ index cf361cc8da..d91906a2cd 100644
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4404,7 +4447,11 @@ class Scheduler(
+@@ -4415,7 +4479,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -8795,7 +8941,7 @@ index cf361cc8da..d91906a2cd 100644
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4527,9 +4574,11 @@ class Scheduler(
+@@ -4538,9 +4606,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -8810,7 +8956,7 @@ index cf361cc8da..d91906a2cd 100644
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4552,31 +4601,42 @@ class Scheduler(
+@@ -4563,31 +4633,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -8874,7 +9020,7 @@ index cf361cc8da..d91906a2cd 100644
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4611,7 +4671,7 @@ class Scheduler(
+@@ -4622,7 +4703,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -8883,7 +9029,7 @@ index cf361cc8da..d91906a2cd 100644
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5588,6 +5648,38 @@ class Scheduler(
+@@ -5599,6 +5680,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -9358,7 +9504,7 @@ index ffc479e8ce..bf7c7cec2f 100755
      def get_cpu_copy(self, indices, mamba_indices=None, req_pool_index=None):
          return self._kvcache.get_cpu_copy(
 diff --git a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-index 2d9e5ad778..1348924694 100644
+index 2d9e5ad778..dc4979c82c 100644
 --- a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 +++ b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 @@ -769,6 +769,65 @@ def build_deepseek_v4_hicache_stack(
@@ -9474,7 +9620,55 @@ index 2d9e5ad778..1348924694 100644
      host_pool_group = HostPoolGroup(entries)
      cache_controller = HybridCacheController(
          params.token_to_kv_pool_allocator,
-@@ -1132,6 +1220,25 @@ def build_full_draft_pools(
+@@ -987,6 +1075,7 @@ def build_anchor_sidecar_stack(
+     use_mla: bool,
+     override_kv_cache_dim: Optional[int] = None,
+     sidecar_host_pool_factory: Callable[[Any], Any],
++    sidecar_entry_factory: Optional[Callable[..., Optional[PoolEntry]]] = None,
+     prefetch_threshold: int = 256,
+     model_name: Optional[str] = None,
+     storage_backend_extra_config: Optional[dict] = None,
+@@ -1003,7 +1092,6 @@ def build_anchor_sidecar_stack(
+         override_kv_cache_dim=override_kv_cache_dim,
+         mtp_draft_device_pools=mtp_draft_device_pools,
+     )
+-    sidecar_host_pool = sidecar_host_pool_factory(kv_host_pool)
+     # Expose packed MTP tail layers to the controller's flat transfer builder.
+     if mtp_draft_device_pools:
+         full_layer_mapping = _with_mtp_layer_mapping(
+@@ -1022,15 +1110,27 @@ def build_anchor_sidecar_stack(
+             is_anchor=True,
+             packed_draft_device_pools=mtp_draft_device_pools,
+         ),
+-        build_pool_entry(
++    ]
++    if sidecar_entry_factory is not None:
++        sidecar_entry = sidecar_entry_factory(
++            kv_pool=kv_pool,
++            kv_host_pool=kv_host_pool,
++            layer_mapping=full_layer_mapping,
++            transfer_layer_num=transfer_layer_num + len(mtp_draft_device_pools),
++            draft_pools=mtp_draft_device_pools,
++            pool_name=sidecar_pool_name,
++        )
++    else:
++        sidecar_entry = build_pool_entry(
+             name=sidecar_pool_name,
+-            host_pool=sidecar_host_pool,
++            host_pool=sidecar_host_pool_factory(kv_host_pool),
+             device_pool=kv_pool,
+             layer_mapping=full_layer_mapping,
+             transfer_layer_num=transfer_layer_num + len(mtp_draft_device_pools),
+             packed_draft_device_pools=mtp_draft_device_pools,
+-        ),
+-    ]
++        )
++    if sidecar_entry is not None:
++        entries.append(sidecar_entry)
+     host_pool_group = HostPoolGroup(entries)
+     cache_controller = HybridCacheController(
+         params.token_to_kv_pool_allocator,
+@@ -1132,6 +1232,25 @@ def build_full_draft_pools(
      ]
  
      if isinstance(pool, DSATokenToKVPool) and pool.index_k_with_scale_buffer:
@@ -9500,7 +9694,7 @@ index 2d9e5ad778..1348924694 100644
          indexer_host_pool = DSAIndexerPoolHost(
              pool,
              draft_host_pool,
-@@ -1410,6 +1517,7 @@ class _MambaStrategy(StackStrategy):
+@@ -1410,6 +1529,7 @@ class _MambaStrategy(StackStrategy):
              storage_backend_extra_config=storage_backend_extra_config,
              enable_storage_metrics=enable_storage_metrics,
          )
@@ -9508,7 +9702,7 @@ index 2d9e5ad778..1348924694 100644
          return StackBuildResult(
              host_pool_group=host_pool_group,
              cache_controller=cache_controller,
-@@ -1419,7 +1527,16 @@ class _MambaStrategy(StackStrategy):
+@@ -1419,7 +1539,16 @@ class _MambaStrategy(StackStrategy):
              },
              register_req_to_token_counter=True,
              transfer_layer_num=len(full_layer_mapping | mamba_layer_mapping),
@@ -9526,8 +9720,31 @@ index 2d9e5ad778..1348924694 100644
          )
  
  
+@@ -1602,6 +1731,11 @@ class _DsaStrategy(StackStrategy):
+             storage_backend=storage_backend,
+             use_mla=use_mla,
+             override_kv_cache_dim=full_kv_pool.kv_cache_dim,
++            sidecar_entry_factory=(
++                _build_hybrid_dsa_index_entry
++                if full_kv_pool.kpool_use_compress
++                else None
++            ),
+             sidecar_host_pool_factory=lambda kv_host_pool: DSAIndexerPoolHost(
+                 full_kv_pool,
+                 kv_host_pool,
+@@ -1624,7 +1758,9 @@ class _DsaStrategy(StackStrategy):
+                     pool_name=PoolName.INDEXER,
+                     indices_from_pool=PoolName.KV,
+                 ),
+-            ],
++            ]
++            if PoolName.INDEXER in host_pool_group.entry_map
++            else [],
+             transfer_layer_num=len(full_layer_mapping),
+             pools_desc="KV + INDEXER",
+         )
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
-index 33b58fe59f..f93d395109 100644
+index fffed010b2..ebbbe7409d 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
 +++ b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 @@ -12,7 +12,6 @@ import torch
@@ -9660,7 +9877,7 @@ index 33b58fe59f..f93d395109 100644
              replay_req_slots = (
                  get_schedule().max_running_requests // self.ps.attn_dp_size + 1
              )
-@@ -2509,6 +2531,24 @@ def calculate_mla_kv_cache_dim(
+@@ -2509,6 +2531,25 @@ def calculate_mla_kv_cache_dim(
      if uses_trtllm_kv_layout:
          return kv_cache_dim
  
@@ -9677,15 +9894,16 @@ index 33b58fe59f..f93d395109 100644
 +        and kv_lora_rank == 512
 +        and uses_flashinfer_sparse_mla
 +    ):
-+        from flashinfer.mla import supported_sparse_mla_sm120_configs
++        from flashinfer import mla
 +
-+        config = supported_sparse_mla_sm120_configs()["glm53_nope"]
++        supported_configs = getattr(mla, "supported_sparse_mla_sm120_configs", None)
++        config = supported_configs().get("glm53_nope") if supported_configs else None
 +        return getattr(config, "compact_bytes_per_token", None) or 656
 +
      # On HIP, TileLang and AITER DSA kernels consume the raw MLA KV layout:
      # nope(512 fp8) + rope(64 fp8), without extra per-block scales.
      if _is_hip and (
-@@ -2517,6 +2557,16 @@ def calculate_mla_kv_cache_dim(
+@@ -2517,6 +2558,16 @@ def calculate_mla_kv_cache_dim(
      ):
          return kv_cache_dim
  
@@ -9861,10 +10079,10 @@ index fa06cbf5b1..b0402a6007 100644
  
  def sync_fixed_hicache_size(size: int, host_size: int) -> int:
 diff --git a/python/sglang/srt/mem_cache/pool_host/mla.py b/python/sglang/srt/mem_cache/pool_host/mla.py
-index 41c651c3be..201959df0f 100644
+index f3762c064c..08fb6369eb 100644
 --- a/python/sglang/srt/mem_cache/pool_host/mla.py
 +++ b/python/sglang/srt/mem_cache/pool_host/mla.py
-@@ -18,7 +18,7 @@ from sglang.kernels.ops.kvcache.hicache import (
+@@ -19,7 +19,7 @@ from sglang.kernels.ops.kvcache.hicache import (
  from sglang.kernels.ops.kvcache.hicache import (
      transfer_hicache_one_layer_mla as jit_transfer_hicache_one_layer_mla,
  )
@@ -9873,17 +10091,17 @@ index 41c651c3be..201959df0f 100644
  from sglang.srt.mem_cache.pool_host.base import (
      _WRITE_BACK_STAGING_PAGE_CHUNK,
      HostKVCache,
-@@ -71,6 +71,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -77,6 +77,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
      ):
          self.override_kv_cache_dim = override_kv_cache_dim
          self.mtp_draft_device_pools = tuple(mtp_draft_device_pools)
 +        self._check_host_row_geometry(device_pool, pool_label)
-         super().__init__(
-             device_pool,
-             host_to_device_ratio,
-@@ -114,6 +115,60 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
-             ]
-         self._init_write_back_staging_buffers()
+         self._is_dummy = is_dummy
+ 
+         if is_dummy:
+@@ -200,6 +201,60 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+         self.lock = threading.RLock()
+         self.clear()
  
 +    def _host_kv_cache_dim(self, device_pool) -> int:
 +        """Row width, in store dtype elements, of every host row."""
@@ -9942,7 +10160,7 @@ index 41c651c3be..201959df0f 100644
      def get_contiguous_buf_infos(self):
          """Return (data_ptrs, data_lens, item_lens) in the same format as device pool,
          for registering host memory with the disaggregation transfer engine."""
-@@ -127,9 +182,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -215,9 +270,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
          self.qk_rope_head_dim = self.device_pool.qk_rope_head_dim
          self.target_layer_num = self._effective_host_layer_num()
          self.layer_num = self.target_layer_num + len(self.mtp_draft_device_pools)
@@ -10006,7 +10224,7 @@ index e46a4cb055..a7558c746e 100644
              freed = len(cd.value)
              self.tree_core.component_evictable_size_[self.component_type] -= freed
 diff --git a/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py b/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
-index f60d9a713c..12174c4e86 100644
+index f60d9a713c..3dc550795e 100644
 --- a/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
 +++ b/python/sglang/srt/mem_cache/unified_cache/components/mamba_component.py
 @@ -1,5 +1,7 @@
@@ -10065,7 +10283,24 @@ index f60d9a713c..12174c4e86 100644
      @property
      def int8_ckpt_pool(self):
          return getattr(self.cache.req_to_token_pool, "mamba_ckpt_pool", None)
-@@ -572,9 +600,17 @@ class MambaComponent(TreeComponent):
+@@ -535,6 +563,16 @@ class MambaComponent(TreeComponent):
+     ) -> Optional[int]:
+         if self.cache.enable_mamba_extra_buffer:
+             cache_len = req.kv.mamba_last_track_seqlen
++            # A recurrent state cannot be shortened when its key is truncated
++            # or page-aligned. Keep ownership with the request if no exact
++            # checkpoint can be published; cleanup will release it on finish.
++            if (
++                cache_len is None
++                or cache_len <= 0
++                or cache_len > token_ids_len
++                or cache_len % self.cache.page_size != 0
++            ):
++                return 0
+         else:
+             cache_len = token_ids_len
+             # ReplaySSM (no_buffer): `temporal[slot]` lags the live state by the
+@@ -572,9 +610,17 @@ class MambaComponent(TreeComponent):
              if cache_len is None:
                  return 0
              # Donate the mamba index to the radix cache instead of copying.
@@ -10084,7 +10319,7 @@ index f60d9a713c..12174c4e86 100644
                      src_active = (
                          self.cache.req_to_token_pool.donate_mamba_ping_pong_slot(
                              req, new_slot
-@@ -587,14 +623,20 @@ class MambaComponent(TreeComponent):
+@@ -587,14 +633,20 @@ class MambaComponent(TreeComponent):
                          req.kv.mamba_pool_idx.view(-1)
                      )
              elif self.cache.enable_mamba_extra_buffer:
@@ -10162,7 +10397,7 @@ index db7125902c..63114badf4 100644
      def walk_for_kv_canary(
          self, unlocked_only: bool, swa_resident_only: bool
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
-index 482df86dfe..5f925aa1b8 100644
+index 482df86dfe..a1b3d7cc4c 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
 +++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
 @@ -2,6 +2,7 @@ from __future__ import annotations
@@ -10273,7 +10508,28 @@ index 482df86dfe..5f925aa1b8 100644
                  if step.result is not None:
                      # Walk actions flow through the steps; the result is action-free.
                      assert not step.result.cache_actions
-@@ -905,6 +956,26 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -875,17 +926,9 @@ class UnifiedRadixCache(BasePrefixCache):
+                 priority=getattr(req, "priority", 0) or 0,
+             )
+ 
+-            # components prepare insert data + return effective cache_len
+-            effective_cache_len = len(token_ids)
+-            for comp in self._components_tuple:
+-                cl = comp.prepare_for_caching_req(
+-                    req=req,
+-                    insert_params=insert_params,
+-                    token_ids_len=len(token_ids),
+-                    is_finished=True,
+-                )
+-                if cl is not None:
+-                    effective_cache_len = min(effective_cache_len, cl)
++            effective_cache_len = self._prepare_for_caching_req(
++                req, insert_params, len(token_ids), is_finished=True
++            )
+ 
+             # Truncate if needed; the tail free is deferred and batched with
+             # the unaligned tail below so a shared boundary page is emitted once.
+@@ -905,6 +948,26 @@ class UnifiedRadixCache(BasePrefixCache):
              page_aligned_len = len(radix_key)
              values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -10300,7 +10556,27 @@ index 482df86dfe..5f925aa1b8 100644
              insert_params.key = radix_key
              insert_params.value = values
              result = self.insert(insert_params)
-@@ -1002,6 +1073,24 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -961,16 +1024,9 @@ class UnifiedRadixCache(BasePrefixCache):
+             chunked=chunked,
+             priority=getattr(req, "priority", 0) or 0,
+         )
+-        effective_cache_len = len(token_ids)
+-        for comp in self._components_tuple:
+-            cl = comp.prepare_for_caching_req(
+-                req=req,
+-                insert_params=insert_params,
+-                token_ids_len=len(token_ids),
+-                is_finished=False,
+-            )
+-            if cl is not None:
+-                effective_cache_len = min(effective_cache_len, cl)
++        effective_cache_len = self._prepare_for_caching_req(
++            req, insert_params, len(token_ids), is_finished=False
++        )
+ 
+         radix_key = RadixKey(
+             token_ids[:effective_cache_len],
+@@ -1002,6 +1058,24 @@ class UnifiedRadixCache(BasePrefixCache):
          page_aligned_len = len(radix_key)
          values = kv_indices[:page_aligned_len].to(dtype=torch.int64, copy=True)
  
@@ -10325,7 +10601,59 @@ index 482df86dfe..5f925aa1b8 100644
          insert_params.key = radix_key
          insert_params.value = values
          result = self.insert(insert_params)
-@@ -1072,10 +1161,155 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -1065,6 +1139,51 @@ class UnifiedRadixCache(BasePrefixCache):
+ 
+     # ---- Internal Helpers ----
+ 
++    def _prepare_for_caching_req(
++        self,
++        req: Req,
++        insert_params: InsertParams,
++        token_ids_len: int,
++        *,
++        is_finished: bool,
++    ) -> int:
++        effective_cache_len = token_ids_len
++        checkpoint_component = None
++        for comp in self._components_tuple:
++            if comp.component_type == ComponentType.MAMBA:
++                checkpoint_component = comp
++                continue
++            cl = comp.prepare_for_caching_req(
++                req=req,
++                insert_params=insert_params,
++                token_ids_len=token_ids_len,
++                is_finished=is_finished,
++            )
++            if cl is not None:
++                effective_cache_len = min(effective_cache_len, cl)
++
++        # Resolve every other key cap before validating or donating an immutable
++        # recurrent checkpoint. An SWA branch may be shorter than the input and
++        # fall between available recurrent snapshots; its key cannot own a
++        # later state. This ordering must not depend on tree_components order.
++        if checkpoint_component is not None:
++            if (
++                not self.enable_mamba_extra_buffer
++                and effective_cache_len < token_ids_len
++            ):
++                # The no-buffer state belongs to the full processed prefix.
++                # Passing a shorter length would relabel it, not rewind it.
++                return 0
++            cl = checkpoint_component.prepare_for_caching_req(
++                req=req,
++                insert_params=insert_params,
++                token_ids_len=effective_cache_len,
++                is_finished=is_finished,
++            )
++            if cl is not None:
++                effective_cache_len = min(effective_cache_len, cl)
++        return effective_cache_len
++
+     def _apply_cache_actions(
+         self, actions: list[CacheAction | ComponentAction]
+     ) -> None:
+@@ -1072,10 +1191,155 @@ class UnifiedRadixCache(BasePrefixCache):
          actions.reverse()
          try:
              while actions:
@@ -10482,7 +10810,7 @@ index 482df86dfe..5f925aa1b8 100644
      def _apply_cache_action(self, action: CacheAction | ComponentAction) -> None:
          # Component actions route to their component class; the rest are
          # cache-owned and handled here by type.
-@@ -2699,6 +2933,8 @@ class UnifiedRadixCache(BasePrefixCache):
+@@ -2699,6 +2963,8 @@ class UnifiedRadixCache(BasePrefixCache):
                  "HiCache is not initialized; launch with "
                  "--enable-hierarchical-cache to attach a storage backend.",
              )
@@ -11149,7 +11477,7 @@ index 0000000000..74c0ab7420
 +    owners.append(owner)
 +    return True
 diff --git a/python/sglang/srt/models/deepseek_nextn.py b/python/sglang/srt/models/deepseek_nextn.py
-index a95dda44b8..7d53955711 100644
+index 7d61f6f7c0..6884771cf1 100644
 --- a/python/sglang/srt/models/deepseek_nextn.py
 +++ b/python/sglang/srt/models/deepseek_nextn.py
 @@ -54,11 +54,28 @@ _is_npu = is_npu()
@@ -12379,10 +12707,10 @@ index 010811b411..67eabc6a03 100644
          logits_output=logits_output,
          next_token_ids=predict,
 diff --git a/python/sglang/srt/speculative/eagle_worker_v2.py b/python/sglang/srt/speculative/eagle_worker_v2.py
-index b0c79668ad..551f4fff2e 100644
+index 192d57d825..38594af62d 100644
 --- a/python/sglang/srt/speculative/eagle_worker_v2.py
 +++ b/python/sglang/srt/speculative/eagle_worker_v2.py
-@@ -95,6 +95,7 @@ from sglang.srt.speculative.spec_utils import (
+@@ -99,6 +99,7 @@ from sglang.srt.speculative.spec_utils import (
      fast_sample,
      get_plan_stream,
      load_token_map,
@@ -12390,7 +12718,7 @@ index b0c79668ad..551f4fff2e 100644
      renorm_draft_probs,
      sample_draft_proposal,
      select_top_k_tokens,
-@@ -131,6 +132,37 @@ _is_xpu = is_xpu()
+@@ -135,6 +136,37 @@ _is_xpu = is_xpu()
  logger = logging.getLogger(__name__)
  
  
@@ -12428,7 +12756,7 @@ index b0c79668ad..551f4fff2e 100644
  class EagleDraftWorker(EagleDraftWorkerBase):
      def __init__(
          self,
-@@ -199,7 +231,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -203,7 +235,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
          )
          self.tree_mask_mode = default_tree_mask_mode()
  
@@ -12437,7 +12765,7 @@ index b0c79668ad..551f4fff2e 100644
  
      def alloc_memory_pool(
          self,
-@@ -336,6 +368,141 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -340,6 +372,141 @@ class EagleDraftWorker(EagleDraftWorkerBase):
              # Share the embedding and lm_head
              self.draft_runner.model.set_embed_and_head(embed, head)
              maybe_share_target_lm_head()
@@ -12579,7 +12907,7 @@ index b0c79668ad..551f4fff2e 100644
  
      def init_attention_backend(self):
          # Create multi-step attn backends and cuda graph runners
-@@ -566,7 +733,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -570,7 +737,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
                      self.draft_forward(forward_batch)
                  )
  
@@ -12588,7 +12916,7 @@ index b0c79668ad..551f4fff2e 100644
              batch,
              draft_input,
              parent_list,
-@@ -580,6 +747,11 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -584,6 +751,11 @@ class EagleDraftWorker(EagleDraftWorkerBase):
              tree_mask_mode=self.tree_mask_mode,
              device=self.device,
          )
@@ -12600,7 +12928,7 @@ index b0c79668ad..551f4fff2e 100644
  
      def draft_forward(self, forward_batch: ForwardBatch):
          # Parse args
-@@ -930,6 +1102,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -934,6 +1106,7 @@ class EagleDraftWorker(EagleDraftWorkerBase):
      def _draft_extend_for_decode(
          self, batch: ScheduleBatch, batch_result: GenerationBatchResult
      ):
@@ -12608,7 +12936,7 @@ index b0c79668ad..551f4fff2e 100644
          # Batch 2: Draft extend
          draft_extend_input = EagleDraftExtendInput(
              hidden_states=batch_result.logits_output.hidden_states,
-@@ -955,9 +1128,14 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -959,9 +1132,14 @@ class EagleDraftWorker(EagleDraftWorkerBase):
          # Cast to int64 before entering plan stream to avoid cross-stream
          # synchronization issues with .to() inside the plan stream context.
          next_token_ids = batch_result.next_token_ids.to(torch.int64)
@@ -12623,7 +12951,7 @@ index b0c79668ad..551f4fff2e 100644
              forward_batch = prepare_for_draft_extend(
                  draft_extend_input,
                  batch,
-@@ -968,10 +1146,27 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -972,10 +1150,27 @@ class EagleDraftWorker(EagleDraftWorkerBase):
                  return_hidden_states_before_norm=False,
              )
  
@@ -12654,7 +12982,7 @@ index b0c79668ad..551f4fff2e 100644
  
          # Run draft extend batch in the main compute stream
          can_run_decode_cuda_graph = (
-@@ -1259,6 +1454,13 @@ class EAGLEWorkerV2(BaseSpecWorker):
+@@ -1263,6 +1458,13 @@ class EAGLEWorkerV2(BaseSpecWorker):
                  # Drafting disabled (high batch size). _draft_extend below still
                  # runs, keeping draft KV warm for when the batch shrinks.
                  verify_input = self._build_trivial_verify_input(batch)
@@ -12668,7 +12996,7 @@ index b0c79668ad..551f4fff2e 100644
              else:
                  with (
                      self.draft_worker.draft_tp_context(
-@@ -1589,6 +1791,9 @@ class EAGLEWorkerV2(BaseSpecWorker):
+@@ -1593,6 +1795,9 @@ class EAGLEWorkerV2(BaseSpecWorker):
              dw._rebuild_topk1_chain_buffers()
  
      def verify(self, batch: ScheduleBatch, grammar_barrier=None):
@@ -12678,7 +13006,7 @@ index b0c79668ad..551f4fff2e 100644
          return run_eagle_verify(
              batch,
              target_worker=self.target_worker,
-@@ -1602,6 +1807,7 @@ class EAGLEWorkerV2(BaseSpecWorker):
+@@ -1606,6 +1811,7 @@ class EAGLEWorkerV2(BaseSpecWorker):
              metadata_ready_pre_pad=False,
              finalize_tree_path=True,
              grammar_barrier=grammar_barrier,
@@ -13466,6 +13794,351 @@ index 27b74efea3..9309355c44 100644
  def install() -> None:
      """Install the diagnostics (idempotent; chains pre-existing hooks)."""
      global _installed, _prev_compile_listener
+diff --git a/test/manual/test_hicache_chunked_prefix.py b/test/manual/test_hicache_chunked_prefix.py
+new file mode 100755
+index 0000000000..79a057b55b
+--- /dev/null
++++ b/test/manual/test_hicache_chunked_prefix.py
+@@ -0,0 +1,339 @@
++#!/usr/bin/env python3
++"""Exercise chunked-prefix reuse and host restoration through a running server.
++
++Use an isolated GLM-5.3-Flash server with page_size=64, index_kpool=4,
++chunked_prefill_size=max_prefill_tokens=320, HiCache write-through, cache
++reporting, metrics, and the glm47 tool parser enabled. Set device KV capacity to
++twice --pressure-tokens (8192 with the default). Host capacity must be larger.
++Run this client with CUDA hidden. It never imports SGLang or executes kernels.
++
++Cold repeats establish the numerical comparison. Different requests then reuse
++512- and 768-token prefixes, both on device and after counters prove a host hit.
++Only the last 64 prompt tokens are scored, avoiding a full-prompt logits buffer.
++Scored requests generate one token; the primer generates 32 to reach a checkpoint.
++A separate coding request must complete valid read_file tool calls naturally,
++including after device eviction and confirmed host restoration.
++The numerical smoke check does not establish exact checkpoint correctness;
++test_compressed_dsa_checkpoint_roundtrip.py checks the saved state contents.
++"""
++
++import argparse
++import json
++import math
++import os
++import re
++import statistics
++import time
++import urllib.request
++import uuid
++from pathlib import Path
++
++CORPUS = """This is a code review of a small job queue. The queue stores immutable
++job descriptions and a separate status record. A worker claims a queued job,
++executes it once, and records either success or a retryable failure. Duplicate
++notifications must not execute a completed job again. The API must validate
++inputs before writing a job. Tests should cover two workers racing to claim
++the same job, retries after a timeout, and a process restarting between claim
++and completion. A completed job's result must survive a restart. The cache is
++only an optimization: evicting it must not change which job the worker sees.
++The implementation lives in src/queue.py and tests live in tests/test_queue.py.
++"""
++
++
++def request(base, path, body=None):
++    headers = {"Content-Type": "application/json"}
++    if os.environ.get("SGLANG_API_KEY"):
++        headers["Authorization"] = "Bearer " + os.environ["SGLANG_API_KEY"]
++    req = urllib.request.Request(
++        base + path,
++        data=None if body is None else json.dumps(body).encode(),
++        headers=headers,
++    )
++    with urllib.request.urlopen(req, timeout=1800) as response:
++        return response.read()
++
++
++def metrics(base):
++    result = {}
++    for line in request(base, "/metrics").decode().splitlines():
++        if not line.startswith("sglang:prefill_effective_tokens_total{"):
++            continue
++        labels = dict(re.findall(r'(\w+)="([^"]*)"', line))
++        if labels.get("tp_rank") not in (None, "0"):
++            continue
++        mode = labels.get("mode")
++        result[mode] = result.get(mode, 0) + float(line.rsplit(" ", 1)[1])
++    if not result:
++        raise AssertionError("Host-hit metrics are required to prove restoration")
++    result.setdefault("host_hit", 0)
++    result.setdefault("device_hit", 0)
++    return result
++
++
++def generate(base, ids, salt, *, score=False, max_new_tokens=1):
++    body = {
++        "input_ids": ids,
++        "cache_salt": salt,
++        "sampling_params": {"temperature": 0, "max_new_tokens": max_new_tokens},
++    }
++    if score:
++        body.update(return_logprob=True, logprob_start_len=len(ids) - 64)
++    return json.loads(request(base, "/generate", body))
++
++
++def scores(response):
++    values = response["meta_info"]["input_token_logprobs"]
++    return [(float(lp), token) for lp, token, *_ in values if lp is not None]
++
++
++def compare(reference, actual):
++    a, b = scores(reference), scores(actual)
++    assert len(a) >= 60 and len(a) == len(b), (len(a), len(b))
++    assert [x[1] for x in a] == [x[1] for x in b]
++    delta = [abs(x[0] - y[0]) for x, y in zip(a, b, strict=True)]
++    assert all(math.isfinite(d) for d in delta)
++    return {
++        "tokens": len(delta),
++        "mean_abs_logprob_delta": statistics.mean(delta),
++        "max_abs_logprob_delta": max(delta),
++    }
++
++
++def valid_tool_response(response):
++    choice = response["choices"][0]
++    calls = choice["message"].get("tool_calls") or []
++    if choice["finish_reason"] == "length" or not calls:
++        return False
++    paths = []
++    for call in calls:
++        try:
++            function = call["function"]
++            arguments = json.loads(function["arguments"])
++            if (
++                function["name"] != "read_file"
++                or not isinstance(arguments, dict)
++                or set(arguments) != {"path"}
++                or arguments["path"] not in ("src/queue.py", "tests/test_queue.py")
++            ):
++                return False
++            paths.append(arguments["path"])
++        except (KeyError, TypeError, ValueError):
++            return False
++    # Reading the referenced tests is a valid extra action. Require the source
++    # read and well-formed calls, without demanding identical generated text.
++    return "src/queue.py" in paths and len(paths) == len(set(paths))
++
++
++def coding_tool_request(base, salt):
++    body = {
++        "model": "glm-5.3-flash",
++        "messages": [
++            {"role": "system", "content": "You are a careful programming assistant."},
++            {
++                "role": "user",
++                "content": CORPUS
++                * 12
++                + "\nReview src/queue.py for concurrency bugs. Begin by reading that file. "
++                "Do not infer its implementation from the design notes above.",
++            },
++        ],
++        "tools": [
++            {
++                "type": "function",
++                "function": {
++                    "name": "read_file",
++                    "description": "Read a source file before reviewing its implementation.",
++                    "parameters": {
++                        "type": "object",
++                        "properties": {"path": {"type": "string"}},
++                        "required": ["path"],
++                        "additionalProperties": False,
++                    },
++                },
++            }
++        ],
++        "cache_salt": salt,
++        "temperature": 0,
++        "max_tokens": 2048,
++    }
++    response = json.loads(request(base, "/v1/chat/completions", body))
++    return {"response": response, "passed": valid_tool_response(response)}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--base-url", default="http://127.0.0.1:18000")
++    parser.add_argument("--tokenizer", required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--pressure-tokens", type=int, default=4096)
++    parser.add_argument("--cycles", type=int, default=2)
++    args = parser.parse_args()
++    from transformers import AutoTokenizer
++
++    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
++    template = tokenizer.apply_chat_template(
++        [
++            {"role": "system", "content": "You are a careful programming assistant."},
++            {"role": "user", "content": "DOCUMENT_PLACEHOLDER"},
++        ],
++        tokenize=False,
++        add_generation_prompt=True,
++    )
++    lead, tail = template.split("DOCUMENT_PLACEHOLDER")
++
++    def encode(text):
++        return tokenizer.encode(text, add_special_tokens=False)
++
++    lead_ids, tail_ids = encode(lead), encode(tail)
++    corpus_ids = encode(CORPUS * 100)
++
++    def prompt(length, heading="Review this design.\n"):
++        front = lead_ids + encode(heading)
++        needed = length - len(front) - len(tail_ids)
++        assert 0 < needed <= len(corpus_ids)
++        return front + corpus_ids[:needed] + tail_ids
++
++    primer = prompt(1000)
++    results = {"definition": __doc__, "cases": [], "tool_cases": [], "passed": True}
++    nonce = uuid.uuid4().hex
++    for shared in (512, 768):
++        # The second request has genuinely different content after the shared
++        # prefix, so its state must not include the primer's following tokens.
++        branch = (
++            primer[:shared]
++            + encode(
++                "\n\nThe excerpt above ends here. A different review now follows. "
++                "Please explain why two workers cannot both own one queue job. "
++                "Discuss atomic claims, idempotency keys and recovery after a "
++                "worker crashes. A status cache may disappear at any time. "
++                "The durable job record is authoritative. A database transaction "
++                "must make the claim conditional on the queued status. "
++                "How should a regression reproduce a crash between recording "
++                "a successful result and acknowledging the notification?"
++            )
++            + tail_ids
++        )
++        common = next(
++            (i for i, (a, b) in enumerate(zip(primer, branch)) if a != b),
++            min(len(primer), len(branch)),
++        )
++        assert common // 256 * 256 == shared, common
++        salt = f"{nonce}-{shared}-shared"
++        cold = generate(args.base_url, branch, f"{salt}-cold-a", score=True)
++        repeat = generate(args.base_url, branch, f"{salt}-cold-b", score=True)
++        assert cold["meta_info"]["cached_tokens"] == 0
++        assert repeat["meta_info"]["cached_tokens"] == 0
++        control = compare(cold, repeat)
++        # Chunked insertions alone do not initiate write-through. Let normal
++        # decoding cross 1024 so finishing publishes this path to host too.
++        primed = generate(args.base_url, primer, salt, max_new_tokens=32)
++        assert primed["meta_info"]["completion_tokens"] >= 25
++        time.sleep(1)  # allow write-through completion before inducing eviction
++        row = {
++            "shared_tokens": shared,
++            "primer_tokens": len(primer),
++            "branch_tokens": len(branch),
++            "primer_ids": primer,
++            "branch_ids": branch,
++            "cold_repeat": control,
++            "cold_scores": scores(cold),
++            "repeat_scores": scores(repeat),
++            "replays": [],
++        }
++        # BF16 state / FP8 KV can differ slightly with prefill partitioning.
++        # Keep the same bounds for the broken and repaired revisions.
++        mean_limit = max(0.05, 5 * control["mean_abs_logprob_delta"])
++        max_limit = max(0.5, 5 * control["max_abs_logprob_delta"])
++        row["limits"] = {"mean": mean_limit, "max": max_limit}
++        results["cases"].append(row)
++        args.output.write_text(json.dumps(results, indent=2) + "\n")
++        print(
++            json.dumps(
++                {
++                    "shared_tokens": shared,
++                    "cold_repeat": control,
++                    "limits": row["limits"],
++                }
++            ),
++            flush=True,
++        )
++        for cycle in range(args.cycles + 1):
++            if cycle:
++                # Do not replay between pressure requests: doing so refreshes
++                # this entry's LRU position and can prevent its eviction.
++                for pressure_round in range(2):
++                    pressure = prompt(
++                        args.pressure_tokens,
++                        f"Independent queue audit {nonce} {shared} {cycle} {pressure_round}.\n",
++                    )
++                    generate(
++                        args.base_url,
++                        pressure,
++                        f"{salt}-pressure-{cycle}-{pressure_round}",
++                    )
++                time.sleep(1)
++            before = metrics(args.base_url)
++            replay = generate(args.base_url, branch, salt, score=True)
++            after = metrics(args.base_url)
++            delta = compare(cold, replay)
++            cached = replay["meta_info"]["cached_tokens"]
++            hit = {k: after.get(k, 0) - before.get(k, 0) for k in after}
++            passed = (
++                delta["mean_abs_logprob_delta"] <= mean_limit
++                and delta["max_abs_logprob_delta"] <= max_limit
++                and cached >= shared
++                and (
++                    hit["host_hit"] >= shared
++                    if cycle
++                    else hit["device_hit"] >= shared and hit["host_hit"] == 0
++                )
++            )
++            row["replays"].append(
++                {
++                    "path": "host" if cycle else "device",
++                    "cycle": cycle,
++                    "cached_tokens": cached,
++                    "hit_tokens": hit,
++                    "scores": scores(replay),
++                    **delta,
++                    "passed": passed,
++                }
++            )
++            results["passed"] &= passed
++            args.output.write_text(json.dumps(results, indent=2) + "\n")
++            print(
++                json.dumps(
++                    {k: v for k, v in row["replays"][-1].items() if k != "scores"}
++                ),
++                flush=True,
++            )
++    tool_salt = f"{nonce}-coding-tool"
++    for cycle in range(args.cycles + 2):
++        if cycle >= 2:
++            for pressure_round in range(2):
++                generate(
++                    args.base_url,
++                    prompt(args.pressure_tokens),
++                    f"{tool_salt}-pressure-{cycle}-{pressure_round}",
++                )
++            time.sleep(1)
++        before = metrics(args.base_url)
++        row = coding_tool_request(args.base_url, tool_salt)
++        after = metrics(args.base_url)
++        hit = {k: after.get(k, 0) - before.get(k, 0) for k in after}
++        row.update(cycle=cycle, hit_tokens=hit)
++        if cycle == 0:
++            row["passed"] &= hit["device_hit"] == hit["host_hit"] == 0
++        elif cycle == 1:
++            row["passed"] &= hit["device_hit"] >= 256 and hit["host_hit"] == 0
++        else:
++            row["passed"] &= hit["host_hit"] >= 256
++        results["passed"] &= row["passed"]
++        results["tool_cases"].append(row)
++        args.output.write_text(json.dumps(results, indent=2) + "\n")
++        print(json.dumps({k: v for k, v in row.items() if k != "response"}), flush=True)
++    raise SystemExit(0 if results["passed"] else 1)
++
++
++if __name__ == "__main__":
++    main()
 diff --git a/test/manual/test_hicache_draft_sidecar_gpu.py b/test/manual/test_hicache_draft_sidecar_gpu.py
 new file mode 100755
 index 0000000000..a875ff38c7
@@ -13738,10 +14411,10 @@ index 0000000000..a875ff38c7
 +    main()
 diff --git a/test/manual/test_hybrid_dsa_hicache_gpu.py b/test/manual/test_hybrid_dsa_hicache_gpu.py
 new file mode 100755
-index 0000000000..09c6594c5a
+index 0000000000..df1718938c
 --- /dev/null
 +++ b/test/manual/test_hybrid_dsa_hicache_gpu.py
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,296 @@
 +#!/usr/bin/env python3
 +"""Exact-image GPU byte oracle. Run only in an isolated qualification Job.
 +
@@ -13762,6 +14435,7 @@ index 0000000000..09c6594c5a
 +)
 +from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
 +    _build_hybrid_dsa_index_entry,
++    _DsaStrategy,
 +    build_hybrid_mamba_stack,
 +)
 +from sglang.srt.mem_cache.memory_pool import DSATokenToKVPool
@@ -13891,26 +14565,56 @@ index 0000000000..09c6594c5a
 +    return (pages[:, None] * 64 + torch.arange(64, device=pages.device)).flatten()
 +
 +
-+def run_case(layout, backend, trial):
++def run_case(layout, backend, trial, *, standalone=False):
 +    target = make_pool((True, False, True))
 +    draft = make_pool((True,))
 +    prefix = "sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler."
++    memory = SimpleNamespace(
++        hicache_mem_layout=layout,
++        hicache_write_policy="write_through",
++        hicache_io_backend=backend,
++        hicache_host_memory_mode=None,
++    )
 +    with (
-+        patch(
-+            prefix + "get_memory",
-+            return_value=SimpleNamespace(hicache_mem_layout=layout),
-+        ),
++        patch(prefix + "get_memory", return_value=memory),
 +        patch(prefix + "_get_allocator_type", return_value="default"),
 +    ):
-+        entry = _build_hybrid_dsa_index_entry(
-+            kv_pool=target,
-+            kv_host_pool=SimpleNamespace(page_num=16),
-+            layer_mapping={0: 0, 4: 1, 8: 2, 45: 3},
-+            transfer_layer_num=46,
-+            draft_pools=(draft,),
-+        )
-+    assert entry.layer_mapper(4) is None
-+    assert entry.layer_mapper(45) == 2
++        if standalone:
++            target.kv_cache_dim = 656
++            params = SimpleNamespace(
++                mtp_draft_device_pools=(draft,),
++                page_size=64,
++                token_to_kv_pool_allocator=MagicMock(),
++                tp_cache_group=None,
++                attn_cp_cache_group=None,
++                attn_tp_cache_group=None,
++                pp_cache_group=None,
++            )
++            with (
++                patch(prefix + "build_kv_host_pool") as anchor,
++                patch(prefix + "HybridCacheController"),
++            ):
++                anchor.return_value.page_num = 16
++                result = _DsaStrategy().build(
++                    cache=MagicMock(),
++                    kvcache=target,
++                    params=params,
++                    server_args=None,
++                    load_cache_event=None,
++                )
++            entry = result.host_pool_group.get_entry(PoolName.INDEXER)
++            assert entry.layer_mapper(1) is None
++            assert entry.layer_mapper(3) == 2
++        else:
++            entry = _build_hybrid_dsa_index_entry(
++                kv_pool=target,
++                kv_host_pool=SimpleNamespace(page_num=16),
++                layer_mapping={0: 0, 4: 1, 8: 2, 45: 3},
++                transfer_layer_num=46,
++                draft_pools=(draft,),
++            )
++            assert entry.layer_mapper(4) is None
++            assert entry.layer_mapper(45) == 2
 +    host = entry.host_pool
 +    assert len(host.device_buffers) == 3
 +    assert host.item_bytes == 8448
@@ -13968,6 +14672,7 @@ index 0000000000..09c6594c5a
 +                "layout": layout,
 +                "backend": backend,
 +                "trial": trial,
++                "standalone": standalone,
 +                "layers": 3,
 +                "pages": 8,
 +                "bytes_compared": 3 * 8 * 8448,
@@ -13999,8 +14704,9 @@ index 0000000000..09c6594c5a
 +            ("page_first_direct", "direct"),
 +        ):
 +            for trial in range(5):
-+                run_case(layout, backend, trial)
-+    print("Hybrid DSA HiCache GPU byte oracle: 20/20 passed", flush=True)
++                for standalone in (False, True):
++                    run_case(layout, backend, trial, standalone=standalone)
++    print("Hybrid DSA HiCache GPU byte oracle: 40/40 passed", flush=True)
 +
 +
 +if __name__ == "__main__":
@@ -18216,10 +18922,10 @@ index 9cdbcf8a20..2e0ee728ce 100644
      unittest.main()
 diff --git a/test/registered/unit/disaggregation/test_serving_lifecycle_followups.py b/test/registered/unit/disaggregation/test_serving_lifecycle_followups.py
 new file mode 100644
-index 0000000000..5bcf67a619
+index 0000000000..05532ea35b
 --- /dev/null
 +++ b/test/registered/unit/disaggregation/test_serving_lifecycle_followups.py
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,128 @@
 +"""CPU coverage for retained lifecycle paths not yet present on main."""
 +
 +import asyncio
@@ -18229,7 +18935,7 @@ index 0000000000..5bcf67a619
 +from unittest.mock import MagicMock, patch
 +
 +from sglang.srt.disaggregation.encoder.receiver import MMReceiverHTTP
-+from sglang.srt.managers.schedule_policy import PrefillAdder
++from sglang.srt.managers.schedule_batch import ScheduleBatch
 +from sglang.srt.managers.scheduler import Scheduler
 +from sglang.test.ci.ci_register import register_cpu_ci
 +
@@ -18237,18 +18943,39 @@ index 0000000000..5bcf67a619
 +
 +
 +class TestSchedulerLifecycle(unittest.TestCase):
-+    def test_sub_page_chunk_budget_stops_admission(self):
-+        adder = SimpleNamespace(page_size=64, rem_chunk_tokens=None)
-+        for remaining, exhausted in (
-+            (None, False),
-+            (0, True),
-+            (63, True),
-+            (64, False),
-+            (65, False),
-+        ):
-+            with self.subTest(remaining=remaining):
-+                adder.rem_chunk_tokens = remaining
-+                self.assertEqual(PrefillAdder.chunk_budget_exhausted(adder), exhausted)
++    def test_empty_prefill_only_batch_clears_flags_before_next_admission(self):
++        scheduler = MagicMock(spec=Scheduler)
++        scheduler.scheduler_stage_metrics = None
++        scheduler.enable_fpm = False
++        scheduler.dllm_config = None
++        scheduler.chunked_req = None
++        scheduler.enable_hisparse = False
++        scheduler.require_mlp_sync = False
++        scheduler._should_defer_prefill.return_value = True
++        scheduler.dp_attn_adapter = MagicMock()
++        scheduler.dp_attn_adapter.maybe_prepare_mlp_sync_batch.side_effect = (
++            lambda batch, **kwargs: batch
++        )
++        scheduler.dp_attn_adapter.maybe_convert_decode_to_extend.side_effect = (
++            lambda batch: batch
++        )
++        scheduler.ngram_embedding_manager = MagicMock()
++        scheduler.ngram_embedding_manager.prepare_for_forward.side_effect = (
++            lambda batch, **kwargs: batch
++        )
++        finished_req = MagicMock()
++        finished_req.finished.return_value = True
++        running = ScheduleBatch(
++            reqs=[finished_req], batch_is_full=True, is_prefill_only=True
++        )
++
++        plan = Scheduler.get_next_batch_to_run(scheduler, running, None)
++
++        self.assertTrue(plan.running_batch.is_empty())
++        self.assertFalse(plan.running_batch.batch_is_full)
++        self.assertFalse(plan.running_batch.is_prefill_only)
++        self.assertIsNone(plan.batch_to_run)
++        scheduler.update_running_batch.assert_not_called()
 +
 +    def test_all_pending_health_signals_are_returned(self):
 +        sender = MagicMock()
@@ -19866,6 +20593,127 @@ index 0000000000..0d2a2ec0e0
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/test/registered/unit/layers/attention/test_kda_extend_host_lengths.py b/test/registered/unit/layers/attention/test_kda_extend_host_lengths.py
+new file mode 100644
+index 0000000000..dcf7fd96a0
+--- /dev/null
++++ b/test/registered/unit/layers/attention/test_kda_extend_host_lengths.py
+@@ -0,0 +1,115 @@
++"""KDA extend must trim padding without reading device lengths when host metadata exists."""
++
++from types import SimpleNamespace as NS
++from unittest.mock import patch
++
++import pytest
++import torch
++
++from sglang.srt.layers.attention.linear import kda_backend
++from sglang.srt.layers.attention.linear.kda_backend import KDAAttnBackend
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=3, suite="base-a-test-cpu")
++
++
++class DeviceOffsets:
++    """A stand-in that rejects any host read of GPU sequence boundaries."""
++
++    def __getitem__(self, index):
++        raise AssertionError("Host metadata path read device query_start_loc")
++
++
++def run(lengths, padding, prefix, host_metadata, track=False):
++    n = sum(lengths)
++    seen = []
++    offsets = (
++        DeviceOffsets()
++        if host_metadata
++        else torch.tensor([0, *torch.tensor(lengths).cumsum(0).tolist()])
++    )
++
++    def conv(x, *args, **kw):
++        assert x.shape == (6, n)
++        assert kw["query_start_loc"] is offsets
++        assert kw["seq_lens_cpu"] == (lengths if host_metadata else None)
++        torch.testing.assert_close(kw["has_initial_state"], torch.tensor(prefix) > 0)
++        seen.append("conv")
++        return x
++
++    def extend(**kw):
++        assert kw["q"].shape == (1, n, 1, 2)
++        assert kw["g"].shape == (1, n, 1, 2)
++        assert kw["beta"].shape == (1, n, 1)
++        assert kw["query_start_loc"] is offsets
++        out = kw["q"] + kw["k"] + kw["v"] + kw["g"] + kw["beta"].unsqueeze(-1)
++        seen.append("extend")
++        return (out, torch.ones(1)) if track else out
++
++    states = NS(conv=[torch.zeros(3, 2, 6)], temporal=torch.zeros(3, 1, 2, 2))
++    meta = NS(
++        query_start_loc=offsets,
++        mamba_cache_indices=torch.tensor([2, 0, 1][: len(lengths)]),
++        has_mamba_track_mask=track,
++        conv_states_mask_indices=torch.tensor([1]),
++        track_conv_indices=torch.tensor([[0, 1]]),
++        track_ssm_h_src=torch.tensor([0]),
++    )
++
++    def track_state(*args):
++        seen.append("track")
++
++    backend = NS(
++        forward_metadata=meta,
++        req_to_token_pool=NS(mamba2_layer_cache=lambda _: states),
++        kernel_dispatcher=NS(extend=extend),
++        accept_lens_pool=None,
++        _track_mamba_state_extend=track_state,
++    )
++    mode = NS(is_target_verify=lambda: False, is_draft_extend_v2=lambda: False)
++    batch = NS(
++        forward_mode=mode,
++        extend_prefix_lens=torch.tensor(prefix),
++        extend_seq_lens_cpu=list(lengths) if host_metadata else None,
++    )
++    layer = NS(
++        layer_id=0,
++        conv_weights=None,
++        bias=None,
++        q_dim=2,
++        k_dim=2,
++        v_dim=2,
++        head_q_dim=2,
++        head_k_dim=2,
++        head_v_dim=2,
++        A_log=None,
++        dt_bias=None,
++        lower_bound=None,
++    )
++    x = torch.arange((n + padding) * 6, dtype=torch.float32).reshape(n + padding, 6)
++    a = torch.ones(1, n + padding, 2)
++    b = torch.ones(1, n + padding, 1)
++    x[n:] = float("nan")
++    a[:, n:] = float("nan")
++    b[:, n:] = float("nan")
++    with patch.object(kda_backend, "causal_conv1d_fn", conv, create=True):
++        out = KDAAttnBackend.forward_extend(backend, layer, batch, x, a, b)
++    expected = x[:n, :2] + x[:n, 2:4] + x[:n, 4:] + 2
++    torch.testing.assert_close(out[0, :n, 0], expected, rtol=0, atol=0)
++    assert out.shape == (1, n + padding, 1, 2)
++    assert torch.isfinite(out).all()
++    assert torch.count_nonzero(out[:, n:]) == 0
++    assert seen == ["conv", "extend"] + (["track"] if track else [])
++    return out, states.conv[0]
++
++
++@pytest.mark.parametrize(
++    "lengths,prefix", [([5], [0]), ([3, 2], [4096, 0]), ([3, 2, 0], [8192, 7, 0])]
++)
++@pytest.mark.parametrize("padding", [0, 11])
++@pytest.mark.parametrize("host_metadata", [False, True])
++@pytest.mark.parametrize("track", [False, True])
++def test_kda_extend_host_lengths_preserve_layout_and_tracking(
++    lengths, prefix, padding, host_metadata, track
++):
++    run(lengths, padding, prefix, host_metadata, track=track)
 diff --git a/test/registered/unit/layers/attention/test_kpool_metadata_fusion_contract.py b/test/registered/unit/layers/attention/test_kpool_metadata_fusion_contract.py
 new file mode 100644
 index 0000000000..95dabd625d
@@ -20264,6 +21112,355 @@ index c881f61281..69f8648bbf 100644
      def test_storage_prefetch_fulfillment_resolves_at_admission(self):
          adder = self.create_adder(self.create_running_batch())
          req = self.create_mock_req("storage-hit", priority=0, max_new_tokens=1)
+diff --git a/test/registered/unit/managers/test_scheduler_chunk_budget.py b/test/registered/unit/managers/test_scheduler_chunk_budget.py
+new file mode 100644
+index 0000000000..c47b293623
+--- /dev/null
++++ b/test/registered/unit/managers/test_scheduler_chunk_budget.py
+@@ -0,0 +1,343 @@
++"""Regression tests for waiting admission after resuming a chunked request."""
++
++import unittest
++from types import SimpleNamespace
++from typing import ClassVar
++from unittest.mock import MagicMock, patch
++
++import torch
++
++from sglang.test.ci.ci_register import register_cpu_ci
++from sglang.test.test_utils import CustomTestCase, maybe_stub_sgl_kernel
++
++maybe_stub_sgl_kernel()
++
++from sglang.srt.disaggregation.utils import DisaggregationMode  # noqa: E402
++from sglang.srt.managers.schedule_batch import Req  # noqa: E402
++from sglang.srt.managers.schedule_policy import (  # noqa: E402
++    AddReqResult,
++    PrefillAdder,
++)
++from sglang.srt.managers.scheduler import Scheduler  # noqa: E402
++from sglang.srt.sampling.sampling_params import SamplingParams  # noqa: E402
++
++register_cpu_ci(est_time=3, suite="base-a-test-cpu")
++
++
++class _RecordingPrefillAdder(PrefillAdder):
++    instances: ClassVar[list["_RecordingPrefillAdder"]] = []
++
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.__class__.instances.append(self)
++
++
++def _make_scheduler(waiting_req, chunked_req, available_tokens):
++    scheduler = Scheduler.__new__(Scheduler)
++    scheduler.grammar_manager = MagicMock()
++    scheduler.enable_hierarchical_cache = False
++    scheduler.enable_unified_cache_external_linker = False
++    scheduler.enable_hicache_storage = False
++    scheduler.enable_priority_preemption = False
++    scheduler.enable_priority_scheduling = False
++    scheduler.is_hybrid_swa = False
++    scheduler.min_free_slots_delayer = None
++    scheduler.waiting_queue = [waiting_req]
++    scheduler.chunked_req = chunked_req
++    scheduler.get_num_allocatable_reqs = MagicMock(return_value=8)
++    scheduler.policy = MagicMock()
++    scheduler.chunked_prefill_size = 4
++    scheduler.dynamic_chunk_sizer = None
++    scheduler.tp_worker = SimpleNamespace(
++        model_runner=SimpleNamespace(
++            attn_backend=SimpleNamespace(), prefill_aware_swa=False
++        )
++    )
++    scheduler.page_size = 1
++    scheduler.tree_cache = MagicMock()
++    scheduler.tree_cache.supports_mamba.return_value = False
++    scheduler.tree_cache.evictable_size.return_value = 0
++    scheduler.tree_cache.is_tree_cache.return_value = False
++    scheduler.token_to_kv_pool_allocator = MagicMock()
++    scheduler.token_to_kv_pool_allocator.available_size.return_value = available_tokens
++    scheduler.new_token_ratio_tracker = SimpleNamespace(current=1.0)
++    scheduler.max_prefill_tokens = 32
++    scheduler.is_mixed_chunk = False
++    scheduler.is_hybrid_ssm = False
++    scheduler.processed_tokens_counter = 0
++    scheduler.priority_scheduling_preemption_threshold = 0
++    scheduler.max_prefill_bs = 8
++    scheduler.max_running_requests = 8
++    scheduler.dllm_config = None
++    scheduler.enable_lora = False
++    scheduler.req_to_token_pool = SimpleNamespace(mamba_allocator=MagicMock())
++    scheduler.disaggregation_mode = DisaggregationMode.NULL
++    scheduler.truncation_align_size = None
++    scheduler.model_config = MagicMock()
++    scheduler.enable_overlap = False
++    scheduler.spec_algorithm = MagicMock()
++    scheduler.load_inquirer = MagicMock()
++    return scheduler
++
++
++class TestSchedulerChunkBudget(CustomTestCase):
++    def setUp(self):
++        _RecordingPrefillAdder.instances.clear()
++
++    def _run_scheduler(
++        self,
++        chunk_tokens,
++        available_tokens=4096,
++        *,
++        page_size=1,
++        chunk_budget=4,
++        mixed_decode_tokens=0,
++        cache_mode="radix",
++        waiting_tokens=(1,),
++        max_prefill_tokens=4096,
++    ):
++        def make_req(rid, tokens):
++            req = Req(
++                rid=rid,
++                origin_input_text="",
++                origin_input_ids=list(range(tokens)),
++                sampling_params=SamplingParams(temperature=0, max_new_tokens=1),
++            )
++            req.full_untruncated_fill_ids = list(range(tokens))
++            req.prefix_indices = torch.empty(0, dtype=torch.int64)
++            req.last_node = MagicMock()
++            req.init_next_round_input = MagicMock()
++            return req
++
++        chunked_req = (
++            make_req("chunked", chunk_tokens) if chunk_tokens is not None else None
++        )
++        waiting_reqs = [
++            make_req(f"waiting-{i}", n) for i, n in enumerate(waiting_tokens)
++        ]
++        waiting_req = waiting_reqs[0]
++        running_batch = MagicMock()
++        running_batch.reqs = [
++            make_req(f"decode-{i}", 1) for i in range(mixed_decode_tokens)
++        ]
++        running_batch.batch_is_full = False
++        running_batch.return_logprob = False
++        running_batch.is_empty.side_effect = lambda: not running_batch.reqs
++        scheduler = _make_scheduler(waiting_req, chunked_req, available_tokens)
++        scheduler.waiting_queue = waiting_reqs
++        scheduler.page_size = page_size
++        scheduler.chunked_prefill_size = chunk_budget
++        scheduler.max_prefill_tokens = max_prefill_tokens
++        scheduler.is_mixed_chunk = mixed_decode_tokens > 0
++        scheduler.enable_hierarchical_cache = cache_mode == "hierarchical"
++        scheduler.enable_unified_cache_external_linker = cache_mode == "external"
++
++        batch = MagicMock()
++        batch.return_logprob = False
++        batch.input_embeds = None
++        with (
++            patch(
++                "sglang.srt.managers.scheduler.PrefillAdder",
++                _RecordingPrefillAdder,
++            ),
++            patch(
++                "sglang.srt.managers.scheduler.ScheduleBatch.init_new",
++                return_value=batch,
++            ),
++            patch(
++                "sglang.srt.managers.scheduler.PrefillStats.from_adder",
++                return_value=MagicMock(),
++            ),
++            patch(
++                "sglang.srt.managers.scheduler.get_memory",
++                return_value=SimpleNamespace(enable_flexkv=False),
++            ),
++            patch(
++                "sglang.srt.managers.scheduler.get_schedule",
++                return_value=SimpleNamespace(prefill_max_requests=None),
++            ),
++        ):
++            Scheduler._get_new_batch_prefill_raw(
++                scheduler,
++                prefill_delayer_single_pass=None,
++                running_batch=running_batch,
++            )
++
++        return (
++            scheduler,
++            running_batch,
++            waiting_req,
++            _RecordingPrefillAdder.instances[-1],
++        )
++
++    def test_waiting_queue_not_scanned_after_resumed_chunk_exhausts_budget(self):
++        scheduler, _, waiting_req, adder = self._run_scheduler(chunk_tokens=4)
++
++        self.assertEqual(adder.rem_chunk_tokens, 0)
++        waiting_req.init_next_round_input.assert_not_called()
++        scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++            0
++        )
++        self.assertEqual(len(adder.can_run_list), 1)
++        self.assertEqual(scheduler.waiting_queue, [waiting_req])
++
++    def test_waiting_queue_scanned_when_resumed_chunk_leaves_budget(self):
++        scheduler, _, waiting_req, adder = self._run_scheduler(chunk_tokens=2)
++
++        self.assertEqual(adder.rem_chunk_tokens, 1)
++        waiting_req.init_next_round_input.assert_called_once()
++        scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++            1
++        )
++        self.assertEqual(len(adder.can_run_list), 2)
++        self.assertEqual(scheduler.waiting_queue, [])
++
++    def test_total_token_exhaustion_marks_batch_full_without_scanning(self):
++        scheduler, running_batch, waiting_req, adder = self._run_scheduler(
++            chunk_tokens=4,
++            available_tokens=6,
++        )
++
++        self.assertEqual(adder.rem_chunk_tokens, 0)
++        self.assertEqual(adder.rem_total_tokens, 0)
++        waiting_req.init_next_round_input.assert_not_called()
++        self.assertTrue(running_batch.batch_is_full)
++        self.assertEqual(scheduler.waiting_queue, [waiting_req])
++
++    def test_mixed_decode_leaves_subpage_budget_after_resumed_chunk(self):
++        scheduler, _, waiting, adder = self._run_scheduler(
++            64, page_size=64, chunk_budget=128, mixed_decode_tokens=1
++        )
++        self.assertEqual(adder.rem_chunk_tokens, 63)
++        waiting.init_next_round_input.assert_not_called()
++        scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++            0
++        )
++        self.assertEqual([req.rid for req in adder.can_run_list], ["chunked"])
++        self.assertEqual(scheduler.waiting_queue, [waiting])
++
++    def test_mixed_decode_leaves_subpage_budget_without_resumed_chunk(self):
++        scheduler, _, waiting, adder = self._run_scheduler(
++            None, page_size=64, chunk_budget=64, mixed_decode_tokens=1
++        )
++        self.assertEqual(adder.rem_chunk_tokens, 63)
++        waiting.init_next_round_input.assert_not_called()
++        scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++            0
++        )
++        self.assertEqual(adder.can_run_list, [])
++        self.assertEqual(scheduler.waiting_queue, [waiting])
++
++    def test_mixed_decode_stops_scan_after_first_waiting_prefill(self):
++        scheduler, _, first_waiting, adder = self._run_scheduler(
++            None,
++            page_size=64,
++            chunk_budget=128,
++            mixed_decode_tokens=1,
++            waiting_tokens=(64, 64),
++        )
++        self.assertEqual(adder.rem_chunk_tokens, 63)
++        first_waiting.init_next_round_input.assert_called_once()
++        self.assertEqual([req.rid for req in adder.can_run_list], ["waiting-0"])
++        self.assertEqual(len(scheduler.waiting_queue), 1)
++        scheduler.waiting_queue[0].init_next_round_input.assert_not_called()
++
++    def test_page_boundaries_preserve_resumed_chunk_and_waiting_admission(self):
++        for chunk_tokens in (1, 63, 64, 65, 127, 128, 129):
++            for mixed in (0, 1):
++                with self.subTest(chunk_tokens=chunk_tokens, mixed=mixed):
++                    scheduler, _, waiting, adder = self._run_scheduler(
++                        chunk_tokens,
++                        page_size=64,
++                        chunk_budget=128,
++                        mixed_decode_tokens=mixed,
++                    )
++                    resumed_charge = ((min(chunk_tokens, 128 - mixed) + 63) // 64) * 64
++                    should_admit = 128 - mixed - resumed_charge >= 64
++                    self.assertEqual(
++                        waiting.init_next_round_input.call_count, int(should_admit)
++                    )
++                    self.assertEqual(adder.can_run_list[0].rid, "chunked")
++                    self.assertEqual(len(adder.can_run_list), 1 + int(should_admit))
++                    scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++                        int(should_admit)
++                    )
++
++    def test_exhausted_chunk_preserves_batch_full_semantics_in_cache_modes(self):
++        for cache_mode in ("radix", "hierarchical", "external"):
++            for available_tokens, full in ((4096, False), (6, True)):
++                with self.subTest(
++                    cache_mode=cache_mode, available_tokens=available_tokens
++                ):
++                    scheduler, running, waiting, adder = self._run_scheduler(
++                        4, available_tokens=available_tokens, cache_mode=cache_mode
++                    )
++                    waiting.init_next_round_input.assert_not_called()
++                    self.assertEqual(running.batch_is_full, full)
++                    self.assertEqual(
++                        [req.rid for req in adder.can_run_list], ["chunked"]
++                    )
++                    scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++                        0
++                    )
++
++    def test_subpage_and_total_exhaustion_preserve_batch_full_semantics(self):
++        for cache_mode in ("radix", "hierarchical", "external"):
++            with self.subTest(cache_mode=cache_mode):
++                scheduler, running, waiting, adder = self._run_scheduler(
++                    64,
++                    available_tokens=131,
++                    page_size=64,
++                    chunk_budget=128,
++                    mixed_decode_tokens=1,
++                    cache_mode=cache_mode,
++                )
++                self.assertEqual(adder.rem_chunk_tokens, 63)
++                self.assertEqual(adder.budget_state(), AddReqResult.NO_TOKEN)
++                waiting.init_next_round_input.assert_not_called()
++                self.assertTrue(running.batch_is_full)
++                scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++                    0
++                )
++
++    def test_total_exhaustion_alone_preserves_waiting_scan(self):
++        for cache_mode in ("radix", "hierarchical", "external"):
++            for chunk_tokens, available_tokens in ((None, 0), (2, 4)):
++                with self.subTest(cache_mode=cache_mode, chunk_tokens=chunk_tokens):
++                    scheduler, running, waiting, adder = self._run_scheduler(
++                        chunk_tokens,
++                        available_tokens=available_tokens,
++                        cache_mode=cache_mode,
++                    )
++                    self.assertGreater(adder.rem_chunk_tokens, 0)
++                    waiting.init_next_round_input.assert_called_once()
++                    self.assertEqual(
++                        running.batch_is_full,
++                        cache_mode == "radix" or chunk_tokens is not None,
++                    )
++                    scheduler.req_to_token_pool.mamba_allocator.alloc_group_begin.assert_called_once_with(
++                        1
++                    )
++
++    def test_dllm_budget_does_not_use_autoregressive_chunk_remainder(self):
++        _, _, _, adder = self._run_scheduler(4)
++        adder.dllm_config = SimpleNamespace()
++        adder.rem_dllm_tokens = 64
++        self.assertEqual(adder.rem_chunk_tokens, 0)
++        self.assertEqual(adder.budget_state(), AddReqResult.CONTINUE)
++        adder.rem_dllm_tokens = 0
++        self.assertEqual(adder.budget_state(), AddReqResult.OTHER)
++
++    def test_input_budget_alone_does_not_block_first_waiting_request(self):
++        for chunk_budget in (None, 64):
++            with self.subTest(chunk_budget=chunk_budget):
++                scheduler, _, waiting, adder = self._run_scheduler(
++                    None, chunk_budget=chunk_budget, max_prefill_tokens=0
++                )
++                waiting.init_next_round_input.assert_called_once()
++                self.assertEqual(adder.can_run_list, [waiting])
++                self.assertEqual(scheduler.waiting_queue, [])
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_latch.py b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_latch.py
 new file mode 100644
 index 0000000000..bb3f1637e0
@@ -20343,10 +21540,10 @@ index 0000000000..bb3f1637e0
 +    unittest.main()
 diff --git a/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_retry.py b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_retry.py
 new file mode 100644
-index 0000000000..dd2e5eaa77
+index 0000000000..9e91e4d5a6
 --- /dev/null
 +++ b/test/registered/unit/managers/test_scheduler_hybrid_ssm_admission_retry.py
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,136 @@
 +"""With a PrefillAdder stand-in that refuses every request with NO_TOKEN, a
 +hybrid SSM model with a mamba-aware cache re-offers the waiting request each
 +round; a model that is neither hybrid SSM nor hybrid SWA offers it once and
@@ -20377,9 +21574,11 @@ index 0000000000..dd2e5eaa77
 +        self.can_run_list = []
 +        self.new_chunked_req = None
 +        self.rem_mamba_slots = None
++        self.rem_chunk_tokens = None
++        self.page_size = 1
 +
-+    def chunk_budget_exhausted(self):
-+        return False
++    def budget_state(self):
++        return AddReqResult.CONTINUE
 +
 +    def add_chunked_req(self, req):
 +        return req
@@ -20434,6 +21633,7 @@ index 0000000000..dd2e5eaa77
 +    s.new_token_ratio_tracker = SimpleNamespace(current=1.0)
 +    s.max_prefill_tokens = 4096
 +    s.is_mixed_chunk = False
++    s.processed_tokens_counter = 0
 +    s.priority_scheduling_preemption_threshold = 0
 +    s.max_prefill_bs = 1
 +    s.max_running_requests = 4
@@ -20482,10 +21682,10 @@ index 0000000000..dd2e5eaa77
 +    unittest.main()
 diff --git a/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py b/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py
 new file mode 100644
-index 0000000000..5e10f0dcf0
+index 0000000000..71f7332982
 --- /dev/null
 +++ b/test/registered/unit/managers/test_scheduler_overlap_keep_alive.py
-@@ -0,0 +1,374 @@
+@@ -0,0 +1,375 @@
 +"""Ownership of the overlap scheduler's batch snapshot.
 +
 +Under the overlap scheduler a ``ScheduleBatch``'s device tensors are read by
@@ -20546,6 +21746,7 @@ index 0000000000..5e10f0dcf0
 +    reqs: Any = dataclasses.field(default_factory=list)
 +    return_logprob: bool = False
 +    return_hidden_states: bool = False
++    extend_num_tokens: int = 0
 +    forward_iter: Any = None
 +    launch_ts: Any = None
 +    after_idle_gap: Any = None
@@ -21061,6 +22262,413 @@ index 0000000000..9aedd03cab
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/test/registered/unit/mem_cache/test_compressed_dsa_checkpoint_roundtrip.py b/test/registered/unit/mem_cache/test_compressed_dsa_checkpoint_roundtrip.py
+new file mode 100644
+index 0000000000..1364d83a90
+--- /dev/null
++++ b/test/registered/unit/mem_cache/test_compressed_dsa_checkpoint_roundtrip.py
+@@ -0,0 +1,401 @@
++"""A cached recurrent state must describe exactly the prefix that owns it."""
++
++import unittest
++from array import array
++from itertools import product
++from types import SimpleNamespace
++
++import torch
++
++from sglang.srt.configs.mamba_utils import Mamba2CacheParams, Mamba2StateShape
++from sglang.srt.layers.attention.hybrid_linear_attn_backend import MambaAttnBackendBase
++from sglang.srt.managers.schedule_batch import Req, ScheduleBatch
++from sglang.srt.managers.schedule_policy import match_prefix_for_req
++from sglang.srt.mem_cache.allocator import TokenToKVPoolAllocator
++from sglang.srt.mem_cache.allocator.swa import SWATokenToKVPoolAllocator
++from sglang.srt.mem_cache.base_prefix_cache import MatchPrefixParams
++from sglang.srt.mem_cache.cache_init_params import CacheInitParams
++from sglang.srt.mem_cache.memory_pool import (
++    DSATokenToKVPool,
++    HybridLinearKVPool,
++    HybridReqToTokenPool,
++)
++from sglang.srt.mem_cache.radix_cache import RadixKey
++from sglang.srt.mem_cache.swa_memory_pool import SWAKVPool
++from sglang.srt.mem_cache.unified_cache.components import ComponentType
++from sglang.srt.mem_cache.unified_radix_cache import UnifiedRadixCache
++from sglang.srt.runtime_context import get_exec, publish, reset_context
++from sglang.srt.sampling.sampling_params import SamplingParams
++from sglang.srt.server_args import ServerArgs
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=5, suite="base-a-test-cpu")
++
++
++class TestCompressedDsaCheckpointRoundtrip(unittest.TestCase):
++    def tearDown(self):
++        reset_context()
++
++    def _fixture(self, *, lazy=False, swa=False, mamba_first=False, no_buffer=False):
++        page_size = 1 if swa else 64
++        args = ServerArgs(
++            model_path="dummy",
++            page_size=page_size,
++            mamba_radix_cache_strategy=(
++                "no_buffer"
++                if no_buffer
++                else "extra_buffer_lazy"
++                if lazy
++                else "extra_buffer"
++            ),
++        )
++        args._mamba_cache_chunk_size = 64
++        publish(args, role="scheduler")
++        self.assertEqual(get_exec().mamba.enable_mamba_extra_buffer_lazy, lazy)
++        shape = Mamba2StateShape.create(
++            tp_world_size=1,
++            intermediate_size=16,
++            n_groups=1,
++            num_heads=1,
++            head_dim=16,
++            state_size=2,
++            conv_kernel=4,
++        )
++        req_pool = HybridReqToTokenPool(
++            size=4,
++            mamba_size=32,
++            mamba_spec_state_size=4,
++            max_context_len=2048,
++            device="cpu",
++            enable_memory_saver=False,
++            cache_params=Mamba2CacheParams(shape=shape, layers=[0]),
++            mamba_layer_ids=[0],
++            enable_mamba_extra_buffer=not no_buffer,
++            enable_mamba_extra_buffer_lazy=lazy,
++        )
++        # No attention kernel runs here; the real DSA pool type supplies the
++        # ownership geometry while real CPU pools own KV indices and SSM slots.
++        dsa = object.__new__(DSATokenToKVPool)
++        dsa.page_size = 64
++        dsa.index_kpool = 4
++        dsa.kpool_use_compress = True
++        kv_pool = object.__new__(HybridLinearKVPool)
++        kv_pool.full_kv_pool = dsa
++        allocator = TokenToKVPoolAllocator(
++            size=4096,
++            dtype=torch.bfloat16,
++            device="cpu",
++            kvcache=kv_pool,
++            need_sort=False,
++        )
++        components = (ComponentType.FULL, ComponentType.MAMBA)
++        if swa:
++            kv_pool = SWAKVPool(
++                size=4096,
++                size_swa=4096,
++                page_size=1,
++                dtype=torch.bfloat16,
++                head_num=1,
++                head_dim=16,
++                swa_attention_layer_ids=[1],
++                full_attention_layer_ids=[0],
++                device="cpu",
++            )
++            allocator = SWATokenToKVPoolAllocator(
++                size=4096,
++                size_swa=4096,
++                page_size=1,
++                dtype=torch.bfloat16,
++                device="cpu",
++                kvcache=kv_pool,
++                need_sort=False,
++            )
++            components = (ComponentType.FULL, ComponentType.SWA, ComponentType.MAMBA)
++            if mamba_first:
++                components = (
++                    ComponentType.FULL,
++                    ComponentType.MAMBA,
++                    ComponentType.SWA,
++                )
++        cache = UnifiedRadixCache(
++            CacheInitParams(
++                disable=False,
++                req_to_token_pool=req_pool,
++                token_to_kv_pool_allocator=allocator,
++                page_size=page_size,
++                tree_components=components,
++                sliding_window_size=64 if swa else None,
++                enable_mamba_extra_buffer=not no_buffer,
++                enable_mamba_extra_buffer_lazy=lazy,
++            )
++        )
++        return cache, allocator, req_pool
++
++    def _request(self, cache, allocator, req_pool, *, length=1000):
++        sampling = SamplingParams(max_new_tokens=1)
++        sampling.normalize(None)
++        req = Req(
++            rid="chunked",
++            origin_input_text="",
++            origin_input_ids=array("q", [1] * length),
++            sampling_params=sampling,
++            vocab_size=128,
++        )
++        req_pool.alloc([req])
++        req.full_untruncated_fill_ids = array("q", req.origin_input_ids)
++        values = allocator.alloc(length)
++        req_pool.write((req.kv.req_pool_idx, slice(0, length)), values)
++        req.kv.kv_allocated_len = length
++        req.last_node = cache.root_node_handle()
++        req.prefix_indices = torch.empty(0, dtype=torch.int64)
++        return req
++
++    def _run_chunk(self, cache, req_pool, req, end, *, publish_checkpoint=True):
++        prefix = len(req.prefix_indices)
++        req.set_extend_range(prefix, end)
++        req.kv.kv_committed_len = end
++        if not cache.enable_mamba_extra_buffer:
++            # This strategy keeps the live state instead of selecting a saved
++            # intermediate snapshot. Give that state its actual prefix depth.
++            states = req_pool.mamba_pool.mamba_cache.temporal
++            states[:, req.kv.mamba_pool_idx].fill_(end)
++            for conv in req_pool.mamba_pool.mamba_cache.conv:
++                conv[:, req.kv.mamba_pool_idx] = (
++                    torch.arange(conv.shape[-1]) + end - conv.shape[-1] + 1
++                ).to(conv.dtype)
++            if publish_checkpoint:
++                cache.cache_unfinished_req(req, chunked=True)
++            return end, None
++        batch = ScheduleBatch(reqs=[req])
++        batch.model_config = SimpleNamespace(
++            hf_text_config=SimpleNamespace(mamba_chunk_size=64)
++        )
++        batch.tree_cache = cache
++        batch.req_to_token_pool = req_pool
++        entry = batch._mamba_radix_cache_v2_req_prepare_for_extend(req)
++
++        # Distinct state markers represent s[n] = n. Let the real backend
++        # select the marker to save, so a wrong h/final-state index is visible.
++        forward = SimpleNamespace(
++            extend_seq_lens=torch.tensor([end - prefix]),
++            extend_prefix_lens=torch.tensor([prefix]),
++            mamba_track_seqlens=torch.tensor([entry.track_seqlen]),
++            mamba_track_mask=torch.tensor([entry.track_mask]),
++            mamba_track_indices=torch.tensor([entry.track_index]),
++        )
++        indices = MambaAttnBackendBase._init_track_ssm_indices(
++            SimpleNamespace(device="cpu", mamba_chunk_size=64),
++            req.kv.mamba_pool_idx.unsqueeze(0),
++            forward,
++        )
++        h_src, h_dst, final_src, final_dst = indices[:4]
++        states = req_pool.mamba_pool.mamba_cache.temporal
++        states[:, req.kv.mamba_pool_idx].fill_(end)
++        for src, dst in zip(h_src.tolist(), h_dst.tolist()):
++            states[:, dst].fill_(prefix + src * 64)
++        for src, dst in zip(final_src.tolist(), final_dst.tolist()):
++            states[:, dst].copy_(states[:, src])
++        for conv in req_pool.mamba_pool.mamba_cache.conv:
++            positions = MambaAttnBackendBase._init_track_conv_indices(
++                SimpleNamespace(device="cpu", conv_states_shape=conv.shape[2:]),
++                torch.tensor([0, end - prefix]),
++                forward,
++            )
++            if entry.track_mask:
++                conv[:, entry.track_index] = (prefix + positions[0] + 1).to(conv.dtype)
++        checkpoint = req.kv.mamba_last_track_seqlen
++        if publish_checkpoint:
++            cache.cache_unfinished_req(req, chunked=True)
++        return checkpoint, entry
++
++    def _assert_cached_state_matches_prefix(self, cache, req_pool, tokens, expected):
++        match = cache.match_prefix(MatchPrefixParams(key=RadixKey(tokens)))
++        self.assertEqual(len(match.device_indices), expected)
++        if expected:
++            slot = cache.tree_core.get_component_device_value(
++                match.best_match_node, ComponentType.MAMBA
++            )
++            self.assertIsNotNone(slot)
++            state = req_pool.mamba_pool.mamba_cache.temporal[:, slot]
++            self.assertTrue(
++                torch.all(state == expected).item(),
++                f"prefix {expected} owns recurrent state {state.flatten()[0].item()}",
++            )
++            for conv in req_pool.mamba_pool.mamba_cache.conv:
++                expected_window = (
++                    torch.arange(conv.shape[-1]) + expected - conv.shape[-1] + 1
++                ).to(conv.dtype)
++                self.assertTrue(torch.all(conv[:, slot] == expected_window).item())
++
++    def test_successive_320_token_chunks_publish_the_matching_state(self):
++        for lazy in (False, True):
++            with self.subTest(lazy=lazy):
++                cache, allocator, req_pool = self._fixture(lazy=lazy)
++                req = self._request(cache, allocator, req_pool)
++                for end, expected in [(320, 256), (640, 512), (960, 768), (1000, 768)]:
++                    with self.subTest(end=end):
++                        self._run_chunk(cache, req_pool, req, end)
++                        self.assertEqual(len(req.prefix_indices), end)
++                        self._assert_cached_state_matches_prefix(
++                            cache, req_pool, req.origin_input_ids[:end], expected
++                        )
++
++    def test_short_chunks_track_when_they_cross_an_absolute_boundary(self):
++        cache, allocator, req_pool = self._fixture()
++        req = self._request(cache, allocator, req_pool)
++        for end in range(64, 961, 64):
++            with self.subTest(end=end):
++                self._run_chunk(cache, req_pool, req, end)
++                self._assert_cached_state_matches_prefix(
++                    cache, req_pool, req.origin_input_ids[:end], end // 256 * 256
++                )
++
++    def test_second_request_copies_the_state_at_its_matched_prefix(self):
++        for lazy in (False, True):
++            with self.subTest(lazy=lazy):
++                cache, allocator, req_pool = self._fixture(lazy=lazy)
++                req = self._request(cache, allocator, req_pool)
++                self._run_chunk(cache, req_pool, req, 320)
++                self._run_chunk(cache, req_pool, req, 640)
++                other = self._request(cache, allocator, req_pool, length=700)
++                other.origin_input_ids[512:] = array("q", [2] * 188)
++                match = cache.match_prefix(
++                    MatchPrefixParams(
++                        key=RadixKey(other.origin_input_ids), req=other, cow_mamba=True
++                    )
++                )
++                self.assertEqual(len(match.device_indices), 512)
++                batch = ScheduleBatch(reqs=[other])
++                batch._collect_deferred_mamba_cow_and_clear([other])
++                self.assertIsNotNone(batch.mamba_cow_src_indices)
++                req_pool.mamba_pool.copy_from(
++                    batch.mamba_cow_src_indices, batch.mamba_cow_dst_indices
++                )
++                state = req_pool.mamba_pool.mamba_cache.temporal[
++                    :, other.kv.mamba_pool_idx
++                ]
++                self.assertTrue(torch.all(state == 512).item())
++                # Copy-on-write must leave the tree's checkpoint independent.
++                state.fill_(-1)
++                self._assert_cached_state_matches_prefix(
++                    cache, req_pool, other.origin_input_ids, 512
++                )
++
++    def test_branch_checkpoint_must_be_on_the_absolute_tree_grid(self):
++        for branch, expected in ((448, 768), (512, 512)):
++            with self.subTest(branch=branch):
++                cache, allocator, req_pool = self._fixture()
++                req = self._request(cache, allocator, req_pool)
++                self._run_chunk(cache, req_pool, req, 320)
++                req.mamba_branching_seqlen = branch
++                checkpoint, _ = self._run_chunk(cache, req_pool, req, 960)
++                self.assertEqual(checkpoint, expected)
++                self._assert_cached_state_matches_prefix(
++                    cache, req_pool, req.origin_input_ids[:960], expected
++                )
++
++    def test_unrepresentable_snapshot_is_not_published(self):
++        cache, allocator, req_pool = self._fixture()
++        req = self._request(cache, allocator, req_pool)
++        self._run_chunk(cache, req_pool, req, 324)
++        checkpoint, entry = self._run_chunk(cache, req_pool, req, 644)
++        self.assertFalse(entry.track_mask)
++        self.assertIsNone(checkpoint)
++        self._assert_cached_state_matches_prefix(
++            cache, req_pool, req.origin_input_ids[:644], 256
++        )
++
++    def test_finished_request_donates_exact_checkpoint_and_frees_other_slots(self):
++        for lazy in (False, True):
++            with self.subTest(lazy=lazy):
++                cache, allocator, req_pool = self._fixture(lazy=lazy)
++                available = req_pool.mamba_allocator.available_size()
++                req = self._request(cache, allocator, req_pool)
++                self._run_chunk(cache, req_pool, req, 320)
++                self._run_chunk(cache, req_pool, req, 640, publish_checkpoint=False)
++                cache.cache_finished_req(req, kv_len_to_handle=640)
++                self._assert_cached_state_matches_prefix(
++                    cache, req_pool, req.origin_input_ids[:640], 512
++                )
++                self.assertEqual(
++                    req_pool.mamba_allocator.available_size(), available - 2
++                )
++
++    def test_invalid_checkpoint_is_not_rounded_to_a_different_prefix(self):
++        for finished in (False, True):
++            for checkpoint, token_count in ((576, 640), (768, 640), (None, 640)):
++                with self.subTest(finished=finished, checkpoint=checkpoint):
++                    cache, allocator, req_pool = self._fixture()
++                    available = req_pool.mamba_allocator.available_size()
++                    req = self._request(cache, allocator, req_pool)
++                    req.set_extend_range(0, token_count)
++                    req.kv.kv_committed_len = token_count
++                    req.kv.mamba_last_track_seqlen = checkpoint
++                    before = req_pool.mamba_allocator.available_size()
++                    if finished:
++                        cache.cache_finished_req(req, kv_len_to_handle=token_count)
++                        self.assertEqual(
++                            req_pool.mamba_allocator.available_size(), available
++                        )
++                    else:
++                        cache.cache_unfinished_req(req, chunked=True)
++                        self.assertEqual(
++                            req_pool.mamba_allocator.available_size(), before
++                        )
++                    self._assert_cached_state_matches_prefix(
++                        cache, req_pool, req.origin_input_ids[:token_count], 0
++                    )
++
++    def test_swa_branch_cannot_shorten_a_recurrent_checkpoint(self):
++        for strategy, finished, mamba_first in product(
++            ("extra_buffer", "extra_buffer_lazy", "no_buffer"),
++            (False, True),
++            (False, True),
++        ):
++            with self.subTest(
++                strategy=strategy, finished=finished, mamba_first=mamba_first
++            ):
++                cache, allocator, req_pool = self._fixture(
++                    lazy=strategy == "extra_buffer_lazy",
++                    swa=True,
++                    mamba_first=mamba_first,
++                    no_buffer=strategy == "no_buffer",
++                )
++                first = self._request(cache, allocator, req_pool, length=128)
++                self._run_chunk(cache, req_pool, first, 64)
++                available = req_pool.mamba_allocator.available_size()
++                other = self._request(cache, allocator, req_pool, length=96)
++                other.origin_input_ids[32:] = array("q", [2] * 64)
++                other.full_untruncated_fill_ids = array("q", other.origin_input_ids)
++                # Real matching splits the old 64-token node at 32. SWA
++                # can branch there, but no recurrent state exists at 32.
++                match_prefix_for_req(cache, other)
++                self.assertEqual(other.swa_branching_seqlen, 32)
++                self.assertIsNone(other.mamba_branching_seqlen)
++                self.assertEqual(len(other.prefix_indices), 0)
++                before = req_pool.mamba_allocator.available_size()
++                self._run_chunk(
++                    cache, req_pool, other, 64, publish_checkpoint=not finished
++                )
++                if finished:
++                    cache.cache_finished_req(other, kv_len_to_handle=64)
++                # The newly saved state is for 64 tokens. It cannot be
++                # attached to the SWA-limited 32-token key or leaked.
++                match = cache.match_prefix(
++                    MatchPrefixParams(key=RadixKey(other.origin_input_ids))
++                )
++                self._assert_cached_state_matches_prefix(
++                    cache, req_pool, other.origin_input_ids, len(match.device_indices)
++                )
++                self.assertEqual(len(match.device_indices), 0)
++                self.assertEqual(
++                    req_pool.mamba_allocator.available_size(),
++                    available if finished else before,
++                )
++                self._assert_cached_state_matches_prefix(
++                    cache, req_pool, first.origin_input_ids, 64
++                )
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hicache_draft_plan.py b/test/registered/unit/mem_cache/test_hicache_draft_plan.py
 new file mode 100644
 index 0000000000..b061392b4f
@@ -21251,10 +22859,10 @@ index 0000000000..b061392b4f
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hybrid_dsa_hicache.py b/test/registered/unit/mem_cache/test_hybrid_dsa_hicache.py
 new file mode 100644
-index 0000000000..70655ccc68
+index 0000000000..5cbbd2736f
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_hybrid_dsa_hicache.py
-@@ -0,0 +1,454 @@
+@@ -0,0 +1,574 @@
 +"""CPU regressions for hybrid DSA index ownership and HiCache assembly."""
 +
 +import unittest
@@ -21271,6 +22879,7 @@ index 0000000000..70655ccc68
 +)
 +from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
 +    _build_hybrid_dsa_index_entry,
++    _DsaStrategy,
 +    _MambaStrategy,
 +    build_full_draft_pools,
 +    build_hybrid_mamba_stack,
@@ -21443,6 +23052,125 @@ index 0000000000..70655ccc68
 +    def setUp(self):
 +        self.prefix = "sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler."
 +        self.memory = SimpleNamespace(hicache_mem_layout="layer_first")
++
++    def test_standalone_compressed_stack_roundtrip_with_skipped_layers(self):
++        from collections import defaultdict
++
++        def allocate(shape, *, dtype, device, **_):
++            return torch.empty(shape, dtype=dtype, device=device)
++
++        def copy_pages(*, src_layers, dst_layers, src_indices, dst_indices, page_size):
++            self.assertEqual(page_size, 1)
++            for src, dst in zip(src_layers, dst_layers, strict=True):
++                dst[dst_indices] = src[src_indices]
++
++        for live, with_draft in (
++            ((True, False, True), False),
++            ((True, False, True), True),
++            ((False, False), False),
++        ):
++            with self.subTest(live=live, with_draft=with_draft):
++                pool = dsa_pool(live_layers=live)
++                drafts = (dsa_pool(live_layers=(True,)),) if with_draft else ()
++                for p in (pool, *drafts):
++                    p.kv_cache_dim = 656
++                    p.store_dtype = torch.uint8
++                    p.device = "cpu"
++                    p.start_layer, p.end_layer = 0, p.layer_num
++                    p.index_head_dim, p.quant_block_size = 128, 128
++                params = cache_params(pool, hybrid=False)
++                params.mtp_draft_device_pools = drafts
++                memory = SimpleNamespace(
++                    hicache_mem_layout="layer_first",
++                    hicache_write_policy="write_through",
++                    hicache_io_backend="direct",
++                    hicache_host_memory_mode=None,
++                )
++                with (
++                    patch(self.prefix + "get_memory", return_value=memory),
++                    patch(self.prefix + "_get_allocator_type", return_value="default"),
++                    patch(self.prefix + "build_kv_host_pool") as build_kv,
++                    patch(self.prefix + "HybridCacheController"),
++                    patch(
++                        "sglang.srt.mem_cache.memory_pool_host.ALLOC_MEMORY_FUNCS",
++                        defaultdict(lambda: allocate),
++                    ),
++                    patch(
++                        "sglang.srt.mem_cache.pool_host.dsa.ALLOC_MEMORY_FUNCS",
++                        defaultdict(lambda: allocate),
++                    ),
++                ):
++                    build_kv.return_value = SimpleNamespace(
++                        page_num=16,
++                        size=1024,
++                        page_size=64,
++                        device="cpu",
++                        logical_size=1024,
++                        can_use_write_back_jit=False,
++                        mtp_draft_device_pools=drafts,
++                        layout="layer_first",
++                    )
++                    result = _DsaStrategy().build(
++                        cache=MagicMock(),
++                        kvcache=pool,
++                        params=params,
++                        server_args=None,
++                        load_cache_event=None,
++                    )
++                group = result.host_pool_group
++                if not any(live) and not with_draft:
++                    self.assertEqual(result.sidecars, [])
++                    self.assertNotIn(PoolName.INDEXER, group.entry_map)
++                    continue
++                entry = group.get_entry(PoolName.INDEXER)
++                buffers = [
++                    b for p in (pool, *drafts) for b in p.index_k_with_scale_buffer
++                ]
++                originals = []
++                for i, buffer in enumerate(buffers):
++                    buffer.copy_(torch.arange(buffer.numel()).reshape_as(buffer) + i)
++                    originals.append(buffer.clone())
++                src_pages = torch.tensor([5, 1, 7, 3])
++                host_pages = torch.tensor([9, 4, 13, 1])
++                dst_pages = torch.tensor([2, 6, 4, 0])
++
++                def tokens(pages):
++                    return (pages[:, None] * 64 + torch.arange(64)).flatten()
++
++                # Real host pools and index conversion; only the CUDA copy is
++                # replaced. An attempted copy from an empty layer fails here.
++                with (
++                    patch(
++                        "sglang.srt.mem_cache.memory_pool_host.transfer_kv_direct",
++                        side_effect=copy_pages,
++                        create=True,
++                    ),
++                    patch(
++                        "sglang.srt.mem_cache.pool_host.dsa.transfer_kv_direct",
++                        side_effect=copy_pages,
++                        create=True,
++                    ),
++                ):
++                    entry.host_pool.backup_from_device_all_layer(
++                        pool, tokens(host_pages), tokens(src_pages), "direct"
++                    )
++                    for buffer in buffers:
++                        buffer.fill_(173)
++                    for layer, buffer in enumerate(buffers):
++                        mapped = entry.layer_mapper(layer)
++                        if not buffer.numel():
++                            self.assertIsNone(mapped)
++                            continue
++                        entry.host_pool.load_to_device_per_layer(
++                            pool,
++                            tokens(host_pages),
++                            tokens(dst_pages),
++                            mapped,
++                            "direct",
++                        )
++                        self.assertTrue(
++                            torch.equal(buffer[dst_pages], originals[layer][src_pages])
++                        )
 +
 +    def test_draft_sidecar_omits_empty_index_layers(self):
 +        for live in ((True, False, True), (False, False)):
@@ -22040,10 +23768,10 @@ index 8d203fc7a9..a122128d64 100644
      unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_mamba_component_pool_exhaustion.py b/test/registered/unit/mem_cache/test_mamba_component_pool_exhaustion.py
 new file mode 100644
-index 0000000000..f9b145fa8a
+index 0000000000..9847e3a99c
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_mamba_component_pool_exhaustion.py
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +"""An exhausted unified mamba pool skips the unfinished-request checkpoint
 +instead of asserting; with a free slot the request's checkpoint slot is
 +donated and the free slot replaces it, as before."""
@@ -22081,6 +23809,7 @@ index 0000000000..f9b145fa8a
 +    comp.cache = SimpleNamespace(
 +        req_to_token_pool=pool,
 +        enable_mamba_extra_buffer=True,
++        page_size=64,
 +        evict_for_alloc=MagicMock(),
 +    )
 +    comp.tree_core = SimpleNamespace(mamba_evictable_size=lambda: 0)
@@ -22512,11 +24241,47 @@ index 6377f6c112..13c4c03a31 100644
      def test_gdn_fold(self):
          # d 512 + normalized k 512 + scalar g 128 + d/k low parts 1024 = 2176
          self.assertEqual(
+diff --git a/test/registered/unit/mem_cache/test_unified_cache_linker.py b/test/registered/unit/mem_cache/test_unified_cache_linker.py
+index 7082619dc8..9de4adc22d 100644
+--- a/test/registered/unit/mem_cache/test_unified_cache_linker.py
++++ b/test/registered/unit/mem_cache/test_unified_cache_linker.py
+@@ -99,7 +99,9 @@ def test_cache_linker_attachment_is_backend_independent():
+     cache.tree_core = SimpleNamespace(
+         enable_external_cache_linker=False,
+         write_through_threshold=256,
++        page_size=64,
+     )
++    cache._transfer_page_size = 64
+     cache.linker = None
+     linker = _FakeLinker()
+ 
 diff --git a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-index 0ced1fc842..6944387af3 100644
+index 0ced1fc842..519d9460bc 100644
 --- a/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
 +++ b/test/registered/unit/mem_cache/test_unified_radix_cache_unittest.py
-@@ -8009,6 +8009,46 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
+@@ -1601,6 +1601,10 @@ class UnifiedRadixCacheSuite:
+             )
+ 
+         prompt_aligned = (len(prompt_ids) // ps) * ps
++        # A checkpoint taken after the stripped output cannot describe the
++        # shorter prompt. It must be freed instead of donated under that key.
++        if self.cfg.has_mamba and self.cfg.enable_mamba_extra_buffer:
++            prompt_aligned = 0
+         # Thinking+answer must not be reachable past the prompt.
+         m = cache.match_prefix(
+             MatchPrefixParams(key=RadixKey(array("q", prompt_ids + output_ids)))
+@@ -1807,7 +1811,9 @@ class UnifiedRadixCacheSuite:
+             len(req.prefix_indices), len(req.full_untruncated_fill_ids)
+         )
+         if self.cfg.has_mamba:
+-            req.kv.mamba_last_track_seqlen = kv_len
++            # The real producer checkpoints at an aligned boundary, not at
++            # the end of the partial page whose KV is about to be freed.
++            req.kv.mamba_last_track_seqlen = kv_len // ps * ps
+ 
+         avail_before = allocator.available_size()
+         cache.cache_finished_req(
+@@ -8009,6 +8015,46 @@ class TestUnifiedRadixCacheActionRouting(CustomTestCase):
              [mock.call(first), mock.call(second)]
          )
  
@@ -24693,10 +26458,10 @@ index fe062eb256..9920b51459 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index 1b72d94403..93d101aad3 100644
+index 1b72d94403..48b3b48a9c 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
-@@ -1,73 +1,67 @@
+@@ -1,75 +1,144 @@
 -import sys
  import unittest
 -from types import ModuleType
@@ -24708,8 +26473,13 @@ index 1b72d94403..93d101aad3 100644
  from sglang.kernels.ops.attention.flash_mla_sm120 import (
 +    _flashinfer_sparse_mla_max_tokens,
      _validate_flashinfer_sparse_mla_backend,
++    create_flashinfer_sparse_mla_runner,
      flashinfer_sparse_mla_forward,
  )
++from sglang.srt.layers.attention.dsa.dsa_backend_kpool import (
++    DeepseekSparseAttnBackendKPoolMixin,
++)
++from sglang.srt.layers.attention.dsa_backend import DeepseekSparseAttnBackend
 +from sglang.srt.managers.schedule_policy import AddReqResult, PrefillAdder
 +from sglang.srt.mem_cache import kv_cache_configurator
  from sglang.test.ci.ci_register import register_cpu_ci
@@ -24727,34 +26497,9 @@ index 1b72d94403..93d101aad3 100644
 -        return patch.dict(
 -            sys.modules,
 -            {"flashinfer": flashinfer, "flashinfer.mla": mla},
--        )
--
--    def test_maps_sglang_layout_to_public_flashinfer_api(self):
 +    def test_maps_glm53_nope_layout_to_persistent_flashinfer_runner(self):
-         captured = {}
- 
--        def fake_op(**kwargs):
--            captured.update(kwargs)
--            query = kwargs["query"]
--            return query.new_full((*query.shape[:-1], kwargs["kv_lora_rank"]), 2)
--
--        with self._mock_flashinfer(fake_op):
--            output = flashinfer_sparse_mla_forward(
--                q=torch.zeros((2, 8, 576), dtype=torch.bfloat16),
--                kv_cache=torch.zeros((128, 1, 656), dtype=torch.uint8),
--                indices=torch.tensor(
--                    [[7, 9, -1, -1], [4, 6, 8, -1]], dtype=torch.int32
--                ),
--                seq_lens=torch.tensor([2, 3], dtype=torch.int32),
--                workspace_buffer=torch.zeros(1024, dtype=torch.uint8),
--                page_size=64,
--                kv_cache_dim=656,
--                qk_nope_head_dim=192,
--                kv_lora_rank=512,
--                qk_rope_head_dim=64,
--                sm_scale=0.125,
--                skip_softmax_threshold_scale_factor=0.25,
--            )
++        captured = {}
++
 +        class FakeRunner:
 +            def run(self, q, kv_cache, indices, output, sm_scale, **kwargs):
 +                captured.update(
@@ -24766,43 +26511,35 @@ index 1b72d94403..93d101aad3 100644
 +                    **kwargs,
 +                )
 +                output.fill_(2)
- 
--        self.assertEqual(tuple(captured["query"].shape), (2, 1, 8, 576))
--        self.assertEqual(tuple(captured["kv_cache"].shape), (2, 1, 64, 656))
--        self.assertEqual(tuple(captured["block_tables"].shape), (2, 1, 4))
--        self.assertEqual(
--            captured["block_tables"].tolist(),
--            [[[7, 9, -1, -1]], [[4, 6, 8, -1]]],
++
 +        indices = torch.full((2, 2051), -1, dtype=torch.int32)
 +        indices[0, :2] = torch.tensor([7, 9], dtype=torch.int32)
 +        indices[1, :3] = torch.tensor([4, 6, 8], dtype=torch.int32)
-+        output = flashinfer_sparse_mla_forward(
-+            q=torch.zeros((2, 8, 512), dtype=torch.bfloat16),
-+            kv_cache=torch.zeros((128, 1, 528), dtype=torch.uint8),
-+            indices=indices,
-+            seq_lens=torch.tensor([2, 3], dtype=torch.int32),
++        backend = SimpleNamespace(
 +            workspace_buffer=torch.zeros(2 * 1024 * 1024, dtype=torch.uint8),
-+            runner=FakeRunner(),
-+            page_size=64,
++            flashinfer_sparse_mla_runner=FakeRunner(),
++            real_page_size=64,
 +            kv_cache_dim=528,
-+            # This is the checkpoint's pre-absorption dimension. The query
-+            # reaching the native sparse-MLA kernel is 512 wide.
 +            qk_nope_head_dim=256,
 +            kv_lora_rank=512,
 +            qk_rope_head_dim=0,
++            dsa_index_kpool=4,
++        )
++        DeepseekSparseAttnBackendKPoolMixin._check_kpool_tail_backend(
++            backend, indices, "flashinfer_sparse_mla", "prefill"
++        )
++        output = DeepseekSparseAttnBackend._forward_flashinfer_sparse_mla(
++            backend,
++            q_all=torch.zeros((2, 8, 512), dtype=torch.bfloat16),
++            kv_cache=torch.zeros((128, 1, 528), dtype=torch.uint8),
++            page_table_1=indices,
++            seq_lens=torch.tensor([4096, 8192], dtype=torch.int32),
 +            sm_scale=0.125,
 +            skip_softmax_threshold_scale_factor=None,
          )
--        self.assertEqual(captured["seq_lens"].tolist(), [2, 3])
--        self.assertEqual(captured["max_seq_len"], 4)
--        self.assertEqual(captured["sparse_mla_top_k"], 4)
--        self.assertEqual(captured["qk_nope_head_dim"], 192)
--        self.assertEqual(captured["bmm1_scale"], 0.125)
--        self.assertEqual(captured["bmm2_scale"], 1.0)
--        self.assertEqual(captured["kv_scale_format"], "arbitrary_fp32")
--        self.assertEqual(captured["skip_softmax_threshold_scale_factor"], 0.25)
--        self.assertNotIn("backend", captured)
-+
+ 
+-    def test_maps_sglang_layout_to_public_flashinfer_api(self):
+-        captured = {}
 +        self.assertEqual(tuple(captured["q"].shape), (2, 8, 512))
 +        self.assertEqual(tuple(captured["kv_cache"].shape), (2, 64, 528))
 +        self.assertEqual(tuple(captured["indices"].shape), (2, 2176))
@@ -24812,10 +26549,109 @@ index 1b72d94403..93d101aad3 100644
 +        self.assertEqual(captured["sm_scale"], 0.125)
 +        self.assertEqual(tuple(captured["mid_out"].shape), (2, 8, 34, 512))
 +        self.assertEqual(tuple(captured["mid_lse"].shape), (2, 8, 34))
-         self.assertEqual(tuple(output.shape), (2, 8, 512))
-         self.assertTrue(torch.all(output == 2))
++        self.assertEqual(tuple(output.shape), (2, 8, 512))
++        self.assertTrue(torch.all(output == 2))
  
-@@ -86,6 +80,8 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+-        def fake_op(**kwargs):
+-            captured.update(kwargs)
+-            query = kwargs["query"]
+-            return query.new_full((*query.shape[:-1], kwargs["kv_lora_rank"]), 2)
+ 
+-        with self._mock_flashinfer(fake_op):
++class TestFlashInferSparseMLARunnerCompatibility(unittest.TestCase):
++    def _create(self, rope=0):
++        return create_flashinfer_sparse_mla_runner(
++            qk_rope_head_dim=rope,
++            kv_lora_rank=512,
++            max_num_tokens=4096,
++            max_num_heads=32,
++            device="cpu",
++        )
++
++    def test_existing_rope_path_does_not_require_native_api(self):
++        with patch("flashinfer.mla.SparseMLASm120Wrapper", None, create=True):
++            self.assertIsNone(self._create(rope=64))
++
++    def test_nope_requires_advertised_native_support(self):
++        with patch("flashinfer.mla.SparseMLASm120Wrapper", None, create=True):
++            with self.assertRaisesRegex(RuntimeError, "glm53_nope"):
++                self._create()
++
++    def test_native_wrapper_is_sized_before_capture(self):
++        marker = object()
++        with (
++            patch(
++                "flashinfer.mla.SparseMLASm120Wrapper", return_value=marker, create=True
++            ) as wrapper,
++            patch(
++                "flashinfer.mla.supported_sparse_mla_sm120_configs",
++                return_value={"glm53_nope": object()},
++                create=True,
++            ),
++        ):
++            self.assertIs(self._create(), marker)
++            wrapper.assert_called_once_with(
++                max_num_tokens=4096,
++                max_num_heads=32,
++                d_v=512,
++                kv_scale_format="arbitrary_fp32",
++                device="cpu",
++            )
++
++    def test_legacy_rope_call_keeps_pinned_flashinfer_api(self):
++        expected = torch.ones(2, 1, 8, 512, dtype=torch.bfloat16)
++        with patch(
++            "flashinfer.mla.trtllm_batch_decode_with_kv_cache_mla",
++            return_value=expected,
++        ) as legacy:
+             output = flashinfer_sparse_mla_forward(
+-                q=torch.zeros((2, 8, 576), dtype=torch.bfloat16),
+-                kv_cache=torch.zeros((128, 1, 656), dtype=torch.uint8),
+-                indices=torch.tensor(
+-                    [[7, 9, -1, -1], [4, 6, 8, -1]], dtype=torch.int32
+-                ),
++                q=torch.zeros(2, 8, 576, dtype=torch.bfloat16),
++                kv_cache=torch.zeros(128, 1, 656, dtype=torch.uint8),
++                indices=torch.zeros(2, 2048, dtype=torch.int32),
+                 seq_lens=torch.tensor([2, 3], dtype=torch.int32),
+-                workspace_buffer=torch.zeros(1024, dtype=torch.uint8),
++                workspace_buffer=torch.zeros(1, dtype=torch.uint8),
+                 page_size=64,
+                 kv_cache_dim=656,
+-                qk_nope_head_dim=192,
++                qk_nope_head_dim=512,
+                 kv_lora_rank=512,
+                 qk_rope_head_dim=64,
+                 sm_scale=0.125,
+-                skip_softmax_threshold_scale_factor=0.25,
++                skip_softmax_threshold_scale_factor=None,
+             )
+-
+-        self.assertEqual(tuple(captured["query"].shape), (2, 1, 8, 576))
+-        self.assertEqual(tuple(captured["kv_cache"].shape), (2, 1, 64, 656))
+-        self.assertEqual(tuple(captured["block_tables"].shape), (2, 1, 4))
+-        self.assertEqual(
+-            captured["block_tables"].tolist(),
+-            [[[7, 9, -1, -1]], [[4, 6, 8, -1]]],
+-        )
+-        self.assertEqual(captured["seq_lens"].tolist(), [2, 3])
+-        self.assertEqual(captured["max_seq_len"], 4)
+-        self.assertEqual(captured["sparse_mla_top_k"], 4)
+-        self.assertEqual(captured["qk_nope_head_dim"], 192)
+-        self.assertEqual(captured["bmm1_scale"], 0.125)
+-        self.assertEqual(captured["bmm2_scale"], 1.0)
+-        self.assertEqual(captured["kv_scale_format"], "arbitrary_fp32")
+-        self.assertEqual(captured["skip_softmax_threshold_scale_factor"], 0.25)
+-        self.assertNotIn("backend", captured)
+-        self.assertEqual(tuple(output.shape), (2, 8, 512))
+-        self.assertTrue(torch.all(output == 2))
++        torch.testing.assert_close(output, expected.squeeze(1))
++        self.assertEqual(legacy.call_args.kwargs["query"].shape, (2, 1, 8, 576))
++        self.assertEqual(legacy.call_args.kwargs["kv_cache"].shape, (2, 1, 64, 656))
+ 
+ 
+ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -86,6 +155,8 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          for model_arch in (
              "GlmMoeDsaForCausalLM",
              "GlmMoeDsaForCausalLMNextN",
@@ -24824,7 +26660,7 @@ index 1b72d94403..93d101aad3 100644
          ):
              with self.subTest(model_arch=model_arch):
                  self.assertTrue(
-@@ -96,14 +92,14 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -96,14 +167,14 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
                      )
                  )
  
@@ -24846,7 +26682,7 @@ index 1b72d94403..93d101aad3 100644
  
      def test_reports_unsupported_configuration(self):
          with self.assertRaises(ValueError) as error:
-@@ -119,5 +115,184 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -119,5 +190,191 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          self.assertIn("kv_cache_dtype=torch.float8_e4m3fn", message)
  
  
@@ -24864,6 +26700,8 @@ index 1b72d94403..93d101aad3 100644
 +            )
 +        )
 +        for capability, expected in [
++            ("missing_api", 656),
++            (None, 656),
 +            (SimpleNamespace(), 656),
 +            (SimpleNamespace(compact_bytes_per_token=None), 656),
 +            (SimpleNamespace(compact_bytes_per_token=528), 528),
@@ -24882,7 +26720,12 @@ index 1b72d94403..93d101aad3 100644
 +                patch.object(kv_cache_configurator, "_is_hip", False),
 +                patch(
 +                    "flashinfer.mla.supported_sparse_mla_sm120_configs",
-+                    return_value={"glm53_nope": capability},
++                    new=(
++                        None
++                        if capability == "missing_api"
++                        else lambda: {"glm53_nope": capability}
++                    ),
++                    create=True,
 +                ),
 +            ):
 +                self.assertEqual(

@@ -4,8 +4,8 @@ Download the checkpoint as described in [README.md](README.md), then start the p
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.1
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v79
+export IMAGE=sglang-glm53-flash-sm120:v0.4.2-rc.1
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v80
 ./examples/serve-glm53-flash.sh
 ```
 
