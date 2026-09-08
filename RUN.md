@@ -1,6 +1,6 @@
 # Running GLM-5.3-Flash
 
-Download the checkpoint as described in [README.md](README.md), then start the locally built validation image:
+Download the checkpoint as described in [README.md](README.md), then start the locally built image:
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO

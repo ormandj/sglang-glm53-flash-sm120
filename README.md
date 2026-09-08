@@ -1,7 +1,5 @@
 # GLM-5.3-Flash on two RTX PRO 6000 Blackwell GPUs
 
-This source branch builds `sglang-glm53-flash-sm120:v0.4.1-rc.1`, which is under validation. The published release and measurements described below remain `v0.4.0`.
-
 A ready-to-run SGLang image and a matching quantized checkpoint for serving GLM-5.3-Flash on two NVIDIA RTX PRO 6000 Blackwell (96 GB, SM120) GPUs over PCIe. Download the checkpoint and run the launcher for an OpenAI-compatible server with a 524,288-token context limit and shared device token pool, up to four concurrent requests within that pool, speculative decoding, vision input, reasoning and tool calling.
 
 | | |
@@ -71,6 +69,8 @@ to see or change every flag. [`RUN.md`](RUN.md) describes the serving configurat
 - `--cuda-graph-bs-decode` lists every batch size up to `--max-running-requests`, so each decode batch uses a graph captured for its size.
 - `--max-mamba-cache-size` is recurrent-state slots, not KV cache. Each live
   request uses four to five, so the launcher ships 28 for four requests.
+
+To build this source locally as `sglang-glm53-flash-sm120:v0.4.1-rc.1`, follow [RUN.md](RUN.md).
 
 ## What to expect
 
