@@ -3649,7 +3649,7 @@ index 9975619bc8..49932936a3 100644
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 906d4aa22d..7bd1995621 100644
+index 906d4aa22d..e3c15743b7 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 @@ -28,8 +28,13 @@ _is_hip = is_hip()
@@ -3706,7 +3706,7 @@ index 906d4aa22d..7bd1995621 100644
          unsupported = selected - {"flashinfer_sparse_mla"}
          if unsupported:
              raise ValueError(
-@@ -681,12 +710,42 @@ def _validate_flashinfer_sparse_mla_backend(
+@@ -681,12 +710,48 @@ def _validate_flashinfer_sparse_mla_backend(
      return uses_flashinfer_sparse_mla
  
  
@@ -3725,10 +3725,16 @@ index 906d4aa22d..7bd1995621 100644
 +
 +    wrapper = getattr(mla, "SparseMLASm120Wrapper", None)
 +    configs = getattr(mla, "supported_sparse_mla_sm120_configs", None)
-+    if wrapper is None or configs is None or "glm53_nope" not in configs():
++    config = configs().get("glm53_nope") if configs is not None else None
++    # The initial NoPE API advertises the family but still reads mutable slot
++    # zero for masked candidates and uses incompatible eight-head scratch.
++    # Row-width support alone does not establish either correctness contract.
++    if wrapper is None or getattr(config, "glm53_nope_contract_version", 0) < 1:
 +        raise RuntimeError(
 +            "GLM NoPE sparse MLA requires FlashInfer native SM120 support "
-+            "with the glm53_nope configuration."
++            "with glm53_nope contract version 1 or later "
++            "(masked candidate reads and eight-head decode scratch). "
++            "Upgrade FlashInfer to a build advertising this contract."
 +        )
 +    return wrapper(
 +        max_num_tokens=max_num_tokens,
@@ -3749,7 +3755,7 @@ index 906d4aa22d..7bd1995621 100644
      *,
      page_size: int,
      kv_cache_dim: int,
-@@ -696,26 +755,123 @@ def flashinfer_sparse_mla_forward(
+@@ -696,26 +761,123 @@ def flashinfer_sparse_mla_forward(
      sm_scale: float,
      skip_softmax_threshold_scale_factor: float | None,
  ) -> torch.Tensor:
@@ -26458,10 +26464,10 @@ index fe062eb256..9920b51459 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index 1b72d94403..48b3b48a9c 100644
+index 1b72d94403..357deb6118 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
-@@ -1,75 +1,144 @@
+@@ -1,75 +1,168 @@
 -import sys
  import unittest
 -from types import ModuleType
@@ -26558,6 +26564,11 @@ index 1b72d94403..48b3b48a9c 100644
 -            return query.new_full((*query.shape[:-1], kwargs["kv_lora_rank"]), 2)
  
 -        with self._mock_flashinfer(fake_op):
+-            output = flashinfer_sparse_mla_forward(
+-                q=torch.zeros((2, 8, 576), dtype=torch.bfloat16),
+-                kv_cache=torch.zeros((128, 1, 656), dtype=torch.uint8),
+-                indices=torch.tensor(
+-                    [[7, 9, -1, -1], [4, 6, 8, -1]], dtype=torch.int32
 +class TestFlashInferSparseMLARunnerCompatibility(unittest.TestCase):
 +    def _create(self, rope=0):
 +        return create_flashinfer_sparse_mla_runner(
@@ -26577,6 +26588,26 @@ index 1b72d94403..48b3b48a9c 100644
 +            with self.assertRaisesRegex(RuntimeError, "glm53_nope"):
 +                self._create()
 +
++    def test_nope_rejects_legacy_and_compact_only_capabilities(self):
++        for config in (
++            None,
++            SimpleNamespace(),
++            SimpleNamespace(compact_bytes_per_token=528),
++            SimpleNamespace(glm53_nope_contract_version=0),
++        ):
++            with (
++                self.subTest(config=config),
++                patch("flashinfer.mla.SparseMLASm120Wrapper", create=True) as wrapper,
++                patch(
++                    "flashinfer.mla.supported_sparse_mla_sm120_configs",
++                    return_value={"glm53_nope": config},
++                    create=True,
+                 ),
++            ):
++                with self.assertRaisesRegex(RuntimeError, "contract version 1"):
++                    self._create()
++                wrapper.assert_not_called()
++
 +    def test_native_wrapper_is_sized_before_capture(self):
 +        marker = object()
 +        with (
@@ -26585,7 +26616,11 @@ index 1b72d94403..48b3b48a9c 100644
 +            ) as wrapper,
 +            patch(
 +                "flashinfer.mla.supported_sparse_mla_sm120_configs",
-+                return_value={"glm53_nope": object()},
++                # Corrected 656-byte implementations need not advertise compact
++                # rows. The execution contract is independent of row capacity.
++                return_value={
++                    "glm53_nope": SimpleNamespace(glm53_nope_contract_version=1)
++                },
 +                create=True,
 +            ),
 +        ):
@@ -26604,12 +26639,7 @@ index 1b72d94403..48b3b48a9c 100644
 +            "flashinfer.mla.trtllm_batch_decode_with_kv_cache_mla",
 +            return_value=expected,
 +        ) as legacy:
-             output = flashinfer_sparse_mla_forward(
--                q=torch.zeros((2, 8, 576), dtype=torch.bfloat16),
--                kv_cache=torch.zeros((128, 1, 656), dtype=torch.uint8),
--                indices=torch.tensor(
--                    [[7, 9, -1, -1], [4, 6, 8, -1]], dtype=torch.int32
--                ),
++            output = flashinfer_sparse_mla_forward(
 +                q=torch.zeros(2, 8, 576, dtype=torch.bfloat16),
 +                kv_cache=torch.zeros(128, 1, 656, dtype=torch.uint8),
 +                indices=torch.zeros(2, 2048, dtype=torch.int32),
@@ -26651,7 +26681,7 @@ index 1b72d94403..48b3b48a9c 100644
  
  
  class TestFlashInferSparseMLABackendGate(unittest.TestCase):
-@@ -86,6 +155,8 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -86,6 +179,8 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          for model_arch in (
              "GlmMoeDsaForCausalLM",
              "GlmMoeDsaForCausalLMNextN",
@@ -26660,7 +26690,7 @@ index 1b72d94403..48b3b48a9c 100644
          ):
              with self.subTest(model_arch=model_arch):
                  self.assertTrue(
-@@ -96,14 +167,14 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -96,14 +191,14 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
                      )
                  )
  
@@ -26682,7 +26712,7 @@ index 1b72d94403..48b3b48a9c 100644
  
      def test_reports_unsupported_configuration(self):
          with self.assertRaises(ValueError) as error:
-@@ -119,5 +190,191 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -119,5 +214,191 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          self.assertIn("kv_cache_dtype=torch.float8_e4m3fn", message)
  
  

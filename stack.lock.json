@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.2",
-    "candidate": 1,
-    "candidate_tag": "v0.4.2-rc.1",
+    "candidate": 2,
+    "candidate_tag": "v0.4.2-rc.2",
     "stable_tag": "v0.4.2",
-    "cache_schema": "v80"
+    "cache_schema": "v81"
   },
   "image": {
-    "tag": "v0.4.2-rc.1",
+    "tag": "v0.4.2-rc.2",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 1
+      "value": 2
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v80"
+      "value": "v81"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -75,19 +75,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "30e7a3072d3f1e9bd70cd5e44146ca27c80522c4"
+      "value": "afe90a8bc908002219993794404c7c95dd3ced1d"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "b7ad75848bb635c9fd0bd946cfdd2f6a7df751fc"
+      "value": "bc0f7bc45d7991140b0942008821fba418cc9f15"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "90f857ff609399b499330de62e5a156396e629cd"
+      "value": "4f7bcf12dee044a8de21203859b643e94d75715e"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "9963c2cc0bd1479dd571b24f625bc83d79ce7eb4479cedb1e562e94eff308d27"
+      "value": "a239493a1b61dda4df9e6714e76ae9b75a60a45f5e2a01e6b9d95f50f0343604"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -99,19 +99,19 @@
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "2fe65eb0eda475d4bd8ecf3afd618fe2b09dec25"
+      "value": "9c10d2e8f23a18631dcf21551276910678249b3f"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "96d8fe7c526cec681883f5bba1bad0ff390e3485"
+      "value": "912304b0b405c39df074d15ba3538d9d5a09b04e"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "7ac7179d81964cd8ed095547f6d5f0fe26b1761b"
+      "value": "d5d56053888d78bcfe950d52ced47199ce65b56d"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "eda58c73fe03cc13b5a7f9e948494a560d7145df6674e57cae5de431ced369a8"
+      "value": "ea9d3e5171f30eab70e28041cdf623056ec3f1c8dd22f1db1246dc0e48f06c55"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -145,53 +145,53 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "30e7a3072d3f1e9bd70cd5e44146ca27c80522c4",
-      "upstream_tree": "b7ad75848bb635c9fd0bd946cfdd2f6a7df751fc",
-      "tree": "90f857ff609399b499330de62e5a156396e629cd",
+      "head": "afe90a8bc908002219993794404c7c95dd3ced1d",
+      "upstream_tree": "bc0f7bc45d7991140b0942008821fba418cc9f15",
+      "tree": "4f7bcf12dee044a8de21203859b643e94d75715e",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "9963c2cc0bd1479dd571b24f625bc83d79ce7eb4479cedb1e562e94eff308d27",
-      "upstream_main_base": "30e7a3072d3f1e9bd70cd5e44146ca27c80522c4",
+      "patch_sha256": "a239493a1b61dda4df9e6714e76ae9b75a60a45f5e2a01e6b9d95f50f0343604",
+      "upstream_main_base": "afe90a8bc908002219993794404c7c95dd3ced1d",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion; integrated/adapted to this source tree",
         "sglang#36696 at 1ff89343694a1265516b6147160a78e25f382f1d: [Mamba][Fix] Register a split node under its own key in the mamba radix cache; integrated/adapted to this source tree",
         "sglang#36821 at c3c1a7745f15c35209fe662c31d92918e00b04f6: [KDA] Support ReplaySSM ring-write in the fused chain-verify kernel; integrated/adapted to this source tree",
-        "sglang#37168 at 4ee21703a089dfb5238d1b81f92fd5969039acb9: Prevent full CUDA-graph serving from corrupting MHC and DSA tensors; integrated/adapted to this source tree",
-        "sglang#37169 at a1c86f9371ff7d2feaca148a5f1fbf7f76587d8f: Capture allocator history to investigate CUDA-graph memory corruption; integrated/adapted to this source tree",
-        "sglang#37534 at dcb154c1f55e8ecee4888604f0f9d0909a31a80b: Prevent HiCache transfer corruption from mismatched DSA cache row sizes; integrated/adapted to this source tree",
-        "sglang#37535 at 290173ceefeb219f03d7f9e0afe01f1d9aacb28c: Reduce KDA prefill OOM risk with opt-in workspace limits; integrated/adapted to this source tree",
-        "sglang#37536 at 4ac5c864bdfb4bfac6c35477d958ce5bcc787d26: Free raw image tensors before language-model execution to avoid prefill OOMs; integrated/adapted to this source tree",
-        "sglang#37537 at 7732c8a72ef2a5fb0a327852ab1ea9418d1bb30d: Allow CPU image preprocessing to preserve serving GPU memory; integrated/adapted to this source tree",
-        "sglang#37538 at 69c59624ade37debe207d4c5578c8e3dff306dd2: Report which prefill phases consume GPU memory before an OOM; integrated/adapted to this source tree",
-        "sglang#37541 at d6b59f4f9f8fd6f84cd0e4ba7a09bb755f600421: Warm up real serving paths before the first user request; integrated/adapted to this source tree",
-        "sglang#37612 at 464c747ef3cc0f817a59265714ce3ab449b49fbc: Retry queued prefills when Mamba cache capacity may have recovered; integrated/adapted to this source tree",
-        "sglang#37619 at 0f6819097825f8dbab00219bca1ba039aa1d4c9c: Prevent scheduler crashes when Mamba checkpoint slots run out; integrated/adapted to this source tree",
-        "sglang#37625 at 05b4f2efb3f98fcc28213bad43408c37e785357c: Fix incorrect sparse-attention top-k selection when candidate bins overflow; integrated/adapted to this source tree",
+        "sglang#37168 at 00e34a411f9608d072cbb58371c6e1cbcb0c87d7: Prevent full CUDA-graph serving from corrupting MHC and DSA tensors; integrated/adapted to this source tree",
+        "sglang#37169 at 7b542b25633c68b80226b5280271536f5d7ed150: Capture allocator history to investigate CUDA-graph memory corruption; integrated/adapted to this source tree",
+        "sglang#37534 at a24b8c4a749d9d060364d1e79f7e4f41957c22ef: Prevent HiCache transfer corruption from mismatched DSA cache row sizes; integrated/adapted to this source tree",
+        "sglang#37535 at e96e6f0d122e3a9f5e0bb579366e50547cb1e272: Reduce KDA prefill OOM risk with opt-in workspace limits; integrated/adapted to this source tree",
+        "sglang#37536 at 3c8221685561ecfd9ca271de99d9bf194fbab104: Free raw image tensors before language-model execution to avoid prefill OOMs; integrated/adapted to this source tree",
+        "sglang#37537 at 3fac6bfca7c3c1ee3197130297e0a4d40f983a5b: Allow CPU image preprocessing to preserve serving GPU memory; integrated/adapted to this source tree",
+        "sglang#37538 at a60410e87332c262289240e46301aefa13c3f1d1: Report which prefill phases consume GPU memory before an OOM; integrated/adapted to this source tree",
+        "sglang#37541 at 805c1fd55d525479f0b653eccfa53707a4f433ad: Warm up real serving paths before the first user request; integrated/adapted to this source tree",
+        "sglang#37612 at 7624e35482c6935ef1ef615ac651a08c2679fe6c: Retry queued prefills when Mamba cache capacity may have recovered; integrated/adapted to this source tree",
+        "sglang#37619 at a17aa1b0bd08c328278b02b4146f24a886043872: Prevent scheduler crashes when Mamba checkpoint slots run out; integrated/adapted to this source tree",
+        "sglang#37625 at 759070d497cc693c3acbb0932dd236ed528405a8: Fix incorrect sparse-attention top-k selection when candidate bins overflow; integrated/adapted to this source tree",
         "sglang#37980 at a340acbe5b2aa723b60a02d32d00c2e283c00728: [Spec] Gate plan-stream verify prep on the draft/tree handoff frontier (stacked on #36507); integrated/adapted to this source tree",
         "sglang#38157 at 8128658833901ec644a53c369ba975155f34c084: [HiCache] Read host memory once per TP group before splitting the budget; integrated/adapted to this source tree",
-        "sglang#38164 at e096970bfa1b98215fc0b6196bbcc6d0b44011cf: Time out decode preallocation waits and clear stale lifecycle state; integrated/adapted to this source tree",
-        "sglang#38212 at a754a55e7bae8d6e00eb07b19d8e5404885b5235: Fix incomplete HiCache restores that can corrupt GLM-5.3-Flash output; integrated/adapted to this source tree",
-        "sglang#38213 at 2b7ca22a8bafa1a0add28223b9c32256e8a7b2e7: Reduce repeated attention setup during speculative decoding; integrated/adapted to this source tree",
-        "sglang#38214 at 0b0f33054240dfd1c87e75025fc1b81a0a62aa2c: Precompile GLM vision kernels before KV allocation to avoid first-image OOMs; integrated/adapted to this source tree",
+        "sglang#38164 at 6fa7b61c81b4cc5c1fabb7cffab2feb00f4f00a8: Time out decode preallocation waits and clear stale lifecycle state; integrated/adapted to this source tree",
+        "sglang#38212 at 230102db838cbbe6eca7952c729518ee6d93c3a9: Fix incomplete HiCache restores that can corrupt GLM-5.3-Flash output; integrated/adapted to this source tree",
+        "sglang#38213 at 342fba81d1c7fcefd7a58fedab957a63cd719e91: Reduce repeated attention setup during speculative decoding; integrated/adapted to this source tree",
+        "sglang#38214 at 65113b94a83c8725babac5613bc12db724ff5f3e: Precompile GLM vision kernels before KV allocation to avoid first-image OOMs; integrated/adapted to this source tree",
         "sglang#38126 at 6a0444c619c9785b170c196b9467e37f15099e5b: feat: support GLM-5 KDA prefill with breakable CUDA graphs; integrated/adapted to this source tree",
-        "sglang#38430 at e4cd1c6f5896061c248b67cd4e04f10d4b9ebf2f: Enable compact GLM NoPE KV storage with native FlashInfer; integrated/adapted to this source tree",
-        "sglang#38431 at c0a43f8c1902374bdee1e229a7a23d8a7c6fbac6: Reuse host lengths to avoid KDA prefill synchronization; integrated/adapted to this source tree",
+        "sglang#38430 at 284505be2d921b364e75f2c8e0c64231b20e700e: Enable compact GLM NoPE KV storage with native FlashInfer; integrated/adapted to this source tree",
+        "sglang#38431 at eb71d35924a95835ff74bbd7029f1e9cf79d150c: Reuse host lengths to avoid KDA prefill synchronization; integrated/adapted to this source tree",
         "sglang#35645 at 3878952b1bd298cbd57d792bceff083b0748e169: Stop waiting admission after resumed chunks and mixed-decode sub-page remainders; includes the author contribution on the current PR head"
       ]
     },
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
       "package_version": "0.6.18",
-      "head": "2fe65eb0eda475d4bd8ecf3afd618fe2b09dec25",
-      "upstream_tree": "96d8fe7c526cec681883f5bba1bad0ff390e3485",
-      "tree": "7ac7179d81964cd8ed095547f6d5f0fe26b1761b",
+      "head": "9c10d2e8f23a18631dcf21551276910678249b3f",
+      "upstream_tree": "912304b0b405c39df074d15ba3538d9d5a09b04e",
+      "tree": "d5d56053888d78bcfe950d52ced47199ce65b56d",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "eda58c73fe03cc13b5a7f9e948494a560d7145df6674e57cae5de431ced369a8",
-      "upstream_main_base": "2fe65eb0eda475d4bd8ecf3afd618fe2b09dec25",
+      "patch_sha256": "ea9d3e5171f30eab70e28041cdf623056ec3f1c8dd22f1db1246dc0e48f06c55",
+      "upstream_main_base": "9c10d2e8f23a18631dcf21551276910678249b3f",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing; integrated/adapted to this source tree",
-        "flashinfer#4827 at c340e6e6e3d8005ac09f09945c38d2878305ac11: Prevent SM12x MoE graph replays from corrupting memory after workspace growth; integrated/adapted to this source tree",
+        "flashinfer#4827 at 7cc5b29a18377370b3981351eff370d2e72a724d: Prevent SM12x MoE graph replays from corrupting memory after workspace growth; integrated/adapted to this source tree",
         "flashinfer#4910 at 7b0e8004b87d70431a7d172aa1793c14f3dc9929: feat(moe): persistent disk cache for the SM12x W4A16 CuTe-DSL MoE kernels; integrated/adapted to this source tree",
-        "flashinfer#5022 at f7113e8d6fb93bfee743bc73f0e5b2edc440fce6: Support compact GLM NoPE FP8 rows and fix masked reads; integrated/adapted to this source tree"
+        "flashinfer#5022 at 3b3ef407303464f2804f55aac4a484e1056b40e2: Support compact GLM NoPE FP8 rows and fix masked reads; integrated/adapted to this source tree"
       ]
     },
     "modelopt": {
@@ -206,18 +206,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "9963c2cc0bd1479dd571b24f625bc83d79ce7eb4479cedb1e562e94eff308d27",
-      "base_head": "30e7a3072d3f1e9bd70cd5e44146ca27c80522c4",
-      "base_tree": "b7ad75848bb635c9fd0bd946cfdd2f6a7df751fc",
-      "result_tree": "90f857ff609399b499330de62e5a156396e629cd"
+      "sha256": "a239493a1b61dda4df9e6714e76ae9b75a60a45f5e2a01e6b9d95f50f0343604",
+      "base_head": "afe90a8bc908002219993794404c7c95dd3ced1d",
+      "base_tree": "bc0f7bc45d7991140b0942008821fba418cc9f15",
+      "result_tree": "4f7bcf12dee044a8de21203859b643e94d75715e"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "eda58c73fe03cc13b5a7f9e948494a560d7145df6674e57cae5de431ced369a8",
-      "base_head": "2fe65eb0eda475d4bd8ecf3afd618fe2b09dec25",
-      "base_tree": "96d8fe7c526cec681883f5bba1bad0ff390e3485",
-      "result_tree": "7ac7179d81964cd8ed095547f6d5f0fe26b1761b"
+      "sha256": "ea9d3e5171f30eab70e28041cdf623056ec3f1c8dd22f1db1246dc0e48f06c55",
+      "base_head": "9c10d2e8f23a18631dcf21551276910678249b3f",
+      "base_tree": "912304b0b405c39df074d15ba3538d9d5a09b04e",
+      "result_tree": "d5d56053888d78bcfe950d52ced47199ce65b56d"
     }
   ],
   "runtime_profile": {

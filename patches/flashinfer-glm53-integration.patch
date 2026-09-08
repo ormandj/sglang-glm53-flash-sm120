@@ -2593,10 +2593,10 @@ index 603807d4..f340eab1 100644
      return {
          "w1_weight": w1_fp4,
 diff --git a/flashinfer/mla/_sparse_mla_sm120.py b/flashinfer/mla/_sparse_mla_sm120.py
-index 55abc157..46dbee8d 100644
+index 55abc157..2b98e8e9 100644
 --- a/flashinfer/mla/_sparse_mla_sm120.py
 +++ b/flashinfer/mla/_sparse_mla_sm120.py
-@@ -176,7 +176,10 @@ class SparseMLASm120DecodeConfig:
+@@ -176,7 +176,15 @@ class SparseMLASm120DecodeConfig:
          Packed cache format described by this entry (``"fp8"`` or
          ``"nvfp4"``).
      bytes_per_token : int
@@ -2605,26 +2605,33 @@ index 55abc157..46dbee8d 100644
 +    compact_bytes_per_token : Optional[int]
 +        Optional smaller lossless row layout for explicitly shaped 3-D or
 +        4-D caches. GLM53_NOPE can omit its 128 unused RoPE padding bytes.
++    glm53_nope_contract_version : int
++        GLM53_NOPE integration contract. Version 1 guarantees zero-padded
++        masked candidate reads and an eight-head decode kernel compatible
++        with eight-head scratch buffers. Zero does not advertise this
++        contract. Compact row support is advertised separately.
      head_counts : Optional[frozenset[int]]
          Exact instantiated head counts when the kernel has no runtime-head
          fallback. ``None`` means every count in ``[1, max_num_heads]``.
-@@ -199,6 +202,7 @@ class SparseMLASm120DecodeConfig:
+@@ -199,6 +207,8 @@ class SparseMLASm120DecodeConfig:
      head_counts: Optional[frozenset[int]] = None
      topk_is_runtime: bool = True
      extra_page_block_sizes: frozenset[int] = frozenset()
 +    compact_bytes_per_token: Optional[int] = None
++    glm53_nope_contract_version: int = 0
  
      def supported_num_heads(self) -> tuple[int, ...]:
          """Sorted instantiated head counts, including any runtime-H envelope."""
-@@ -336,6 +340,7 @@ def supported_sparse_mla_sm120_configs(
+@@ -336,6 +346,8 @@ def supported_sparse_mla_sm120_configs(
              min_topk=1,
              max_num_heads=_DECODE_MAX_HEADS,
              bytes_per_token=_BPT_DSV3_2,
 +            compact_bytes_per_token=528,
++            glm53_nope_contract_version=1,
          ),
          "dots3_swa": SparseMLASm120DecodeConfig(
              d_qk=1088,
-@@ -519,6 +524,12 @@ def _packed_kv_page_block_size(
+@@ -519,6 +531,12 @@ def _packed_kv_page_block_size(
      name: str,
  ) -> int:
      bytes_per_token = _bytes_per_token_for_model_type(model_type)
@@ -3053,7 +3060,7 @@ index e334e6f8..6863f497 100644
 +            poisoned, torch.full_like(poisoned, 0.25), atol=1e-3, rtol=1e-3
 +        )
 diff --git a/tests/attention/test_sparse_mla_sm120_dispatch.py b/tests/attention/test_sparse_mla_sm120_dispatch.py
-index 64f111c5..b826c09d 100644
+index 64f111c5..e12df3f9 100644
 --- a/tests/attention/test_sparse_mla_sm120_dispatch.py
 +++ b/tests/attention/test_sparse_mla_sm120_dispatch.py
 @@ -60,6 +60,7 @@ from flashinfer.mla._sparse_mla_sm120 import (
@@ -3064,17 +3071,23 @@ index 64f111c5..b826c09d 100644
  )
  from flashinfer.mla._sparse_mla_sm120_plan import (
      _PREFILL_IMPL_SWAPAB,
-@@ -73,6 +74,9 @@ def test_supported_configs_families() -> None:
+@@ -73,6 +74,15 @@ def test_supported_configs_families() -> None:
      """The query API mirrors the decode dispatch envelopes exactly."""
      configs = supported_sparse_mla_sm120_configs()
      assert set(configs) == {"dsv4", "dsv3_2", "glm_nsa", "glm53_nope", "dots3_swa"}
 +    assert configs["glm53_nope"].bytes_per_token == 656
 +    assert configs["glm53_nope"].compact_bytes_per_token == 528
++    assert configs["glm53_nope"].glm53_nope_contract_version == 1
++    assert all(
++        config.glm53_nope_contract_version == 0
++        for family, config in configs.items()
++        if family != "glm53_nope"
++    )
 +    assert configs["glm_nsa"].compact_bytes_per_token is None
      assert all(
          isinstance(config, SparseMLASm120DecodeConfig) for config in configs.values()
      )
-@@ -889,3 +893,22 @@ def test_sparse_mla_sm120_wrapper_public_export() -> None:
+@@ -889,3 +899,22 @@ def test_sparse_mla_sm120_wrapper_public_export() -> None:
  
      assert SparseMLASm120Wrapper is _SparseMLAPagedAttentionRunner
      assert "SparseMLASm120Wrapper" in dir(flashinfer.mla)
