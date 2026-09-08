@@ -64,6 +64,6 @@ Preserve contributor credit and the repository PR template. Titles and bodies mu
 
 Only PR bodies include the closing line "Developed with AI assistance." Never add assistance attribution to issues, comments, reviews or release notes. Preserve CI-managed PR footers.
 
-Before submitting upstream patches, obtain Codex and adversarial Claude review of the exact patch and title/body. Use Claude's configured model and effort defaults. Resolve concrete findings and review material changes again. Keep internal review receipts privately. Upstream posts require explicit authorization.
+Before submitting upstream patches, obtain Codex and adversarial OpenCode review of the exact patch and title/body. Use OpenCode's configured model and effort defaults. Do not override the model or effort unless the owner requests it. Resolve concrete findings and review material changes again. Keep internal review receipts privately. Upstream posts require explicit authorization.
 
 The DFlash2 drafter must not enter this repository or its published images.
