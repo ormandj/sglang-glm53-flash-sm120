@@ -36,8 +36,8 @@ if grep -E -- '^## Releases$|([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal
   exit 1
 fi
 
-for file in README.md CHANGELOG.md AGENTS.md; do
-  if grep -E -- '([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal\.example|/Users/[^/]+/|~/git/[^/]+/' "$repo/$file" >/dev/null; then
+for file in README.md CHANGELOG.md AGENTS.md NOTICE.md; do
+  if grep -E -- '([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal\.example|/Users/[^/]+/|~/git/[^/]+/|(^|[^[:alnum:]_])(this|our) homelab([^[:alnum:]_]|$)' "$repo/$file" >/dev/null; then
     echo "$file contains private operational details" >&2
     exit 1
   fi
