@@ -4,11 +4,11 @@ A ready-to-run SGLang image and a matching quantized checkpoint for serving GLM-
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.0` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.1` |
 | Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
 | Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
 
-The current published stable image is `v0.4.0`. It increases the context limit and shared device token pool from 450,560 to 524,288 tokens, uses compact FP8 cache rows, and reduces prefill setup work. It also corrects sparse-attention masking and compressed-cache ownership edge cases. The checkpoint, quantization, reasoning, vision and native speculative decoding remain supported. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases) for details.
+The current published stable image is `v0.4.1`. It allows HiCache to restore a single MLA/MTP draft whose stored KV row width or dtype differs from the target, using separate sidecar buffers, and refreshes SGLang and FlashInfer. The 524,288-token shared device pool, four-request admission, compact FP8 cache, reasoning, vision and native speculative decoding remain supported. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases) for details.
 
 The older `v0.2.1` image has a long-prefix HiCache corruption defect. Keep HiCache disabled if continuing to use that version.
 
@@ -38,8 +38,8 @@ The older `v0.2.1` image has a long-prefix HiCache corruption defect. Keep HiCac
    ```bash
    git clone https://github.com/ormandj/sglang-glm53-flash-sm120
    cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.0
-   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v78
+   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.1
+   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v79
    ./examples/serve-glm53-flash.sh
    ```
 
@@ -70,29 +70,32 @@ to see or change every flag. [`RUN.md`](RUN.md) describes the serving configurat
 - `--max-mamba-cache-size` is recurrent-state slots, not KV cache. Each live
   request uses four to five, so the launcher ships 28 for four requests.
 
-To build this source locally as `sglang-glm53-flash-sm120:v0.4.1-rc.1`, follow [RUN.md](RUN.md).
+To build this source locally as `sglang-glm53-flash-sm120:v0.4.1`, follow [RUN.md](RUN.md).
 
 ## What to expect
 
-The following measurements use two RTX PRO 6000 Blackwell Max-Q GPUs at 300 W, with 32 GB of HiCache per rank and fixed native MTP at three draft steps, top-k one and four verification tokens. Fixed MTP is the standard for performance comparisons; the launcher uses adaptive MTP for serving. These measurements were collected on the `v0.4.0` validation build; the GHCR image was built separately from the same pinned inputs. [Benchmark provenance and quality results](BENCHMARKS.md#v040-measurements-2026-09-08) identify the tested artifact and limitations.
+Measurements used a v0.4.1 validation build on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor parallel 2 over PCIe. The GHCR image was built separately from the same pinned inputs and was not separately benchmarked. The configuration used W4A16 experts, FP8 KV, a 524,288-token shared device pool, four running requests, 4,096-token prefill chunks, 28 recurrent-state slots and 32 GB of HiCache per rank. Performance comparisons use fixed native MTP with three draft steps, top-k one and four verification tokens, with adaptive switching disabled. The launcher uses adaptive MTP for serving. The source inputs are pinned in [this release's stack lock](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.1/stack.lock.json).
 
 | Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
 |---|---|---:|---:|---:|---:|---:|
-| Decode C1, 5 repetitions | Aggregate output after MTP | 191.0 | 197.1 | 67.13 | 67.21 | 2.87 / 2.96 |
-| Decode C2, 5 repetitions | Aggregate output after MTP | 300.4 | 296.8 | 51.21 | 51.05 | 2.93 / 2.90 |
-| Decode C3, 5 repetitions | Aggregate output after MTP | 365.5 | 369.9 | 41.46 | 41.26 | 2.91 / 2.97 |
-| Decode C4, 5 repetitions | Aggregate output after MTP | 415.3 | 418.1 | 35.41 | 35.31 | 2.92 / 2.91 |
-| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,642.3 | 5,673.0 | n/a | n/a | n/a |
-| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,352.2 | 6,346.8 | n/a | n/a | n/a |
-| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,375.0 | 6,356.6 | n/a | n/a | n/a |
-| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,349.4 | 6,326.7 | n/a | n/a | n/a |
+| Decode C1, 5 repetitions | Aggregate output after MTP | 181.5 | 174.7 | 67.11 | 67.04 | 2.73 / 2.61 |
+| Decode C2, 5 repetitions | Aggregate output after MTP | 312.1 | 293.5 | 51.12 | 51.14 | 3.05 / 2.84 |
+| Decode C3, 5 repetitions | Aggregate output after MTP | 371.6 | 379.0 | 41.18 | 40.98 | 2.99 / 3.01 |
+| Decode C4, 5 repetitions | Aggregate output after MTP | 410.4 | 406.5 | 35.66 | 35.60 | 2.88 / 2.84 |
+| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,616.6 | 5,629.8 | n/a | n/a | n/a |
+| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,344.2 | 6,338.5 | n/a | n/a | n/a |
+| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,377.1 | 6,371.1 | n/a | n/a | n/a |
+| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,359.6 | 6,336.7 | n/a | n/a | n/a |
 
-Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 14.3-29.0 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 14.3-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
 
-Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Decode uses a fixed 4,096-token response window; its post-answer tail can increase speculative acceptance. Prefill tok/s is the per-request prompt-token count divided by time to first token, reported as mean and median over five cold requests. These controlled measurements do not necessarily represent real-world performance. [Benchmark methodology and comparisons](BENCHMARKS.md#v040-measurements-2026-09-08) describe the measured workloads.
+Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Every decode response reaches a deliberate 4,096-token output cap with `ignore_eos`; the post-answer tail can increase speculative acceptance, so this is not completed-answer throughput. Prefill tok/s is each cold request's prompt-token count divided by time to first token, summarized over five requests per length. These controlled measurements do not necessarily represent real-world performance.
+
+Compared with the matching v0.4.0 run, mean and median forward and cold-prefill rates differ by less than 1%; output rates vary in both directions. This is not evidence of an overall throughput improvement. [BENCHMARKS.md](BENCHMARKS.md) contains the full comparison, methodology and adaptive-serving quality results.
 
 ## Limitations
 
+- Custom HiCache configurations with one differently stored MLA draft use additional host memory for its sidecars. Mismatched multiple draft runners and FP4 MLA KV storage with separate scale buffers are unsupported; this does not restrict the supplied W4A16 weight quantization.
 - A request for input logprobs spanning a long prompt can still OOM the scheduler and restart the container. Score only the continuation at the prompt boundary.
 - Memory is tightly sized at `mem-fraction-static=0.99`. Prefill, vision and runtime compilation share the remaining headroom; keep `max-prefill-tokens` equal to the 4,096-token chunk size. Increasing the pool, concurrency or image budget requires new memory acceptance tests.
 - Images use approximately one token per 28x28 pixels up to the checkpoint's 8,000-token limit. Larger images are resized by the processor; image tokens consume context capacity.
@@ -115,7 +118,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.4.1-rc.1 .
+  -t sglang-glm53-flash-sm120:v0.4.1 .
 ```
 
 The vendor base image supplies the pinned CUDA/PyTorch dependency stack; the SGLang and FlashInfer source trees are verified separately as described above.

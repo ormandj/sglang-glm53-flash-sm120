@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.4.1 (stable; 2026-09-08)
+
+- Allow HiCache restores with a single MLA/MTP draft whose stored KV row width or dtype differs from the target, using separate sidecar buffers. Matching layouts retain packed transfers; compressed draft index sidecars handle empty shared-topk layers.
+- Reject FP4 MLA KV storage before host allocation because HiCache transfers do not support its separate scale buffers. This restriction concerns KV storage, not W4A16 weight quantization. Mismatched multiple draft runners remain unsupported, and draft sidecars add host memory beyond the target pool budget.
+- Refresh SGLang and FlashInfer source inputs while retaining the 524,288-token shared device pool, four-request admission, compact FP8 KV storage, native speculative decoding, reasoning and vision.
+- Use a fresh kernel cache directory for this version: `/srv/cache/sglang-glm53-flash-sm120-v79`.
+
+### Measurements
+
+Measurements used a v0.4.1 validation build on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor parallel 2 over PCIe. The GHCR image was built separately from the same pinned inputs and was not separately benchmarked. The configuration used W4A16 experts, FP8 KV, a 524,288-token shared device pool, four running requests, 4,096-token prefill chunks, 28 recurrent-state slots and 32 GB of HiCache per rank. Performance comparisons use fixed native MTP with three draft steps, top-k one and four verification tokens, with adaptive switching disabled. The launcher uses adaptive MTP for serving. The source inputs are pinned in [this release's stack lock](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.1/stack.lock.json).
+
+| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
+|---|---|---:|---:|---:|---:|---:|
+| Decode C1, 5 repetitions | Aggregate output after MTP | 181.5 | 174.7 | 67.11 | 67.04 | 2.73 / 2.61 |
+| Decode C2, 5 repetitions | Aggregate output after MTP | 312.1 | 293.5 | 51.12 | 51.14 | 3.05 / 2.84 |
+| Decode C3, 5 repetitions | Aggregate output after MTP | 371.6 | 379.0 | 41.18 | 40.98 | 2.99 / 3.01 |
+| Decode C4, 5 repetitions | Aggregate output after MTP | 410.4 | 406.5 | 35.66 | 35.60 | 2.88 / 2.84 |
+| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,616.6 | 5,629.8 | n/a | n/a | n/a |
+| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,344.2 | 6,338.5 | n/a | n/a | n/a |
+| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,377.1 | 6,371.1 | n/a | n/a | n/a |
+| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,359.6 | 6,336.7 | n/a | n/a | n/a |
+
+Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 14.3-29.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+
+Every decode response reaches a deliberate 4,096-token `ignore_eos` output cap. The measured post-answer tail can increase speculative acceptance; these are fixed-window rates, not completed-answer throughput. Forward passes/s counts target-model iterations. Prefill values summarize each cold request's prompt tokens divided by time to first token. These controlled measurements do not necessarily represent real-world performance.
+
+Observed mean and median forward and cold-prefill rates differ by less than 1% from the matching v0.4.0 run. Output rates vary in both directions; no overall throughput improvement is established. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.1/BENCHMARKS.md) for methodology, fixed-MTP comparisons and adaptive-serving quality results.
+
+### Known limitations
+
+- Requesting input logprobs across a long prompt can exhaust GPU memory and restart the server. Score continuations with `logprob_start_len` at the prompt boundary.
+- Keep `--max-prefill-tokens` and `--chunked-prefill-size` at 4096 with the supplied memory configuration. Four running requests share the device token pool.
+- Other GPU pairs and tensor-parallel sizes have not been tested.
+
 ## v0.4.0 (stable; 2026-09-08)
 
 - Increase the context limit and shared device token pool to 524,288 tokens while retaining four-request admission, the same checkpoint and quantization, native speculative decoding, reasoning and vision.
@@ -8,24 +42,7 @@
 - Correct graph-buffer lifetime and native attention workspace bounds, and warm up cached-prefix and sampled paths before readiness. Refresh SGLang and FlashInfer source inputs.
 - Use a fresh cache directory for this version: `/srv/cache/sglang-glm53-flash-sm120-v78`.
 
-### Measurements
-
-Measured on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor parallel 2 over PCIe, with 32 GB of HiCache per GPU and fixed native MTP at three draft steps, top-k one and four verification tokens. Fixed MTP is the performance-comparison standard; the launcher uses adaptive MTP for serving. These measurements use a v0.4.0 validation build; the GHCR image was built separately from the same pinned inputs and was not separately benchmarked.
-
-| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
-|---|---|---:|---:|---:|---:|---:|
-| Decode C1, 5 repetitions | Aggregate output after MTP | 191.0 | 197.1 | 67.13 | 67.21 | 2.87 / 2.96 |
-| Decode C2, 5 repetitions | Aggregate output after MTP | 300.4 | 296.8 | 51.21 | 51.05 | 2.93 / 2.90 |
-| Decode C3, 5 repetitions | Aggregate output after MTP | 365.5 | 369.9 | 41.46 | 41.26 | 2.91 / 2.97 |
-| Decode C4, 5 repetitions | Aggregate output after MTP | 415.3 | 418.1 | 35.41 | 35.31 | 2.92 / 2.91 |
-| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,642.3 | 5,673.0 | n/a | n/a | n/a |
-| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,352.2 | 6,346.8 | n/a | n/a | n/a |
-| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,375.0 | 6,356.6 | n/a | n/a | n/a |
-| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,349.4 | 6,326.7 | n/a | n/a | n/a |
-
-Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 14.3-29.0 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
-
-Decode tok/s is aggregate output after MTP, including reasoning, over the selected steady portion of a fixed 4,096-token response window. Its post-answer tail can increase speculative acceptance. Forward passes/s counts target-model iterations. Prefill values summarize each cold request's prompt tokens divided by time to first token. These controlled measurements do not necessarily represent real-world performance. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.0/BENCHMARKS.md) for methodology, fixed-MTP comparisons and quality results.
+Measured results are retained in the [v0.4.0 release documentation](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.0/BENCHMARKS.md).
 
 ### Known limitations
 
