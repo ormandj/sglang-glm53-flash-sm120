@@ -1,10 +1,10 @@
-# Running a source build
+# Running GLM-5.3-Flash
 
-Build the immutable image from this checkout with `docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.0-rc.9 .`.
+Download the checkpoint as described in [README.md](README.md), then start the published image:
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-export IMAGE=sglang-glm53-flash-sm120:v0.4.0-rc.9
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.0
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v78
 ./examples/serve-glm53-flash.sh
 ```
@@ -12,3 +12,5 @@ export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v78
 The launcher uses TP2, vision, native adaptive MTP, packed FP8 KV, a 524,288-token pool, four running requests, and 28 BF16 recurrent-state slots. HiCache is optional; set `ENABLE_HICACHE=1 HICACHE_SIZE_GB=32` for 32 GB per rank. Use a separate cache directory for each image version.
 
 Prefill uses breakable CUDA graphs for single-request 64- and 128-token tails. Longer prefills retain 4,096-token chunks.
+
+To build from source, run `docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.0 .` and set `IMAGE=sglang-glm53-flash-sm120:v0.4.0` before invoking the launcher.
