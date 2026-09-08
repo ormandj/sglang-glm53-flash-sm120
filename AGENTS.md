@@ -20,15 +20,24 @@ Bump release.json candidate for changes to Containerfile, release.json, stack.lo
 
 The vendor base supplies the pinned CUDA/PyTorch dependency stack and does not establish SGLang source provenance. stack.lock.json and scripts/verify-patches.sh define the official source bases, checksummed integration patches and resulting trees. A fork integration commit is not an upstream commit. Preserve historical pins.
 
-## Verification before commit
+## Verification appropriate to the change
 
-```bash
-./scripts/validate-release.sh
-./scripts/validate-docs.sh
-./scripts/verify-patches.sh
-```
+Select checks for the current change and a concrete failure mode. Explain what
+each establishes and what result would change the decision. Re-evaluate old
+protocols, reuse valid evidence for unchanged inputs, and retain failures when
+documenting a changed or retired gate. Keep workloads and graders fixed within
+a claimed comparison. Model answer errors are quality observations; they do not
+alone establish memory corruption or runtime regressions. Require exact output
+identity only where the feature's contract requires it.
 
-The last check needs network access to verify pinned source trees and base image digests. For publication tooling changes, also run python3 scripts/test_validate_publish_release.py and validate each provider's publication contract.
+Run `./scripts/validate-release.sh` for release-input changes and
+`./scripts/validate-docs.sh` for release-documentation changes. Run
+`./scripts/verify-patches.sh` for changed source pins, integration patches or
+base-image provenance; it needs network access. Before a release, verify the
+exact release inputs and publication documents. Policy-only edits do not
+require refetching unchanged source trees or repeating runtime qualification.
+For publication tooling changes, run `python3 scripts/test_validate_publish_release.py`
+and validate each provider's publication contract.
 
 ## Measurements
 
