@@ -10128,7 +10128,7 @@ index fa06cbf5b1ddb10feecbeacb4388f2c7b516c49a..b0402a600783e70c4f719ba298b917d9
  
  def sync_fixed_hicache_size(size: int, host_size: int) -> int:
 diff --git a/python/sglang/srt/mem_cache/pool_host/mla.py b/python/sglang/srt/mem_cache/pool_host/mla.py
-index 1d394aa95017d820822b7ae447b8716dd93ec92d..77e16ac79a36b2a9babcdb9e26212a9e67885f9a 100644
+index 1d394aa95017d820822b7ae447b8716dd93ec92d..91f5da89020d1d8563bf7389868918a1e0708e21 100644
 --- a/python/sglang/srt/mem_cache/pool_host/mla.py
 +++ b/python/sglang/srt/mem_cache/pool_host/mla.py
 @@ -19,7 +19,7 @@ from sglang.kernels.ops.kvcache.hicache import (
@@ -10144,11 +10144,11 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..77e16ac79a36b2a9babcdb9e26212a9e
      ):
          self.override_kv_cache_dim = override_kv_cache_dim
          self.mtp_draft_device_pools = tuple(mtp_draft_device_pools)
-+        self._check_host_row_geometry(device_pool, pool_label)
++        self._check_host_row_geometry(device_pool, pool_label, layout)
          self._is_dummy = is_dummy
  
          if is_dummy:
-@@ -209,6 +210,60 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -209,6 +210,64 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
          self.lock = threading.RLock()
          self.clear()
  
@@ -10158,7 +10158,9 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..77e16ac79a36b2a9babcdb9e26212a9e
 +            device_pool.kv_lora_rank + device_pool.qk_rope_head_dim
 +        )
 +
-+    def _check_host_row_geometry(self, device_pool, pool_label: str) -> None:
++    def _check_host_row_geometry(
++        self, device_pool, pool_label: str, layout: str
++    ) -> None:
 +        """Reject a host row geometry that differs from the device rows.
 +
 +        The host buffer has a single row width and dtype for every layer, and
@@ -10184,7 +10186,9 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..77e16ac79a36b2a9babcdb9e26212a9e
 +        # device pools that do not model row packing, such as lightweight test
 +        # doubles, may omit it; only then is the host width taken on trust.
 +        target_dim = getattr(device_pool, "kv_cache_dim", host_dim)
-+        if host_dim != target_dim:
++        # Ascend's split layout transfers K and RoPE separately. Its device
++        # kv_cache_dim describes K alone; the host budget counts both buffers.
++        if layout != "page_first_kv_split" and host_dim != target_dim:
 +            raise ValueError(
 +                f"HiCache {pool_label} host pool rows must have the device "
 +                f"pool's row geometry, but the host row is kv_cache_dim="
@@ -10209,7 +10213,7 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..77e16ac79a36b2a9babcdb9e26212a9e
      def get_contiguous_buf_infos(self):
          """Return (data_ptrs, data_lens, item_lens) in the same format as device pool,
          for registering host memory with the disaggregation transfer engine."""
-@@ -235,9 +290,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -235,9 +294,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
          )
          self.target_layer_num = self._effective_host_layer_num()
          self.layer_num = self.target_layer_num + len(self.mtp_draft_device_pools)
@@ -23561,7 +23565,7 @@ index 0000000000000000000000000000000000000000..5cbbd2736fbbe1b4193ccf6256d3cb3a
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
-index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..a122128d64db4bd60889845b032e0e4bb05fb696 100644
+index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..f06a30d20eb294196b77d8c6e508f8a4dd578494 100644
 --- a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 +++ b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 @@ -1,17 +1,23 @@
@@ -23589,7 +23593,7 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..a122128d64db4bd60889845b032e0e4b
  from sglang.test.ci.ci_register import register_cpu_ci
  from sglang.test.test_utils import CustomTestCase
  
-@@ -128,5 +134,299 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
+@@ -128,5 +134,331 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
          self.assertIs(entries[0].host_pool, draft_host_pool)
  
  
@@ -23795,6 +23799,7 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..a122128d64db4bd60889845b032e0e4b
 +    """
 +
 +    def _host_pool(self, kv_pool, **kwargs):
++        layout = kwargs.pop("layout", "layer_first")
 +        with patch(
 +            "sglang.srt.mem_cache.pool_host.mla.ALLOC_MEMORY_FUNCS",
 +            {"cpu": self._alloc_unpinned},
@@ -23804,7 +23809,7 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..a122128d64db4bd60889845b032e0e4b
 +                host_to_device_ratio=2.0,
 +                host_size=0,
 +                page_size=self.PAGE_SIZE,
-+                layout="layer_first",
++                layout=layout,
 +                pin_memory=False,
 +                device="cpu",
 +                **kwargs,
@@ -23885,6 +23890,37 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..a122128d64db4bd60889845b032e0e4b
 +        host_pool = self._host_pool(kv_pool)
 +
 +        self.assertEqual(host_pool.kv_cache_dim, self.NOMINAL_KV_CACHE_DIM)
++
++    def test_split_device_rows_keep_both_components_in_host_budget(self):
++        # NPU's kv_cache_dim is the latent K width. RoPE occupies a separate
++        # device/host buffer and must still count towards the host allocation.
++        kv_pool = self._fake_device_pool(
++            store_dtype=torch.bfloat16, kv_cache_dim=self.KV_LORA_RANK
++        )
++        kv_pool.kr_cache_dim = self.QK_ROPE_HEAD_DIM
++        kv_pool.index_head_dim = None
++        host_pool = self._host_pool(kv_pool, layout="page_first_kv_split")
++        self.assertEqual(host_pool.k_buffer.shape[-1], self.KV_LORA_RANK)
++        self.assertEqual(host_pool.v_buffer.shape[-1], self.QK_ROPE_HEAD_DIM)
++        self.assertEqual(host_pool.kv_cache_dim, self.NOMINAL_KV_CACHE_DIM)
++        self.assertEqual(
++            host_pool.size_per_token,
++            self.NOMINAL_KV_CACHE_DIM * torch.bfloat16.itemsize * self.LAYER_NUM,
++        )
++        for dtype, width in (
++            (torch.uint8, self.KV_LORA_RANK),
++            (torch.bfloat16, self.NOMINAL_KV_CACHE_DIM),
++        ):
++            with self.subTest(draft_dtype=dtype, draft_width=width):
++                draft = self._fake_device_pool(
++                    store_dtype=dtype, kv_cache_dim=width, layer_num=1
++                )
++                with self.assertRaisesRegex(ValueError, "draft pool 0"):
++                    self._host_pool(
++                        kv_pool,
++                        layout="page_first_kv_split",
++                        mtp_draft_device_pools=(draft,),
++                    )
 +
 +
  if __name__ == "__main__":
