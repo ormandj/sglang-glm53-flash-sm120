@@ -82,12 +82,13 @@ assert 'Glm5NextForConditionalGeneration' in flash_mla_sm120._GLM_DSA_MODEL_ARCH
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_TOPK == 2176
 assert flash_mla_sm120._GLM53_NOPE_FLASHINFER_KV_DIMS == (528, 656)
 glm_kv_config = supported_sparse_mla_sm120_configs()["glm53_nope"]
-assert glm_kv_config.bytes_per_token == 656
-assert glm_kv_config.compact_bytes_per_token == 528
+# GLM NoPE stores 512 FP8 values and four FP32 scales per row.
+glm_nope_payload_bytes = 512 + 4 * 4
+assert glm_kv_config.bytes_per_token == glm_nope_payload_bytes
 assert 'q.shape[-1] == 512' in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward)
 assert 'qk_nope_head_dim == 512' not in inspect.getsource(flash_mla_sm120.flashinfer_sparse_mla_forward)
 assert 'if uses_flashinfer_sparse_mla and is_glm_sm12_fp8:' in inspect.getsource(flash_mla_sm120._validate_flashinfer_sparse_mla_backend)
-assert 'compact_bytes_per_token' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim)
+assert 'bytes_per_token' in inspect.getsource(kv_cache_configurator.calculate_mla_kv_cache_dim)
 alloc_extend_source=inspect.getsource(PagedTokenToKVPoolAllocator.alloc_extend)
 assert 'alloc_extend last_loc' in alloc_extend_source
 assert 'alloc_extend free_pages' in alloc_extend_source
@@ -102,7 +103,7 @@ assert 'allocator free aliases reachable Full value' in inspect.getsource(unifie
 assert 'reachable Full value changed' in inspect.getsource(unified_radix_cache.UnifiedRadixCache._debug_assert_full_value_snapshot_unchanged)
 assert 'FullComponent.redistribute_on_node_split source' in inspect.getsource(full_component.FullComponent.redistribute_on_node_split)
 assert 'FullComponent.evict_component value' in inspect.getsource(full_component.FullComponent.evict_component)
-assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == 656
+assert _bytes_per_token_for_model_type(_MODEL_TYPE_GLM53_NOPE) == glm_nope_payload_bytes
 assert callable(getattr(SparseMLASm120Wrapper, 'run', None))
 print(Glm5NextForConditionalGeneration.__name__, flashinfer.__version__, md.version('nvidia-modelopt'))
 

@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "release": {
-    "version": "0.4.2",
-    "candidate": 2,
-    "candidate_tag": "v0.4.2-rc.2",
-    "stable_tag": "v0.4.2",
-    "cache_schema": "v81"
+    "version": "0.4.3",
+    "candidate": 1,
+    "candidate_tag": "v0.4.3-rc.1",
+    "stable_tag": "v0.4.3",
+    "cache_schema": "v82"
   },
   "image": {
-    "tag": "v0.4.2-rc.2",
+    "tag": "v0.4.3-rc.1",
     "platform": "linux/amd64"
   },
   "model": {
@@ -43,15 +43,15 @@
   "pins": [
     {
       "arg": "GLM53_RELEASE_VERSION",
-      "value": "0.4.2"
+      "value": "0.4.3"
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 2
+      "value": 1
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v81"
+      "value": "v82"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -75,19 +75,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "afe90a8bc908002219993794404c7c95dd3ced1d"
+      "value": "209654c42090a7a33896a2849b33ab3a50af32c5"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "bc0f7bc45d7991140b0942008821fba418cc9f15"
+      "value": "617ab59eb09ea27c63fdfed995280313a3f26129"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "4f7bcf12dee044a8de21203859b643e94d75715e"
+      "value": "0b423183497a22a85f6bb7037fe81221a4965d56"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "a239493a1b61dda4df9e6714e76ae9b75a60a45f5e2a01e6b9d95f50f0343604"
+      "value": "cec18fe41188818c72d5563a3c8bdf8244e2b2ed6c68006583b42f1eb14c7ec0"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -95,23 +95,23 @@
     },
     {
       "arg": "GLM53_FLASHINFER_VERSION",
-      "value": "0.6.18"
+      "value": "0.7.0"
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "9c10d2e8f23a18631dcf21551276910678249b3f"
+      "value": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "912304b0b405c39df074d15ba3538d9d5a09b04e"
+      "value": "bc5a53a082ec65fdb8bbd99026e4d024a742e9ae"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "d5d56053888d78bcfe950d52ced47199ce65b56d"
+      "value": "49c448c86720ae557cdbf1c009893bd92b8e53c0"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "ea9d3e5171f30eab70e28041cdf623056ec3f1c8dd22f1db1246dc0e48f06c55"
+      "value": "f0437b29856727d89d4a440547a06cee88b5d39701b3a90dd4c93bb99e2fda72"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -145,12 +145,12 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "afe90a8bc908002219993794404c7c95dd3ced1d",
-      "upstream_tree": "bc0f7bc45d7991140b0942008821fba418cc9f15",
-      "tree": "4f7bcf12dee044a8de21203859b643e94d75715e",
+      "head": "209654c42090a7a33896a2849b33ab3a50af32c5",
+      "upstream_tree": "617ab59eb09ea27c63fdfed995280313a3f26129",
+      "tree": "0b423183497a22a85f6bb7037fe81221a4965d56",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "a239493a1b61dda4df9e6714e76ae9b75a60a45f5e2a01e6b9d95f50f0343604",
-      "upstream_main_base": "afe90a8bc908002219993794404c7c95dd3ced1d",
+      "patch_sha256": "cec18fe41188818c72d5563a3c8bdf8244e2b2ed6c68006583b42f1eb14c7ec0",
+      "upstream_main_base": "209654c42090a7a33896a2849b33ab3a50af32c5",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion; integrated/adapted to this source tree",
         "sglang#36696 at 1ff89343694a1265516b6147160a78e25f382f1d: [Mamba][Fix] Register a split node under its own key in the mamba radix cache; integrated/adapted to this source tree",
@@ -173,25 +173,26 @@
         "sglang#38213 at 342fba81d1c7fcefd7a58fedab957a63cd719e91: Reduce repeated attention setup during speculative decoding; integrated/adapted to this source tree",
         "sglang#38214 at 65113b94a83c8725babac5613bc12db724ff5f3e: Precompile GLM vision kernels before KV allocation to avoid first-image OOMs; integrated/adapted to this source tree",
         "sglang#38126 at 6a0444c619c9785b170c196b9467e37f15099e5b: feat: support GLM-5 KDA prefill with breakable CUDA graphs; integrated/adapted to this source tree",
-        "sglang#38430 at 284505be2d921b364e75f2c8e0c64231b20e700e: Enable compact GLM NoPE KV storage with native FlashInfer; integrated/adapted to this source tree",
+        "sglang#38430 at a36002eba6dd5c27e1b0da5b6a920801e023e31a: Enable compact GLM NoPE KV storage with native FlashInfer; integrated/adapted to this source tree",
         "sglang#38431 at eb71d35924a95835ff74bbd7029f1e9cf79d150c: Reuse host lengths to avoid KDA prefill synchronization; integrated/adapted to this source tree",
         "sglang#35645 at 3878952b1bd298cbd57d792bceff083b0748e169: Stop waiting admission after resumed chunks and mixed-decode sub-page remainders; includes the author contribution on the current PR head"
       ]
     },
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
-      "package_version": "0.6.18",
-      "head": "9c10d2e8f23a18631dcf21551276910678249b3f",
-      "upstream_tree": "912304b0b405c39df074d15ba3538d9d5a09b04e",
-      "tree": "d5d56053888d78bcfe950d52ced47199ce65b56d",
+      "package_version": "0.7.0",
+      "head": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5",
+      "upstream_tree": "bc5a53a082ec65fdb8bbd99026e4d024a742e9ae",
+      "tree": "49c448c86720ae557cdbf1c009893bd92b8e53c0",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "ea9d3e5171f30eab70e28041cdf623056ec3f1c8dd22f1db1246dc0e48f06c55",
-      "upstream_main_base": "9c10d2e8f23a18631dcf21551276910678249b3f",
+      "patch_sha256": "f0437b29856727d89d4a440547a06cee88b5d39701b3a90dd4c93bb99e2fda72",
+      "upstream_main_base": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing; integrated/adapted to this source tree",
         "flashinfer#4827 at 7cc5b29a18377370b3981351eff370d2e72a724d: Prevent SM12x MoE graph replays from corrupting memory after workspace growth; integrated/adapted to this source tree",
         "flashinfer#4910 at 7b0e8004b87d70431a7d172aa1793c14f3dc9929: feat(moe): persistent disk cache for the SM12x W4A16 CuTe-DSL MoE kernels; integrated/adapted to this source tree",
-        "flashinfer#5022 at 3b3ef407303464f2804f55aac4a484e1056b40e2: Support compact GLM NoPE FP8 rows and fix masked reads; integrated/adapted to this source tree"
+        "flashinfer#5075 at 00e7865bd825046484452c270c08e4c03a6b8cd4: Runtime sparse MLA row strides and explicit DeepSeek-V4.1 format support by Gabriel Wu; integrated with additional layout validation and regression coverage",
+        "flashinfer#5022 at a47c44ec32c6763e368311cfd1b7613ea29c875f: Eight-head GLM decode correctness and masked-candidate regression coverage by David Orman; combined with runtime row-stride support"
       ]
     },
     "modelopt": {
@@ -206,18 +207,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "a239493a1b61dda4df9e6714e76ae9b75a60a45f5e2a01e6b9d95f50f0343604",
-      "base_head": "afe90a8bc908002219993794404c7c95dd3ced1d",
-      "base_tree": "bc0f7bc45d7991140b0942008821fba418cc9f15",
-      "result_tree": "4f7bcf12dee044a8de21203859b643e94d75715e"
+      "sha256": "cec18fe41188818c72d5563a3c8bdf8244e2b2ed6c68006583b42f1eb14c7ec0",
+      "base_head": "209654c42090a7a33896a2849b33ab3a50af32c5",
+      "base_tree": "617ab59eb09ea27c63fdfed995280313a3f26129",
+      "result_tree": "0b423183497a22a85f6bb7037fe81221a4965d56"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "ea9d3e5171f30eab70e28041cdf623056ec3f1c8dd22f1db1246dc0e48f06c55",
-      "base_head": "9c10d2e8f23a18631dcf21551276910678249b3f",
-      "base_tree": "912304b0b405c39df074d15ba3538d9d5a09b04e",
-      "result_tree": "d5d56053888d78bcfe950d52ced47199ce65b56d"
+      "sha256": "f0437b29856727d89d4a440547a06cee88b5d39701b3a90dd4c93bb99e2fda72",
+      "base_head": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5",
+      "base_tree": "bc5a53a082ec65fdb8bbd99026e4d024a742e9ae",
+      "result_tree": "49c448c86720ae557cdbf1c009893bd92b8e53c0"
     }
   ],
   "runtime_profile": {
