@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.3",
-    "candidate": 4,
-    "candidate_tag": "v0.4.3-rc.4",
+    "candidate": 5,
+    "candidate_tag": "v0.4.3-rc.5",
     "stable_tag": "v0.4.3",
-    "cache_schema": "v82"
+    "cache_schema": "v83"
   },
   "image": {
-    "tag": "v0.4.3-rc.4",
+    "tag": "v0.4.3-rc.5",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 4
+      "value": 5
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v82"
+      "value": "v83"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -75,19 +75,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "209654c42090a7a33896a2849b33ab3a50af32c5"
+      "value": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "617ab59eb09ea27c63fdfed995280313a3f26129"
+      "value": "163fdbf8bf723dbcfa895c12619506484513ec00"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "1ceae400b0a2cbfcddccef864e64841f428b5f16"
+      "value": "8144858b42b9986dd329f2a97a3e077e31852c57"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "bb97d2bb761329cf4a429c658d2ac3aea99f307d5e4370cc0267029290d09ba4"
+      "value": "ac05d5d28c62e0b2d95a80792ac3120199acf7746203546963a6686bd0e6567e"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -99,19 +99,19 @@
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5"
+      "value": "19a103e6e688f4c2c370a7b5456720089f6999ca"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "bc5a53a082ec65fdb8bbd99026e4d024a742e9ae"
+      "value": "3a185d9aa2aab6d33a3e825f49deaf676041736b"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "6110843fffa1b22d162e09349fee530cd303ec09"
+      "value": "7e104af153532c90344c0c574bc193082a816091"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "3a488037a503dfac4b7548bea794aee87ba05c36844d83362b5591f5ac963186"
+      "value": "e804b51e6b19eef3e998879d8d34590f036f3a4bd19ae223687ec74b8e508d73"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -145,12 +145,12 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "209654c42090a7a33896a2849b33ab3a50af32c5",
-      "upstream_tree": "617ab59eb09ea27c63fdfed995280313a3f26129",
-      "tree": "1ceae400b0a2cbfcddccef864e64841f428b5f16",
+      "head": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac",
+      "upstream_tree": "163fdbf8bf723dbcfa895c12619506484513ec00",
+      "tree": "8144858b42b9986dd329f2a97a3e077e31852c57",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "bb97d2bb761329cf4a429c658d2ac3aea99f307d5e4370cc0267029290d09ba4",
-      "upstream_main_base": "209654c42090a7a33896a2849b33ab3a50af32c5",
+      "patch_sha256": "ac05d5d28c62e0b2d95a80792ac3120199acf7746203546963a6686bd0e6567e",
+      "upstream_main_base": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion; integrated/adapted to this source tree",
         "sglang#36696 at 1ff89343694a1265516b6147160a78e25f382f1d: [Mamba][Fix] Register a split node under its own key in the mamba radix cache; integrated/adapted to this source tree",
@@ -181,18 +181,18 @@
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
       "package_version": "0.7.0",
-      "head": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5",
-      "upstream_tree": "bc5a53a082ec65fdb8bbd99026e4d024a742e9ae",
-      "tree": "6110843fffa1b22d162e09349fee530cd303ec09",
+      "head": "19a103e6e688f4c2c370a7b5456720089f6999ca",
+      "upstream_tree": "3a185d9aa2aab6d33a3e825f49deaf676041736b",
+      "tree": "7e104af153532c90344c0c574bc193082a816091",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "3a488037a503dfac4b7548bea794aee87ba05c36844d83362b5591f5ac963186",
-      "upstream_main_base": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5",
+      "patch_sha256": "e804b51e6b19eef3e998879d8d34590f036f3a4bd19ae223687ec74b8e508d73",
+      "upstream_main_base": "19a103e6e688f4c2c370a7b5456720089f6999ca",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing; integrated/adapted to this source tree",
         "flashinfer#4827 at 7cc5b29a18377370b3981351eff370d2e72a724d: Prevent SM12x MoE graph replays from corrupting memory after workspace growth; integrated/adapted to this source tree",
         "flashinfer#4910 at 7b0e8004b87d70431a7d172aa1793c14f3dc9929: feat(moe): persistent disk cache for the SM12x W4A16 CuTe-DSL MoE kernels; integrated/adapted to this source tree",
         "flashinfer#5075 at 00e7865bd825046484452c270c08e4c03a6b8cd4: Runtime sparse MLA row strides and explicit DeepSeek-V4.1 format support by Gabriel Wu; integrated with additional layout validation and regression coverage",
-        "flashinfer#5022 at a47c44ec32c6763e368311cfd1b7613ea29c875f: Eight-head GLM decode correctness and masked-candidate regression coverage by David Orman; combined with runtime row-stride support"
+        "lucifer1004/flashinfer#3 at e7cad40ef1c1c279186c92a22656cdf42325d31c: Sparse MLA layout validation, eight-head GLM decode, calibration invalidation and regression coverage by David Orman, following flashinfer-ai/flashinfer#5075; incorporates the remaining work from flashinfer-ai/flashinfer#5022"
       ]
     },
     "modelopt": {
@@ -207,18 +207,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "bb97d2bb761329cf4a429c658d2ac3aea99f307d5e4370cc0267029290d09ba4",
-      "base_head": "209654c42090a7a33896a2849b33ab3a50af32c5",
-      "base_tree": "617ab59eb09ea27c63fdfed995280313a3f26129",
-      "result_tree": "1ceae400b0a2cbfcddccef864e64841f428b5f16"
+      "sha256": "ac05d5d28c62e0b2d95a80792ac3120199acf7746203546963a6686bd0e6567e",
+      "base_head": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac",
+      "base_tree": "163fdbf8bf723dbcfa895c12619506484513ec00",
+      "result_tree": "8144858b42b9986dd329f2a97a3e077e31852c57"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "3a488037a503dfac4b7548bea794aee87ba05c36844d83362b5591f5ac963186",
-      "base_head": "b8d2b3f07827c8377fd905ff34389ceeddbe1de5",
-      "base_tree": "bc5a53a082ec65fdb8bbd99026e4d024a742e9ae",
-      "result_tree": "6110843fffa1b22d162e09349fee530cd303ec09"
+      "sha256": "e804b51e6b19eef3e998879d8d34590f036f3a4bd19ae223687ec74b8e508d73",
+      "base_head": "19a103e6e688f4c2c370a7b5456720089f6999ca",
+      "base_tree": "3a185d9aa2aab6d33a3e825f49deaf676041736b",
+      "result_tree": "7e104af153532c90344c0c574bc193082a816091"
     }
   ],
   "runtime_profile": {

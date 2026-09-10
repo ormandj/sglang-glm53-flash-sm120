@@ -1231,9 +1231,18 @@ index 598199dc93e6d997034f70d05c8f8ee59f0faf1b..b8671a945692ef806608209607383158
        break;
    }
 diff --git a/csrc/sparse_mla_sm120_decode_dsv3_2.cu b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
-index 368fdbb49904b31f8abc9565db82da6d0f13adc9..0111e7b8af8f2ae955e9708cc4720c1865f5139b 100644
+index 368fdbb49904b31f8abc9565db82da6d0f13adc9..a56adac17781c17146fdce2c2a8cede550bc28c1 100644
 --- a/csrc/sparse_mla_sm120_decode_dsv3_2.cu
 +++ b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
+@@ -9,7 +9,7 @@
+ // Supports the V32-family dispatch grid: dedicated instantiations at
+ //   num_heads ∈ {8, 16, 32, 64, 128}
+ // plus one runtime-H instantiation (any num_heads <= 128 off the grid) and
+-// GLM53_NOPE dedicated 32/64 + runtime-H. topk is a runtime argument — one
++// GLM53_NOPE dedicated 8/32/64 + runtime-H. topk is a runtime argument — one
+ // instantiation serves every indices-row width.
+ 
+ #include <cuda_runtime.h>
 @@ -189,6 +189,9 @@ bool launch_sparse_mla_decode_dsv3_2(ModelType mt, int num_heads, int topk, int
    // indexer window. The TP1 (64-head) and TP2 (32-head) shapes keep
    // dedicated instantiations; any other shard rides the runtime-H fallback.
@@ -1330,7 +1339,7 @@ index 5efe99bc5211c3b67427c079c904311e914f30f5..5a57739e455edc401633620809d4ccc0
  #undef DECODE_DISPATCH
    return false;
 diff --git a/csrc/sparse_mla_sm120_jit_binding.cu b/csrc/sparse_mla_sm120_jit_binding.cu
-index d506f690ab37c8b51049e8e6fe2594d6535d8464..a0547dda3c0135848ed58aa9f2df9f2296c733cb 100644
+index d506f690ab37c8b51049e8e6fe2594d6535d8464..2509b7185e68b397e4c36a9ea6b64630c5413893 100644
 --- a/csrc/sparse_mla_sm120_jit_binding.cu
 +++ b/csrc/sparse_mla_sm120_jit_binding.cu
 @@ -53,8 +53,20 @@ struct PagedKVLayout {
@@ -1338,11 +1347,11 @@ index d506f690ab37c8b51049e8e6fe2594d6535d8464..a0547dda3c0135848ed58aa9f2df9f22
  };
  
 -inline PagedKVLayout parse_paged_kv_layout(const TensorView& kv, int bpt, const char* name) {
-+// inline_scale: the model stores scales inside the row (DSV3_2 / GLM_NSA /
-+// GLM53_NOPE) and gathers whole rows with cp.async.bulk, so the row advance
-+// must be 16B-aligned. Footer-scale models (DSV4 / DOTS3_SWA) address data
-+// rows by the packed data stride and skip the check (584 % 16 != 0 is legal
-+// there).
++// Inline-scale rows may be padded, with a 16B-aligned row advance.
++// Footer-scale caches must keep data and scale sections packed. Their data
++// rows use an aligned stride (e.g. 576B for DSV4), separate from the total
++// payload per token (584B including footer scales). Both families require
++// 16B-aligned cache origins and block strides for cp.async.bulk.
 +inline PagedKVLayout parse_paged_kv_layout(const TensorView& kv, int bpt, bool inline_scale,
 +                                           const char* name) {
    const size_t elem_bytes = static_cast<size_t>(kv.dtype().bits / 8);
@@ -3008,7 +3017,7 @@ index 603807d4c7883ba2496abec296d70553f91bac77..9b0fc08d85049a2702e8b2f12725aea5
      w2_global_scale = _source_global_scale(w2_global_scale, source_format=source_format)
      _get_w4a16_packed_weights(
 diff --git a/flashinfer/mla/_core.py b/flashinfer/mla/_core.py
-index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0c93ccfe9 100644
+index aab4b2b1cc40a7ee36d87b9f764254383dd48547..2a830581361acd81774339fb4045697299b2601b 100644
 --- a/flashinfer/mla/_core.py
 +++ b/flashinfer/mla/_core.py
 @@ -544,7 +544,7 @@ def _trtllm_batch_decode_sparse_mla_sm120(
@@ -3033,7 +3042,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
          )
  
      from ._sparse_mla_sm120 import SparseMLASm120Wrapper
-@@ -689,25 +690,32 @@ def _trtllm_batch_decode_sparse_mla_sm120(
+@@ -689,25 +690,34 @@ def _trtllm_batch_decode_sparse_mla_sm120(
      return out
  
  
@@ -3050,7 +3059,9 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
 +    # stores 512 FP8 values and four FP32 scales (528B); v32/GLM_NSA also
 +    # stores 128B of RoPE. The binding validates the actual row stride.
 +    min_row_bytes = 528 if glm53_nope else 656
-+    layout_desc = f">={min_row_bytes} ({min_row_bytes}B payload, padded rows allowed)"
++    layout_desc = (
++        f">={min_row_bytes} ({min_row_bytes}B payload, 16B-aligned padded rows allowed)"
++    )
      if kv_cache.ndim == 3:
 -        if kv_cache.size(-1) != 656:
 +        if kv_cache.size(-1) < min_row_bytes:
@@ -3073,7 +3084,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
              )
          return kv_cache
      raise ValueError(f"Expected kv_cache.ndim == 3 or 4, got {kv_cache.ndim}")
-@@ -824,7 +832,7 @@ def _trtllm_batch_decode_sparse_mla_v32_sm120(
+@@ -824,7 +834,7 @@ def _trtllm_batch_decode_sparse_mla_v32_sm120(
              f"{expected_block_tables_shape}, got {tuple(block_tables.shape)}"
          )
  
@@ -3082,7 +3093,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
      topk_length = _normalize_sm120_sparse_v32_topk_length(
          seq_lens,
          batch_size=batch_size,
-@@ -1377,7 +1385,7 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
+@@ -1377,7 +1387,7 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
      bmm2_scale: float,
      sinks: Optional[torch.Tensor],
      kv_layout: Literal["HND", "NHD"],
@@ -3091,7 +3102,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
  ) -> torch.Tensor:
      if bmm2_scale != 1.0:
          raise ValueError("SM120 DSv4 sparse MLA does not support bmm2_scale")
-@@ -1401,6 +1409,11 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
+@@ -1401,6 +1411,11 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
      if kv_cache_format == "nvfp4" and num_heads == 8:
          raise ValueError("NVFP4 sparse MLA does not yet support 8 query heads")
  
@@ -3103,7 +3114,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
      swa_kv_cache = _check_sm120_dsv4_kv_cache_layout(
          swa_kv_cache, kv_layout, "swa_kv_cache"
      )
-@@ -1424,10 +1437,10 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
+@@ -1424,10 +1439,10 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
              )
      else:
          if swa_kv_cache.dtype == torch.uint8:
@@ -3117,7 +3128,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
                  )
          elif swa_kv_cache.dtype != query.dtype:
              raise ValueError(
-@@ -1484,10 +1497,11 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
+@@ -1484,10 +1499,11 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
                  )
          else:
              if compressed_kv_cache.dtype == torch.uint8:
@@ -3132,7 +3143,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
                      )
              elif compressed_kv_cache.dtype != query.dtype:
                  raise ValueError(
-@@ -1519,7 +1533,9 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
+@@ -1519,7 +1535,9 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
              sinks=sinks,
              lse=None,
              return_lse=False,
@@ -3143,7 +3154,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
              kv_cache_format=kv_cache_format,
          ),
      )
-@@ -1860,7 +1876,7 @@ def trtllm_batch_decode_sparse_mla_dsv4(
+@@ -1860,7 +1878,7 @@ def trtllm_batch_decode_sparse_mla_dsv4(
      dsv4_inv_rope_cos_sin_cache: Optional[torch.Tensor] = None,
      dsv4_output_scale: Optional[torch.Tensor] = None,
      *,
@@ -3152,7 +3163,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
      r"""Decode DeepSeek V4 sparse MLA.
  
-@@ -1879,8 +1895,9 @@ def trtllm_batch_decode_sparse_mla_dsv4(
+@@ -1879,8 +1897,9 @@ def trtllm_batch_decode_sparse_mla_dsv4(
      length for the SWA validity window.
  
      On SM120/SM121, this calls the packed sparse backend. ``swa_kv_cache`` is
@@ -3164,7 +3175,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
      ``sparse_indices`` and ``swa_topk_lens`` describe the active SWA segment.
      To add a compressed segment, pass ``compressed_kv_cache`` as another pool
      in the same format and pass ``extra_sparse_indices`` with
-@@ -2046,18 +2063,24 @@ def trtllm_batch_decode_sparse_mla_dsv4(
+@@ -2046,18 +2065,24 @@ def trtllm_batch_decode_sparse_mla_dsv4(
          ``[sum_q, 16, 4096]`` and group-major strides
          ``(4096, sum_q * 4096, 1)``; ``out_scale`` uses the packed UE8M0
          layout described above.
@@ -3196,7 +3207,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0
      if kv_cache_format == "nvfp4" and backend != "sparse":
          raise ValueError("kv_cache_format='nvfp4' requires backend='sparse'")
  
-@@ -3450,7 +3473,9 @@ def trtllm_batch_decode_with_kv_cache_mla(
+@@ -3450,7 +3475,9 @@ def trtllm_batch_decode_with_kv_cache_mla(
          ``[num_pages, 1, page_size, kv_lora_rank + qk_rope_head_dim]`` and uses
          the query-compatible dense dtype. For the SM120/SM121 v32/GLM sparse
          backend, this is a packed uint8 cache with 656 bytes per token, shaped
@@ -3508,11 +3519,17 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
      )
      return output
 diff --git a/flashinfer/mla/_sparse_mla_sm120_cpb.py b/flashinfer/mla/_sparse_mla_sm120_cpb.py
-index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e900962c58 100644
+index 140f2f52afd9ef11fc054036abf2c6328b95c593..9226b7b94003b5447ff6760aac3a306d23a3f0f4 100644
 --- a/flashinfer/mla/_sparse_mla_sm120_cpb.py
 +++ b/flashinfer/mla/_sparse_mla_sm120_cpb.py
-@@ -86,13 +86,31 @@ _HPB = 16  # head tile per block
- _SCHEMA_VERSION = 1
+@@ -83,16 +83,36 @@ logger = logging.getLogger(__name__)
+ _BI = 64  # chunk width in candidates (BLOCK_SIZE_N)
+ _HPB = 16  # head tile per block
+ 
+-_SCHEMA_VERSION = 1
++_SCHEMA_VERSION = 2
++# Version 2 invalidates tuning from before GLM53_NOPE's canonical 528B payload.
++# Constants and measured overrides can otherwise retain the old 656B footprint.
  # Only current-schema files load; any other version counts as absent and the
  # families recalibrate on the next tuning-mode pass.
 -_BYTES_PER_TOKEN = {"dsv4": 584, "dsv3_2": 656, "glm53_nope": 656, "dots3_swa": 1160}
@@ -3547,7 +3564,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
  
  # Device-level key in the JSON payload holding the crossover table.
  _DECODE_MAX_TOKENS_KEY = "decode_max_tokens"
-@@ -106,6 +124,28 @@ _CROSSOVER_MARGIN = 0.95
+@@ -106,6 +126,28 @@ _CROSSOVER_MARGIN = 0.95
  # kernel-bench sweep matrix (max distance 6 at mid-T wave-quantization rows).
  _REFINE_WINDOW = 6
  
@@ -3576,7 +3593,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
  # (num_tokens, num_heads, topk, chunks_per_block); see calibrate().
  _MEASUREMENTS = (
      (64, 128, 128, 1),
-@@ -438,8 +478,9 @@ def _make_decode_call_builder(
+@@ -438,8 +480,9 @@ def _make_decode_call_builder(
      cpb)`` to a ``call(indices) -> None`` closure that drives the family's
      decode kernel over ``kv_cache``, so the two calibration passes' FFI
      argument lists cannot drift apart. ``model_type`` only reaches the
@@ -3588,7 +3605,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
      """
      d_qk = _D_QK[family]
      d_v = _D_V[family]
-@@ -480,7 +521,7 @@ def _make_decode_call_builder(
+@@ -480,7 +523,7 @@ def _make_decode_call_builder(
              num_tokens, num_heads, d_v, dtype=torch.bfloat16, device=device
          )
          out_lse = torch.empty(num_tokens, num_heads, dtype=torch.float32, device=device)
@@ -3597,7 +3614,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
  
              def call(indices: torch.Tensor) -> None:
                  module.sparse_mla_sm120_decode_dsv4(
-@@ -498,6 +539,7 @@ def _make_decode_call_builder(
+@@ -498,6 +541,7 @@ def _make_decode_call_builder(
                      None,
                      None,
                      None,
@@ -3605,7 +3622,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
                      cpb,
                  )
  
-@@ -546,10 +588,6 @@ def calibrate(
+@@ -546,10 +590,6 @@ def calibrate(
          raise CalibrationError(
              "sparse-MLA SM120 calibration must not run under CUDA graph capture"
          )
@@ -3616,7 +3633,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
  
      device = torch.device(device)
      props = torch.cuda.get_device_properties(device)
-@@ -564,9 +602,7 @@ def calibrate(
+@@ -564,9 +604,7 @@ def calibrate(
          "dots3_swa": _MEASUREMENTS_DOTS3_SWA,
      }
      measurements = _CPB_PAIR_MEASUREMENTS.get(family, _MEASUREMENTS)
@@ -3627,7 +3644,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
  
      kv_cache, num_slots = _allocate_kv_pool(family, device)
  
-@@ -711,11 +747,13 @@ def calibrate_crossover(
+@@ -711,11 +749,13 @@ def calibrate_crossover(
      from ._sparse_mla_sm120_plan import (
          _DECODE_DSV3_2_CALIBRATION_GRID,
          _DECODE_DSV4_CALIBRATION_GRID,
@@ -3641,7 +3658,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
          _MODEL_TYPE_GLM_NSA,
          _MODEL_TYPE_GLM53_NOPE,
          _MODEL_TYPE_DOTS3_SWA,
-@@ -737,6 +775,14 @@ def calibrate_crossover(
+@@ -737,6 +777,14 @@ def calibrate_crossover(
          spaces = [
              ("dsv4", grid or sorted(_DECODE_DSV4_CALIBRATION_GRID), _MODEL_TYPE_DSV4)
          ]
@@ -3656,7 +3673,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
      elif family == "dsv3_2":
          pairs = grid or sorted(_DECODE_DSV3_2_CALIBRATION_GRID)
          spaces = [
-@@ -867,11 +913,6 @@ def refine_cpb(
+@@ -867,11 +915,6 @@ def refine_cpb(
      up. Dual-cache (extra_topk > 0) shapes stay on the model: their measured
      pick error stays within ~6%.
      """
@@ -3668,7 +3685,7 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
      if family not in _BYTES_PER_TOKEN:
          raise ValueError(f"unknown sparse-MLA family {family!r}")
      if torch.cuda.is_current_stream_capturing():
-@@ -884,9 +925,7 @@ def refine_cpb(
+@@ -884,9 +927,7 @@ def refine_cpb(
      center = select_cpb(num_tokens, num_heads, topk, 0, c, chunk_width=bi)
      kv_cache, num_slots = _allocate_kv_pool(family, device)
      build_call = _make_decode_call_builder(module_getter(), family, device, kv_cache)
@@ -3679,7 +3696,24 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..02555c880586cb98a7a39149517598e9
      best_cpb, best_t = center, float("inf")
      lo = max(1, center - _REFINE_WINDOW)
      hi = min(n, center + _REFINE_WINDOW)
-@@ -1156,12 +1195,14 @@ def crossover_grid_complete(device: torch.device, family: str) -> bool:
+@@ -982,10 +1023,12 @@ def _maybe_load_disk() -> None:
+         return
+     try:
+         payload = json.loads(path.read_text())
+-        if (
+-            not isinstance(payload, dict)
+-            or payload.get("schema_version") != _SCHEMA_VERSION
+-        ):
++        if not isinstance(payload, dict):
++            return
++        if payload.get("schema_version") != _SCHEMA_VERSION:
++            # This file version cannot supply entries. Retry only after it
++            # changes, rather than reparsing stale tuning on every lookup.
++            _cache_mtime = mtime
+             return
+         devices = payload["devices"]
+         if not isinstance(devices, dict):
+@@ -1156,12 +1199,14 @@ def crossover_grid_complete(device: torch.device, family: str) -> bool:
      from ._sparse_mla_sm120_plan import (
          _DECODE_DSV3_2_CALIBRATION_GRID,
          _DECODE_DSV4_CALIBRATION_GRID,
@@ -5130,7 +5164,7 @@ index 6a89c93f42e74fb12213ea4ca6120cdd992ce078..38d0d270180568493127c28bdb63f86b
        pf = next;
        if (buf == 1) wr_phase ^= 1;
 diff --git a/tests/attention/test_sparse_mla_sm120.py b/tests/attention/test_sparse_mla_sm120.py
-index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946434a962f 100644
+index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573b4c6ca55 100644
 --- a/tests/attention/test_sparse_mla_sm120.py
 +++ b/tests/attention/test_sparse_mla_sm120.py
 @@ -35,6 +35,9 @@ import torch
@@ -6627,7 +6661,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946
      prefill-routed call.
      """
      q, kv_packed, indices, sm_scale, d_v, _, _ = _make_dsv3_2_prefill_case(
-@@ -2978,17 +3941,266 @@ def test_sparse_mla_sm120_inline_scale_rejects_padded_block_stride() -> None:
+@@ -2978,17 +3941,315 @@ def test_sparse_mla_sm120_inline_scale_rejects_padded_block_stride() -> None:
  
      output = torch.zeros(128, 64, d_v, dtype=torch.bfloat16, device=q.device)
      out_lse = torch.zeros(128, 64, dtype=torch.float32, device=q.device)
@@ -6751,6 +6785,55 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946
 +            d_v=512,
 +            kv_scale_format=scale_format,
 +            prefill_impl=impl,
++        )
++
++
++@pytest.mark.parametrize("layout", ["3d", "hnd", "nhd"])
++@pytest.mark.parametrize(
++    "model_type,bpt", [(_MODEL_TYPE_DSV4, 584), (_MODEL_TYPE_DSV4_1, 528)]
++)
++@pytest.mark.parametrize("padded_width", [False, True])
++@pytest.mark.parametrize("extra_cache", [False, True])
++def test_sparse_mla_sm120_decode_footer_row_gap_rejected(
++    layout: str, model_type: int, bpt: int, padded_width: bool, extra_cache: bool
++) -> None:
++    """The standalone decode binding validates both footer cache views."""
++    from flashinfer.mla._sparse_mla_sm120 import _get_sparse_mla_sm120_decode_module
++
++    kv = torch.zeros(2, 64, bpt + 16, dtype=torch.uint8, device="cuda")
++    if not padded_width:
++        kv = kv[..., :bpt]
++    if layout == "hnd":
++        kv = kv.unsqueeze(1)
++    elif layout == "nhd":
++        kv = kv.unsqueeze(2)
++    packed = torch.zeros(2, 64 * bpt, dtype=torch.uint8, device="cuda")
++    q = torch.zeros(1, 64, 512, dtype=torch.bfloat16, device="cuda")
++    indices = torch.zeros(1, 64, dtype=torch.int32, device="cuda")
++    output = torch.empty_like(q)
++    lse = torch.empty(1, 64, dtype=torch.float32, device="cuda")
++    mid_out, mid_lse = _make_decode_scratch(
++        1, 64, 64, 512, q.device, extra_topk=64 if extra_cache else 0
++    )
++    module = _get_sparse_mla_sm120_decode_module()
++    with pytest.raises(RuntimeError, match="tightly packed KV rows"):
++        module.sparse_mla_sm120_decode_dsv4(
++            q,
++            packed if extra_cache else kv,
++            indices,
++            mid_out,
++            mid_lse,
++            output,
++            lse,
++            2 if extra_cache else 1,
++            512**-0.5,
++            None,
++            None,
++            kv if extra_cache else None,
++            indices if extra_cache else None,
++            None,
++            model_type,
++            -1,
 +        )
 +
 +
@@ -6900,7 +6983,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946
      )
      kv = torch.zeros(
          *kv_packed.shape[:-1],
-@@ -2998,12 +4210,39 @@ def test_sparse_mla_sm120_inline_scale_prefill_rejects_padded_rows() -> None:
+@@ -2998,12 +4259,39 @@ def test_sparse_mla_sm120_inline_scale_prefill_rejects_padded_rows() -> None:
      )
      kv[..., : kv_packed.shape[-1]] = kv_packed
  
@@ -6944,7 +7027,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946
  
  
  @pytest.mark.parametrize("num_heads", [64, 128])
-@@ -3541,7 +4780,13 @@ def test_sparse_mla_sm120_envelope_consistency(
+@@ -3541,7 +4829,13 @@ def test_sparse_mla_sm120_envelope_consistency(
      )
  
      d_qk = 576 if model_type in (0, 2) else (1088 if model_type == 4 else 512)
@@ -6959,7 +7042,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946
      d_v = 1024 if model_type == 4 else 512
      num_tokens = 2
      kv_cache = torch.zeros(4, page_block_size * bpt, dtype=torch.uint8, device=device)
-@@ -3581,3 +4826,234 @@ def test_sparse_mla_sm120_envelope_consistency(
+@@ -3581,3 +4875,234 @@ def test_sparse_mla_sm120_envelope_consistency(
      else:
          with pytest.raises(RuntimeError, match="sparse-MLA"):
              call()
@@ -7195,10 +7278,90 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..333413e3a53f9058dd1a1574db414946
 +            poisoned, torch.full_like(poisoned, 0.25), atol=1e-3, rtol=1e-3
 +        )
 diff --git a/tests/attention/test_sparse_mla_sm120_cpb_model.py b/tests/attention/test_sparse_mla_sm120_cpb_model.py
-index 597ffa8f9f00538e5b3256474aa6d34eed2c59e3..000cbab69467c2983ee6fc67ff5fa050b826fd2a 100644
+index 597ffa8f9f00538e5b3256474aa6d34eed2c59e3..5bc3a650e48705aed00d470d77b16d5affb837e8 100644
 --- a/tests/attention/test_sparse_mla_sm120_cpb_model.py
 +++ b/tests/attention/test_sparse_mla_sm120_cpb_model.py
-@@ -460,6 +460,7 @@ def test_model_cpb_accuracy_guard_dual_cache(
+@@ -288,6 +288,79 @@ def test_missing_or_corrupt_cache_falls_back(clean_cpb_state, tmp_path) -> None:
+     assert _resolve_cpb(device, "dsv4", 1, 16, 1024, 0) == -1
+ 
+ 
++def test_stale_schema_is_read_once_until_file_changes(
++    clean_cpb_state, monkeypatch
++) -> None:
++    """Repeated misses skip stale JSON, but a replaced tuning file is picked up."""
++    from unittest.mock import patch
++    import os
++
++    device = torch.device("cpu")
++    path = cpb_mod.default_cache_path()
++    path.write_text('{"schema_version": 1, "devices": {}}')
++    old_mtime = path.stat().st_mtime
++    read_text = type(path).read_text
++    with patch.object(
++        type(path), "read_text", autospec=True, side_effect=read_text
++    ) as read:
++        for _ in range(3):
++            assert cpb_mod.get_constants(device, "glm53_nope") is None
++            assert cpb_mod.get_cpb_override(device, "glm53_nope", 32, 512, 4) is None
++            assert cpb_mod.get_decode_max_tokens(device, "glm53_nope", 32, 512) is None
++        assert read.call_count == 1
++        path.write_text(
++            cpb_mod.json.dumps(
++                {
++                    "schema_version": cpb_mod._SCHEMA_VERSION,
++                    "devices": {
++                        cpb_mod._device_key(device): {"dsv4": cpb_mod.asdict(_C)}
++                    },
++                }
++            )
++        )
++        os.utime(path, (old_mtime + 1, old_mtime + 1))
++        assert cpb_mod.get_constants(device, "dsv4") == _C
++        assert read.call_count == 2
++
++
++def test_legacy_glm_layout_calibration_is_invalidated(clean_cpb_state) -> None:
++    """A payload-layout change invalidates constants and measured tuning picks."""
++    from flashinfer.mla._sparse_mla_sm120 import _resolve_cpb
++
++    device = torch.device("cpu")
++    legacy = CpbConstants(**{**_C.__dict__, "bytes_per_chunk": 64 * 656})
++    cpb_mod.default_cache_path().write_text(
++        cpb_mod.json.dumps(
++            {
++                "schema_version": 1,
++                "devices": {
++                    cpb_mod._device_key(device): {
++                        "glm53_nope": cpb_mod.asdict(legacy),
++                        cpb_mod._CPB_OVERRIDES_KEY: {"glm53_nope|32|512|4": 7},
++                        cpb_mod._DECODE_MAX_TOKENS_KEY: {"glm53_nope|32|512": 16},
++                    }
++                },
++            }
++        )
++    )
++    assert cpb_mod.get_constants(device, "glm53_nope") is None
++    assert cpb_mod.get_cpb_override(device, "glm53_nope", 32, 512, 4) is None
++    assert cpb_mod.get_decode_max_tokens(device, "glm53_nope", 32, 512) is None
++    assert _resolve_cpb(device, "glm53_nope", 4, 32, 512, 0) == -1
++
++    current = CpbConstants(**{**_C.__dict__, "bytes_per_chunk": 64 * 528})
++    cpb_mod.save_constants(device, "glm53_nope", current)
++    cpb_mod._constants.clear()
++    cpb_mod._cache_mtime = -1.0
++    assert cpb_mod.get_constants(device, "glm53_nope") == current
++    payload = cpb_mod.json.loads(cpb_mod.default_cache_path().read_text())
++    assert payload["schema_version"] == cpb_mod._SCHEMA_VERSION
++    assert (
++        cpb_mod._CPB_OVERRIDES_KEY
++        not in payload["devices"][cpb_mod._device_key(device)]
++    )
++
++
+ def _skip_if_low_vram(needed_gib: int) -> None:
+     """Skip when the GPU cannot fit the multi-GiB KV pool (mirrors the
+     torch.cuda.mem_get_info precedent in test_mla_decode_kernel.py)."""
+@@ -460,6 +533,7 @@ def test_model_cpb_accuracy_guard_dual_cache(
                  extra_kv_cache,
                  extra_indices,
                  None,

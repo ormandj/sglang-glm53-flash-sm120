@@ -3649,10 +3649,10 @@ index 9b91feb2368e049a27ab715c711e9eacb95e89a1..88a5029bc841b9f0eedf07ec99486e33
 +        )
 +    return True
 diff --git a/python/sglang/kernels/ops/attention/flash_mla_sm120.py b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-index 906d4aa22d13f4c9ae9efcd7c58bc9670181027f..899097d28332f662af0bd9d1bc56b1eaf7d3c543 100644
+index 5267908eee044da098b7cf4e49701d552cfe7953..9f240a28144a6901947bf645f8e9af60bce0e8f0 100644
 --- a/python/sglang/kernels/ops/attention/flash_mla_sm120.py
 +++ b/python/sglang/kernels/ops/attention/flash_mla_sm120.py
-@@ -28,8 +28,13 @@ _is_hip = is_hip()
+@@ -29,8 +29,13 @@ _is_hip = is_hip()
  _GLM_DSA_MODEL_ARCHS = (
      "GlmMoeDsaForCausalLM",
      "GlmMoeDsaForCausalLMNextN",
@@ -3666,7 +3666,7 @@ index 906d4aa22d13f4c9ae9efcd7c58bc9670181027f..899097d28332f662af0bd9d1bc56b1ea
  # Page layout constants for DSv4-Flash (MODEL1):
  #   nope_dim = 448, rope_dim = 64, quantize_block_size = 64
  #   nope_rope_stride = 448 + 64*2 = 576 bytes per token
-@@ -646,6 +651,27 @@ def _flash_mla_flashinfer(
+@@ -675,6 +680,27 @@ def _flash_mla_flashinfer(
      return (output.unsqueeze(1), None)
  
  
@@ -3694,7 +3694,7 @@ index 906d4aa22d13f4c9ae9efcd7c58bc9670181027f..899097d28332f662af0bd9d1bc56b1ea
  def _validate_flashinfer_sparse_mla_backend(
      *,
      model_arch: str,
-@@ -670,7 +696,10 @@ def _validate_flashinfer_sparse_mla_backend(
+@@ -699,7 +725,10 @@ def _validate_flashinfer_sparse_mla_backend(
              f"kv_cache_dtype={kv_cache_dtype}, prefill_impl={prefill_impl!r}, "
              f"decode_impl={decode_impl!r}."
          )
@@ -3706,7 +3706,7 @@ index 906d4aa22d13f4c9ae9efcd7c58bc9670181027f..899097d28332f662af0bd9d1bc56b1ea
          unsupported = selected - {"flashinfer_sparse_mla"}
          if unsupported:
              raise ValueError(
-@@ -681,12 +710,47 @@ def _validate_flashinfer_sparse_mla_backend(
+@@ -710,12 +739,47 @@ def _validate_flashinfer_sparse_mla_backend(
      return uses_flashinfer_sparse_mla
  
  
@@ -3754,7 +3754,7 @@ index 906d4aa22d13f4c9ae9efcd7c58bc9670181027f..899097d28332f662af0bd9d1bc56b1ea
      *,
      page_size: int,
      kv_cache_dim: int,
-@@ -696,26 +760,123 @@ def flashinfer_sparse_mla_forward(
+@@ -725,26 +789,123 @@ def flashinfer_sparse_mla_forward(
      sm_scale: float,
      skip_softmax_threshold_scale_factor: float | None,
  ) -> torch.Tensor:
@@ -4084,7 +4084,7 @@ index 44b5268280f6c58f42d23016ae5a1c0bc61d160f..891ab6381da06aa348fdef2c92eb0a14
          # DSV4 is BCG-compatible but introduces heavy memory pressure: the
          # c4 indexer scratch is pinned in the capture pool and OOMs. Disable.
 diff --git a/python/sglang/srt/arg_groups/field_order.py b/python/sglang/srt/arg_groups/field_order.py
-index 69656c60698db8e623d148d9e098021cb07ede7f..42c832d304840839e3cb36f8c8fed353d5ab8fc4 100644
+index 992a91b1728aee0f41d00cc336e166b19e8d973a..0a30da9cf182e21bb78a927da1977a03e355980f 100644
 --- a/python/sglang/srt/arg_groups/field_order.py
 +++ b/python/sglang/srt/arg_groups/field_order.py
 @@ -387,6 +387,7 @@ POSITIONAL_FIELD_ORDER = (
@@ -4270,10 +4270,10 @@ index b49b490a6f69af2408bae47e8454a80a7fddfea2..5b8949f0fe91e4f4abf5c62bbacb82ad
      logger.warning(
          f"Set DSA backends for {kv_cache_dtype} KV Cache: "
 diff --git a/python/sglang/srt/arg_groups/validation_hook.py b/python/sglang/srt/arg_groups/validation_hook.py
-index 44241c6337707323a93c79fa2fa761d1b08828f9..c8971c4b2c688a1f2993ae3886e9580ee85fef40 100644
+index 2a5e41dbd9c8877226e74ffc47b383f7b5ed9c06..0ccd1376252ef23c22caa61fbf84520a8cffcb49 100644
 --- a/python/sglang/srt/arg_groups/validation_hook.py
 +++ b/python/sglang/srt/arg_groups/validation_hook.py
-@@ -154,6 +154,7 @@ def check_server_args(server_args: Any):
+@@ -155,6 +155,7 @@ def check_server_args(server_args: Any):
      assert cfg.detokenizer_worker_num > 0, "Detokenizer worker num must >= 1"
      assert cfg.mm_processor_worker_num >= 0, "Multimodal processor worker num must >= 0"
      assert cfg.mm_io_worker_num >= 0, "Multimodal I/O worker num must >= 0"
@@ -4281,7 +4281,7 @@ index 44241c6337707323a93c79fa2fa761d1b08828f9..c8971c4b2c688a1f2993ae3886e9580e
      validate_buckets_rule("--prompt-tokens-buckets", cfg.prompt_tokens_buckets)
      validate_buckets_rule("--generation-tokens-buckets", cfg.generation_tokens_buckets)
  
-@@ -250,6 +251,21 @@ def check_server_args(server_args: Any):
+@@ -251,6 +252,21 @@ def check_server_args(server_args: Any):
      check_load_publish_args(server_args)
  
  
@@ -4304,10 +4304,10 @@ index 44241c6337707323a93c79fa2fa761d1b08828f9..c8971c4b2c688a1f2993ae3886e9580e
      if not buckets_rule:
          return
 diff --git a/python/sglang/srt/configs/model_config.py b/python/sglang/srt/configs/model_config.py
-index c99510301f712d5b0f1711c7cec3c778f1b8ae7f..f9941e6549e94d6e721dcc2fc76bf0affe610bc5 100644
+index 0f8874b63b6e0833adc95de8689ed8108573278a..be6bd336e3ce470b3c9a3aa386f464de8db27ec1 100644
 --- a/python/sglang/srt/configs/model_config.py
 +++ b/python/sglang/srt/configs/model_config.py
-@@ -222,6 +222,19 @@ def is_qwen4_exp(config) -> bool:
+@@ -231,6 +231,19 @@ def is_qwen4_exp(config) -> bool:
  def resolve_spec_hidden_size(
      hf_config, hidden_size: int, hc_mult: int
  ) -> tuple[int, Optional[int]]:
@@ -4327,7 +4327,7 @@ index c99510301f712d5b0f1711c7cec3c778f1b8ae7f..f9941e6549e94d6e721dcc2fc76bf0af
      # DSV4 and Qwen4-Exp carry the hc-flattened stream across the target->draft
      # boundary; other hc models (hy_v4) collapse to hidden_size first.
      if hc_mult <= 1 or not (is_deepseek_v4(hf_config) or is_qwen4_exp(hf_config)):
-@@ -1225,19 +1238,9 @@ class ModelConfig:
+@@ -1234,19 +1247,9 @@ class ModelConfig:
              self.num_key_value_heads = self.num_attention_heads
          self.hidden_size = self.hf_text_config.hidden_size
          hc_mult = getattr(self.hf_text_config, "hc_mult", 1)
@@ -4350,10 +4350,10 @@ index c99510301f712d5b0f1711c7cec3c778f1b8ae7f..f9941e6549e94d6e721dcc2fc76bf0af
          self.num_attention_layers = self.num_hidden_layers
          if "LongcatFlashForCausalLM" in self.hf_config.architectures:
 diff --git a/python/sglang/srt/disaggregation/common/conn.py b/python/sglang/srt/disaggregation/common/conn.py
-index 7f486522e09b0c26f8d77f8620cbc4dde97d4bd7..1fab01d9fb3f2c7a7176c8c539cbe8920933f4a8 100644
+index 5ebcaf811504a20879863dd5e7e444ce3094295c..625d48f9448cd841e425e950dc9fc8e4c580f22c 100644
 --- a/python/sglang/srt/disaggregation/common/conn.py
 +++ b/python/sglang/srt/disaggregation/common/conn.py
-@@ -1615,7 +1615,9 @@ class CommonKVReceiver(BaseKVReceiver):
+@@ -1585,7 +1585,9 @@ class CommonKVReceiver(BaseKVReceiver):
  
      def _check_waiting_timeout(self) -> Optional[KVPoll]:
          if self.init_time is None:
@@ -4624,10 +4624,10 @@ index 2fca0d798188fd5b53ea7210234c417abb47d895..84e1e5dfa8d15a52156b40ff2f3ae0d2
          self._close_video_decoders(video_items)
          raise NotImplementedError(
 diff --git a/python/sglang/srt/disaggregation/nixl/conn.py b/python/sglang/srt/disaggregation/nixl/conn.py
-index a7fc753ad01bcaf5d0508eaa93d5a9f6668ba470..2062d93d7eadfe46145b02c0c6f1816c48864811 100644
+index 6bf84a189b1005f12ad0f013a6f04f9ed3fe8706..9e4335ab513370127d528670a3fdb4d55810e6be 100644
 --- a/python/sglang/srt/disaggregation/nixl/conn.py
 +++ b/python/sglang/srt/disaggregation/nixl/conn.py
-@@ -3083,6 +3083,10 @@ class NixlKVReceiver(CommonKVReceiver):
+@@ -3087,6 +3087,10 @@ class NixlKVReceiver(CommonKVReceiver):
              self.conclude_state = status
              return status
          if not self.started_transfer:
@@ -5602,7 +5602,7 @@ index 2608621f6ab5af5ebb6a019e34db882a4f230f19..803e0d94f38adb8a7ba2f8471f5746f5
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 5e7d4086acdc7a0cf7c971a57211878a01bb0484..dcd6ce53bf7375c476bb9d127f86b9c2be52ab25 100644
+index 8e4125df53af45bbb74bfe110217d6d072279f0a..f230742f23b076f7bb29dd9ddd9cbb2dde148312 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -456,6 +456,21 @@ class Envs:
@@ -5644,7 +5644,7 @@ index 5e7d4086acdc7a0cf7c971a57211878a01bb0484..dcd6ce53bf7375c476bb9d127f86b9c2
  
      # ===================================================================
      # Scheduler token budgeting and admission
-@@ -1060,9 +1085,10 @@ class Envs:
+@@ -1063,9 +1088,10 @@ class Envs:
      # (parity with flash-attn's ragged-aware launch). The feature checks _is_hip
      # explicitly in code; this env var allows override (0=force off, 1=force on).
      SGLANG_TRITON_COMPACT_EXTEND_ATTENTION = EnvBool(True)
@@ -5658,7 +5658,7 @@ index 5e7d4086acdc7a0cf7c971a57211878a01bb0484..dcd6ce53bf7375c476bb9d127f86b9c2
      SGLANG_CRASH_ON_TRITON_LOAD_AFTER_READY = EnvBool(False)
      SGLANG_TRITON_SLOW_COMPILE_THRESHOLD_SECS = EnvFloat(1.0)
      SGLANG_TRITON_LOAD_WARNING_THRESHOLD_GB = EnvFloat(1.0)
-@@ -1351,6 +1377,12 @@ class Envs:
+@@ -1354,6 +1380,12 @@ class Envs:
      # CUDA graphs and execution buffers
      # ===================================================================
      SGLANG_USE_BREAKABLE_CUDA_GRAPH = EnvBool(False)
@@ -5671,7 +5671,7 @@ index 5e7d4086acdc7a0cf7c971a57211878a01bb0484..dcd6ce53bf7375c476bb9d127f86b9c2
      # Guards CUDA graph executable dedup via cudaGraphExecUpdate.
      SGLANG_ENABLE_CUDA_GRAPH_DEDUP = EnvBool(False)
      SGLANG_MEMORY_SAVER_CUDA_GRAPH = EnvBool(False)
-@@ -1362,6 +1394,14 @@ class Envs:
+@@ -1365,6 +1397,14 @@ class Envs:
      # Eager forward wraps the ForwardBatch's own tensors instead of copying them
      # into the CUDA graph buffer registry (no per-iter device-to-device copy).
      SGLANG_EAGER_INPUT_NO_COPY = EnvBool(False)
@@ -5686,7 +5686,7 @@ index 5e7d4086acdc7a0cf7c971a57211878a01bb0484..dcd6ce53bf7375c476bb9d127f86b9c2
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1535,6 +1575,8 @@ class Envs:
+@@ -1538,6 +1578,8 @@ class Envs:
      SGLANG_DSA_FUSE_TOPK = EnvBoolWithAlias(
          True, deprecated_name="SGLANG_NSA_FUSE_TOPK"
      )
@@ -8701,7 +8701,7 @@ index 79731c1d5ae0db2d5971768adf2749c547e79c1a..d5a25e7009a99769ec23d8c9b6097c14
                  self._account_prefill_cache_admission(req, prefix_len)
  
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58f3f2431e 100644
+index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15a458da59 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -152,6 +152,8 @@ from sglang.srt.managers.io_struct import (
@@ -8713,7 +8713,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
      MMInputsProcessError,
      OpenSessionReqInput,
      PauseGenerationReqInput,
-@@ -347,6 +349,7 @@ from sglang.srt.utils.hf_transformers_utils import (
+@@ -346,6 +348,7 @@ from sglang.srt.utils.hf_transformers_utils import (
      get_tokenizer_from_processor,
      resolve_image_processor_backend,
  )
@@ -8721,7 +8721,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
  from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
  from sglang.srt.utils.numa_utils import get_numa_node_if_available, numa_bind_to_node
  from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
-@@ -688,6 +691,10 @@ class Scheduler(
+@@ -687,6 +690,10 @@ class Scheduler(
  
          self.init_weight_updater()
  
@@ -8732,7 +8732,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
          # Init request dispatcher
          self.init_request_dispatcher()
  
-@@ -1651,12 +1658,6 @@ class Scheduler(
+@@ -1652,12 +1659,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -8745,7 +8745,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1783,6 +1784,7 @@ class Scheduler(
+@@ -1784,6 +1785,7 @@ class Scheduler(
                  (ShutdownReq, self.handle_shutdown),
                  (GetInternalStateReq, self.get_internal_state),
                  (SetInternalStateReq, self.set_internal_state),
@@ -8753,7 +8753,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1842,10 +1844,20 @@ class Scheduler(
+@@ -1843,10 +1845,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -8777,7 +8777,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3582,6 +3594,7 @@ class Scheduler(
+@@ -3585,6 +3597,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -8785,7 +8785,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3710,8 +3723,16 @@ class Scheduler(
+@@ -3713,8 +3726,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -8804,7 +8804,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
              running_batch.batch_is_full = False
  
          if (
-@@ -3794,10 +3815,33 @@ class Scheduler(
+@@ -3797,10 +3818,33 @@ class Scheduler(
              prefill_tile_block_m=prefill_tile_block_m,
          )
  
@@ -8839,7 +8839,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
          if self.enable_lora:
              running_loras = {
                  req.lora_id for req in running_batch.reqs if not req.finished()
-@@ -3811,11 +3855,12 @@ class Scheduler(
+@@ -3814,11 +3858,12 @@ class Scheduler(
                      running_batch.reqs,
                  )
  
@@ -8854,7 +8854,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3858,6 +3903,17 @@ class Scheduler(
+@@ -3861,6 +3906,17 @@ class Scheduler(
                      # marks the staged span below once it is surfaced.
                      req.host_hit_is_storage = False
  
@@ -8872,7 +8872,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4136,20 +4192,27 @@ class Scheduler(
+@@ -4139,20 +4195,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -8914,7 +8914,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4162,12 +4225,11 @@ class Scheduler(
+@@ -4165,12 +4228,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -8932,7 +8932,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4182,12 +4244,11 @@ class Scheduler(
+@@ -4185,12 +4247,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -8948,7 +8948,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4248,7 +4309,7 @@ class Scheduler(
+@@ -4251,7 +4312,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -8957,7 +8957,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4274,13 +4335,12 @@ class Scheduler(
+@@ -4277,13 +4338,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -8977,7 +8977,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4402,7 +4462,11 @@ class Scheduler(
+@@ -4405,7 +4465,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -8990,7 +8990,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4414,7 +4478,11 @@ class Scheduler(
+@@ -4417,7 +4481,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -9002,7 +9002,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4537,9 +4605,11 @@ class Scheduler(
+@@ -4540,9 +4608,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -9017,7 +9017,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4562,31 +4632,42 @@ class Scheduler(
+@@ -4565,31 +4635,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -9081,7 +9081,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4621,7 +4702,7 @@ class Scheduler(
+@@ -4624,7 +4705,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -9090,7 +9090,7 @@ index 25619df0977bb63c3bcfa63bb9016680d68e3679..e6b7ba3df1c45b2d63459297d7ba6a58
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5598,6 +5679,38 @@ class Scheduler(
+@@ -5601,6 +5682,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -9173,7 +9173,7 @@ index dca687eb3d18956b060f59e3fefa3ce44c8d9927..ea994e78453d4fd84e4fa6a320645498
          self: TokenizerManager, obj: DumperControlReqInput
      ) -> List[DumperControlReqOutput]:
 diff --git a/python/sglang/srt/managers/utils.py b/python/sglang/srt/managers/utils.py
-index 2695df7d7c5f0fbaa931d3790eb2d1cf85966d75..8e52c6e640a0bc43b1eec23bb909ded486ad65c8 100644
+index 88ee08f5dcdc6ed82f445c889079a4c7bbd1608a..d5e95cf1f7cf4cc5f675e91743f3e2fd843a661f 100644
 --- a/python/sglang/srt/managers/utils.py
 +++ b/python/sglang/srt/managers/utils.py
 @@ -4,7 +4,7 @@ import dataclasses
@@ -9185,7 +9185,7 @@ index 2695df7d7c5f0fbaa931d3790eb2d1cf85966d75..8e52c6e640a0bc43b1eec23bb909ded4
  
  import msgspec
  import torch
-@@ -99,11 +99,16 @@ class GenerationBatchResult:
+@@ -102,11 +102,16 @@ class GenerationBatchResult:
      # relay path: forward stream -> next step forward
      next_draft_input: Optional[SpecInput] = None
  
@@ -9205,7 +9205,7 @@ index 2695df7d7c5f0fbaa931d3790eb2d1cf85966d75..8e52c6e640a0bc43b1eec23bb909ded4
      # Routed experts: pending async D2H for overlap scheduling
      routed_experts_output: Optional[TopkCaptureOutput] = None
      indexer_topk_output: Optional[TopkCaptureOutput] = None
-@@ -117,6 +122,18 @@ class GenerationBatchResult:
+@@ -120,6 +125,18 @@ class GenerationBatchResult:
  
      auxiliary_host_output: Optional[HostAuxiliaryOutput] = None
  
@@ -9224,7 +9224,7 @@ index 2695df7d7c5f0fbaa931d3790eb2d1cf85966d75..8e52c6e640a0bc43b1eec23bb909ded4
      @property
      def has_sampled_token_ids(self) -> bool:
          """True when this iter sampled token ids; False when none were produced
-@@ -300,6 +317,10 @@ def get_logprob_from_pp_outputs(
+@@ -331,6 +348,10 @@ def get_logprob_from_pp_outputs(
      return logits_output, extend_input_len_per_req, extend_logprob_start_len_per_req
  
  
@@ -9235,7 +9235,7 @@ index 2695df7d7c5f0fbaa931d3790eb2d1cf85966d75..8e52c6e640a0bc43b1eec23bb909ded4
  @dataclass
  class EmbeddingBatchResult:
      """Result from an embedding/classification forward pass.
-@@ -309,28 +330,52 @@ class EmbeddingBatchResult:
+@@ -340,28 +361,52 @@ class EmbeddingBatchResult:
          pooled_hidden_states: Raw hidden states before the task head.  Present
              only when the batch contained ``return_pooled_hidden_states=True``
              requests.  Tensor (uniform shapes) or list of tensors (MIS).
