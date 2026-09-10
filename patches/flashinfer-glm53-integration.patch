@@ -1520,15 +1520,15 @@ index 82bfda29b298fed027ee242beff0614d500353d1..0b44b5a723a7962772a655983cb6b1c1
      }
      case PrefillVariant::MG: {
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index 6aa6363b296719352266b6b4ce84e59ba8fc62a7..540f22b066c7795c26312d50936ee74abdda8c63 100644
+index 6aa6363b296719352266b6b4ce84e59ba8fc62a7..bc5cbef9df316eb41668a32311ee557e42a0a6db 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -1632,6 +1632,9 @@ class B12xW4A16Config:
      ):
          """Build the ``b12x_w4a16`` weight view from checkpoint fp4 weights.
  
-+        ``source_format="modelopt_e4m3_k32"`` selects E4M3 block scales at
-+        K/32 cadence for BF16-activation weight-only serving.
++        Supports ModelOpt and CompressedTensors K/16 scale conventions.
++        Use the native ``B12xMoEWrapper`` API for K/32 source formats.
 +
          Register the result with ``MoEWeightPack.prepare_for("b12x_w4a16", ...)``.
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
@@ -2979,7 +2979,7 @@ index 664f2a886faaac20f86d4c184528359f53988cd9..278eac0309901070188d4187972583e0
          )
      else:
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e4382dd0ccbe 100644
+index 603807d4c7883ba2496abec296d70553f91bac77..9b0fc08d85049a2702e8b2f12725aea5e45354dd 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
 @@ -2471,8 +2471,8 @@ def prepare_b12x_w4a16_weights(
@@ -2988,33 +2988,25 @@ index 603807d4c7883ba2496abec296d70553f91bac77..f340eab1fb4ac928a582db3d6343e438
      source_format : str
 -        Checkpoint scale convention: ``"modelopt"`` or
 -        ``"compressed_tensors"``.
-+        Checkpoint scale convention: ``"modelopt"``,
-+        ``"modelopt_e4m3_k32"``, or ``"compressed_tensors"``.
++        Checkpoint scale convention: ``"modelopt"`` or ``"compressed_tensors"``.
++        K/32 source formats require the native ``B12xMoEWrapper`` API.
  
      Returns
      -------
-@@ -2486,12 +2486,9 @@ def prepare_b12x_w4a16_weights(
-     )
-     from .cute_dsl.blackwell_sm12x.moe_w4a16_prepare import (
-         _normalize_source_format,
--        _source_global_scale,
+@@ -2490,6 +2490,13 @@ def prepare_b12x_w4a16_weights(
      )
  
      source_format = _normalize_source_format(source_format)
--    w1_global_scale = _source_global_scale(w1_global_scale, source_format=source_format)
--    w2_global_scale = _source_global_scale(w2_global_scale, source_format=source_format)
++    if source_format not in ("modelopt", "compressed_tensors"):
++        raise ValueError(
++            "The unified b12x_w4a16 weight view requires ModelOpt or "
++            "CompressedTensors K/16 scales; use B12xMoEWrapper for K/32 formats."
++        )
++    # The tensor-only unified view is consumed as ModelOpt by the runner.
++    # Canonicalize checkpoint scale conventions before warming that same cache.
+     w1_global_scale = _source_global_scale(w1_global_scale, source_format=source_format)
+     w2_global_scale = _source_global_scale(w2_global_scale, source_format=source_format)
      _get_w4a16_packed_weights(
-         w1_weight=w1_fp4,
-         w1_weight_sf=w1_blockscale,
-@@ -2501,7 +2498,7 @@ def prepare_b12x_w4a16_weights(
-         w2_alpha=w2_global_scale,
-         activation=activation,
-         params_dtype=torch.bfloat16,
--        source_format="modelopt",
-+        source_format=source_format,
-     )
-     return {
-         "w1_weight": w1_fp4,
 diff --git a/flashinfer/mla/_core.py b/flashinfer/mla/_core.py
 index aab4b2b1cc40a7ee36d87b9f764254383dd48547..e71f539808346a844cf496eeec44a5b0c93ccfe9 100644
 --- a/flashinfer/mla/_core.py
@@ -8042,3 +8034,72 @@ index 0000000000000000000000000000000000000000..ccc8836c306ad4674dcc9c0ef6bd95ce
 +    import sys
 +
 +    sys.exit(pytest.main([__file__, "-q"]))
+diff --git a/tests/moe/test_unified_moe_b12x.py b/tests/moe/test_unified_moe_b12x.py
+index 0ac8d18528333e638f7f775901628f46914eccf9..cf2cc8bd87a67c928f53a7e3cfb3ba00c50663b7 100644
+--- a/tests/moe/test_unified_moe_b12x.py
++++ b/tests/moe/test_unified_moe_b12x.py
+@@ -96,6 +96,26 @@ class TestB12xBackendOptions:
+ 
+ 
+ class TestB12xUnifiedValidation:
++    @pytest.mark.parametrize(
++        "source_format", ["modelopt_e4m3_k32", "e4m3_k32", "fp4_e8m0_k32"]
++    )
++    def test_unified_w4a16_rejects_formats_without_a_matching_view(self, source_format):
++        from flashinfer.fused_moe.prepare import prepare_b12x_w4a16_weights
++
++        # Validation must precede packing or any CUDA allocation.
++        placeholder = torch.empty(0)
++        with pytest.raises(ValueError, match="use B12xMoEWrapper for K/32"):
++            prepare_b12x_w4a16_weights(
++                placeholder,
++                placeholder,
++                placeholder,
++                placeholder,
++                placeholder,
++                placeholder,
++                activation="silu",
++                source_format=source_format,
++            )
++
+     @staticmethod
+     def _runner(config, runner_type=B12xNvfp4Runner):
+         runner = runner_type.__new__(runner_type)
+@@ -763,6 +783,9 @@ class TestUnifiedB12xConformance:
+             top_k=2,
+             seed=321,
+         )
++        if variant is QuantVariant.W4A16:
++            tensors["w1_alpha"].fill_(1.75)
++            tensors["w2_alpha"].fill_(0.75)
+         layer, act_pack, weight_pack = _make_b12x_layer_and_packs(
+             tensors,
+             variant=variant,
+@@ -813,8 +836,9 @@ class TestUnifiedB12xConformance:
+         tensors["w1_alpha"].fill_(1.75)
+         tensors["w2_alpha"].fill_(0.75)
+         prepared_views = []
++        outputs = []
+         for source_format in ("modelopt", "compressed_tensors"):
+-            _, _, weight_pack = _make_b12x_layer_and_packs(
++            layer, act_pack, weight_pack = _make_b12x_layer_and_packs(
+                 tensors,
+                 variant=QuantVariant.W4A16,
+                 activation="silu",
+@@ -824,6 +848,7 @@ class TestUnifiedB12xConformance:
+                 source_format=source_format,
+             )
+             prepared_views.append(weight_pack.get_view("b12x_w4a16"))
++            outputs.append(_run_b12x_unified(layer, act_pack, weight_pack).clone())
+         for field in (
+             "w1_weight",
+             "w1_weight_sf",
+@@ -840,6 +865,8 @@ class TestUnifiedB12xConformance:
+                 atol=0,
+             )
+ 
++        torch.testing.assert_close(outputs[0], outputs[1], rtol=0.05, atol=0.05)
++
+ 
+ def test_b12x_nvfp4_prepare_weights_rejects_non_default_swiglu_scalars():
+     """prepare_weights() must not silently drop SwiGLU scalars.

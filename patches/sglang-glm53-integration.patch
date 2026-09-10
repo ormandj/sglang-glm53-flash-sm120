@@ -4365,10 +4365,18 @@ index 7f486522e09b0c26f8d77f8620cbc4dde97d4bd7..1fab01d9fb3f2c7a7176c8c539cbe892
          if elapsed < self.kv_mgr.waiting_timeout:
              return None
 diff --git a/python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py b/python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py
-index b58adc48359efcd6465052773a2adb73f7581b48..819f147070f9fa0ca74e23d69e7b0fc3eb83bad8 100644
+index b58adc48359efcd6465052773a2adb73f7581b48..6795c083d6fa2788b9b6bb095a4d5fc68bb42ad7 100644
 --- a/python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py
 +++ b/python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py
-@@ -59,10 +59,15 @@ class DecodeKVCacheOffloadManager:
+@@ -16,6 +16,7 @@ from sglang.srt.mem_cache.allocator import BaseTokenToKVPoolAllocator
+ from sglang.srt.mem_cache.base_prefix_cache import BasePrefixCache
+ from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
+     build_kv_host_pool,
++    get_mla_host_kv_cache_dim,
+ )
+ from sglang.srt.mem_cache.memory_pool import (
+     MHATokenToKVPool,
+@@ -59,10 +60,19 @@ class DecodeKVCacheOffloadManager:
          kv_cache = self.token_to_kv_pool_allocator.get_kvcache()
          if not isinstance(kv_cache, (MHATokenToKVPool, MLATokenToKVPool)):
              raise ValueError("Unsupported KV cache type for decode offload")
@@ -4381,7 +4389,11 @@ index b58adc48359efcd6465052773a2adb73f7581b48..819f147070f9fa0ca74e23d69e7b0fc3
 +            # Host rows must have the device pool's row geometry; a packed DSA
 +            # row is wider than the width the MLA host pool assumes without
 +            # the override.
-+            override_kv_cache_dim=kv_cache.kv_cache_dim if use_mla else None,
++            override_kv_cache_dim=(
++                get_mla_host_kv_cache_dim(kv_cache, get_memory().hicache_mem_layout)
++                if use_mla
++                else None
++            ),
          )
  
          self.tp_group = tp_group
@@ -9552,11 +9564,48 @@ index ffc479e8ce24839a6ee3da71b9c3f64f40abcff9..bf7c7cec2f28771299543879fd37c83d
  
      def get_cpu_copy(self, indices, mamba_indices=None, req_pool_index=None):
          return self._kvcache.get_cpu_copy(
+diff --git a/python/sglang/srt/mem_cache/hiradix_cache.py b/python/sglang/srt/mem_cache/hiradix_cache.py
+index 396dd018fa0f679dbaa19f48cddc4b037be49e9e..906d65adfd41e5dc71c8d5fed3c1151ac1ae1592 100644
+--- a/python/sglang/srt/mem_cache/hiradix_cache.py
++++ b/python/sglang/srt/mem_cache/hiradix_cache.py
+@@ -41,6 +41,7 @@ from sglang.srt.mem_cache.hybrid_cache.hybrid_cache_controller import (
+ )
+ from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
+     attach_hybrid_dsa_pool_to_hiradix_cache,
++    get_mla_host_kv_cache_dim,
+ )
+ from sglang.srt.mem_cache.memory_pool import (
+     DSATokenToKVPool,
+@@ -112,6 +113,9 @@ class HiRadixCache(RadixCache):
+                 self.page_size,
+                 get_memory().hicache_mem_layout,
+                 allocator_type=allocator_type,
++                override_kv_cache_dim=get_mla_host_kv_cache_dim(
++                    self.kv_cache, get_memory().hicache_mem_layout
++                ),
+                 dcp_size=_parallel.attn_dcp_size,
+                 dcp_rank=_parallel.attn_dcp_rank,
+             )
 diff --git a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb92af75c4 100644
+index 401e1f547386478f0863c9241ab81293f9600f4a..1fdb25822721c3c870f08d01b453f60f4950129f 100644
 --- a/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
 +++ b/python/sglang/srt/mem_cache/hybrid_cache/hybrid_pool_assembler.py
-@@ -769,6 +769,65 @@ def build_deepseek_v4_hicache_stack(
+@@ -131,6 +131,14 @@ def _resolve_deepseek_v4_layer_mappings(
+     )
+ 
+ 
++def get_mla_host_kv_cache_dim(pool: Any, layout: str) -> int:
++    """Host row elements include both buffers when device K and RoPE are split."""
++    width = pool.kv_cache_dim
++    if layout == "page_first_kv_split":
++        width += getattr(pool, "kr_cache_dim", 0)
++    return width
++
++
+ def build_kv_host_pool(
+     *,
+     kv_pool: Any,
+@@ -769,6 +777,65 @@ def build_deepseek_v4_hicache_stack(
      return host_pool_group, cache_controller
  
  
@@ -9622,7 +9671,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
  def build_hybrid_mamba_stack(
      *,
      params: CacheInitParams,
-@@ -799,10 +858,30 @@ def build_hybrid_mamba_stack(
+@@ -799,10 +866,34 @@ def build_hybrid_mamba_stack(
          kv_host_size, mamba_host_size = _split_hicache_size(
              get_memory().hicache_size, (kv_pool, mamba_pool)
          )
@@ -9649,11 +9698,15 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
 +        # Host rows must have the device pool's row geometry. A packed DSA
 +        # row is wider than kv_lora_rank + qk_rope_head_dim, the width the
 +        # MLA host pool assumes without the override.
-+        override_kv_cache_dim=kv_pool.kv_cache_dim if use_mla else None,
++        override_kv_cache_dim=(
++            get_mla_host_kv_cache_dim(kv_pool, get_memory().hicache_mem_layout)
++            if use_mla
++            else None
++        ),
          host_size=kv_host_size,
          mtp_draft_device_pools=mtp_draft_device_pools,
      )
-@@ -842,6 +921,15 @@ def build_hybrid_mamba_stack(
+@@ -842,6 +933,15 @@ def build_hybrid_mamba_stack(
              device_free_fn=mamba_allocator.free,
          ),
      ]
@@ -9669,7 +9722,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
      host_pool_group = HostPoolGroup(entries)
      cache_controller = HybridCacheController(
          params.token_to_kv_pool_allocator,
-@@ -987,6 +1075,7 @@ def build_anchor_sidecar_stack(
+@@ -987,6 +1087,7 @@ def build_anchor_sidecar_stack(
      use_mla: bool,
      override_kv_cache_dim: Optional[int] = None,
      sidecar_host_pool_factory: Callable[[Any], Any],
@@ -9677,7 +9730,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
      prefetch_threshold: int = 256,
      model_name: Optional[str] = None,
      storage_backend_extra_config: Optional[dict] = None,
-@@ -1003,7 +1092,6 @@ def build_anchor_sidecar_stack(
+@@ -1003,7 +1104,6 @@ def build_anchor_sidecar_stack(
          override_kv_cache_dim=override_kv_cache_dim,
          mtp_draft_device_pools=mtp_draft_device_pools,
      )
@@ -9685,7 +9738,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
      # Expose packed MTP tail layers to the controller's flat transfer builder.
      if mtp_draft_device_pools:
          full_layer_mapping = _with_mtp_layer_mapping(
-@@ -1022,15 +1110,27 @@ def build_anchor_sidecar_stack(
+@@ -1022,15 +1122,27 @@ def build_anchor_sidecar_stack(
              is_anchor=True,
              packed_draft_device_pools=mtp_draft_device_pools,
          ),
@@ -9717,7 +9770,16 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
      host_pool_group = HostPoolGroup(entries)
      cache_controller = HybridCacheController(
          params.token_to_kv_pool_allocator,
-@@ -1132,6 +1232,25 @@ def build_full_draft_pools(
+@@ -1077,7 +1189,7 @@ def _build_mha_mla_host_pool(
+         return get_mha_host_pool_cls(pool)(pool, **kwargs)
+     return MLATokenToKVPoolHost(
+         pool,
+-        override_kv_cache_dim=pool.kv_cache_dim,
++        override_kv_cache_dim=get_mla_host_kv_cache_dim(pool, layout),
+         **kwargs,
+     )
+ 
+@@ -1132,6 +1244,25 @@ def build_full_draft_pools(
      ]
  
      if isinstance(pool, DSATokenToKVPool) and pool.index_k_with_scale_buffer:
@@ -9743,7 +9805,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
          indexer_host_pool = DSAIndexerPoolHost(
              pool,
              draft_host_pool,
-@@ -1410,6 +1529,7 @@ class _MambaStrategy(StackStrategy):
+@@ -1410,6 +1541,7 @@ class _MambaStrategy(StackStrategy):
              storage_backend_extra_config=storage_backend_extra_config,
              enable_storage_metrics=enable_storage_metrics,
          )
@@ -9751,7 +9813,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
          return StackBuildResult(
              host_pool_group=host_pool_group,
              cache_controller=cache_controller,
-@@ -1419,7 +1539,16 @@ class _MambaStrategy(StackStrategy):
+@@ -1419,7 +1551,16 @@ class _MambaStrategy(StackStrategy):
              },
              register_req_to_token_counter=True,
              transfer_layer_num=len(full_layer_mapping | mamba_layer_mapping),
@@ -9769,10 +9831,14 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
          )
  
  
-@@ -1602,6 +1731,11 @@ class _DsaStrategy(StackStrategy):
+@@ -1601,7 +1742,14 @@ class _DsaStrategy(StackStrategy):
+             load_cache_event=load_cache_event,
              storage_backend=storage_backend,
              use_mla=use_mla,
-             override_kv_cache_dim=full_kv_pool.kv_cache_dim,
+-            override_kv_cache_dim=full_kv_pool.kv_cache_dim,
++            override_kv_cache_dim=get_mla_host_kv_cache_dim(
++                full_kv_pool, get_memory().hicache_mem_layout
++            ),
 +            sidecar_entry_factory=(
 +                _build_hybrid_dsa_index_entry
 +                if full_kv_pool.kpool_use_compress
@@ -9781,7 +9847,7 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
              sidecar_host_pool_factory=lambda kv_host_pool: DSAIndexerPoolHost(
                  full_kv_pool,
                  kv_host_pool,
-@@ -1624,7 +1758,9 @@ class _DsaStrategy(StackStrategy):
+@@ -1624,7 +1772,9 @@ class _DsaStrategy(StackStrategy):
                      pool_name=PoolName.INDEXER,
                      indices_from_pool=PoolName.KV,
                  ),
@@ -9792,6 +9858,29 @@ index 401e1f547386478f0863c9241ab81293f9600f4a..b0827252f9637cd49e1faa752aa9aefb
              transfer_layer_num=len(full_layer_mapping),
              pools_desc="KV + INDEXER",
          )
+@@ -1735,6 +1885,11 @@ class _PlainKvStrategy(StackStrategy):
+             load_cache_event=load_cache_event,
+             storage_backend=storage_backend,
+             use_mla=use_mla,
++            override_kv_cache_dim=(
++                get_mla_host_kv_cache_dim(full_kv_pool, get_memory().hicache_mem_layout)
++                if use_mla
++                else None
++            ),
+             prefetch_threshold=prefetch_threshold,
+             model_name=model_name,
+             storage_backend_extra_config=storage_backend_extra_config,
+@@ -2029,7 +2184,9 @@ def attach_hybrid_dsa_pool_to_hiradix_cache(
+             load_cache_event=load_cache_event,
+             storage_backend=get_memory().hicache_storage_backend,
+             use_mla=True,
+-            override_kv_cache_dim=kv.kv_cache_dim,
++            override_kv_cache_dim=get_mla_host_kv_cache_dim(
++                kv, get_memory().hicache_mem_layout
++            ),
+             prefetch_threshold=prefetch_threshold,
+             sidecar_host_pool_factory=lambda kv_host_pool: DSAIndexerPoolHost(
+                 kv,
 diff --git a/python/sglang/srt/mem_cache/kv_cache_configurator.py b/python/sglang/srt/mem_cache/kv_cache_configurator.py
 index 94d6113e7cb8640ad541efe4d6cab7cc78df7619..28f3367452c1b966864d57c89109686b6c006663 100644
 --- a/python/sglang/srt/mem_cache/kv_cache_configurator.py
@@ -18176,7 +18265,7 @@ index cae08c08c8c3a088ba36ac0c9f92eda692e708b8..d91ad41394eedbf8cf22d8371150ab9b
  @torch.inference_mode()
  def test_topk_v2_ragged_no_row_starts(k: int) -> None:
 diff --git a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
-index 3311b34f29d47c597cb0eb952189f9ee164c50fa..afd09cecb7d74ccaa6963a2154cd86dca63787a6 100644
+index 3311b34f29d47c597cb0eb952189f9ee164c50fa..483df6f5fe4b0abf7e4665067a1408c8d9a6db6e 100644
 --- a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 +++ b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 @@ -5,6 +5,9 @@ import torch
@@ -18278,7 +18367,7 @@ index 3311b34f29d47c597cb0eb952189f9ee164c50fa..afd09cecb7d74ccaa6963a2154cd86dc
 +@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 +def test_fused_norm_weight_conversion_copy_is_retained(monkeypatch):
 +    monkeypatch.setenv("SGLANG_OPT_DEEPGEMM_HC_PRENORM", "0")
-+    monkeypatch.setattr(mhc, "is_dsa_prefill_cp_round_robin_split", lambda: False)
++    monkeypatch.setattr(mhc, "is_dsa_prefill_cp_interleave", lambda: False)
 +    monkeypatch.setattr(mhc, "use_symmetric_memory", lambda *a, **kw: nullcontext())
 +    monkeypatch.setattr(mhc, "is_allocation_symmetric", lambda: False)
 +    monkeypatch.setattr(mhc, "get_tp_group", lambda: None)
@@ -23583,10 +23672,10 @@ index 0000000000000000000000000000000000000000..5cbbd2736fbbe1b4193ccf6256d3cb3a
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
-index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..573910a3a7353bf19a2072a00f40423f5d69f1ce 100644
+index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..ff72e5bc07e91aef00ff976e596b886b3d54f9f8 100644
 --- a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 +++ b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
-@@ -1,17 +1,23 @@
+@@ -1,17 +1,30 @@
  """Unit tests for hybrid HiCache pool assembly."""
  
  import unittest
@@ -23597,21 +23686,28 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..573910a3a7353bf19a2072a00f40423f
 +import torch
 +
  from sglang.srt.mem_cache.base_prefix_cache import EvictParams
++from sglang.srt.mem_cache.hiradix_cache import HiRadixCache
  from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import (
++    _build_mha_mla_host_pool,
      _evict_mamba_for_device_alloc,
      _evict_swa_for_device_alloc,
++    _PlainKvStrategy,
      _split_hicache_size,
      build_full_draft_pools,
 +    build_hybrid_mamba_stack,
++)
++from sglang.srt.mem_cache.memory_pool import (
++    HybridLinearKVPool,
++    MLATokenToKVPool,
++    MLATokenToKVPoolFP4,
  )
 -from sglang.srt.mem_cache.memory_pool import HybridLinearKVPool
-+from sglang.srt.mem_cache.memory_pool import HybridLinearKVPool, MLATokenToKVPoolFP4
 +from sglang.srt.mem_cache.pool_host.common import alloc_with_host_register
 +from sglang.srt.mem_cache.pool_host.mla import MLATokenToKVPoolHost
  from sglang.test.ci.ci_register import register_cpu_ci
  from sglang.test.test_utils import CustomTestCase
  
-@@ -128,5 +134,351 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
+@@ -128,5 +141,489 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
          self.assertIs(entries[0].host_pool, draft_host_pool)
  
  
@@ -23674,7 +23770,15 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..573910a3a7353bf19a2072a00f40423f
 +    with a different row geometry must be rejected.
 +    """
 +
-+    def _build_stack(self, kv_pool, *, use_mla, draft_pools=(), extra_patches=()):
++    def _build_stack(
++        self,
++        kv_pool,
++        *,
++        use_mla,
++        draft_pools=(),
++        extra_patches=(),
++        layout="layer_first",
++    ):
 +        """Build the hybrid Mamba stack with the real KV host pool class.
 +
 +        Patched: the published memory/parallel config and allocator lookup,
@@ -23693,7 +23797,7 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..573910a3a7353bf19a2072a00f40423f
 +        memory = SimpleNamespace(
 +            hicache_size=0,
 +            hicache_ratio=2.0,
-+            hicache_mem_layout="layer_first",
++            hicache_mem_layout=layout,
 +            hicache_write_policy="write_through",
 +            hicache_io_backend="direct",
 +            hicache_host_memory_mode=None,
@@ -23747,6 +23851,136 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..573910a3a7353bf19a2072a00f40423f
 +            kv_pool.kv_cache_dim * kv_pool.store_dtype.itemsize,
 +        )
 +        self.assertEqual(kv_host_pool.kv_buffer.shape[-1], kv_pool.kv_cache_dim)
++
++    def test_split_rows_are_sized_by_both_device_components_in_builders(self):
++        for packed in (False, True):
++            with self.subTest(packed_fp8=packed):
++                kv_pool = (
++                    self._fake_packed_device_pool()
++                    if packed
++                    else self._fake_device_pool(
++                        store_dtype=torch.bfloat16, kv_cache_dim=self.KV_LORA_RANK
++                    )
++                )
++                kv_pool.kr_cache_dim = 0 if packed else self.QK_ROPE_HEAD_DIM
++                kv_pool.dsa_kv_cache_store_fp8 = packed
++                kv_pool.index_head_dim = None
++                expected_width = kv_pool.kv_cache_dim + kv_pool.kr_cache_dim
++                host = self._kv_host_pool(
++                    self._build_stack(
++                        kv_pool, use_mla=True, layout="page_first_kv_split"
++                    )
++                )
++                self.assertEqual(host.kv_cache_dim, expected_width)
++                self.assertEqual(host.k_buffer.shape[-1], kv_pool.kv_cache_dim)
++                self.assertEqual(
++                    host.size_per_token,
++                    expected_width * kv_pool.store_dtype.itemsize * self.LAYER_NUM,
++                )
++                with patch(
++                    "sglang.srt.mem_cache.pool_host.mla.ALLOC_MEMORY_FUNCS",
++                    {"cpu": self._alloc_unpinned},
++                ):
++                    draft_host = _build_mha_mla_host_pool(
++                        pool=kv_pool,
++                        host_to_device_ratio=2,
++                        page_size=self.PAGE_SIZE,
++                        layout="page_first_kv_split",
++                        allocator_type="default",
++                        pool_label="draft",
++                    )
++                self.assertEqual(draft_host.kv_cache_dim, expected_width)
++                self.assertEqual(draft_host.size_per_token, host.size_per_token)
++                if not packed:
++                    self.assertEqual(host.v_buffer.shape[-1], kv_pool.kr_cache_dim)
++                    self.assertEqual(
++                        host.size_per_token * host.size,
++                        host.k_buffer.nbytes + host.v_buffer.nbytes,
++                    )
++
++    def test_plain_mla_strategy_passes_the_physical_split_row_width(self):
++        for packed in (False, True):
++            with self.subTest(packed_fp8=packed):
++                pool = object.__new__(MLATokenToKVPool)
++                pool.kv_cache_dim = (
++                    self.PACKED_KV_CACHE_DIM if packed else self.KV_LORA_RANK
++                )
++                pool.kr_cache_dim = 0 if packed else self.QK_ROPE_HEAD_DIM
++                pool.layer_num = self.LAYER_NUM
++                prefix = "sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler."
++                with (
++                    patch(
++                        prefix + "get_memory",
++                        return_value=SimpleNamespace(
++                            hicache_mem_layout="page_first_kv_split"
++                        ),
++                    ),
++                    patch(
++                        prefix + "build_kv_only_stack",
++                        return_value=(MagicMock(), MagicMock()),
++                    ) as build,
++                ):
++                    _PlainKvStrategy().build(
++                        cache=MagicMock(),
++                        kvcache=pool,
++                        params=MagicMock(),
++                        server_args=MagicMock(),
++                        load_cache_event=None,
++                    )
++                self.assertEqual(
++                    build.call_args.kwargs["override_kv_cache_dim"],
++                    pool.kv_cache_dim + pool.kr_cache_dim,
++                )
++
++    def test_hiradix_split_mla_constructor_uses_both_components(self):
++        for packed in (False, True):
++            with self.subTest(packed_fp8=packed):
++                fixture = (
++                    self._fake_packed_device_pool()
++                    if packed
++                    else self._fake_device_pool(
++                        store_dtype=torch.bfloat16, kv_cache_dim=self.KV_LORA_RANK
++                    )
++                )
++                pool = object.__new__(MLATokenToKVPool)
++                pool.__dict__.update(fixture.__dict__)
++                pool.kr_cache_dim = 0 if packed else self.QK_ROPE_HEAD_DIM
++                pool.dsa_kv_cache_store_fp8 = packed
++                pool.index_head_dim = None
++                params = MagicMock(page_size=self.PAGE_SIZE, enable_metrics=False)
++                params.token_to_kv_pool_allocator.get_kvcache.return_value = pool
++                memory = SimpleNamespace(
++                    hicache_ratio=2,
++                    hicache_size=0,
++                    hicache_mem_layout="page_first_kv_split",
++                )
++                cache = object.__new__(HiRadixCache)
++                prefix = "sglang.srt.mem_cache.hiradix_cache."
++                # Exercise real host construction, then stop before distributed
++                # controller setup; this CPU check requires no process group.
++                with (
++                    patch(prefix + "get_memory", return_value=memory),
++                    patch(prefix + "get_allocator_type", return_value="default"),
++                    patch(
++                        prefix + "get_parallel",
++                        return_value=SimpleNamespace(attn_dcp_size=1, attn_dcp_rank=0),
++                    ),
++                    patch(
++                        "sglang.srt.mem_cache.pool_host.mla.ALLOC_MEMORY_FUNCS",
++                        {"cpu": self._alloc_unpinned},
++                    ),
++                    patch(
++                        prefix + "torch.distributed.get_world_size",
++                        side_effect=RuntimeError("host constructed"),
++                    ),
++                    self.assertRaisesRegex(RuntimeError, "host constructed"),
++                ):
++                    HiRadixCache.__init__(cache, params, MagicMock())
++                host = cache.token_to_kv_pool_host
++                self.assertEqual(
++                    host.kv_cache_dim, pool.kv_cache_dim + pool.kr_cache_dim
++                )
++                self.assertEqual(host.k_buffer.shape[-1], pool.kv_cache_dim)
 +
 +    def test_non_mla_pool_exposing_kv_cache_dim_gets_no_override(self):
 +        # MHA host pool constructors take no override_kv_cache_dim; a non-MLA

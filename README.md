@@ -70,7 +70,7 @@ to see or change every flag. [`RUN.md`](RUN.md) describes the serving configurat
 - `--max-mamba-cache-size` is recurrent-state slots, not KV cache. Each live
   request uses four to five, so the launcher ships 28 for four requests.
 
-To build this source locally as `sglang-glm53-flash-sm120:v0.4.3-rc.3`, follow [RUN.md](RUN.md).
+To build this source locally as `sglang-glm53-flash-sm120:v0.4.3-rc.4`, follow [RUN.md](RUN.md).
 
 ## What to expect
 
