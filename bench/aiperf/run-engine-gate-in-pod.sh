@@ -6,7 +6,7 @@ if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   exit 2
 fi
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|publication" >&2
+  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|glm-c3|publication" >&2
   exit 2
 fi
 
@@ -19,7 +19,7 @@ for value in "$campaign" "$build_id"; do
   esac
 done
 case "$mode" in
-  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|publication) ;;
+  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|glm-c3|publication) ;;
   *) echo "error: unsupported engine-gate mode: $mode" >&2; exit 2 ;;
 esac
 
@@ -219,6 +219,12 @@ case "$mode" in
   glm-c2)
     # C2 x5 uses the qualification workload and exact-occupancy analyzer.
     decode_shapes='2:5:4096'
+    prefill_shapes=''
+    decode_cohort_only=1
+    ;;
+  glm-c3)
+    # C3 x5 repeats the qualification workload without the other panels.
+    decode_shapes='3:5:4096'
     prefill_shapes=''
     decode_cohort_only=1
     ;;
