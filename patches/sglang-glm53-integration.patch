@@ -10128,7 +10128,7 @@ index fa06cbf5b1ddb10feecbeacb4388f2c7b516c49a..b0402a600783e70c4f719ba298b917d9
  
  def sync_fixed_hicache_size(size: int, host_size: int) -> int:
 diff --git a/python/sglang/srt/mem_cache/pool_host/mla.py b/python/sglang/srt/mem_cache/pool_host/mla.py
-index 1d394aa95017d820822b7ae447b8716dd93ec92d..91f5da89020d1d8563bf7389868918a1e0708e21 100644
+index 1d394aa95017d820822b7ae447b8716dd93ec92d..068b3e7400cd00c5c7f3ed01c26251682493ac73 100644
 --- a/python/sglang/srt/mem_cache/pool_host/mla.py
 +++ b/python/sglang/srt/mem_cache/pool_host/mla.py
 @@ -19,7 +19,7 @@ from sglang.kernels.ops.kvcache.hicache import (
@@ -10148,7 +10148,7 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..91f5da89020d1d8563bf7389868918a1
          self._is_dummy = is_dummy
  
          if is_dummy:
-@@ -209,6 +210,64 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -209,6 +210,68 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
          self.lock = threading.RLock()
          self.clear()
  
@@ -10186,15 +10186,19 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..91f5da89020d1d8563bf7389868918a1
 +        # device pools that do not model row packing, such as lightweight test
 +        # doubles, may omit it; only then is the host width taken on trust.
 +        target_dim = getattr(device_pool, "kv_cache_dim", host_dim)
-+        # Ascend's split layout transfers K and RoPE separately. Its device
-+        # kv_cache_dim describes K alone; the host budget counts both buffers.
-+        if layout != "page_first_kv_split" and host_dim != target_dim:
++        # Ascend's split layout transfers K and RoPE separately. For BF16,
++        # kv_cache_dim describes K alone; packed FP8 has kr_cache_dim == 0.
++        # Compare the host budget with both device components in either case.
++        expected_host_dim = target_dim
++        if layout == "page_first_kv_split":
++            expected_host_dim += getattr(device_pool, "kr_cache_dim", 0)
++        if host_dim != expected_host_dim:
 +            raise ValueError(
 +                f"HiCache {pool_label} host pool rows must have the device "
 +                f"pool's row geometry, but the host row is kv_cache_dim="
-+                f"{host_dim} while the device pool has kv_cache_dim="
-+                f"{target_dim}. Construct the host pool with "
-+                "override_kv_cache_dim=device_pool.kv_cache_dim."
++                f"{host_dim} while the device cache components require "
++                f"{expected_host_dim}. Construct the host pool with "
++                f"override_kv_cache_dim={expected_host_dim}."
 +            )
 +        for draft_id, draft_pool in enumerate(self.mtp_draft_device_pools):
 +            draft_dtype = draft_pool.store_dtype
@@ -10213,7 +10217,7 @@ index 1d394aa95017d820822b7ae447b8716dd93ec92d..91f5da89020d1d8563bf7389868918a1
      def get_contiguous_buf_infos(self):
          """Return (data_ptrs, data_lens, item_lens) in the same format as device pool,
          for registering host memory with the disaggregation transfer engine."""
-@@ -235,9 +294,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
+@@ -235,9 +298,7 @@ class MLATokenToKVPoolHost(HiSparseHostPoolMixin, HostKVCache):
          )
          self.target_layer_num = self._effective_host_layer_num()
          self.layer_num = self.target_layer_num + len(self.mtp_draft_device_pools)
@@ -20722,10 +20726,10 @@ index 0000000000000000000000000000000000000000..0d2a2ec0e0dfac14ad538594b50da4eb
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_kda_extend_host_lengths.py b/test/registered/unit/layers/attention/test_kda_extend_host_lengths.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..dcf7fd96a0256e55b87a7f72a45e7556ec10850e
+index 0000000000000000000000000000000000000000..32cb7e2538107ea360ec166dfc4a91aa7de13455
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_kda_extend_host_lengths.py
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,124 @@
 +"""KDA extend must trim padding without reading device lengths when host metadata exists."""
 +
 +from types import SimpleNamespace as NS
@@ -20771,6 +20775,9 @@ index 0000000000000000000000000000000000000000..dcf7fd96a0256e55b87a7f72a45e7556
 +        assert kw["beta"].shape == (1, n, 1)
 +        assert kw["query_start_loc"] is offsets
 +        out = kw["q"] + kw["k"] + kw["v"] + kw["g"] + kw["beta"].unsqueeze(-1)
++        if track:
++            assert kw["track_state"].shape == (len(lengths), 1, 2, 2)
++            kw["track_state"].fill_(1)
 +        seen.append("extend")
 +        return (out, torch.ones(1)) if track else out
 +
@@ -20779,18 +20786,24 @@ index 0000000000000000000000000000000000000000..dcf7fd96a0256e55b87a7f72a45e7556
 +        query_start_loc=offsets,
 +        mamba_cache_indices=torch.tensor([2, 0, 1][: len(lengths)]),
 +        has_mamba_track_mask=track,
++        track_chunk_idx=torch.zeros(len(lengths), dtype=torch.int32) if track else None,
 +        conv_states_mask_indices=torch.tensor([1]),
 +        track_conv_indices=torch.tensor([[0, 1]]),
 +        track_ssm_h_src=torch.tensor([0]),
 +    )
 +
-+    def track_state(*args):
++    def track_state(*args, h_track_buf=None):
++        assert h_track_buf is not None
++        assert torch.all(h_track_buf == 1)
 +        seen.append("track")
 +
 +    backend = NS(
 +        forward_metadata=meta,
 +        req_to_token_pool=NS(mamba2_layer_cache=lambda _: states),
-+        kernel_dispatcher=NS(extend=extend),
++        kernel_dispatcher=NS(
++            extend=extend,
++            effective_extend_kernel=lambda _: NS(supports_track_state_snapshot=True),
++        ),
 +        accept_lens_pool=None,
 +        _track_mamba_state_extend=track_state,
 +    )
@@ -22391,14 +22404,15 @@ index 0000000000000000000000000000000000000000..9aedd03cab45f6eb34b233163e29f043
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_compressed_dsa_checkpoint_roundtrip.py b/test/registered/unit/mem_cache/test_compressed_dsa_checkpoint_roundtrip.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..1364d83a901cbfe2e5122541429528337649850b
+index 0000000000000000000000000000000000000000..b81df27d531671d0ee75fe9883098ae9a8a174a3
 --- /dev/null
 +++ b/test/registered/unit/mem_cache/test_compressed_dsa_checkpoint_roundtrip.py
-@@ -0,0 +1,401 @@
+@@ -0,0 +1,406 @@
 +"""A cached recurrent state must describe exactly the prefix that owns it."""
 +
 +import unittest
 +from array import array
++from functools import partial
 +from itertools import product
 +from types import SimpleNamespace
 +
@@ -22421,6 +22435,7 @@ index 0000000000000000000000000000000000000000..1364d83a901cbfe2e512254142952833
 +from sglang.srt.mem_cache.swa_memory_pool import SWAKVPool
 +from sglang.srt.mem_cache.unified_cache.components import ComponentType
 +from sglang.srt.mem_cache.unified_radix_cache import UnifiedRadixCache
++from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 +from sglang.srt.runtime_context import get_exec, publish, reset_context
 +from sglang.srt.sampling.sampling_params import SamplingParams
 +from sglang.srt.server_args import ServerArgs
@@ -22580,12 +22595,15 @@ index 0000000000000000000000000000000000000000..1364d83a901cbfe2e512254142952833
 +            mamba_track_mask=torch.tensor([entry.track_mask]),
 +            mamba_track_indices=torch.tensor([entry.track_index]),
 +        )
++        forward.mamba_track_aligned_lens = partial(
++            ForwardBatch.mamba_track_aligned_lens, forward
++        )
 +        indices = MambaAttnBackendBase._init_track_ssm_indices(
 +            SimpleNamespace(device="cpu", mamba_chunk_size=64),
 +            req.kv.mamba_pool_idx.unsqueeze(0),
 +            forward,
 +        )
-+        h_src, h_dst, final_src, final_dst = indices[:4]
++        _, h_src, h_dst, _, final_src, final_dst, *_ = indices
 +        states = req_pool.mamba_pool.mamba_cache.temporal
 +        states[:, req.kv.mamba_pool_idx].fill_(end)
 +        for src, dst in zip(h_src.tolist(), h_dst.tolist()):
@@ -23565,7 +23583,7 @@ index 0000000000000000000000000000000000000000..5cbbd2736fbbe1b4193ccf6256d3cb3a
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
-index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..f06a30d20eb294196b77d8c6e508f8a4dd578494 100644
+index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..573910a3a7353bf19a2072a00f40423f5d69f1ce 100644
 --- a/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 +++ b/test/registered/unit/mem_cache/test_hybrid_pool_assembler.py
 @@ -1,17 +1,23 @@
@@ -23593,7 +23611,7 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..f06a30d20eb294196b77d8c6e508f8a4
  from sglang.test.ci.ci_register import register_cpu_ci
  from sglang.test.test_utils import CustomTestCase
  
-@@ -128,5 +134,331 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
+@@ -128,5 +134,351 @@ class TestDraftSidecarPoolDispatch(CustomTestCase):
          self.assertIs(entries[0].host_pool, draft_host_pool)
  
  
@@ -23907,6 +23925,12 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..f06a30d20eb294196b77d8c6e508f8a4
 +            host_pool.size_per_token,
 +            self.NOMINAL_KV_CACHE_DIM * torch.bfloat16.itemsize * self.LAYER_NUM,
 +        )
++        with self.assertRaisesRegex(ValueError, "row geometry"):
++            self._host_pool(
++                kv_pool,
++                layout="page_first_kv_split",
++                override_kv_cache_dim=self.KV_LORA_RANK,
++            )
 +        for dtype, width in (
 +            (torch.uint8, self.KV_LORA_RANK),
 +            (torch.bfloat16, self.NOMINAL_KV_CACHE_DIM),
@@ -23921,6 +23945,20 @@ index 8d203fc7a96908ca329899c8a2a0f7d3045bb0a0..f06a30d20eb294196b77d8c6e508f8a4
 +                        layout="page_first_kv_split",
 +                        mtp_draft_device_pools=(draft,),
 +                    )
++
++    def test_split_packed_fp8_rows_still_require_matching_width(self):
++        kv_pool = self._fake_packed_device_pool()
++        kv_pool.dsa_kv_cache_store_fp8 = True
++        kv_pool.kr_cache_dim = 0
++        kv_pool.index_head_dim = None
++        with self.assertRaisesRegex(ValueError, "override_kv_cache_dim"):
++            self._host_pool(kv_pool, layout="page_first_kv_split")
++        host_pool = self._host_pool(
++            kv_pool,
++            layout="page_first_kv_split",
++            override_kv_cache_dim=kv_pool.kv_cache_dim,
++        )
++        self.assertEqual(host_pool.k_buffer.shape[-1], kv_pool.kv_cache_dim)
 +
 +
  if __name__ == "__main__":
