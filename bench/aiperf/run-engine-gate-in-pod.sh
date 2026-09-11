@@ -177,7 +177,10 @@ run_prefill() {
     --expected-requests "$requests" \
     --isl-tolerance "$isl_tolerance" \
     --engine "$bench_engine" \
-    --output "$cell/prefill-analysis.json"
+    --output "$cell/prefill-analysis.json" \
+    || touch "$cell/analyzer-rejected"
+  # Retain rejected cells and finish collection; the campaign summary fails
+  # if any analyzer rejects a cell.
 }
 
 decode_cohort_only=0

@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.4.3 (stable; 2026-09-11)
+
+- Use FlashInfer's model-specific GLM NoPE cache metadata and native sparse-attention implementation. Preserve the compact 528-byte FP8 row format: 512 payload bytes plus 16 bytes of scales.
+- Retain masked-read and eight-head correctness fixes while validating cache views before kernel dispatch. Refresh the SGLang adapter to consume the same layout contract.
+- Refresh the SGLang and FlashInfer source inputs and carried fixes.
+- Use a fresh kernel cache directory for this version: `/srv/cache/sglang-glm53-flash-sm120-v84`.
+
+### Measurements
+
+Measurements used a v0.4.3 validation build on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor parallel 2 over PCIe. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. The configuration used W4A16 experts, FP8 KV, a 524,288-token shared device pool, four running requests, 4,096-token prefill chunks, 28 recurrent-state slots and 32 GB of HiCache per rank. Performance comparisons use fixed native MTP with three draft steps, top-k one and four verification tokens, with adaptive switching disabled. The launcher uses adaptive MTP for serving. The source inputs are pinned in [this release's stack lock](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/stack.lock.json).
+
+| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
+|---|---|---:|---:|---:|---:|---:|
+| Decode C1, 5 repetitions | Aggregate output after MTP | 197.5 | 189.8 | 66.91 | 66.91 | 2.97 / 2.88 |
+| Decode C2, 5 repetitions | Aggregate output after MTP | 311.3 | 310.0 | 51.07 | 50.95 | 3.02 / 3.00 |
+| Decode C3, 5 repetitions | Aggregate output after MTP | 377.1 | 380.1 | 41.11 | 41.01 | 3.05 / 3.06 |
+| Decode C4, 5 repetitions | Aggregate output after MTP | 425.1 | 420.7 | 35.34 | 35.35 | 2.99 / 2.94 |
+| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,626.6 | 5,624.2 | n/a | n/a | n/a |
+| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,339.0 | 6,341.4 | n/a | n/a | n/a |
+| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,370.9 | 6,353.0 | n/a | n/a | n/a |
+| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,352.0 | 6,328.9 | n/a | n/a | n/a |
+
+Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 12.7-27.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+
+Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Every decode response reaches a deliberate 4,096-token output cap with `ignore_eos`; the post-answer tail can increase speculative acceptance, so this is not completed-answer throughput. Prefill tok/s is each cold request's prompt-token count divided by time to first token, summarized over five requests per length. These controlled measurements do not necessarily represent real-world performance.
+
+Compared with v0.4.2, mean output rates changed by +0.67% at C1, +1.74% at C2, +2.19% at C3 and +3.44% at C4; median output changes ranged from -1.67% to +3.00%. Mean and median target forward rates differed by at most 0.54%, and cold-prefill rates by at most 0.62%. Output-rate changes also reflect speculative acceptance in the fixed window, including its post-answer tail. Five sequential repetitions within one startup per image do not establish an isolated speedup or statistical significance. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/BENCHMARKS.md) for methodology, fixed-MTP comparisons and adaptive-serving quality results.
+
+### Known limitations
+
+- Reasoning can exhaust the output budget without a final answer. No such caps occurred in this version’s 1,319-request GSM8K run at a 16,384-token budget; other workloads can still exhaust it. See BENCHMARKS.md for quality results.
+- Requesting input logprobs across a long prompt can exhaust GPU memory and restart the server. Score continuations with `logprob_start_len` at the prompt boundary.
+- Keep `--max-prefill-tokens` and `--chunked-prefill-size` at 4096 with the supplied memory configuration. Four running requests share the device token pool.
+- Other GPU pairs and tensor-parallel sizes have not been tested.
+
 ## v0.4.2 (stable; 2026-09-08)
 
 - Correct HiCache checkpoint boundaries when chunked prefills end between cache checkpoints. Reused prefixes must restore the recurrent state for their actual token boundary.

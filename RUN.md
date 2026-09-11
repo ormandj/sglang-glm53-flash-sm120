@@ -4,8 +4,8 @@ Download the checkpoint as described in [README.md](README.md), then start the p
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.2
-export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v81
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.3
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v84
 ./examples/serve-glm53-flash.sh
 ```
 
@@ -31,6 +31,6 @@ Run the `glm-qualification` panel described in [bench/aiperf/README.md](bench/ai
 ## Build from source
 
 ```bash
-docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.3-rc.6 .
-CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v84 IMAGE=sglang-glm53-flash-sm120:v0.4.3-rc.6 ./examples/serve-glm53-flash.sh
+docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.3 .
+CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v84 IMAGE=sglang-glm53-flash-sm120:v0.4.3 ./examples/serve-glm53-flash.sh
 ```
