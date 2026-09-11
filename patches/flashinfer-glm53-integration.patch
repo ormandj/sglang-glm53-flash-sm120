@@ -1046,31 +1046,9 @@ index 0000000000000000000000000000000000000000..c64e28bb598a9dcd3566f856e0db2ead
 +  "gpu_status": "uuid, temperature.gpu, clocks.current.sm [MHz], power.draw [W], power.limit [W]\nGPU-4b6a1e3a-4e8f-95c7-9f90-be37abc0b7a4, 72, 2355 MHz, 111.28 W, 300.00 W\nGPU-bfdf4699-e4d9-b46a-6503-21a001973e6c, 42, 180 MHz, 16.00 W, 300.00 W\n"
 +}
 diff --git a/csrc/sparse_mla_sm120.cu b/csrc/sparse_mla_sm120.cu
-index 598199dc93e6d997034f70d05c8f8ee59f0faf1b..b8671a945692ef8066082096073831588b23c786 100644
+index 598199dc93e6d997034f70d05c8f8ee59f0faf1b..edaa499ae87e70232f14236a80ba2d7d0c6f540f 100644
 --- a/csrc/sparse_mla_sm120.cu
 +++ b/csrc/sparse_mla_sm120.cu
-@@ -69,8 +69,8 @@ inline ModelType resolve_model_type(int d_qk, int64_t model_type) {
-   if (d_qk == 512) {
-     const auto mt = static_cast<ModelType>(
-         model_type == kAuto ? static_cast<int64_t>(ModelType::DSV4) : model_type);
--    TVM_FFI_ICHECK(mt == ModelType::DSV4 || mt == ModelType::GLM53_NOPE)
--        << "d_qk=512 supports model_type auto, DSV4, or GLM53_NOPE; got " << model_type;
-+    TVM_FFI_ICHECK(mt == ModelType::DSV4 || mt == ModelType::GLM53_NOPE || mt == ModelType::DSV4_1)
-+        << "d_qk=512 supports model_type auto, DSV4, GLM53_NOPE, or DSV4_1; got " << model_type;
-     return mt;
-   }
-   if (d_qk == 1088) {
-@@ -81,8 +81,8 @@ inline ModelType resolve_model_type(int d_qk, int64_t model_type) {
-     return mt;
-   }
-   TVM_FFI_ICHECK(false) << "Unsupported d_qk=" << d_qk
--                        << "; expected 576 (DSV3_2/GLM_NSA), 512 (DSV4/GLM53_NOPE) or 1088 "
--                           "(DOTS3_SWA)";
-+                        << "; expected 576 (DSV3_2/GLM_NSA), 512 (DSV4/GLM53_NOPE/DSV4_1) "
-+                           "or 1088 (DOTS3_SWA)";
-   return ModelType::DSV4;
- }
- 
 @@ -93,41 +93,83 @@ inline int d_v_for(ModelType mt) { return mt == ModelType::DOTS3_SWA ? 1024 : 51
  struct PagedKVLayout {
    int page_block_size;
@@ -1220,18 +1198,8 @@ index 598199dc93e6d997034f70d05c8f8ee59f0faf1b..b8671a945692ef806608209607383158
      extra_page_block_size = extra_layout.page_block_size;
      extra_stride_kv_block = extra_layout.stride_kv_block;
      extra_topk = check_dense_indices_2d_or_s_q_3d(eidx, "extra_indices", num_tokens);
-@@ -324,6 +371,9 @@ void SparseMlaSm120PagedAttention(
-     case ModelType::DOTS3_SWA:
-       mt_name = "DOTS3_SWA";
-       break;
-+    case ModelType::DSV4_1:
-+      mt_name = "DSV4_1";
-+      break;
-     case ModelType::DSV4:
-       break;
-   }
 diff --git a/csrc/sparse_mla_sm120_decode_dsv3_2.cu b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
-index 368fdbb49904b31f8abc9565db82da6d0f13adc9..a56adac17781c17146fdce2c2a8cede550bc28c1 100644
+index 368fdbb49904b31f8abc9565db82da6d0f13adc9..e9af473e21958dcbd3604f21125f7a086d08510b 100644
 --- a/csrc/sparse_mla_sm120_decode_dsv3_2.cu
 +++ b/csrc/sparse_mla_sm120_decode_dsv3_2.cu
 @@ -9,7 +9,7 @@
@@ -1239,107 +1207,27 @@ index 368fdbb49904b31f8abc9565db82da6d0f13adc9..a56adac17781c17146fdce2c2a8cede5
  //   num_heads ∈ {8, 16, 32, 64, 128}
  // plus one runtime-H instantiation (any num_heads <= 128 off the grid) and
 -// GLM53_NOPE dedicated 32/64 + runtime-H. topk is a runtime argument — one
-+// GLM53_NOPE dedicated 8/32/64 + runtime-H. topk is a runtime argument — one
++// GLM53_NOPE dedicated 8/16/32/64 + runtime-H. topk is a runtime argument — one
  // instantiation serves every indices-row width.
  
  #include <cuda_runtime.h>
-@@ -189,6 +189,9 @@ bool launch_sparse_mla_decode_dsv3_2(ModelType mt, int num_heads, int topk, int
-   // indexer window. The TP1 (64-head) and TP2 (32-head) shapes keep
+@@ -186,9 +186,13 @@ bool launch_sparse_mla_decode_dsv3_2(ModelType mt, int num_heads, int topk, int
+     DSV3_2_DISPATCH_RT_MT(ModelType::GLM_NSA)
+   }
+   // GLM-5.3 combines its 2048 sparse selection with the 128-token
+-  // indexer window. The TP1 (64-head) and TP2 (32-head) shapes keep
++  // indexer window. The TP1/TP2/TP4/TP8 (64/32/16/8-head) shapes keep
    // dedicated instantiations; any other shard rides the runtime-H fallback.
    if (mt == ModelType::GLM53_NOPE) {
 +    // The public scratch allocator uses eight rows for H=8. A dedicated
 +    // instantiation preserves that ABI instead of the runtime-H padded stride.
 +    DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 8)
++    DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 16)
      DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 32)
      DSV3_2_DISPATCH_MT(ModelType::GLM53_NOPE, 64)
      DSV3_2_DISPATCH_RT_MT(ModelType::GLM53_NOPE)
-diff --git a/csrc/sparse_mla_sm120_decode_dsv4.cu b/csrc/sparse_mla_sm120_decode_dsv4.cu
-index 5efe99bc5211c3b67427c079c904311e914f30f5..5a57739e455edc401633620809d4ccc0a85e2b02 100644
---- a/csrc/sparse_mla_sm120_decode_dsv4.cu
-+++ b/csrc/sparse_mla_sm120_decode_dsv4.cu
-@@ -43,26 +43,26 @@ static bool launch_decode_dsv4_impl(int num_heads, int topk, const bf16* Q, cons
-   // Dynamic smem layout (FP8 XV, double-buffered KV). Measured on sm_120
-   // against a 101376 B per-block opt-in cap:
-   //
--  //   term                                        DSV4       DOTS3_SWA
--  //                                            (BI=64,W=8)  (BI=32,W=4)
--  //   sm_q_rope    HPB * D_ROPE * 2B               2048         2048
--  //   sm_q_fp8     HPB * Q_NOPE_STRIDE             7424        16640
--  //   sm_q_sc      HPB * NUM_SCALES * 4B            448          512
--  //   sm_kv_fp8    2 * BI * KV_SMEM_STRIDE        59392        66560
--  //   sm_kv_sc     2 * BI * SCALE_BYTES_PER_TOKEN  1024          512
--  //   sm_kv_rope   2 * BI * D_ROPE * 2B           16384         8192
--  //   mbar + pad                                     48           48
--  //   sm_reduce    2 * N_WARPS * HPB * 4           1024          512
--  //   sm_w_head_sc N_V_CHUNKS * HPB * 4             448          512
--  //   sm_w_fp8 x2  2 * HPB * (BI + 16)             2560         1536
--  //   dynamic total                               90800        97072
-+  //   term                                        DSV4       DOTS3_SWA   DSV4_1
-+  //                                            (BI=64,W=8)  (BI=32,W=4)  (BI=64,W=8)
-+  //   sm_q_rope    HPB * D_ROPE * 2B               2048         2048          0
-+  //   sm_q_fp8     HPB * Q_NOPE_STRIDE             7424        16640       8448
-+  //   sm_q_sc      HPB * NUM_SCALES * 4B            448          512       1024
-+  //   sm_kv_fp8    2 * BI * KV_SMEM_STRIDE        59392        66560      67584
-+  //   sm_kv_sc     2 * BI * SCALE_BYTES_PER_TOKEN  1024          512       2048
-+  //   sm_kv_rope   2 * BI * D_ROPE * 2B           16384         8192          0
-+  //   mbar + pad                                     48           48         48
-+  //   sm_reduce    2 * N_WARPS * HPB * 4           1024          512       1024
-+  //   sm_w_head_sc N_V_CHUNKS * HPB * 4             448          512       1024
-+  //   sm_w_fp8     2 * XV_FOLD * HPB * (BI + 16)   2560         1536       5120
-+  //   dynamic total                               90800        97072      86296
-   // Static smem (kernel-side), sm_p_full = HPB * BI * 2B:
--  //   DSV4 2048 B; DOTS3_SWA 0 (V_HAS_ROPE=false makes the bf16 P dead).
--  //   grand total                                 92848        97072
-+  //   DSV4 2048 B; DOTS3_SWA/DSV4_1 0 (V_HAS_ROPE=false makes the bf16 P dead).
-+  //   grand total                                 92848        97072      86296
-   //
-   // DOTS3_SWA leaves ~4.2 KB spare. BI=64 for it needs 173872 B and the driver
--  // rejects the opt-in outright. Both configs run 1 block/SM.
--  constexpr int N_V_CHUNKS_LAUNCH = KV::D_NOPE / KV::QUANT_TILE;  // DSV4 7, DOTS3_SWA 8
-+  // rejects the opt-in outright. All configs run 1 block/SM.
-+  constexpr int N_V_CHUNKS_LAUNCH = KV::D_NOPE / KV::QUANT_TILE;  // DSV4 7, DOTS3_SWA 8, DSV4_1 16
-   constexpr int DYN_SMEM_BYTES =
-       HPB * KV::D_ROPE * (int)sizeof(bf16)                            // sm_q_rope
-       + HPB * KV::Q_NOPE_STRIDE                                       // sm_q_fp8
-@@ -74,7 +74,7 @@ static bool launch_decode_dsv4_impl(int num_heads, int topk, const bf16* Q, cons
-       + 4 * (int)sizeof(uint64_t)                                     // mbar_full+empty
-       + 2 * Cfg::N_WARPS * HPB * (int)sizeof(float)                   // sm_reduce
-       + N_V_CHUNKS_LAUNCH * HPB * (int)sizeof(float)                  // sm_w_head_sc
--      + 2 * HPB * (Cfg::BI + 16);                                     // sm_w_fp8 ×2 (vc parity)
-+      + 2 * Cfg::XV_FOLD * HPB * (Cfg::BI + 16);  // sm_w_fp8 ×2 parities × XV_FOLD
- 
-   auto kernel = sparse_mla_decode_dsv4_kernel<MT, NUM_HEADS, PAGE_BLOCK_SIZE>;
-   CUDA_CHECK_BOOL(
-@@ -165,7 +165,9 @@ bool launch_sparse_mla_decode_dsv4(
-     int extra_topk, int pbs_extra, size_t stride_extra_kv_block, int chunks_per_block_override,
-     float sm_scale, size_t stride_kv_block, size_t stride_indices_token,
-     size_t stride_extra_indices_token, size_t stride_out_lse, cudaStream_t stream) {
--  if (mt != ModelType::DSV4 && mt != ModelType::DOTS3_SWA) return false;
-+  if (mt != ModelType::DSV4 && mt != ModelType::DOTS3_SWA && mt != ModelType::DSV4_1) {
-+    return false;
-+  }
-   // DOTS3_SWA has no dual-cache instantiation; the planner never routes one
-   // here, and the launcher rejects it so a direct FFI caller cannot silently
-   // run an untested path.
-@@ -219,6 +221,16 @@ bool launch_sparse_mla_decode_dsv4(
-   DECODE_DISPATCH(ModelType::DOTS3_SWA, 32)
-   DECODE_DISPATCH(ModelType::DOTS3_SWA, 64)
-   DECODE_DISPATCH_RT(ModelType::DOTS3_SWA)
-+  // DSV4_1 (DeepSeek-V4.1): all-FP8 512-wide K, 16B UE8M0 footer. Same dual-
-+  // cache capability as DSV4 (vLLM routes the SWA cache as main + compressed
-+  // as extra); the 32-wide quant groups run the pair-folded XV
-+  // (DecodeTileCfg::XV_FOLD=2) on the standard 8-warp tile.
-+  DECODE_DISPATCH(ModelType::DSV4_1, 8)
-+  DECODE_DISPATCH(ModelType::DSV4_1, 16)
-+  DECODE_DISPATCH(ModelType::DSV4_1, 32)
-+  DECODE_DISPATCH(ModelType::DSV4_1, 64)
-+  DECODE_DISPATCH(ModelType::DSV4_1, 128)
-+  DECODE_DISPATCH_RT(ModelType::DSV4_1)
- #undef DECODE_DISPATCH_RT
- #undef DECODE_DISPATCH
-   return false;
 diff --git a/csrc/sparse_mla_sm120_jit_binding.cu b/csrc/sparse_mla_sm120_jit_binding.cu
-index d506f690ab37c8b51049e8e6fe2594d6535d8464..2509b7185e68b397e4c36a9ea6b64630c5413893 100644
+index d506f690ab37c8b51049e8e6fe2594d6535d8464..8b0a4881406c42261e932807d158b17c28ace90b 100644
 --- a/csrc/sparse_mla_sm120_jit_binding.cu
 +++ b/csrc/sparse_mla_sm120_jit_binding.cu
 @@ -53,8 +53,20 @@ struct PagedKVLayout {
@@ -1389,47 +1277,7 @@ index d506f690ab37c8b51049e8e6fe2594d6535d8464..2509b7185e68b397e4c36a9ea6b64630
      return static_cast<int>(advance);
    };
    if (kv.ndim() == 3) {
-@@ -110,7 +127,7 @@ void SparseMlaSm120DecodeDsv4(TensorView q, TensorView kv_cache, TensorView indi
-                               Optional<TensorView> topk_length, Optional<TensorView> attn_sink,
-                               Optional<TensorView> extra_kv_cache,
-                               Optional<TensorView> extra_indices,
--                              Optional<TensorView> extra_topk_length,
-+                              Optional<TensorView> extra_topk_length, int64_t model_type,
-                               int64_t chunks_per_block_override) {
-   TVM_FFI_ICHECK_EQ(q.ndim(), 3) << "q must be [T, H, D_QK]";
-   TVM_FFI_ICHECK_GE(kv_cache.ndim(), 2);
-@@ -141,11 +158,18 @@ void SparseMlaSm120DecodeDsv4(TensorView q, TensorView kv_cache, TensorView indi
-       << "indices leading dimension must match num_tokens";
-   const int topk = static_cast<int>(indices.size(-1));
-   const int d_qk = static_cast<int>(q.size(2));
--  // This kernel serves the footer-scale model types. d_qk selects between them:
--  // 512 -> DSV4, 1088 -> DOTS3_SWA (sliding-window family, d_v 1024).
-+  // This kernel serves the footer-scale model types. model_type is the
-+  // explicit selector from the Python planner; -1 keeps the legacy width
-+  // inference (512 -> DSV4, 1088 -> DOTS3_SWA). Width alone cannot separate
-+  // DSV4 from DSV4_1 (both are d_qk=512), so DSV4_1 is only reachable
-+  // explicitly.
-   TVM_FFI_ICHECK(d_qk == 512 || d_qk == 1088)
--      << "decode-dsv4 supports d_qk 512 (DSV4) or 1088 (DOTS3_SWA); got " << d_qk;
--  const ModelType mt = (d_qk == 512) ? ModelType::DSV4 : ModelType::DOTS3_SWA;
-+      << "decode-dsv4 supports d_qk 512 (DSV4/DSV4_1) or 1088 (DOTS3_SWA); got " << d_qk;
-+  const ModelType mt = model_type == -1 ? ((d_qk == 512) ? ModelType::DSV4 : ModelType::DOTS3_SWA)
-+                                        : static_cast<ModelType>(model_type);
-+  TVM_FFI_ICHECK((d_qk == 512 && (mt == ModelType::DSV4 || mt == ModelType::DSV4_1)) ||
-+                 (d_qk == 1088 && mt == ModelType::DOTS3_SWA))
-+      << "decode-dsv4 model_type mismatch: d_qk=" << d_qk << " model_type=" << model_type;
-   // DOTS3_SWA's sliding window (513 candidates, DecodeTileCfg::WINDOW) needs an
-   // indices buffer at least that wide; a narrower one can never name the full
-   // window. Report it here so the message names the actual constraint.
-@@ -155,14 +179,15 @@ void SparseMlaSm120DecodeDsv4(TensorView q, TensorView kv_cache, TensorView indi
-       << topk;
-   TVM_FFI_ICHECK(mt != ModelType::DOTS3_SWA || !extra_kv_cache.has_value())
-       << "decode-dsv4 (dots3_swa) has no dual-cache form; extra_kv_cache is "
--         "DSV4-only";
-+         "DSV4/DSV4_1-only";
- 
-   // topk_length is optional for DOTS3_SWA: DecodeTileCfg<DOTS3_SWA>::WINDOW caps
-   // the per-token candidate count inside the kernel, so omitting it costs
+@@ -162,7 +179,8 @@ void SparseMlaSm120DecodeDsv4(TensorView q, TensorView kv_cache, TensorView indi
    // nothing beyond the window itself. Unused slots must still carry -1, which
    // the QK mask turns into -inf.
    const int bpt = bytes_per_token(mt);
@@ -1439,7 +1287,7 @@ index d506f690ab37c8b51049e8e6fe2594d6535d8464..2509b7185e68b397e4c36a9ea6b64630
    // Footer-scale kernels (DSV4, DOTS3_SWA) gather with a tightly packed row
    // advance; only the decode-v32 path honors stride_kv_row. Reject padded rows
    // loudly instead of reading the wrong bytes.
-@@ -201,7 +226,8 @@ void SparseMlaSm120DecodeDsv4(TensorView q, TensorView kv_cache, TensorView indi
+@@ -201,7 +219,8 @@ void SparseMlaSm120DecodeDsv4(TensorView q, TensorView kv_cache, TensorView indi
      extra_topk_arg = static_cast<int>(eidx.size(-1));
      stride_extra_indices_token = static_cast<size_t>(eidx.stride(0));
      // The extra (dual) cache carries the same per-token layout as the main one.
@@ -1449,7 +1297,7 @@ index d506f690ab37c8b51049e8e6fe2594d6535d8464..2509b7185e68b397e4c36a9ea6b64630
      TVM_FFI_ICHECK_EQ(extra_layout.stride_kv_row, bpt)
          << "decode-dsv4 extra_kv_cache requires tightly packed KV rows "
          << "(stride_kv_row == bytes_per_token=" << bpt
-@@ -263,7 +289,8 @@ void SparseMlaSm120DecodeDsv3_2(TensorView q, TensorView kv_cache, TensorView in
+@@ -263,7 +282,8 @@ void SparseMlaSm120DecodeDsv3_2(TensorView q, TensorView kv_cache, TensorView in
        << "decode-v32 expects DSV3_2/GLM_NSA d_qk=576 or GLM53_NOPE d_qk=512; got d_qk=" << d_qk
        << " model_type=" << model_type;
  
@@ -1459,75 +1307,6 @@ index d506f690ab37c8b51049e8e6fe2594d6535d8464..2509b7185e68b397e4c36a9ea6b64630
  
    const int* topk_len_ptr =
        topk_length.has_value() ? static_cast<const int*>(topk_length.value().data_ptr()) : nullptr;
-diff --git a/csrc/sparse_mla_sm120_prefill.cu b/csrc/sparse_mla_sm120_prefill.cu
-index 82bfda29b298fed027ee242beff0614d500353d1..0b44b5a723a7962772a655983cb6b1c1ef37d673 100644
---- a/csrc/sparse_mla_sm120_prefill.cu
-+++ b/csrc/sparse_mla_sm120_prefill.cu
-@@ -32,7 +32,8 @@
- //     GLM_NSA / GLM53_NOPE), num_heads 64 / 128, single cache
- //   - SG (single-group, 16 heads/CTA): V32 family num_heads 8 / 16;
- //     DOTS3_SWA num_heads {8, 16, 32, 64} — SG-only, its D_NOPE=1024 does not
--//     fit the MG layout
-+//     fit the MG layout; DSV4_1 num_heads {8, 16, 32, 64} — also SG-only, its
-+//     32-wide quant groups floor the MG XV warp split to zero tiles
- //   - MG (multi-group, 32 heads/CTA): V32 family num_heads >= 32; DSV4
- //     num_heads {8..128}
- //   - MG_DUAL: dual-cache MG variants (DSV4 only)
-@@ -388,6 +389,42 @@ inline bool dispatch_dots3_swa_sg(int num_heads, int topk, int page_block_size,
- #undef DISPATCH_DOTS3_SWA_SG
- }
- 
-+// DSV4_1 is SG-only for the same structural reason as DOTS3_SWA, but with the
-+// warp split driven by its 32-wide quant groups (V_CHUNK=32 floors
-+// NT_PER_WARP_XV to 0 for an 8-warp XV) rather than by smem capacity. Any
-+// runtime topk made of whole index tiles is served; the binding enforces
-+// topk % 64 == 0. TP1..TP8 shards of the 64-head layer ride REPLICATE_H.
-+inline bool dispatch_dsv4_1_sg(int num_heads, int topk, int page_block_size, const bf16* Q,
-+                               const uint8_t* KV, const int32_t* indices, const float* attn_sink,
-+                               bf16* output, float* out_lse, float sm_scale, int num_tokens,
-+                               size_t stride_kv_block, size_t stride_out_lse,
-+                               const int* topk_length_ptr, cudaStream_t stream) {
-+  if (page_block_size != 64) return false;
-+
-+#define DISPATCH_DSV4_1_SG(NH)                                                                 \
-+  launch_prefill_sg<ModelType::DSV4_1, ComputeMode::FP8, NH, 64>(                              \
-+      Q, KV, indices, attn_sink, output, out_lse, sm_scale, num_tokens, topk, stride_kv_block, \
-+      stride_out_lse, topk_length_ptr, stream)
-+
-+  switch (num_heads) {
-+    case 8:
-+      DISPATCH_DSV4_1_SG(8);
-+      return true;
-+    case 16:
-+      DISPATCH_DSV4_1_SG(16);
-+      return true;
-+    case 32:
-+      DISPATCH_DSV4_1_SG(32);
-+      return true;
-+    case 64:
-+      DISPATCH_DSV4_1_SG(64);
-+      return true;
-+    default:
-+      return false;
-+  }
-+#undef DISPATCH_DSV4_1_SG
-+}
-+
- inline bool dispatch_dsv4_single(int num_heads, int topk, int page_block_size, const bf16* Q,
-                                  const uint8_t* KV, const int32_t* indices, const float* attn_sink,
-                                  bf16* output, float* out_lse, float sm_scale, int num_tokens,
-@@ -576,6 +613,11 @@ bool sparse_mla_prefill_dispatch(ModelType mt, PrefillVariant variant, int num_h
-                                      attn_sink, output, out_lse, sm_scale, num_tokens,
-                                      stride_kv_block, stride_out_lse, topk_length, stream);
-       }
-+      if (mt == ModelType::DSV4_1) {
-+        return dispatch_dsv4_1_sg(num_heads, topk, page_block_size, Q, KV_cache, indices, attn_sink,
-+                                  output, out_lse, sm_scale, num_tokens, stride_kv_block,
-+                                  stride_out_lse, topk_length, stream);
-+      }
-       DISPATCH_V32(dispatch_v32_sg);
-     }
-     case PrefillVariant::MG: {
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
 index 6aa6363b296719352266b6b4ce84e59ba8fc62a7..bc5cbef9df316eb41668a32311ee557e42a0a6db 100644
 --- a/flashinfer/fused_moe/api.py
@@ -3017,32 +2796,10 @@ index 603807d4c7883ba2496abec296d70553f91bac77..9b0fc08d85049a2702e8b2f12725aea5
      w2_global_scale = _source_global_scale(w2_global_scale, source_format=source_format)
      _get_w4a16_packed_weights(
 diff --git a/flashinfer/mla/_core.py b/flashinfer/mla/_core.py
-index aab4b2b1cc40a7ee36d87b9f764254383dd48547..2a830581361acd81774339fb4045697299b2601b 100644
+index aab4b2b1cc40a7ee36d87b9f764254383dd48547..242d915f8ea5c703d623617978f8effab685e109 100644
 --- a/flashinfer/mla/_core.py
 +++ b/flashinfer/mla/_core.py
-@@ -544,7 +544,7 @@ def _trtllm_batch_decode_sparse_mla_sm120(
-     lse: Optional[torch.Tensor],
-     return_lse: bool,
-     kv_scale_format: str,
--    kv_cache_format: Literal["fp8", "nvfp4"] = "fp8",
-+    kv_cache_format: Literal["fp8", "nvfp4", "fp8_dsv41"] = "fp8",
- ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-     if not is_sm12x_supported(query.device):
-         raise ValueError(
-@@ -644,9 +644,10 @@ def _trtllm_batch_decode_sparse_mla_sm120(
-         if return_lse:
-             return out, user_lse if user_lse is not None else out_lse_arg
-         return out
--    if kv_cache_format != "fp8":
-+    if kv_cache_format not in ("fp8", "fp8_dsv41"):
-         raise ValueError(
--            f"kv_cache_format must be either 'fp8' or 'nvfp4', got {kv_cache_format!r}"
-+            "kv_cache_format must be 'fp8', 'fp8_dsv41', or 'nvfp4', got "
-+            f"{kv_cache_format!r}"
-         )
- 
-     from ._sparse_mla_sm120 import SparseMLASm120Wrapper
-@@ -689,25 +690,34 @@ def _trtllm_batch_decode_sparse_mla_sm120(
+@@ -689,25 +689,34 @@ def _trtllm_batch_decode_sparse_mla_sm120(
      return out
  
  
@@ -3084,7 +2841,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..2a830581361acd81774339fb40456972
              )
          return kv_cache
      raise ValueError(f"Expected kv_cache.ndim == 3 or 4, got {kv_cache.ndim}")
-@@ -824,7 +834,7 @@ def _trtllm_batch_decode_sparse_mla_v32_sm120(
+@@ -824,7 +833,7 @@ def _trtllm_batch_decode_sparse_mla_v32_sm120(
              f"{expected_block_tables_shape}, got {tuple(block_tables.shape)}"
          )
  
@@ -3093,121 +2850,7 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..2a830581361acd81774339fb40456972
      topk_length = _normalize_sm120_sparse_v32_topk_length(
          seq_lens,
          batch_size=batch_size,
-@@ -1377,7 +1387,7 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
-     bmm2_scale: float,
-     sinks: Optional[torch.Tensor],
-     kv_layout: Literal["HND", "NHD"],
--    kv_cache_format: Literal["fp8", "nvfp4"],
-+    kv_cache_format: Literal["fp8", "nvfp4", "fp8_dsv41"],
- ) -> torch.Tensor:
-     if bmm2_scale != 1.0:
-         raise ValueError("SM120 DSv4 sparse MLA does not support bmm2_scale")
-@@ -1401,6 +1411,11 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
-     if kv_cache_format == "nvfp4" and num_heads == 8:
-         raise ValueError("NVFP4 sparse MLA does not yet support 8 query heads")
- 
-+    # Packed FP8 row width per cache format: DSV4 is 584B (448B FP8 + 128B
-+    # BF16 rope + 8B UE8M0 footer); DSV4.1 is 528B (512B all-FP8 K + 16B
-+    # 32-wide-group UE8M0 footer).
-+    packed_row_bytes = 528 if kv_cache_format == "fp8_dsv41" else 584
-+
-     swa_kv_cache = _check_sm120_dsv4_kv_cache_layout(
-         swa_kv_cache, kv_layout, "swa_kv_cache"
-     )
-@@ -1424,10 +1439,10 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
-             )
-     else:
-         if swa_kv_cache.dtype == torch.uint8:
--            if swa_kv_cache.size(-1) != 584:
-+            if swa_kv_cache.size(-1) != packed_row_bytes:
-                 raise ValueError(
--                    "Expected packed SM120 DSV4 swa_kv_cache head dim 584, got "
--                    f"{swa_kv_cache.size(-1)}"
-+                    f"Expected packed SM120 {kv_cache_format} swa_kv_cache head dim "
-+                    f"{packed_row_bytes}, got {swa_kv_cache.size(-1)}"
-                 )
-         elif swa_kv_cache.dtype != query.dtype:
-             raise ValueError(
-@@ -1484,10 +1499,11 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
-                 )
-         else:
-             if compressed_kv_cache.dtype == torch.uint8:
--                if compressed_kv_cache.size(-1) != 584:
-+                if compressed_kv_cache.size(-1) != packed_row_bytes:
-                     raise ValueError(
--                        "Expected packed SM120 DSV4 compressed_kv_cache head dim "
--                        f"584, got {compressed_kv_cache.size(-1)}"
-+                        f"Expected packed SM120 {kv_cache_format} compressed_kv_cache "
-+                        f"head dim {packed_row_bytes}, got "
-+                        f"{compressed_kv_cache.size(-1)}"
-                     )
-             elif compressed_kv_cache.dtype != query.dtype:
-                 raise ValueError(
-@@ -1519,7 +1535,9 @@ def _trtllm_batch_decode_sparse_mla_dsv4_sm120(
-             sinks=sinks,
-             lse=None,
-             return_lse=False,
--            kv_scale_format="auto",
-+            # fp8_dsv41 selects the DSV4_1 model type (32-wide UE8M0 groups)
-+            # in the SM120 runner; 'fp8' stays on the DSV4 default.
-+            kv_scale_format=("ue8m0_g32" if kv_cache_format == "fp8_dsv41" else "auto"),
-             kv_cache_format=kv_cache_format,
-         ),
-     )
-@@ -1860,7 +1878,7 @@ def trtllm_batch_decode_sparse_mla_dsv4(
-     dsv4_inv_rope_cos_sin_cache: Optional[torch.Tensor] = None,
-     dsv4_output_scale: Optional[torch.Tensor] = None,
-     *,
--    kv_cache_format: Literal["fp8", "nvfp4"] = "fp8",
-+    kv_cache_format: Literal["fp8", "nvfp4", "fp8_dsv41"] = "fp8",
- ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-     r"""Decode DeepSeek V4 sparse MLA.
- 
-@@ -1879,8 +1897,9 @@ def trtllm_batch_decode_sparse_mla_dsv4(
-     length for the SWA validity window.
- 
-     On SM120/SM121, this calls the packed sparse backend. ``swa_kv_cache`` is
--    the required packed uint8 SWA pool: 584 bytes per token for FP8 or 384
--    bytes per token for group-16 NVFP4, selected by ``kv_cache_format``.
-+    the required packed uint8 SWA pool: 584 bytes per token for FP8, 528 for
-+    FP8 DSv4.1 (``kv_cache_format="fp8_dsv41"``), or 384 bytes per token for
-+    group-16 NVFP4, selected by ``kv_cache_format``.
-     ``sparse_indices`` and ``swa_topk_lens`` describe the active SWA segment.
-     To add a compressed segment, pass ``compressed_kv_cache`` as another pool
-     in the same format and pass ``extra_sparse_indices`` with
-@@ -2046,18 +2065,24 @@ def trtllm_batch_decode_sparse_mla_dsv4(
-         ``[sum_q, 16, 4096]`` and group-major strides
-         ``(4096, sum_q * 4096, 1)``; ``out_scale`` uses the packed UE8M0
-         layout described above.
--    kv_cache_format : {"fp8", "nvfp4"}
-+    kv_cache_format : {"fp8", "nvfp4", "fp8_dsv41"}
-         SM120/SM121 sparse-cache storage format. ``"fp8"`` preserves the
--        existing 584-byte DSv4 cache ABI. ``"nvfp4"`` selects the 384-byte
--        group-16 NVFP4 cache ABI and its native prefill/decode kernels.
--        NVFP4 currently supports 16/32/64/128 heads, primary top-k 128 or 512,
--        primary page size 64, and optional extra-cache page size 2 or 64.
-+        existing 584-byte DSv4 cache ABI. ``"fp8_dsv41"`` selects the
-+        528-byte DeepSeek-V4.1 ABI (all-FP8 512-wide K with a 16-byte
-+        32-wide-group UE8M0 footer, no BF16 rope segment). ``"nvfp4"`` selects
-+        the 384-byte group-16 NVFP4 cache ABI and its native prefill/decode
-+        kernels. NVFP4 currently supports 16/32/64/128 heads, primary top-k
-+        128 or 512, primary page size 64, and optional extra-cache page size 2
-+        or 64.
-     """
-     backend = _resolve_dsv4_sparse_mla_backend(query.device, backend)
--    if kv_cache_format not in ("fp8", "nvfp4"):
-+    if kv_cache_format not in ("fp8", "nvfp4", "fp8_dsv41"):
-         raise ValueError(
--            f"kv_cache_format must be either 'fp8' or 'nvfp4', got {kv_cache_format!r}"
-+            "kv_cache_format must be 'fp8', 'fp8_dsv41', or 'nvfp4', got "
-+            f"{kv_cache_format!r}"
-         )
-+    if kv_cache_format == "fp8_dsv41" and backend != "sparse":
-+        raise ValueError("kv_cache_format='fp8_dsv41' requires backend='sparse'")
-     if kv_cache_format == "nvfp4" and backend != "sparse":
-         raise ValueError("kv_cache_format='nvfp4' requires backend='sparse'")
- 
-@@ -3450,7 +3475,9 @@ def trtllm_batch_decode_with_kv_cache_mla(
+@@ -3450,7 +3459,9 @@ def trtllm_batch_decode_with_kv_cache_mla(
          ``[num_pages, 1, page_size, kv_lora_rank + qk_rope_head_dim]`` and uses
          the query-compatible dense dtype. For the SM120/SM121 v32/GLM sparse
          backend, this is a packed uint8 cache with 656 bytes per token, shaped
@@ -3219,42 +2862,18 @@ index aab4b2b1cc40a7ee36d87b9f764254383dd48547..2a830581361acd81774339fb40456972
          Pre-allocated workspace buffer. Must be zero-initialized on first use
          by kernels that use semaphore state.
 diff --git a/flashinfer/mla/_sparse_mla_sm120.py b/flashinfer/mla/_sparse_mla_sm120.py
-index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a01472a68793 100644
+index 55abc15793aa66bc76cfdba840c438ce0866c341..0f75df8b0d87eb1a2fabdcb315fc1946e60521a2 100644
 --- a/flashinfer/mla/_sparse_mla_sm120.py
 +++ b/flashinfer/mla/_sparse_mla_sm120.py
-@@ -94,17 +94,22 @@ from ._sparse_mla_sm120_plan import (
-     _BI,
+@@ -95,6 +95,7 @@ from ._sparse_mla_sm120_plan import (
      _BPT_DSV3_2,
      _BPT_DSV4,
-+    _BPT_DSV4_1,
      _BPT_DOTS3_SWA,
 +    _BPT_GLM53_NOPE,
      _DECODE_DSV3_2_DISPATCH,  # noqa: F401  (vLLM probe surface)
      _DECODE_DSV4_DISPATCH,  # noqa: F401  (vLLM probe surface)
-+    _DECODE_DSV4_1_DISPATCH,  # noqa: F401  (vLLM probe surface)
      _DECODE_MAX_HEADS,
-     _DECODE_MAX_TOKENS,
-     _DECODE_DSV3_2_TOPKS,
-     _DECODE_DSV4_TOPKS,
-+    _DECODE_DSV4_1_TOPK,
-     _DECODE_DOTS3_SWA_DISPATCH,  # noqa: F401  (vLLM probe surface)
-     _DECODE_DOTS3_SWA_TOPK,
-     _MODEL_TYPE_DSV3_2,
-     _MODEL_TYPE_DSV4,
-+    _MODEL_TYPE_DSV4_1,
-     _MODEL_TYPE_GLM53_NOPE,
-     _MODEL_TYPE_GLM_NSA,
-     _MODEL_TYPE_DOTS3_SWA,
-@@ -132,7 +137,7 @@ if TYPE_CHECKING:
- 
- logger = logging.getLogger(__name__)
- 
--_KV_SCALE_FORMATS = frozenset({"auto", "pow2_fp32", "arbitrary_fp32"})
-+_KV_SCALE_FORMATS = frozenset({"auto", "pow2_fp32", "arbitrary_fp32", "ue8m0_g32"})
- _KV_CACHE_FORMATS = frozenset({"fp8", "nvfp4"})
- 
- # Page block size the decode kernels are instantiated for (same constant for
-@@ -176,7 +181,9 @@ class SparseMLASm120DecodeConfig:
+@@ -176,7 +177,9 @@ class SparseMLASm120DecodeConfig:
          Packed cache format described by this entry (``"fp8"`` or
          ``"nvfp4"``).
      bytes_per_token : int
@@ -3265,7 +2884,7 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
      head_counts : Optional[frozenset[int]]
          Exact instantiated head counts when the kernel has no runtime-head
          fallback. ``None`` means every count in ``[1, max_num_heads]``.
-@@ -335,7 +342,9 @@ def supported_sparse_mla_sm120_configs(
+@@ -335,7 +338,9 @@ def supported_sparse_mla_sm120_configs(
              topks=frozenset({_DECODE_GLM53_NOPE_TOPK}),
              min_topk=1,
              max_num_heads=_DECODE_MAX_HEADS,
@@ -3276,55 +2895,7 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
          ),
          "dots3_swa": SparseMLASm120DecodeConfig(
              d_qk=1088,
-@@ -346,6 +355,15 @@ def supported_sparse_mla_sm120_configs(
-             max_num_heads=_DECODE_MAX_HEADS,
-             bytes_per_token=_BPT_DOTS3_SWA,
-         ),
-+        "dsv4_1": SparseMLASm120DecodeConfig(
-+            d_qk=512,
-+            page_block_size=_DECODE_DSV4_PAGE_BLOCK_SIZE,
-+            max_num_tokens=_DECODE_MAX_TOKENS,
-+            topks=frozenset({_DECODE_DSV4_1_TOPK}),
-+            min_topk=1,
-+            max_num_heads=_DECODE_MAX_HEADS,
-+            bytes_per_token=_BPT_DSV4_1,
-+        ),
-     }
- 
- 
-@@ -477,16 +495,27 @@ def _resolve_model_type(d_qk: int, kv_scale_format: str) -> int:
-     if d_qk == 576:
-         if fmt == "arbitrary_fp32":
-             return _MODEL_TYPE_GLM_NSA
-+        if fmt not in ("auto", "pow2_fp32"):
-+            raise ValueError(
-+                "kv_scale_format for d_qk=576 must be 'auto'/'pow2_fp32' "
-+                f"(DSV3_2) or 'arbitrary_fp32' (GLM_NSA); got {kv_scale_format!r}"
-+            )
-         return _MODEL_TYPE_DSV3_2
-     if d_qk == 512:
--        # GLM-5.3 native NoPE (512+0) shares the DSv4 query width; the scale
--        # format disambiguates.
-+        # Three model families share the 512-wide query: DSV4 ('auto', 64-wide
-+        # UE8M0 groups + BF16 rope), GLM-5.3 native NoPE ('arbitrary_fp32'
-+        # inline scales), and DeepSeek-V4.1 ('ue8m0_g32', 32-wide UE8M0 footer
-+        # over the all-FP8 512-wide K). Width alone cannot separate them; the
-+        # scale format is the explicit selector.
-         if fmt == "arbitrary_fp32":
-             return _MODEL_TYPE_GLM53_NOPE
-+        if fmt == "ue8m0_g32":
-+            return _MODEL_TYPE_DSV4_1
-         if fmt != "auto":
-             raise ValueError(
--                "kv_scale_format for d_qk=512 must be 'auto' (DSV4) or "
--                f"'arbitrary_fp32' (GLM53_NOPE); got {kv_scale_format!r}"
-+                "kv_scale_format for d_qk=512 must be 'auto' (DSV4), "
-+                f"'arbitrary_fp32' (GLM53_NOPE), or 'ue8m0_g32' (DSV4_1); "
-+                f"got {kv_scale_format!r}"
-             )
-         return _MODEL_TYPE_DSV4
-     if d_qk == 1088:
-@@ -503,15 +532,38 @@ def _resolve_model_type(d_qk: int, kv_scale_format: str) -> int:
+@@ -503,8 +508,10 @@ def _resolve_model_type(d_qk: int, kv_scale_format: str) -> int:
  
  
  def _bytes_per_token_for_model_type(model_type: int) -> int:
@@ -3335,10 +2906,8 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
 +        return _BPT_GLM53_NOPE
      if model_type == _MODEL_TYPE_DSV4:
          return _BPT_DSV4
-+    if model_type == _MODEL_TYPE_DSV4_1:
-+        return _BPT_DSV4_1
      if model_type == _MODEL_TYPE_DOTS3_SWA:
-         return _BPT_DOTS3_SWA
+@@ -512,6 +519,25 @@ def _bytes_per_token_for_model_type(model_type: int) -> int:
      raise ValueError(f"Unsupported SM120 sparse-MLA model_type={model_type}")
  
  
@@ -3364,7 +2933,7 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
  def _packed_kv_page_block_size(
      kv_cache: torch.Tensor,
      *,
-@@ -644,29 +696,22 @@ def get_sparse_mla_sm120_module():
+@@ -644,29 +670,22 @@ def get_sparse_mla_sm120_module():
          kv_pbs = _packed_kv_page_block_size(
              kv_cache, model_type=model_type, name="kv_cache"
          )
@@ -3408,28 +2977,7 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
              )
          extra_topk = int(extra_indices.size(-1)) if extra_indices is not None else 0
          planned = plan(
-@@ -695,7 +740,11 @@ def get_sparse_mla_sm120_module():
-                 )
-             )
-         if planned.variant is KernelVariant.DECODE_SPLITK:
--            if model_type in (_MODEL_TYPE_DSV4, _MODEL_TYPE_DOTS3_SWA):
-+            if model_type in (
-+                _MODEL_TYPE_DSV4,
-+                _MODEL_TYPE_DOTS3_SWA,
-+                _MODEL_TYPE_DSV4_1,
-+            ):
-                 num_splits = _decode_dsv4_num_splits(topk, extra_topk, model_type)
-                 mid_out_view, mid_lse_view = _decode_scratch_views(
-                     mid_out, mid_lse, num_tokens, num_heads, num_splits, d_v
-@@ -718,6 +767,7 @@ def get_sparse_mla_sm120_module():
-                     extra_indices=extra_indices,
-                     extra_topk_length=extra_topk_length,
-                     chunks_per_block=planned.cpb,
-+                    model_type=model_type,
-                 )
-                 return
- 
-@@ -804,19 +854,24 @@ def _sparse_mla_sm120_paged_attention(
+@@ -804,19 +823,24 @@ def _sparse_mla_sm120_paged_attention(
          ``[num_blocks, page_block_size, 1, bytes]``. The SM120 binding derives
          page size and block stride from the tensor metadata without
          materializing a layout conversion. Padded block strides are honored
@@ -3464,239 +3012,28 @@ index 55abc15793aa66bc76cfdba840c438ce0866c341..fe57d72ec33841504cf815e90619a014
      output : torch.Tensor
          In-place output, shape ``[num_tokens, num_heads, d_v]``, dtype bf16.
      out_lse : torch.Tensor
-@@ -832,7 +887,8 @@ def _sparse_mla_sm120_paged_attention(
-         inline scales at ``d_qk=576``; ``"arbitrary_fp32"`` selects
-         GLM-style arbitrary FP32 inline scales (GLM_NSA at ``d_qk=576``,
-         GLM53_NOPE at ``d_qk=512``); ``"auto"`` at ``d_qk=512`` selects
--        DSV4.
-+        DSV4; ``"ue8m0_g32"`` at ``d_qk=512`` selects DSV4_1 (DeepSeek-V4.1:
-+        32-wide UE8M0 groups over the all-FP8 512-wide K).
-     topk_length : Optional[torch.Tensor]
-         Effective top-k length per query token, shape ``[num_tokens]``, dtype
-         int32. Required for sliding-window MLA near sequence start; ``None``
-@@ -938,7 +994,8 @@ class _SparseMLAPagedAttentionRunner:
-         inline scales at ``d_qk=576``; ``"arbitrary_fp32"`` selects
-         GLM-style arbitrary FP32 inline scales (GLM_NSA at ``d_qk=576``,
-         GLM53_NOPE at ``d_qk=512``); ``"auto"`` at ``d_qk=512`` selects
--        DSV4.
-+        DSV4; ``"ue8m0_g32"`` at ``d_qk=512`` selects DSV4_1 (DeepSeek-V4.1:
-+        32-wide UE8M0 groups over the all-FP8 512-wide K).
-     kv_cache_format : {"fp8", "nvfp4"}
-         Packed cache format. Both formats reuse this wrapper and its ``run``
-         signature; each format keeps its own planner and internal kernels.
-@@ -1483,6 +1540,7 @@ def sparse_mla_sm120_decode_dsv4(
-     extra_indices: Optional[torch.Tensor] = None,
-     extra_topk_length: Optional[torch.Tensor] = None,
-     chunks_per_block: Optional[int] = None,
-+    model_type: Optional[int] = None,
- ) -> torch.Tensor:
-     r"""Sparse-MLA paged decode (DSv4 standalone kernel) on SM120.
- 
-@@ -1548,9 +1606,14 @@ def sparse_mla_sm120_decode_dsv4(
-     output : torch.Tensor
-         The mutated output tensor (for chaining).
-     """
--    # d_qk resolves the model type: 512 -> DSV4 (d_v 512), 1088 -> DOTS3_SWA
--    # (d_v 1024). The FFI applies the same resolution.
--    model_type = _MODEL_TYPE_DOTS3_SWA if q.shape[-1] == 1088 else _MODEL_TYPE_DSV4
-+    # model_type selects the footer-scale model explicitly; None keeps the
-+    # legacy width inference: 512 -> DSV4 (d_v 512), 1088 -> DOTS3_SWA (d_v
-+    # 1024). DSV4_1 shares d_qk=512 with DSV4 and is only reachable explicitly
-+    # (e.g. _MODEL_TYPE_DSV4_1 from the planner, keyed by
-+    # kv_scale_format="ue8m0_g32" upstream).
-+    if model_type is None:
-+        model_type = _MODEL_TYPE_DOTS3_SWA if q.shape[-1] == 1088 else _MODEL_TYPE_DSV4
-+    model_type = int(model_type)
-     _check_last_dim(output, "output", model_type)
-     _check_last_dim(mid_out, "mid_out", model_type)
-     if q.shape[0] == 0:
-@@ -1589,6 +1652,7 @@ def sparse_mla_sm120_decode_dsv4(
-         extra_kv_cache,
-         extra_indices,
-         extra_topk_length,
-+        model_type,
-         cpb_override,
-     )
-     return output
 diff --git a/flashinfer/mla/_sparse_mla_sm120_cpb.py b/flashinfer/mla/_sparse_mla_sm120_cpb.py
-index 140f2f52afd9ef11fc054036abf2c6328b95c593..9226b7b94003b5447ff6760aac3a306d23a3f0f4 100644
+index 140f2f52afd9ef11fc054036abf2c6328b95c593..0a030ea2c71ddea529611911cae6a20c9fafd686 100644
 --- a/flashinfer/mla/_sparse_mla_sm120_cpb.py
 +++ b/flashinfer/mla/_sparse_mla_sm120_cpb.py
-@@ -83,16 +83,36 @@ logger = logging.getLogger(__name__)
+@@ -83,10 +83,13 @@ logger = logging.getLogger(__name__)
  _BI = 64  # chunk width in candidates (BLOCK_SIZE_N)
  _HPB = 16  # head tile per block
  
 -_SCHEMA_VERSION = 1
 +_SCHEMA_VERSION = 2
-+# Version 2 invalidates tuning from before GLM53_NOPE's canonical 528B payload.
-+# Constants and measured overrides can otherwise retain the old 656B footprint.
  # Only current-schema files load; any other version counts as absent and the
- # families recalibrate on the next tuning-mode pass.
+-# families recalibrate on the next tuning-mode pass.
 -_BYTES_PER_TOKEN = {"dsv4": 584, "dsv3_2": 656, "glm53_nope": 656, "dots3_swa": 1160}
--_D_QK = {"dsv4": 512, "dsv3_2": 576, "glm53_nope": 512, "dots3_swa": 1088}
--_D_V = {"dsv4": 512, "dsv3_2": 512, "glm53_nope": 512, "dots3_swa": 1024}
-+_BYTES_PER_TOKEN = {
-+    "dsv4": 584,
-+    "dsv3_2": 656,
-+    "glm53_nope": 528,
-+    "dots3_swa": 1160,
-+    "dsv4_1": 528,
-+}
-+_D_QK = {
-+    "dsv4": 512,
-+    "dsv3_2": 576,
-+    "glm53_nope": 512,
-+    "dots3_swa": 1088,
-+    "dsv4_1": 512,
-+}
-+_D_V = {"dsv4": 512, "dsv3_2": 512, "glm53_nope": 512, "dots3_swa": 1024, "dsv4_1": 512}
++# families recalibrate on the next tuning-mode pass. v2: glm53_nope rows went
++# 656B -> 528B — constants and measured overrides can otherwise retain the old
++# 656B footprint, and a stale entry would silently overstate the L2 footprint
++# in the cpb guard.
++_BYTES_PER_TOKEN = {"dsv4": 584, "dsv3_2": 656, "glm53_nope": 528, "dots3_swa": 1160}
+ _D_QK = {"dsv4": 512, "dsv3_2": 576, "glm53_nope": 512, "dots3_swa": 1088}
+ _D_V = {"dsv4": 512, "dsv3_2": 512, "glm53_nope": 512, "dots3_swa": 1024}
  # Kernel candidate-tile width per family: DOTS3_SWA decodes at BI=32 (its
- # 1040-byte KV smem stride does not fit BI=64); the others run 64. The head
- # tile is HPB=16 for every family.
--_CHUNK_WIDTH = {"dsv4": 64, "dsv3_2": 64, "glm53_nope": 64, "dots3_swa": 32}
-+_CHUNK_WIDTH = {
-+    "dsv4": 64,
-+    "dsv3_2": 64,
-+    "glm53_nope": 64,
-+    "dots3_swa": 32,
-+    "dsv4_1": 64,
-+}
- 
- # Device-level key in the JSON payload holding the crossover table.
- _DECODE_MAX_TOKENS_KEY = "decode_max_tokens"
-@@ -106,6 +126,28 @@ _CROSSOVER_MARGIN = 0.95
- # kernel-bench sweep matrix (max distance 6 at mid-T wave-quantization rows).
- _REFINE_WINDOW = 6
- 
-+
-+def _model_type_for_family(family: str) -> int:
-+    """FFI model_type for one calibration family (the decode-dsv4 FFI needs the
-+    explicit selector: DSV4_1 shares d_qk=512 with DSV4)."""
-+    from ._sparse_mla_sm120_plan import (
-+        _MODEL_TYPE_DSV3_2,
-+        _MODEL_TYPE_DSV4,
-+        _MODEL_TYPE_DSV4_1,
-+        _MODEL_TYPE_DOTS3_SWA,
-+        _MODEL_TYPE_GLM53_NOPE,
-+    )
-+
-+    return {
-+        "dsv4": _MODEL_TYPE_DSV4,
-+        "dsv4_1": _MODEL_TYPE_DSV4_1,
-+        "dots3_swa": _MODEL_TYPE_DOTS3_SWA,
-+        "glm53_nope": _MODEL_TYPE_GLM53_NOPE,
-+        # dsv3_2 and glm_nsa share the dsv3_2-kernel call path, which re-maps
-+        # glm_nsa at the builder; calibrate() only ever passes dsv3_2 here.
-+    }.get(family, _MODEL_TYPE_DSV3_2)
-+
-+
- # (num_tokens, num_heads, topk, chunks_per_block); see calibrate().
- _MEASUREMENTS = (
-     (64, 128, 128, 1),
-@@ -438,8 +480,9 @@ def _make_decode_call_builder(
-     cpb)`` to a ``call(indices) -> None`` closure that drives the family's
-     decode kernel over ``kv_cache``, so the two calibration passes' FFI
-     argument lists cannot drift apart. ``model_type`` only reaches the
--    dsv3_2-kernel families; the decode-dsv4 FFI resolves the model type from
--    ``d_qk`` itself (512 -> DSV4, 1088 -> DOTS3_SWA).
-+    dsv3_2-kernel families (where one family hosts several model types); the
-+    decode-dsv4 branch derives it from the family itself (DSV4_1 shares
-+    d_qk=512 with DSV4, so width alone cannot resolve it).
-     """
-     d_qk = _D_QK[family]
-     d_v = _D_V[family]
-@@ -480,7 +523,7 @@ def _make_decode_call_builder(
-             num_tokens, num_heads, d_v, dtype=torch.bfloat16, device=device
-         )
-         out_lse = torch.empty(num_tokens, num_heads, dtype=torch.float32, device=device)
--        if family in ("dsv4", "dots3_swa"):
-+        if family in ("dsv4", "dots3_swa", "dsv4_1"):
- 
-             def call(indices: torch.Tensor) -> None:
-                 module.sparse_mla_sm120_decode_dsv4(
-@@ -498,6 +541,7 @@ def _make_decode_call_builder(
-                     None,
-                     None,
-                     None,
-+                    _model_type_for_family(family),
-                     cpb,
-                 )
- 
-@@ -546,10 +590,6 @@ def calibrate(
-         raise CalibrationError(
-             "sparse-MLA SM120 calibration must not run under CUDA graph capture"
-         )
--    from ._sparse_mla_sm120_plan import (
--        _MODEL_TYPE_DSV3_2,
--        _MODEL_TYPE_GLM53_NOPE,
--    )
- 
-     device = torch.device(device)
-     props = torch.cuda.get_device_properties(device)
-@@ -564,9 +604,7 @@ def calibrate(
-         "dots3_swa": _MEASUREMENTS_DOTS3_SWA,
-     }
-     measurements = _CPB_PAIR_MEASUREMENTS.get(family, _MEASUREMENTS)
--    model_type = (
--        _MODEL_TYPE_GLM53_NOPE if family == "glm53_nope" else _MODEL_TYPE_DSV3_2
--    )
-+    model_type = _model_type_for_family(family)
- 
-     kv_cache, num_slots = _allocate_kv_pool(family, device)
- 
-@@ -711,11 +749,13 @@ def calibrate_crossover(
-     from ._sparse_mla_sm120_plan import (
-         _DECODE_DSV3_2_CALIBRATION_GRID,
-         _DECODE_DSV4_CALIBRATION_GRID,
-+        _DECODE_DSV4_1_CALIBRATION_GRID,
-         _DECODE_GLM53_NOPE_CALIBRATION_GRID,
-         _DECODE_DOTS3_SWA_CALIBRATION_GRID,
-         _PREFILL_IMPL_AUTO,
-         _MODEL_TYPE_DSV3_2,
-         _MODEL_TYPE_DSV4,
-+        _MODEL_TYPE_DSV4_1,
-         _MODEL_TYPE_GLM_NSA,
-         _MODEL_TYPE_GLM53_NOPE,
-         _MODEL_TYPE_DOTS3_SWA,
-@@ -737,6 +777,14 @@ def calibrate_crossover(
-         spaces = [
-             ("dsv4", grid or sorted(_DECODE_DSV4_CALIBRATION_GRID), _MODEL_TYPE_DSV4)
-         ]
-+    elif family == "dsv4_1":
-+        spaces = [
-+            (
-+                "dsv4_1",
-+                grid or sorted(_DECODE_DSV4_1_CALIBRATION_GRID),
-+                _MODEL_TYPE_DSV4_1,
-+            )
-+        ]
-     elif family == "dsv3_2":
-         pairs = grid or sorted(_DECODE_DSV3_2_CALIBRATION_GRID)
-         spaces = [
-@@ -867,11 +915,6 @@ def refine_cpb(
-     up. Dual-cache (extra_topk > 0) shapes stay on the model: their measured
-     pick error stays within ~6%.
-     """
--    from ._sparse_mla_sm120_plan import (
--        _MODEL_TYPE_DSV3_2,
--        _MODEL_TYPE_GLM53_NOPE,
--    )
--
-     if family not in _BYTES_PER_TOKEN:
-         raise ValueError(f"unknown sparse-MLA family {family!r}")
-     if torch.cuda.is_current_stream_capturing():
-@@ -884,9 +927,7 @@ def refine_cpb(
-     center = select_cpb(num_tokens, num_heads, topk, 0, c, chunk_width=bi)
-     kv_cache, num_slots = _allocate_kv_pool(family, device)
-     build_call = _make_decode_call_builder(module_getter(), family, device, kv_cache)
--    model_type = (
--        _MODEL_TYPE_GLM53_NOPE if family == "glm53_nope" else _MODEL_TYPE_DSV3_2
--    )
-+    model_type = _model_type_for_family(family)
-     best_cpb, best_t = center, float("inf")
-     lo = max(1, center - _REFINE_WINDOW)
-     hi = min(n, center + _REFINE_WINDOW)
-@@ -982,10 +1023,12 @@ def _maybe_load_disk() -> None:
+@@ -982,10 +985,12 @@ def _maybe_load_disk() -> None:
          return
      try:
          payload = json.loads(path.read_text())
@@ -3713,36 +3050,16 @@ index 140f2f52afd9ef11fc054036abf2c6328b95c593..9226b7b94003b5447ff6760aac3a306d
              return
          devices = payload["devices"]
          if not isinstance(devices, dict):
-@@ -1156,12 +1199,14 @@ def crossover_grid_complete(device: torch.device, family: str) -> bool:
-     from ._sparse_mla_sm120_plan import (
-         _DECODE_DSV3_2_CALIBRATION_GRID,
-         _DECODE_DSV4_CALIBRATION_GRID,
-+        _DECODE_DSV4_1_CALIBRATION_GRID,
-         _DECODE_GLM53_NOPE_CALIBRATION_GRID,
-         _DECODE_DOTS3_SWA_CALIBRATION_GRID,
-     )
- 
-     key_spaces = {
-         "dsv4": (("dsv4", _DECODE_DSV4_CALIBRATION_GRID),),
-+        "dsv4_1": (("dsv4_1", _DECODE_DSV4_1_CALIBRATION_GRID),),
-         "dsv3_2": (
-             ("dsv3_2", _DECODE_DSV3_2_CALIBRATION_GRID),
-             ("glm_nsa", _DECODE_DSV3_2_CALIBRATION_GRID),
 diff --git a/flashinfer/mla/_sparse_mla_sm120_plan.py b/flashinfer/mla/_sparse_mla_sm120_plan.py
-index 2d2b0c6b4941e509bcaec46129e6226d6a5a4b8d..1eebea04e852314a6f52231c273cc48cbf2df5f9 100644
+index 2d2b0c6b4941e509bcaec46129e6226d6a5a4b8d..689d8bb90bd5bd428d2156273beecda35b968d86 100644
 --- a/flashinfer/mla/_sparse_mla_sm120_plan.py
 +++ b/flashinfer/mla/_sparse_mla_sm120_plan.py
-@@ -70,15 +70,24 @@ _MODEL_TYPE_DSV4 = 1
+@@ -70,13 +70,16 @@ _MODEL_TYPE_DSV4 = 1
  _MODEL_TYPE_GLM_NSA = 2
  _MODEL_TYPE_GLM53_NOPE = 3
  _MODEL_TYPE_DOTS3_SWA = 4
 -# The V32 kernel family: the 656B/token inline-scale cache ABI. GLM53_NOPE is
 -# the rope-free member (d_qk=512; bytes [528:656) are reserved padding).
-+# DeepSeek-V4.1: GLM53_NOPE geometry (512-wide all-FP8 K, no BF16 rope) with a
-+# DSV4-style UE8M0 footer, but 32-wide quant groups (16 scales, 16B/token).
-+# Its 528B payload collides with GLM53_NOPE's, so it is only ever selected
-+# explicitly (kv_scale_format="ue8m0_g32"), never inferred from widths.
-+_MODEL_TYPE_DSV4_1 = 5
 +# The V32 kernel family: the inline-scale cache ABI. DSV3_2/GLM_NSA rows are
 +# 656B; GLM53_NOPE is the rope-free member (d_qk=512) with a 528B payload and
 +# a runtime gmem row stride (a legacy 656B vLLM pool works unchanged — the
@@ -3755,94 +3072,9 @@ index 2d2b0c6b4941e509bcaec46129e6226d6a5a4b8d..1eebea04e852314a6f52231c273cc48c
 +_BPT_GLM53_NOPE = 528
  _BPT_DSV4 = 584
  _BPT_DOTS3_SWA = 1160
-+_BPT_DSV4_1 = 528
  
- # d_v per model type. Every DeepSeek-family type is 512; DOTS3_SWA is the one
- # divergence (its latent V is the full 1024-wide latent, rope excluded).
-@@ -88,6 +97,7 @@ _D_V_BY_MODEL_TYPE = {
-     _MODEL_TYPE_GLM_NSA: 512,
-     _MODEL_TYPE_GLM53_NOPE: 512,
-     _MODEL_TYPE_DOTS3_SWA: 1024,
-+    _MODEL_TYPE_DSV4_1: 512,
- }
- 
- # Kernel-family names used in the public config query and error messages.
-@@ -97,6 +107,7 @@ _MODEL_TYPE_TO_FAMILY = {
-     _MODEL_TYPE_GLM_NSA: "glm_nsa",
-     _MODEL_TYPE_GLM53_NOPE: "glm53_nope",
-     _MODEL_TYPE_DOTS3_SWA: "dots3_swa",
-+    _MODEL_TYPE_DSV4_1: "dsv4_1",
- }
- 
- 
-@@ -167,6 +178,11 @@ _DECODE_GLM53_NOPE_DISPATCH = _DecodeDispatchEnvelope(1)
- # layer (TP4 -> 16) and any other count up to 128.
- _DECODE_DOTS3_SWA_DISPATCH = _DecodeDispatchEnvelope(513)
- 
-+# DSV4_1 decode: the decode-dsv4 kernel at BI=64 / 8 math warps; its 32-wide
-+# quant groups are served by the pair-folded XV (DecodeTileCfg::XV_FOLD=2).
-+# Dual-cache is supported like DSV4.
-+_DECODE_DSV4_1_DISPATCH = _DecodeDispatchEnvelope(1)
-+
- # Calibration/documented topk values per family (the crossover sweep points).
- # Any width >= min_topk above is served; these are the values with measured
- # crossover data.
-@@ -174,6 +190,7 @@ _DECODE_DSV4_TOPKS = frozenset({128, 192, 256, 512, 1024})
- _DECODE_DSV3_2_TOPKS = frozenset({128, 512, 1024, 2048})
- _DECODE_GLM53_NOPE_TOPK = 2176
- _DECODE_DOTS3_SWA_TOPK = 576
-+_DECODE_DSV4_1_TOPK = 512  # the V4.1 indexer topk
- 
- # Crossover-calibration grids: the (num_heads, topk) pairs the tuning-mode
- # sweep times on both paths. Deliberately NOT the full eligibility envelope —
-@@ -194,6 +211,9 @@ _DECODE_GLM53_NOPE_CALIBRATION_GRID = frozenset(
- _DECODE_DOTS3_SWA_CALIBRATION_GRID = frozenset(
-     (h, _DECODE_DOTS3_SWA_TOPK) for h in (8, 16, 32, 64)
- )
-+_DECODE_DSV4_1_CALIBRATION_GRID = frozenset(
-+    (h, _DECODE_DSV4_1_TOPK) for h in _CALIBRATION_HEADS
-+)
- 
- 
- def _decode_scratch_heads(num_heads: int) -> int:
-@@ -288,6 +308,9 @@ def decode_splitk_eligible(
-     if model_type == _MODEL_TYPE_DSV4:
-         # The decode-dsv4 kernel takes the secondary cache as runtime args.
-         return (num_heads, topk) in _DECODE_DSV4_DISPATCH
-+    if model_type == _MODEL_TYPE_DSV4_1:
-+        # Same kernel, DSV4_1 tile; dual-cache supported like DSV4.
-+        return (num_heads, topk) in _DECODE_DSV4_1_DISPATCH
-     if model_type == _MODEL_TYPE_GLM53_NOPE:
-         # decode-v32 has no dual-cache form.
-         return not has_extra and (num_heads, topk) in _DECODE_GLM53_NOPE_DISPATCH
-@@ -319,6 +342,11 @@ def prefill_swapab_eligible(
- _DOTS3_SWA_MIN_TOPK = 513
- _DOTS3_SWA_SG_HEADS = frozenset({8, 16, 32, 64})
- 
-+# DSV4_1 prefill is likewise SG-only: its 32-wide quant groups floor the MG XV
-+# warp split to zero tiles (see PrefillTilePrimary<DSV4_1>). SG runs it on the
-+# BI=32 producer/consumer tile; num_heads > 16 replicates CTAs.
-+_DSV4_1_SG_HEADS = frozenset({8, 16, 32, 64})
-+
- 
- def prefill_sg_eligible(
-     model_type: int, num_heads: int, topk: int, page_block_size: int, has_extra: bool
-@@ -331,6 +359,13 @@ def prefill_sg_eligible(
-             and topk % _BI == 0
-             and num_heads in _DOTS3_SWA_SG_HEADS
-         )
-+    if model_type == _MODEL_TYPE_DSV4_1:
-+        return (
-+            not has_extra
-+            and page_block_size == _PAGE_BLOCK_SIZE
-+            and _prefill_topk_ok(topk)
-+            and num_heads in _DSV4_1_SG_HEADS
-+        )
-     return (
-         model_type in _V32_MODEL_TYPES
-         and not has_extra
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
-index 12268e945ee6ff95625d1308569586dd688271b3..2757ff5774d03243d4093693e9ba4a35f56145b8 100644
+index 12268e945ee6ff95625d1308569586dd688271b3..4e948231686fec45348bfc41d724d22a2aa3be4e 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/kv_cache_io.cuh
 @@ -31,6 +31,7 @@
@@ -3934,18 +3166,7 @@ index 12268e945ee6ff95625d1308569586dd688271b3..2757ff5774d03243d4093693e9ba4a35
    } else {
      constexpr int pbs = PAGE_BLOCK_SIZE;
      src = kv_ptr + (size_t)(idx / pbs) * stride_kv_block + (size_t)(idx % pbs) * IO::IO_STRIDE;
-@@ -143,19 +170,29 @@ __device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, int idx,
-   constexpr int SCALE_BYTES = KV::SCALE_BYTES_PER_TOKEN;
-   // Only reachable for footer-scale models (the inline ones return above), so
-   // the width check is disjoined rather than applied to every instantiation.
--  static_assert(KV::SCALE_IN_KV_SMEM || SCALE_BYTES == sizeof(uint64_t),
--                "the footer gather moves one uint64 per token; a different footer width needs a "
--                "different load");
-+  static_assert(
-+      KV::SCALE_IN_KV_SMEM || SCALE_BYTES == sizeof(uint64_t) || SCALE_BYTES == sizeof(uint4),
-+      "the footer gather moves one wide word per token; a different footer width "
-+      "needs a different load");
-   static_assert(TILE_BI <= TILE_IO_THREADS,
+@@ -150,12 +177,16 @@ __device__ __forceinline__ void io_gather_scales(uint8_t* scale_dst, int idx,
                  "per-thread index staging assumes at most one candidate per IO thread");
    if (io_tid >= TILE_BI) return;
  
@@ -3961,47 +3182,17 @@ index 12268e945ee6ff95625d1308569586dd688271b3..2757ff5774d03243d4093693e9ba4a35
 -  int local_idx = idx % pbs;
 -  const uint8_t* src = kv_ptr + (size_t)block_idx * stride_kv_block + (size_t)pbs * IO::IO_STRIDE +
 -                       (size_t)local_idx * SCALE_BYTES;
--  *reinterpret_cast<uint64_t*>(scale_dst + io_tid * SCALE_BYTES) =
--      __ldg(reinterpret_cast<const uint64_t*>(src));
 +  const uint8_t* src = kv_ptr + (size_t)(idx / pbs) * stride_kv_block +
 +                       (size_t)pbs * IO::IO_STRIDE + (size_t)(idx % pbs) * SCALE_BYTES;
 +  src = valid ? src : sparse_mla_zero_row;
-+  if constexpr (SCALE_BYTES == sizeof(uint4)) {
-+    *reinterpret_cast<uint4*>(scale_dst + io_tid * SCALE_BYTES) =
-+        __ldg(reinterpret_cast<const uint4*>(src));
-+  } else {
-+    *reinterpret_cast<uint64_t*>(scale_dst + io_tid * SCALE_BYTES) =
-+        __ldg(reinterpret_cast<const uint64_t*>(src));
-+  }
+   *reinterpret_cast<uint64_t*>(scale_dst + io_tid * SCALE_BYTES) =
+       __ldg(reinterpret_cast<const uint64_t*>(src));
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
-index 4c7c9d692737f7283e57e06b5a9524c26db0fd84..208109a053446ffda7e0f6c557a6dd6cb977336f 100644
+index 4c7c9d692737f7283e57e06b5a9524c26db0fd84..c834fe57187295b70b686aacfe81ca1e448abe3f 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/common/smem_layout.cuh
-@@ -44,7 +44,13 @@
- template <ModelType MT, ComputeMode CM, int TILE_BI = BI, int TILE_MATH_WARPS = N_MATH_WARPS>
- struct SmemLayout {
-   using KV = KVCacheTraits<MT>;
--  using CT = ComputeTraits<MT, CM, TILE_BI, TILE_MATH_WARPS>;
-+  // Only warp-count-independent CT members (N_V_CHUNKS) are read here, but the
-+  // ComputeTraits assert still fires on a degenerate XV mapping: on a split
-+  // tile the XV warps are TILE_MATH_WARPS - TILE_BI/8, and a 32-wide-group
-+  // model (DSV4_1) floors NT_PER_WARP_XV to 0 at the full warp count.
-+  static constexpr bool SPLIT_PC = (TILE_MATH_WARPS * 8 != TILE_BI);
-+  static constexpr int XV_WARPS = SPLIT_PC ? TILE_MATH_WARPS - TILE_BI / 8 : TILE_MATH_WARPS;
-+  using CT = ComputeTraits<MT, CM, TILE_BI, XV_WARPS>;
- 
-   // Q buffers
-   static constexpr bool BF16_Q = (CM == ComputeMode::BF16);
-@@ -78,7 +84,6 @@ struct SmemLayout {
-   // math warps run a QK-producer / XV-consumer pipeline, so the handoff
-   // buffers (w_fp8, w_head_sc_all) are double-buffered by tile parity and a
-   // small alpha array carries the softmax rescale factor between the groups.
--  static constexpr bool SPLIT_PC = (TILE_MATH_WARPS * 8 != TILE_BI);
-   static constexpr size_t SMEM_W_SC_ONE = CT::N_V_CHUNKS * HPB * sizeof(float);
-   static constexpr size_t SMEM_W_SC_ALL = SMEM_W_SC_ONE * (SPLIT_PC ? 2 : 1);
-   static constexpr size_t SMEM_W_FP8_ONE = HPB * (TILE_BI + 16);
-@@ -255,11 +260,14 @@ struct SmemLayoutSwapAB {
+@@ -255,11 +255,14 @@ struct SmemLayoutSwapAB {
    using KV = KVCacheTraits<MT>;
    using CT = ComputeTraitsSwapAB<MT>;
  
@@ -4150,19 +3341,10 @@ index dd54a0c9362922af825fd647d75aa4f5b1572bd7..8c1d950fe6efe7637bbeebea5ffad8f3
        cp_async_bulk_g2s(kv_fp8_dst + (size_t)entry_idx * KV_SMEM_STRIDE, data_base,
                          V2_BULK_NOPESC_BYTES, sm.mbar_full(buf));
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh
-index e0ffeb2b865c4579de87061cdcb416d45e4fe620..3d0da227bfd55d93a305a1b9a1a5461734471785 100644
+index e0ffeb2b865c4579de87061cdcb416d45e4fe620..b92db5e226435ab691881b0a52eab04c766af288 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_kernel.cuh
-@@ -5,6 +5,8 @@
- 
- #pragma once
- 
-+#include <type_traits>
-+
- #include "arch/barrier.cuh"
- #include "arch/cp_async.cuh"
- #include "arch/ldmatrix_sm120.cuh"
-@@ -12,6 +14,7 @@
+@@ -12,6 +12,7 @@
  #include "common/d2_load_b.cuh"
  #include "common/fp8_quant.cuh"
  #include "common/online_softmax.cuh"
@@ -4170,175 +3352,7 @@ index e0ffeb2b865c4579de87061cdcb416d45e4fe620..3d0da227bfd55d93a305a1b9a1a54617
  #include "model/kv_cache_traits.cuh"
  #include "model/scale_convert.cuh"
  
-@@ -66,11 +69,21 @@ struct DecodeTilePrimary<ModelType::DOTS3_SWA> {
- template <ModelType MT>
- struct DecodeTileCfg {
-   using P = DecodeTilePrimary<MT>;
-+  using KV = KVCacheTraits<MT>;
-   static constexpr int N_WARPS = P::N_WARPS;
-   static constexpr int IO_WARPS = P::IO_WARPS;
-   static constexpr int CAND_WINDOW = P::CAND_WINDOW;
-   static constexpr int KV_BUF_COUNT = P::KV_BUF_COUNT;
- 
-+  // XV W-fold arity. The FP8 weight buffer carries the V dequant scale folded
-+  // in per (candidate, scale group), so one buffer serves exactly one
-+  // QUANT_TILE-wide group and a chunk feeds at most QUANT_TILE/8 warps. When
-+  // the math warps outnumber that (DSV4_1: 8 warps, 32-wide groups), each
-+  // loop step folds W once per group in an XV_FOLD-wide chunk group
-+  // (pair-fold) instead of narrowing the warp count.
-+  static constexpr int XV_FOLD = (N_WARPS * 8 + KV::QUANT_TILE - 1) / KV::QUANT_TILE;
-+  static constexpr int XV_WARPS = N_WARPS / XV_FOLD;
-+
-   static constexpr int N_TOTAL_WARPS = N_WARPS + IO_WARPS;  // DSV4 9,   DOTS3_SWA 5
-   static constexpr int BLOCK_THREADS = N_TOTAL_WARPS * 32;  // DSV4 288, DOTS3_SWA 160
-   static constexpr int MATH_THREADS = N_WARPS * 32;         // DSV4 256, DOTS3_SWA 128
-@@ -87,6 +100,11 @@ struct DecodeTileCfg {
-                 "ENTRIES_PER_WARP < 8 floors QK_N_TILES to 0 and silently drops the QK MMA; "
-                 "halve N_WARPS along with CAND_WINDOW");
-   static_assert(QK_N_TILES >= 1, "QK tiling degenerate");
-+  static_assert(XV_FOLD >= 1 && XV_FOLD <= 2,
-+                "beyond pair-fold the XV stage needs a wider W buffer design");
-+  static_assert(N_WARPS % XV_FOLD == 0, "the XV folds must split the math warps evenly");
-+  static_assert(KV::D_NOPE % (KV::QUANT_TILE * XV_FOLD) == 0,
-+                "the XV chunk group must tile the nope dims");
- };
- 
- template <ModelType MT>
-@@ -94,10 +112,10 @@ struct DecodeDsv4Smem {
-   using KV = KVCacheTraits<MT>;
-   using Cfg = DecodeTileCfg<MT>;
-   // This layout assumes footer scales (a separate kv_sc buffer) and a KV smem
--  // region holding nope only. Both DSV4 and DOTS3_SWA satisfy that; the inline-
--  // scale models (DSV3_2 / GLM_NSA) bulk-copy their scales inside the KV region
--  // and use decode_dsv3_2_kernel.cuh instead.
--  static_assert(MT == ModelType::DSV4 || MT == ModelType::DOTS3_SWA);
-+  // region holding nope only. DSV4, DOTS3_SWA, and DSV4_1 satisfy that; the
-+  // inline-scale models (DSV3_2 / GLM_NSA) bulk-copy their scales inside the
-+  // KV region and use decode_dsv3_2_kernel.cuh instead.
-+  static_assert(MT == ModelType::DSV4 || MT == ModelType::DOTS3_SWA || MT == ModelType::DSV4_1);
-   static_assert(!KV::SCALE_IN_KV_SMEM, "this smem layout keeps scales in a separate buffer");
- 
-   static constexpr int N_V_CHUNKS = KV::D_NOPE / KV::QUANT_TILE;
-@@ -111,6 +129,8 @@ struct DecodeDsv4Smem {
-   static constexpr size_t SMEM_REDUCE = 2 * Cfg::N_WARPS * HPB * sizeof(float);
-   static constexpr size_t SMEM_W_HEAD_SC = N_V_CHUNKS * HPB * sizeof(float);
-   static constexpr size_t SMEM_W_FP8_BUF = HPB * (Cfg::BI + 16);
-+  // W buffers: one per (double-buffer parity, XV fold) — see DecodeTileCfg.
-+  static constexpr int W_FP8_SLOTS = 2 * Cfg::XV_FOLD;
- 
-   static constexpr size_t OFF_Q_ROPE = 0;
-   static constexpr size_t OFF_Q_FP8 = OFF_Q_ROPE + SMEM_Q_ROPE;
-@@ -161,8 +181,9 @@ struct DecodeDsv4Smem {
-   __device__ __forceinline__ float* w_head_sc() const {
-     return reinterpret_cast<float*>(base + OFF_W_HEAD_SC);
-   }
--  __device__ __forceinline__ uint8_t* w_fp8(int parity) const {
--    return reinterpret_cast<uint8_t*>(base + OFF_W_FP8 + parity * SMEM_W_FP8_BUF);
-+  // slot = parity * Cfg::XV_FOLD + fold
-+  __device__ __forceinline__ uint8_t* w_fp8(int slot) const {
-+    return reinterpret_cast<uint8_t*>(base + OFF_W_FP8 + slot * SMEM_W_FP8_BUF);
-   }
- };
- 
-@@ -191,8 +212,8 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-     size_t stride_indices_token, size_t stride_extra_indices_token) {
-   using KV = KVCacheTraits<MT>;
-   using Cfg = DecodeTileCfg<MT>;
--  static_assert(MT == ModelType::DSV4 || MT == ModelType::DOTS3_SWA,
--                "decode-dsv4 serves the footer-scale model types (DSV4, DOTS3_SWA)");
-+  static_assert(MT == ModelType::DSV4 || MT == ModelType::DOTS3_SWA || MT == ModelType::DSV4_1,
-+                "decode-dsv4 serves the footer-scale model types (DSV4, DOTS3_SWA, DSV4_1)");
-   constexpr int D_NOPE = KV::D_NOPE;                                // 448
-   constexpr int D_ROPE_C = KV::D_ROPE;                              // 64
-   constexpr int D_QK = KV::D_QK;                                    // 512
-@@ -271,9 +292,14 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-     return;
-   }
- 
--  constexpr int V_CHUNK = QUANT_TILE;                          // 64
--  constexpr int N_V_CHUNKS = D_NOPE / V_CHUNK;                 // 7
--  constexpr int NT_PER_WARP_XV = V_CHUNK / 8 / Cfg::N_WARPS;   // 1
-+  constexpr int V_CHUNK = QUANT_TILE;  // DSV4 64, DOTS3_SWA 128, DSV4_1 32
-+  constexpr int N_V_CHUNKS = D_NOPE / V_CHUNK;
-+  constexpr int XV_FOLD = Cfg::XV_FOLD;    // W foldings per XV step (DSV4_1: 2)
-+  constexpr int XV_WARPS = Cfg::XV_WARPS;  // warps per chunk within a step
-+  constexpr int NT_PER_WARP_XV = V_CHUNK / 8 / XV_WARPS;
-+  // acc_nope's first index is the chunk-GROUP step, not the chunk: at
-+  // XV_FOLD=2 a warp's chunk within step vs is vs*2 + warp_id/XV_WARPS.
-+  constexpr int ACC_V_STEPS = N_V_CHUNKS / XV_FOLD;
-   constexpr int XV_KSTEPS = Cfg::BI / 32;                      // 2
-   constexpr int W_FP8_STRIDE = Cfg::BI + 16;                   // 80
-   constexpr int ROPE_DIMS_PER_WARP = D_ROPE_C / Cfg::N_WARPS;  // 8
-@@ -302,8 +328,9 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-   //   sm_kv_rope   2 * Cfg::BI * D_ROPE * 2B      = 16 KB
-   //   sm_reduce    2 * Cfg::N_WARPS * HPB * 4     = 1 KB  (8 warps)
-   //   sm_w_head_sc N_V_CHUNKS * HPB * 4         = 448 B
--  //   sm_w_fp8 ×2  2 * HPB * (Cfg::BI + 16)       = 2.5 KB  (double-buf
--  //                across vc iters to drop the if-vc>0 bar_sync)
-+  //   sm_w_fp8 ×2×XV_FOLD  W_FP8_SLOTS * HPB * (Cfg::BI + 16)
-+  //                                          = 2.5-5 KB (double-buf
-+  //                across step iters to drop the if-step>0 bar_sync)
-   //   Total                                     ~ 88 KB
-   // Plus static sm_p_full HPB * Cfg::BI * 2B (bf16) = 2 KB.
-   // Grand total ~ 90 KB (under 100 KB SM120 carveout, 1 block/SM).
-@@ -330,8 +357,8 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-   __syncthreads();
- 
-   // ── TMA bulk constants ──
--  constexpr uint32_t DSV4_BULK_NOPE_BYTES = (uint32_t)D_NOPE;                   // 448
--  constexpr uint32_t DSV4_BULK_ROPE_BYTES = (uint32_t)D_ROPE_C * sizeof(bf16);  // 128
-+  constexpr uint32_t DSV4_BULK_NOPE_BYTES = (uint32_t)D_NOPE;  // DSV4 448, DSV4_1 512
-+  constexpr uint32_t DSV4_BULK_ROPE_BYTES = (uint32_t)D_ROPE_C * sizeof(bf16);  // DSV4 128
-   constexpr uint32_t DSV4_BULK_TX_BYTES =
-       (uint32_t)Cfg::BI * (DSV4_BULK_NOPE_BYTES + DSV4_BULK_ROPE_BYTES);
- 
-@@ -372,10 +399,18 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-       idx_raw[e] = (cand_pos < g_end) ? section_idx_base[cand_pos] : -1;
-     }
- 
--    uint64_t scale_word[EPW];
-+    // Footer scale rows are 8B (DSV4, DOTS3_SWA) or 16B (DSV4_1); both stay
-+    // naturally aligned (the block stride and the in-block footer offset are
-+    // multiples of the row width).
-+    using ScaleWord = typename std::conditional<SCALE_BYTES_PER_TOKEN == 16, uint4, uint64_t>::type;
-+    ScaleWord scale_word[EPW];
- #pragma unroll
-     for (int e = 0; e < EPW; e++) {
--      scale_word[e] = 0;
-+      if constexpr (sizeof(ScaleWord) == 16) {
-+        scale_word[e] = make_uint4(0, 0, 0, 0);
-+      } else {
-+        scale_word[e] = 0;
-+      }
-       if (idx_raw[e] >= 0) {
-         const int idx = idx_raw[e];
-         const int block_idx_g = idx / section_pbs;
-@@ -383,13 +418,13 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-         const uint8_t* scale_base = section_kv + (size_t)block_idx_g * section_stride +
-                                     (size_t)section_pbs * IO_STRIDE +
-                                     (size_t)local_idx_g * SCALE_BYTES_PER_TOKEN;
--        scale_word[e] = __ldg(reinterpret_cast<const uint64_t*>(scale_base));
-+        scale_word[e] = __ldg(reinterpret_cast<const ScaleWord*>(scale_base));
-       }
-     }
- #pragma unroll
-     for (int e = 0; e < EPW; e++) {
--      *reinterpret_cast<uint64_t*>(kv_sc_dst + (size_t)(e * Cfg::IO_THREADS + lane) *
--                                                   SCALE_BYTES_PER_TOKEN) = scale_word[e];
-+      *reinterpret_cast<ScaleWord*>(kv_sc_dst + (size_t)(e * Cfg::IO_THREADS + lane) *
-+                                                    SCALE_BYTES_PER_TOKEN) = scale_word[e];
-     }
-     __threadfence_block();
- 
-@@ -397,21 +432,31 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-       mbarrier_arrive_expect_tx(sm.mbar_full(buf), DSV4_BULK_TX_BYTES);
-     }
- 
--    // Issue cp.async.bulk for NoPE (448 B/entry) + RoPE (128 B/entry).
-+    // Issue cp.async.bulk for the FP8 data row (D_NOPE B/entry), plus the BF16
-+    // rope segment when the model has one (DSV4: 128 B/entry; DSV4_1: none).
-     // Bulk completion decrements mbar tx; phase flips when arrival count
-     // (1, by leader above) AND tx=0 both met.
+@@ -403,11 +404,16 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
  #pragma unroll
      for (int e = 0; e < EPW; e++) {
        const int entry_idx = e * Cfg::IO_THREADS + lane;
@@ -4357,131 +3371,47 @@ index e0ffeb2b865c4579de87061cdcb416d45e4fe620..3d0da227bfd55d93a305a1b9a1a54617
 +      static_assert(DSV4_BULK_NOPE_BYTES + DSV4_BULK_ROPE_BYTES <= SPARSE_MLA_ZERO_ROW_BYTES);
        cp_async_bulk_g2s(kv_fp8_dst + (size_t)entry_idx * KV_SMEM_STRIDE, data_base,
                          DSV4_BULK_NOPE_BYTES, sm.mbar_full(buf));
--      cp_async_bulk_g2s(kv_rope_dst + (size_t)entry_idx * D_ROPE_C, data_base + D_NOPE,
--                        DSV4_BULK_ROPE_BYTES, sm.mbar_full(buf));
-+      // DSV4_1 has no BF16 rope segment (rope lanes live in the FP8 row), so
-+      // there is no second bulk to issue.
-+      if constexpr (D_ROPE_C > 0) {
-+        cp_async_bulk_g2s(kv_rope_dst + (size_t)entry_idx * D_ROPE_C, data_base + D_NOPE,
-+                          DSV4_BULK_ROPE_BYTES, sm.mbar_full(buf));
-+      }
-     }
-   };
+       cp_async_bulk_g2s(kv_rope_dst + (size_t)entry_idx * D_ROPE_C, data_base + D_NOPE,
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_nvfp4_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_nvfp4_kernel.cuh
+index fe07373d28870e4922279fdd810defc7d802af7f..1989b33ba331a7490c818b63bd5a1299c9e61abc 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_nvfp4_kernel.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/decode_dsv4_nvfp4_kernel.cuh
+@@ -24,6 +24,7 @@
+ #include "common/d2_load_b_nvfp4.cuh"
+ #include "common/nvfp4_quant.cuh"
+ #include "common/nvfp4_vt.cuh"
++#include "common/zero_row.cuh"
+ #include "model/nvfp4_cache_traits.cuh"
  
-@@ -446,7 +491,7 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-   quantize_q_to_smem<MT, Cfg::MATH_THREADS>(sm.q_fp8(), sm.q_sc(), sm.q_rope(), q_base, valid_h);
- 
-   // Persistent state across chunks (per-thread registers).
--  float acc_nope[N_V_CHUNKS][NT_PER_WARP_XV][4] = {0};
-+  float acc_nope[ACC_V_STEPS][NT_PER_WARP_XV][4] = {0};
-   // Sized 1 when unused: a zero-length array is ill-formed, and every read is
-   // behind `if constexpr (V_ROPE)`.
-   float acc_rope[V_ROPE ? ROPE_N_TILES : 1][4] = {0};
-@@ -651,13 +696,13 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
- 
-     if (chunk_idx > chunk_lo) {
- #pragma unroll
--      for (int vc = 0; vc < N_V_CHUNKS; vc++) {
-+      for (int vs = 0; vs < ACC_V_STEPS; vs++) {
- #pragma unroll
-         for (int nt = 0; nt < NT_PER_WARP_XV; nt++) {
--          acc_nope[vc][nt][0] *= alpha0;
--          acc_nope[vc][nt][1] *= alpha0;
--          acc_nope[vc][nt][2] *= alpha1;
--          acc_nope[vc][nt][3] *= alpha1;
-+          acc_nope[vs][nt][0] *= alpha0;
-+          acc_nope[vs][nt][1] *= alpha0;
-+          acc_nope[vs][nt][2] *= alpha1;
-+          acc_nope[vs][nt][3] *= alpha1;
-         }
-       }
-       if constexpr (V_ROPE) {
-@@ -734,13 +779,18 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-     bar_sync_t<3, Cfg::MATH_THREADS>();
- 
- #pragma unroll
--    for (int vc = 0; vc < N_V_CHUNKS; vc++) {
--      // Double-buffered: vc=N quants into buf[N&1]; vc=N+1's quant targets the
--      // OTHER buffer, so it cannot race with vc=N's MMA read. The bar_sync
--      // after quant is the only sync needed within the vc loop.
--      uint8_t* sm_w_fp8 = sm.w_fp8(vc & 1);
--      // Phase 3 quant.
--      {
-+    for (int vs = 0; vs < ACC_V_STEPS; vs++) {
-+      const int vc0 = vs * XV_FOLD;
-+      // Double-buffered by step parity: step N quants into parity N&1 while
-+      // step N-1's MMA reads the other buffer set, so quant cannot race the
-+      // reads. Each parity owns XV_FOLD W buffers (one folding per scale
-+      // group in the chunk group). The bar_sync after quant is the only sync
-+      // needed within the step loop.
-+      // Phase 3 quant: fold each candidate once per scale group in the step.
-+#pragma unroll
-+      for (int f = 0; f < XV_FOLD; f++) {
-+        const int vc = vc0 + f;
-+        uint8_t* sm_w_fp8 = sm.w_fp8((vs & 1) * XV_FOLD + f);
-         const int warp_first_cand_xv = warp_id * Cfg::ENTRIES_PER_WARP;
-         const float si0 = 1.f / sm.w_head_sc()[vc * HPB + gid];
-         const float si1 = 1.f / sm.w_head_sc()[vc * HPB + gid + 8];
-@@ -761,12 +811,15 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-         }
-       }
-       bar_sync_t<3, Cfg::MATH_THREADS>();
--      // Phase 4 FP8 MMA. Accumulate into persistent acc_nope[vc][nt][k].
-+      // Phase 4 FP8 MMA. This warp's chunk within the step and its W folding:
-+      // warp groups of XV_WARPS share one chunk, tiling its dims.
-+      const int vc = vc0 + warp_id / XV_WARPS;
-+      uint8_t* sm_w_fp8 = sm.w_fp8((vs & 1) * XV_FOLD + warp_id / XV_WARPS);
-       const float sc0 = sm.w_head_sc()[vc * HPB + gid];
-       const float sc1 = sm.w_head_sc()[vc * HPB + gid + 8];
- #pragma unroll
-       for (int nt = 0; nt < NT_PER_WARP_XV; nt++) {
--        const int dim = vc * V_CHUNK + warp_id * (NT_PER_WARP_XV * 8) + nt * 8;
-+        const int dim = vc * V_CHUNK + (warp_id % XV_WARPS) * (NT_PER_WARP_XV * 8) + nt * 8;
-         float xv[4] = {0.f, 0.f, 0.f, 0.f};
- #pragma unroll
-         for (int kstep = 0; kstep < XV_KSTEPS; kstep++) {
-@@ -780,10 +833,10 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-           xv[2] = r.d2;
-           xv[3] = r.d3;
-         }
--        acc_nope[vc][nt][0] += xv[0] * sc0;
--        acc_nope[vc][nt][1] += xv[1] * sc0;
--        acc_nope[vc][nt][2] += xv[2] * sc1;
--        acc_nope[vc][nt][3] += xv[3] * sc1;
-+        acc_nope[vs][nt][0] += xv[0] * sc0;
-+        acc_nope[vs][nt][1] += xv[1] * sc0;
-+        acc_nope[vs][nt][2] += xv[2] * sc1;
-+        acc_nope[vs][nt][3] += xv[3] * sc1;
-       }
+ namespace flashinfer::sparse_mla_sm120::nvfp4 {
+@@ -282,7 +283,11 @@ __global__ void __launch_bounds__(DECODE_BLOCK_THREADS) sparse_mla_decode_dsv4_n
+       __threadfence_block();
      }
  
-@@ -851,17 +904,18 @@ __global__ void __launch_bounds__(DecodeTileCfg<MT>::BLOCK_THREADS) sparse_mla_d
-   // emits STG.E.64 instead of two STG.E.U16 — halves the global-store
-   // instruction count and ~doubles sector-byte utilization (NCU A1.3 reported
-   // 8.6 / 32 B/sector on these scalar stores, matching the unfused pattern).
--  // d0 = warp_id*(NT_PER_WARP_XV*8) + nt*8 + tid*2 is always even ⇒ the
--  // mid_out base+offset is 4-byte aligned, safe for __nv_bfloat162 access.
-+  // d0's + tid*2 term is always even ⇒ the mid_out base+offset is 4-byte
-+  // aligned, safe for __nv_bfloat162 access.
- #pragma unroll
--  for (int vc = 0; vc < N_V_CHUNKS; vc++) {
-+  for (int vs = 0; vs < ACC_V_STEPS; vs++) {
- #pragma unroll
-     for (int nt = 0; nt < NT_PER_WARP_XV; nt++) {
--      const int d0 = vc * V_CHUNK + warp_id * (NT_PER_WARP_XV * 8) + nt * 8 + tid * 2;
-+      const int vc = vs * XV_FOLD + warp_id / XV_WARPS;
-+      const int d0 = vc * V_CHUNK + (warp_id % XV_WARPS) * (NT_PER_WARP_XV * 8) + nt * 8 + tid * 2;
-       const __nv_bfloat162 pair_lo =
--          __floats2bfloat162_rn(acc_nope[vc][nt][0] * inv_g0, acc_nope[vc][nt][1] * inv_g0);
-+          __floats2bfloat162_rn(acc_nope[vs][nt][0] * inv_g0, acc_nope[vs][nt][1] * inv_g0);
-       const __nv_bfloat162 pair_hi =
--          __floats2bfloat162_rn(acc_nope[vc][nt][2] * inv_g1, acc_nope[vc][nt][3] * inv_g1);
-+          __floats2bfloat162_rn(acc_nope[vs][nt][2] * inv_g1, acc_nope[vs][nt][3] * inv_g1);
-       *reinterpret_cast<__nv_bfloat162*>(
-           &mid_out[mid_o_base + (size_t)gid * num_splits * D_V_C + d0]) = pair_lo;
-       // gid + 8 slot exists only when the kernel tile holds > 8 heads. The
+-    const int idx = idx_raw >= 0 ? idx_raw : 0;
++    // Masked candidates gather the shared zero row, never a mutable cache
++    // slot: the BF16 rope tail has no scale in its path, so a NaN there
++    // would leak through 0 * NaN in the value MMA.
++    const bool valid = idx_raw >= 0;
++    const int idx = valid ? idx_raw : 0;
+     int page;
+     int slot;
+     if constexpr (DUAL_CACHE) {
+@@ -297,8 +302,10 @@ __global__ void __launch_bounds__(DECODE_BLOCK_THREADS) sparse_mla_decode_dsv4_n
+       page = idx / PAGE_BLOCK_SIZE;
+       slot = idx - page * PAGE_BLOCK_SIZE;
+     }
+-    const uint8_t* data_src =
+-        section_kv + (size_t)page * section_stride + (size_t)slot * DECODE_DATA_BYTES_PER_TOKEN;
++    const uint8_t* data_src = valid ? section_kv + (size_t)page * section_stride +
++                                          (size_t)slot * DECODE_DATA_BYTES_PER_TOKEN
++                                    : sparse_mla_zero_row;
++    static_assert(BULK_NOPE_BYTES + BULK_ROPE_BYTES <= SPARSE_MLA_ZERO_ROW_BYTES);
+     if (io_warp == 0 && lane == 0) mbarrier_arrive_expect_tx(sm.mbar_full(buf), BULK_TX_BYTES);
+     bar_sync_t<4, DECODE_IO_WARPS * 32>();
+     cp_async_bulk_g2s(fp4_dst + (size_t)entry * DECODE_KV_SMEM_STRIDE, data_src, BULK_NOPE_BYTES,
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh b/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh
-index 4aaf4c9ffafad63d844dbdabb574128f005734a5..7191606022bee2100c743be0ad316f3576760454 100644
+index 4aaf4c9ffafad63d844dbdabb574128f005734a5..60ee11f67026d60e6671ad870167112d6699fe6e 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/model/kv_cache_traits.cuh
 @@ -30,12 +30,18 @@
@@ -4680,7 +3610,7 @@ index 4aaf4c9ffafad63d844dbdabb574128f005734a5..7191606022bee2100c743be0ad316f35
  
    // Smem layout (nope only + padding, no rope, no inline scales)
    // stride=464: 464/4=116, 116%32=20 → clean (M4b benchmark verified: 12.9 ns/MMA)
-@@ -226,7 +245,57 @@ struct KVCacheTraits<ModelType::DSV4> {
+@@ -226,7 +245,9 @@ struct KVCacheTraits<ModelType::DSV4> {
    static constexpr bool V_HAS_ROPE = true;
  
    // UE8M0 scales are native — no conversion needed
@@ -4688,65 +3618,10 @@ index 4aaf4c9ffafad63d844dbdabb574128f005734a5..7191606022bee2100c743be0ad316f35
 +  __device__ static __forceinline__ uint8_t scale_to_ue8m0(uint8_t scale) {
 +    return ScaleConvert<Scales::FORMAT>::to_ue8m0(scale);
 +  }
-+};
-+
-+template <>
-+struct KVCacheTraits<ModelType::DSV4_1> {
-+  // DeepSeek-V4.1: the full 512-wide K — rope lanes included — is FP8, so
-+  // there is no BF16 rope segment anywhere (QK runs one unified block-scaled
-+  // FP8 pass, V is pure nope). Geometry matches GLM53_NOPE; scale placement
-+  // matches DSV4 (footer), but the quant groups are 32 wide.
-+  static constexpr int D_NOPE = 512;
-+  static constexpr int D_ROPE = 0;
-+  static constexpr int D_QK = D_NOPE;  // 512
-+  static constexpr int D_V = 512;
-+
-+  // FP8 quantization: UE8M0 scales, footer, 32-wide groups → 16 scales per
-+  // token covering all 512 lanes; the 16B footer row needs no pad.
-+  using Scales = ScaleSpec<ScaleFormat::UE8M0_BYTE, 32, false>;
-+  static constexpr int QUANT_TILE = Scales::GROUP;
-+  static constexpr int NUM_SCALES = Scales::count(D_NOPE);  // 16
-+  static constexpr ScaleFormat SCALE_FORMAT = Scales::FORMAT;
-+
-+  // KV cache layout (FlashMLA ABI): FOOTER, 528 logical bytes per token.
-+  //   [0 : block_size*512)                data (512B FP8 per token)
-+  //   [block_size*512 : block_size*528)   scale footer (16B each: 16×UE8M0)
-+  // IO stride = 512 (data only), 512 % 16 = 0 ✓ for cp.async.bulk.
-+  static constexpr bool SCALE_INLINE = Scales::INLINE;
-+  static constexpr int SCALE_BYTES_PER_TOKEN = Scales::bytes_per_token(D_NOPE);  // 16
-+  static constexpr int KV_GMEM_STRIDE = D_NOPE + SCALE_BYTES_PER_TOKEN;          // 528
-+  static constexpr int KV_ROPE_GMEM_OFFSET = D_NOPE;                             // no rope segment
-+  static constexpr int KV_SCALE_GMEM_OFFSET = Scales::gmem_offset(D_NOPE, 0);    // 512
-+
-+  // Smem layout (nope only + padding, no rope, no inline scales).
-+  // stride=528: 528/4=132, 132%32=4 → 4-way bank conflict, the same class as
-+  // DSV3_2 (acceptable).
-+  static constexpr int KV_SMEM_STRIDE = D_NOPE + 16;  // 528
-+  static constexpr int KV_SMEM_COPY_BYTES = D_NOPE;   // copy 512B per entry
-+  static constexpr bool SCALE_IN_KV_SMEM = false;
-+
-+  // Q nope stride
-+  static constexpr int Q_NOPE_STRIDE = D_NOPE + 16;      // 528
-+  static constexpr int Q_NOPE_BF16_STRIDE = D_NOPE + 8;  // 520 bf16 (1040 B)
-+
-+  // V = pure nope (the rope lanes are part of the quantized row).
-+  static constexpr bool V_HAS_ROPE = false;
-+
-+  // UE8M0 scales are native — no conversion needed
-+  __device__ static __forceinline__ uint8_t scale_to_ue8m0(uint8_t scale) {
-+    return ScaleConvert<Scales::FORMAT>::to_ue8m0(scale);
-+  }
  };
  
  // ============================================================================
-@@ -252,11 +321,35 @@ static_assert(KVCacheTraits<ModelType::GLM_NSA>::D_ROPE == D_ROPE);
- static_assert(KVCacheTraits<ModelType::GLM_NSA>::D_V == D_V);
- static_assert(KVCacheTraits<ModelType::GLM53_NOPE>::D_ROPE == 0);
- static_assert(KVCacheTraits<ModelType::GLM53_NOPE>::D_V == D_V);
-+static_assert(KVCacheTraits<ModelType::DSV4_1>::D_ROPE == 0);
-+static_assert(KVCacheTraits<ModelType::DSV4_1>::D_V == D_V);
- static_assert(KVCacheTraits<ModelType::DOTS3_SWA>::D_ROPE == D_ROPE);
- static_assert(KVCacheTraits<ModelType::DOTS3_SWA>::D_V != D_V,
+@@ -257,6 +278,24 @@ static_assert(KVCacheTraits<ModelType::DOTS3_SWA>::D_V != D_V,
                "DOTS3_SWA is the D_V opt-out; if it ever equals 512, fold it back "
                "into the shared assert above");
  
@@ -4767,19 +3642,15 @@ index 4aaf4c9ffafad63d844dbdabb574128f005734a5..7191606022bee2100c743be0ad316f35
 +static_assert(KVCacheTraits<ModelType::DOTS3_SWA>::NUM_SCALES == 8);
 +static_assert(KVCacheTraits<ModelType::DOTS3_SWA>::SCALE_BYTES_PER_TOKEN == 8);
 +static_assert(KVCacheTraits<ModelType::DOTS3_SWA>::KV_GMEM_STRIDE == 1160);
-+static_assert(KVCacheTraits<ModelType::DSV4_1>::NUM_SCALES == 16);
-+static_assert(KVCacheTraits<ModelType::DSV4_1>::SCALE_BYTES_PER_TOKEN == 16);
-+static_assert(KVCacheTraits<ModelType::DSV4_1>::KV_GMEM_STRIDE == 528);
-+static_assert(KVCacheTraits<ModelType::DSV4_1>::KV_SCALE_GMEM_OFFSET == 512);
 +
  // Warp configuration
  static constexpr int N_MATH_WARPS = 8;
  static constexpr int N_IO_WARPS = 4;
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
-index 250ade9a46db58a36589a5e47a9bfd7d1129306b..5234cdd8a6dd21c6728596caca0ba7789f6e07bf 100644
+index 250ade9a46db58a36589a5e47a9bfd7d1129306b..ecdb75add13b0440645636746a7d23fca2cc95df 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
 +++ b/include/flashinfer/attention/sparse_mla_sm120/model/model_type.h
-@@ -34,27 +34,40 @@
+@@ -34,8 +34,11 @@
  //   DSV3_2:  d_nope=512, power-of-2 FP32 scale inline, 656B/token
  //   DSV4:    d_nope=448, UE8M0 scale footer, 584B/token
  //   GLM_NSA: d_nope=512, d_rope=64, arbitrary FP32 scale inline, 656B/token
@@ -4791,19 +3662,11 @@ index 250ade9a46db58a36589a5e47a9bfd7d1129306b..5234cdd8a6dd21c6728596caca0ba778
 +//               and a compact 528B pool are the same kernel (the payload prefix
 +//               is identical). A flat 2D cache must be packed at 528B.
  //   DOTS3_SWA: d_nope=1024, d_rope=64, UE8M0 scale footer, 1160B/token
-+//   DSV4_1:  d_nope=512, d_rope=0, UE8M0 scale footer (32-wide groups),
-+//            528B/token. DeepSeek-V4.1 quantizes the full 512-wide K (rope
-+//            lanes included) to FP8, so there is no BF16 rope segment: the
-+//            geometry matches GLM53_NOPE while the scale placement matches
-+//            DSV4. The 528B payload collides with GLM53_NOPE's, so this type
-+//            can only be selected explicitly, never inferred from widths.
  //
  // DOTS3_SWA is the sliding-window family: its candidate list is a 513-token
- // positional window rather than a genuine top-k. It is the first model whose
- // d_v diverges from 512 (it is 1024), so it opts out of the shared D_V assert
+@@ -44,13 +47,15 @@
  // in kv_cache_traits.cuh.
--enum class ModelType { DSV3_2, DSV4, GLM_NSA, GLM53_NOPE, DOTS3_SWA };
-+enum class ModelType { DSV3_2, DSV4, GLM_NSA, GLM53_NOPE, DOTS3_SWA, DSV4_1 };
+ enum class ModelType { DSV3_2, DSV4, GLM_NSA, GLM53_NOPE, DOTS3_SWA };
  
 -// Bytes per packed KV cache token row, per model type.
 +// Bytes per packed KV cache token row, per model type. For GLM53_NOPE this is
@@ -4819,12 +3682,6 @@ index 250ade9a46db58a36589a5e47a9bfd7d1129306b..5234cdd8a6dd21c6728596caca0ba778
      case ModelType::DSV4:
        return 584;
      case ModelType::DOTS3_SWA:
-       return 1160;
-+    case ModelType::DSV4_1:
-+      return 528;
-   }
-   return 0;  // unreachable for a valid ModelType
- }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/model/scale_spec.cuh b/include/flashinfer/attention/sparse_mla_sm120/model/scale_spec.cuh
 new file mode 100644
 index 0000000000000000000000000000000000000000..438687122613363aa8121fbb8fa541f6919f72f2
@@ -4884,33 +3741,10 @@ index 0000000000000000000000000000000000000000..438687122613363aa8121fbb8fa541f6
 +  __device__ static __forceinline__ uint8_t to_ue8m0(uint8_t scale) { return scale; }
 +};
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
-index d02b2c18f90ceb5ce6e59137d404e2db7162df13..8367366e325bb944a0d10d00d9d9cf0e15532023 100644
+index d02b2c18f90ceb5ce6e59137d404e2db7162df13..dc22588e231862fc00cac7448ba41846f8a75941 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_common.cuh
-@@ -127,6 +127,22 @@ struct PrefillTilePrimary {
-   static constexpr int WINDOW = 0;
- };
- 
-+// DSV4_1 takes the DOTS3_SWA split tile (BI=32, 4 QK warps + 4 XV warps) for a
-+// different reason: its 32-wide quant groups make V_CHUNK=32, and the XV fold
-+// ties each W buffer to one scale group, so an 8-warp XV split would floor
-+// NT_PER_WARP_XV to 0. The MG kernel's XV mapping has the same constraint and
-+// no warp split, so DSV4_1 is SG-only; NUM_HEADS > 16 is served by CTA
-+// replication.
-+template <>
-+struct PrefillTilePrimary<ModelType::DSV4_1> {
-+  static constexpr int CAND_WINDOW = 32;  // -> QK_WARPS = 4
-+  static constexpr int MATH_WARPS = 8;    // XV/epilogue split, decoupled from QK
-+  static constexpr int IO_WARPS = 4;
-+  static constexpr bool REG_REALLOC = true;
-+  static constexpr bool L2_EVICT_FIRST = true;  // genuine top-k, like DSV4
-+  static constexpr int WINDOW = 0;
-+};
-+
- template <>
- struct PrefillTilePrimary<ModelType::DOTS3_SWA> {
-   // 1024-wide nope: at BI=64 the KV double buffer alone is 64 * 1040 * 2 =
-@@ -190,18 +206,26 @@ __device__ __forceinline__ const uint8_t* prefill_kv_entry_base(
+@@ -190,18 +190,26 @@ __device__ __forceinline__ const uint8_t* prefill_kv_entry_base(
      const uint8_t* __restrict__ kv_global, int idx, size_t stride_kv_block) {
    using KV = KVCacheTraits<MT>;
    using IO = KVIOTraits<MT>;
@@ -4941,25 +3775,10 @@ index d02b2c18f90ceb5ce6e59137d404e2db7162df13..8367366e325bb944a0d10d00d9d9cf0e
 +  return valid ? base : sparse_mla_zero_row;
  }
 diff --git a/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
-index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec65f381c8 100644
+index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..9ade4115b719dc5bd7d8f457ccc51742ccc5eeb1 100644
 --- a/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
 +++ b/include/flashinfer/attention/sparse_mla_sm120/prefill_mg_kernel.cuh
-@@ -80,8 +80,12 @@ __device__ __forceinline__ void sparse_mla_prefill_math_pc(
-     int h_start, int topk_len) {
-   using KV = KVCacheTraits<MT>;
-   using Cfg = PrefillTileCfg<MT>;
--  // CT pinned to FP8: XV always uses FP8 W; CM only flips the QK side.
--  using CT = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS>;
-+  // CT pinned to FP8: XV always uses FP8 W; CM only flips the QK side. Only
-+  // warp-count-independent members (N_V_CHUNKS, V_CHUNK, W_FP8_STRIDE) are read
-+  // through CT, so it takes the XV warp count: at the full MATH_WARPS a
-+  // 32-wide-group model (DSV4_1) would floor NT_PER_WARP_XV to 0 and trip the
-+  // ComputeTraits assert even though no QK warp runs the XV mapping.
-+  using CT = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS - Cfg::QK_WARPS>;
-   using CT_XV = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS - Cfg::QK_WARPS>;
-   using L = SmemLayout<MT, CM, Cfg::BI, Cfg::MATH_WARPS>;
-   static_assert(Cfg::SPLIT_QK_XV, "the producer/consumer path requires a QK/XV warp split");
-@@ -126,7 +130,7 @@ __device__ __forceinline__ void sparse_mla_prefill_math_pc(
+@@ -126,7 +126,7 @@ __device__ __forceinline__ void sparse_mla_prefill_math_pc(
      static_assert(Cfg::BI < 64, "a BI=64 split tile should re-examine staging");
      int idx_rope_cur = 0, mask0_cur = 0, mask1_cur = 0;
      if (actual_ni > 0) {
@@ -4968,7 +3787,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
        mask0_cur = idx_base[qk_nb + tid * 2];
        mask1_cur = idx_base[qk_nb + tid * 2 + 1];
      }
-@@ -150,7 +154,8 @@ __device__ __forceinline__ void sparse_mla_prefill_math_pc(
+@@ -150,7 +150,8 @@ __device__ __forceinline__ void sparse_mla_prefill_math_pc(
        int idx_rope_nxt = 0, mask0_nxt = 0, mask1_nxt = 0;
        if (ti + 1 < actual_ni) {
          const int32_t* ibn = idx_base + (ti + 1) * Cfg::BI;
@@ -4978,21 +3797,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
          mask0_nxt = ibn[qk_nb + tid * 2];
          mask1_nxt = ibn[qk_nb + tid * 2 + 1];
        }
-@@ -522,7 +527,12 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
-   using KV = KVCacheTraits<MT>;
-   using Cfg = PrefillTileCfg<MT>;
-   // CT pinned to FP8: XV always uses FP8 W; CM only flips the QK side.
--  using CT = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI, Cfg::MATH_WARPS>;
-+  // On a split tile the serial tail below is unreachable (the pc path above
-+  // returns first), but it is still instantiated — use the XV warp count there
-+  // so the ComputeTraits NT_PER_WARP_XV assert sees the warp count the XV MMA
-+  // would run at (a 32-wide-group model floors it to 0 at MATH_WARPS).
-+  using CT = ComputeTraits<MT, ComputeMode::FP8, Cfg::BI,
-+                           Cfg::SPLIT_QK_XV ? Cfg::MATH_WARPS - Cfg::QK_WARPS : Cfg::MATH_WARPS>;
-   using L = SmemLayout<MT, CM, Cfg::BI, Cfg::MATH_WARPS>;
- 
-   // Ceil-div so NUM_HEADS < HPB (small-TP shards) still launches 1 CTA per token.
-@@ -574,8 +584,13 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
+@@ -574,8 +575,13 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
  
      // This thread's candidate index for tile t, staged a tile ahead of use so
      // the index LDG latency is hidden behind the previous tile's gather.
@@ -5007,7 +3812,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
      };
      // Scales first (plain stores, no mbar signal), then bulk gather
      // (cp.async.bulk signals mbar_kv on completion). Math warps wake on
-@@ -679,7 +694,8 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
+@@ -679,7 +685,8 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
        if (qk_warp) {
          uint8_t* kv_warp_base = kv_smem + qk_nb * KV::KV_SMEM_STRIDE;
  
@@ -5017,7 +3822,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
          const int mask0 = ib[qk_nb + tid * 2];
          const int mask1 = ib[qk_nb + tid * 2 + 1];
  
-@@ -1019,8 +1035,9 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
+@@ -1019,8 +1026,9 @@ __global__ void __launch_bounds__(PrefillTileCfg<MT>::BLOCK_THREADS, 1)
          static_assert(Cfg::BI == BI && Cfg::MATH_WARPS == N_MATH_WARPS,
                        "xv_rope_mma is hardcoded to the 64/8 tile; parameterize it before running a "
                        "V_HAS_ROPE model at a different BI");
@@ -5029,7 +3834,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
        }
  
        bar_arrive_alt<1, 5, Cfg::BLOCK_THREADS>(ti & 1);
-@@ -1257,15 +1274,21 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1257,15 +1265,21 @@ __device__ __forceinline__ void prefill_mg_impl(
      // This thread's candidate index for logical tile t, staged a tile ahead of
      // use so the index LDG latency is hidden behind the previous tile's
      // gather. main_ni equals NI under ASSUME_FULL_TILES, so the main/extra
@@ -5053,7 +3858,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
        }
      };
      // Scales first (plain stores, no mbar signal), then bulk gather
-@@ -1400,7 +1423,10 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1400,7 +1414,10 @@ __device__ __forceinline__ void prefill_mg_impl(
        // Entry base: only gid's entry needed (rope prefetch + QK rope)
        const uint8_t* entry_base_gid;
        {
@@ -5065,7 +3870,7 @@ index 140d1c0607ef6dbcdcd00f4d2f0a9a4877d9c253..710c6b68b591872397ee269ff8cc83ec
          if constexpr (DUAL_CACHE) {
            if (is_main) {
              entry_base_gid =
-@@ -1985,19 +2011,24 @@ __device__ __forceinline__ void prefill_mg_impl(
+@@ -1985,19 +2002,24 @@ __device__ __forceinline__ void prefill_mg_impl(
        // ── XV rope BF16 MMA (DSV4, both groups) ──────────────
        if constexpr (KV::V_HAS_ROPE) {
          bar_sync_t<2, MATH_THREADS>();
@@ -5163,63 +3968,298 @@ index 6a89c93f42e74fb12213ea4ca6120cdd992ce078..38d0d270180568493127c28bdb63f86b
        staged = pf;
        pf = next;
        if (buf == 1) wr_phase ^= 1;
+diff --git a/include/flashinfer/attention/sparse_mla_sm120/streaming_dsv4_nvfp4_kernel.cuh b/include/flashinfer/attention/sparse_mla_sm120/streaming_dsv4_nvfp4_kernel.cuh
+index 666af8242836c0620a2013ffa992f6b27e753363..74ad42875e402f1f2186d3ad270ef5291ce229dd 100644
+--- a/include/flashinfer/attention/sparse_mla_sm120/streaming_dsv4_nvfp4_kernel.cuh
++++ b/include/flashinfer/attention/sparse_mla_sm120/streaming_dsv4_nvfp4_kernel.cuh
+@@ -24,6 +24,7 @@
+ #include "common/d2_load_b_nvfp4.cuh"
+ #include "common/nvfp4_quant.cuh"
+ #include "common/nvfp4_vt.cuh"
++#include "common/zero_row.cuh"
+ #include "model/nvfp4_cache_traits.cuh"
+ 
+ namespace flashinfer::sparse_mla_sm120::nvfp4 {
+@@ -324,7 +325,11 @@ __global__ void __launch_bounds__(STREAMING_BLOCK_THREADS, 1)
+                               sizeof(uint4)) = s1;
+     __threadfence_block();
+ 
+-    const int idx = idx_raw >= 0 ? idx_raw : 0;
++    // Masked candidates gather the shared zero row, never a mutable cache
++    // slot: the BF16 rope tail has no scale in its path, so a NaN there
++    // would leak through 0 * NaN in the value MMA.
++    const bool valid = idx_raw >= 0;
++    const int idx = valid ? idx_raw : 0;
+     int page;
+     int slot;
+     if constexpr (DUAL_CACHE) {
+@@ -339,8 +344,10 @@ __global__ void __launch_bounds__(STREAMING_BLOCK_THREADS, 1)
+       page = idx / PAGE_BLOCK_SIZE;
+       slot = idx - page * PAGE_BLOCK_SIZE;
+     }
+-    const uint8_t* data_src =
+-        section_kv + (size_t)page * section_stride + (size_t)slot * STREAMING_DATA_BYTES_PER_TOKEN;
++    const uint8_t* data_src = valid ? section_kv + (size_t)page * section_stride +
++                                          (size_t)slot * STREAMING_DATA_BYTES_PER_TOKEN
++                                    : sparse_mla_zero_row;
++    static_assert(BULK_NOPE_BYTES + BULK_ROPE_BYTES <= SPARSE_MLA_ZERO_ROW_BYTES);
+     if (io_warp == 0 && lane == 0) mbarrier_arrive_expect_tx(sm.mbar_full(buf), BULK_TX_BYTES);
+     bar_sync_t<4, STREAMING_GATHER_WARPS * 32>();
+     cp_async_bulk_g2s(fp4_dst + (size_t)entry * STREAMING_KV_SMEM_STRIDE, data_src, BULK_NOPE_BYTES,
+diff --git a/tests/attention/test_sparse_mla_nvfp4_sm120.py b/tests/attention/test_sparse_mla_nvfp4_sm120.py
+index d312932c3f558d455051edc20459a7bbcc7aa167..662bedd6df9f4a63a1b45d145cd7abf4c1ff44c4 100644
+--- a/tests/attention/test_sparse_mla_nvfp4_sm120.py
++++ b/tests/attention/test_sparse_mla_nvfp4_sm120.py
+@@ -719,6 +719,68 @@ def test_nvfp4_sparse_mla_decode_matches_dequantized_reference(
+     torch.testing.assert_close(prefill_lse, reference_lse, atol=2e-2, rtol=2e-2)
+ 
+ 
++def test_nvfp4_sparse_mla_masked_rows_ignore_poisoned_slot_zero() -> None:
++    """Masked (-1) candidates gather the shared zero row, never cache slot 0:
++    the slot is poisoned with 0xFF (the BF16 rope tail decodes as NaN) and
++    must not leak into valid outputs through 0 * NaN in the value MMA."""
++    _require_sm120()
++    torch.manual_seed(0)
++    num_tokens, num_heads, topk = 2, 128, 512
++    num_pages, page_size = 16, 64
++    kv_bf16 = (
++        torch.randn(
++            num_pages,
++            page_size,
++            1,
++            _D_NOPE + _D_ROPE,
++            dtype=torch.bfloat16,
++            device="cuda",
++        )
++        / 10.0
++    ).clamp(-1, 1)
++    q = (
++        torch.randn(
++            num_tokens,
++            num_heads,
++            _D_NOPE + _D_ROPE,
++            dtype=torch.bfloat16,
++            device="cuda",
++        )
++        / 10.0
++    ).clamp(-1, 1)
++    # Slot 0 is never a valid candidate, so the reference is unaffected by
++    # the poisoning below.
++    indices = torch.randint(
++        1,
++        num_pages * page_size,
++        (num_tokens, topk),
++        dtype=torch.int32,
++        device="cuda",
++    )
++    indices[:, topk // 2 :] = -1
++    sm_scale = (_D_NOPE + _D_ROPE) ** -0.5
++
++    cache = nvfp4_quantize_pack_sparse_mla_cache(kv_bf16.squeeze(2))
++    q_dequant = _dequantize_nvfp4_query(q)
++    kv_dequant = _dequantize_nvfp4_cache(cache)
++    reference, reference_lse = _reference_sparse_attention(
++        q_dequant, kv_dequant, indices, sm_scale
++    )
++
++    # Poison slot 0 (page 0, token 0): its 352B data row (packed NoPE + BF16
++    # rope tail) and its 32B scale row.
++    page0 = cache[0].view(-1)
++    page0[:_DATA_BYTES_PER_TOKEN].fill_(0xFF)
++    scale_base = page_size * _DATA_BYTES_PER_TOKEN
++    page0[scale_base : scale_base + _SCALE_BYTES_PER_TOKEN].fill_(0xFF)
++
++    for attention in (_nvfp4_sparse_mla_decode, _nvfp4_sparse_mla_prefill):
++        output, lse = attention(q, cache, indices, sm_scale)
++        assert torch.isfinite(output.float()).all()
++        torch.testing.assert_close(output, reference, atol=5e-2, rtol=5e-2)
++        torch.testing.assert_close(lse, reference_lse, atol=2e-2, rtol=2e-2)
++
++
+ @pytest.mark.parametrize("num_tokens", [2, 65])
+ def test_nvfp4_sparse_mla_shared_wrapper_matches_reference(num_tokens: int) -> None:
+     """The existing SM120 wrapper routes NVFP4 through its independent planner."""
 diff --git a/tests/attention/test_sparse_mla_sm120.py b/tests/attention/test_sparse_mla_sm120.py
-index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573b4c6ca55 100644
+index e334e6f8d8dd48294473fe9c8b2acc511964884a..27076917e27d091c6d534293ac3320a94a936e38 100644
 --- a/tests/attention/test_sparse_mla_sm120.py
 +++ b/tests/attention/test_sparse_mla_sm120.py
-@@ -35,6 +35,9 @@ import torch
- 
- import flashinfer
- from flashinfer.mla._sparse_mla_sm120 import (
-+    _MODEL_TYPE_DSV4,
-+    _MODEL_TYPE_DSV4_1,
-+    _MODEL_TYPE_GLM53_NOPE,
-     _SparseMLAPagedAttentionRunner,
-     _sparse_mla_sm120_paged_attention as sparse_mla_sm120_paged_attention,
- )
-@@ -163,6 +166,18 @@ def dequantize_kv_dots3_swa(packed: torch.Tensor) -> torch.Tensor:
-     return _dequantize_kv_footer(packed, 1024, 64, 128, 8)
+@@ -1701,16 +1701,581 @@ def test_sparse_mla_sm120_prefill_glm_nsa_arbitrary_fp32(num_heads: int) -> None
+     torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
  
  
-+def quantize_kv_dsv4_1(kv_bf16: torch.Tensor) -> torch.Tensor:
-+    """Pack bf16 KV into DeepSeek-V4.1 FP8 FOOTER format (528 B/token):
-+    512 B all-FP8 data (rope lanes included, no BF16 segment) + 16 B footer
-+    of 16 UE8M0 scales over 32-wide groups."""
-+    return _quantize_kv_footer(kv_bf16, 512, 0, 32, 16)
+-# num_heads=8 exercises the runtime-H instantiation (GLM53_NOPE has dedicated
+-# 32/64 only), e.g. a 64-head layer at TP8.
+-@pytest.mark.parametrize("num_heads", [8, 32, 64])
++# GLM53_NOPE has dedicated instantiations at 8/16/32/64 (the TP8/TP4/TP2/TP1
++# shards of the 64-head layer); num_heads=24 exercises the runtime-H fallback.
++@pytest.mark.parametrize("num_heads", [8, 16, 24, 32, 64])
+ def test_sparse_mla_sm120_decode_glm53_nope(num_heads: int) -> None:
+     torch.manual_seed(3)
+     device = torch.device("cuda")
+-    d_qk = d_v = 512
+-    num_tokens, topk = 4, 2176
+-    page_block_size = 64
+-    num_blocks = 64
++    d_qk = d_v = 512
++    num_tokens, topk = 4, 2176
++    page_block_size = 64
++    num_blocks = 64
++    s_kv = num_blocks * page_block_size
++
++    kv_bf16 = (
++        torch.randn(
++            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
++        )
++        / 10.0
++    ).clamp(-1, 1)
++    kv_packed = quantize_kv_glm53_nope(kv_bf16)
++    _assert_has_non_pow2_inline_scales(kv_packed)
++    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
++
++    q = (
++        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
++        / 10.0
++    ).clamp(-1, 1)
++    indices = torch.randint(
++        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
++    )
++    indices[:, topk // 2 :] = -1
++    sm_scale = d_qk**-0.5
++    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
++
++    output = torch.zeros(
++        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
++    )
++    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
++    mid_out, mid_lse = _make_decode_scratch(num_tokens, num_heads, topk, d_v, device)
++
++    sparse_mla_sm120_paged_attention(
++        q,
++        kv_packed,
++        indices,
++        output,
++        out_lse,
++        sm_scale,
++        d_v=d_v,
++        kv_scale_format="arbitrary_fp32",
++        mid_out=mid_out,
++        mid_lse=mid_lse,
++    )
++
++    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
++    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
 +
 +
-+def dequantize_kv_dsv4_1(packed: torch.Tensor) -> torch.Tensor:
-+    """Unpack DSV4_1 FP8 FOOTER → bf16. Inverse of :func:`quantize_kv_dsv4_1`."""
-+    return _dequantize_kv_footer(packed, 512, 0, 32, 16)
++def test_sparse_mla_sm120_prefill_glm53_nope() -> None:
++    torch.manual_seed(4)
++    device = torch.device("cuda")
++    d_qk = d_v = 512
++    num_tokens, num_heads, topk = 65, 32, 2176
++    page_block_size = 64
++    num_blocks = 64
++    s_kv = num_blocks * page_block_size
++
++    kv_bf16 = (
++        torch.randn(
++            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
++        )
++        / 10.0
++    ).clamp(-1, 1)
++    kv_packed = quantize_kv_glm53_nope(kv_bf16)
++    _assert_has_non_pow2_inline_scales(kv_packed)
++    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
++
++    q = (
++        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
++        / 10.0
++    ).clamp(-1, 1)
++    indices = torch.randint(
++        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
++    )
++    indices[:, topk // 2 :] = -1
++    sm_scale = d_qk**-0.5
++    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
++
++    output = torch.zeros(
++        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
++    )
++    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
++
++    sparse_mla_sm120_paged_attention(
++        q,
++        kv_packed,
++        indices,
++        output,
++        out_lse,
++        sm_scale,
++        d_v=d_v,
++        kv_scale_format="arbitrary_fp32",
++    )
++
++    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
++    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
 +
 +
- # DSv3.2 INLINE pack.
- 
- 
-@@ -1867,40 +1882,28 @@ def test_sparse_mla_sm120_prefill_glm53_nope_swapab(num_heads: int) -> None:
-     assert torch.equal(results["swapab"][1], results[None][1])
- 
- 
--_DSV4_PREFILL_CONFIGS = [
--    (8, 128),
--    (8, 192),
--    (8, 256),
--    (8, 512),
--    (8, 1024),
--    (8, 2048),
--    (16, 128),
--    (16, 192),
--    (16, 256),
--    (32, 192),
--    (32, 256),
--    (32, 512),
--    (64, 192),
--    (64, 256),
--    (64, 1024),
--    (128, 192),
--    (128, 256),
--    (128, 1024),
--]
++@pytest.mark.parametrize("num_heads", [64, 128])
++def test_sparse_mla_sm120_prefill_glm53_nope_swapab(num_heads: int) -> None:
++    """swapAB serves GLM53_NOPE at topk=2176; auto routes to it (bitwise)."""
++    torch.manual_seed(11)
++    device = torch.device("cuda")
++    d_qk = d_v = 512
++    num_tokens, topk = 128, 2176
++    page_block_size = 64
++    num_blocks = 128
++    s_kv = num_blocks * page_block_size
++
++    kv_bf16 = (
++        torch.randn(
++            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
++        )
++        / 10.0
++    ).clamp(-1, 1)
++    kv_packed = quantize_kv_glm53_nope(kv_bf16)
++    _assert_has_non_pow2_inline_scales(kv_packed)
++    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
++
++    q = (
++        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
++        / 10.0
++    ).clamp(-1, 1)
++    indices = torch.randint(
++        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
++    )
++    indices[:, topk // 2 :] = -1
++    sm_scale = d_qk**-0.5
++    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
++
++    results = {}
++    for impl in ("swapab", None):
++        output = torch.zeros(
++            (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
++        )
++        out_lse = torch.zeros(
++            (num_tokens, num_heads), dtype=torch.float32, device=device
++        )
++        sparse_mla_sm120_paged_attention(
++            q,
++            kv_packed,
++            indices,
++            output,
++            out_lse,
++            sm_scale,
++            d_v=d_v,
++            kv_scale_format="arbitrary_fp32",
++            prefill_impl=impl,
++        )
++        torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
++        torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
++        results[impl] = (output, out_lse)
++
++    # The auto policy prefers swapAB at this eligible shape.
++    assert torch.equal(results["swapab"][0], results[None][0])
++    assert torch.equal(results["swapab"][1], results[None][1])
++
++
 +@pytest.mark.parametrize("num_tokens,num_heads", [(4, 32), (65, 32), (128, 64)])
 +@pytest.mark.parametrize("row_stride", [656, 672])
 +@pytest.mark.parametrize("layout", ["3d", "hnd", "nhd"])
@@ -5227,7 +4267,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    num_tokens: int, num_heads: int, row_stride: int, layout: str
 +) -> None:
 +    """GLM53_NOPE reads only the 528B payload; the gmem row advance is runtime.
- 
++
 +    Packed and padded rows, including sliced views with an aligned storage
 +    offset, must produce bitwise-identical outputs. The 672B stride checks
 +    that padding is independent of the legacy 656B layout. Shapes cover
@@ -5237,31 +4277,19 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +        _MODEL_TYPE_GLM53_NOPE,
 +        sparse_mla_sm120_decode_dsv3_2,
 +    )
- 
--@pytest.mark.parametrize("num_heads,topk", _DSV4_PREFILL_CONFIGS)
--@pytest.mark.parametrize("num_tokens", [65, 128, 256])
--@pytest.mark.parametrize("with_sink", [False, True])
--def test_sparse_mla_sm120_prefill_dsv4(
--    num_heads: int, topk: int, num_tokens: int, with_sink: bool
--) -> None:
--    """DSv4 prefill."""
--    torch.manual_seed(0)
++
 +    torch.manual_seed(5)
-     device = torch.device("cuda")
--    d_qk, d_v = 512, 512
--    page_block_size = 64
--    num_blocks = 64
++    device = torch.device("cuda")
 +    d_qk = d_v = 512
 +    page_block_size, num_blocks, topk = 64, 64, 2176
-     s_kv = num_blocks * page_block_size
- 
-     kv_bf16 = (
-@@ -1909,8 +1912,17 @@ def test_sparse_mla_sm120_prefill_dsv4(
-         )
-         / 10.0
-     ).clamp(-1, 1)
--    kv_packed = quantize_kv_dsv4(kv_bf16)
--    kv_dequant = dequantize_kv_dsv4(kv_packed)
++    s_kv = num_blocks * page_block_size
++
++    kv_bf16 = (
++        torch.randn(
++            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
++        )
++        / 10.0
++    ).clamp(-1, 1)
 +    packed_656 = quantize_kv_glm53_nope(kv_bf16)  # [nb, pbs, 1, 656]
 +    packed_528 = packed_656[..., :528].contiguous()
 +    storage = torch.full(
@@ -5273,41 +4301,17 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    padded = storage[16:].view(num_blocks, page_block_size, 1, row_stride)
 +    padded[..., :528] = packed_528
 +    sliced_528 = padded[..., :528]  # Keep the padded row stride and aligned offset.
- 
-     q = (
-         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-@@ -1920,50 +1932,73 @@ def test_sparse_mla_sm120_prefill_dsv4(
-         0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-     )
-     indices[:, topk // 2 :] = -1
--
--    attn_sink = (
--        torch.randn(num_heads, device=device, dtype=torch.float32) * 2.0
--        if with_sink
--        else None
--    )
--
-     sm_scale = d_qk**-0.5
- 
--    ref_out, ref_lse = _ref_sparse_attn(
--        q, kv_dequant, indices, sm_scale, d_v, attn_sink=attn_sink
--    )
--
--    output = torch.zeros(
--        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
--    )
--    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
--
--    sparse_mla_sm120_paged_attention(
--        q,
--        kv_packed,
--        indices,
--        output,
--        out_lse,
--        sm_scale,
--        d_v=d_v,
--        attn_sink=attn_sink,
--    )
++
++    q = (
++        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
++        / 10.0
++    ).clamp(-1, 1)
++    indices = torch.randint(
++        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
++    )
++    indices[:, topk // 2 :] = -1
++    sm_scale = d_qk**-0.5
++
 +    def run(kv_cache: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 +        output = torch.zeros(
 +            (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
@@ -5347,9 +4351,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +                mid_lse=mid[1],
 +            )
 +        return output, out_lse
- 
--    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
--    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
++
 +    ref_out, ref_lse = run(packed_656)
 +    for name, kv in (
 +        ("packed-528", packed_528),
@@ -5359,17 +4361,12 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +        out, lse = run(kv)
 +        assert torch.equal(out, ref_out), f"{name} output diverged from the 656B pool"
 +        assert torch.equal(lse, ref_lse), f"{name} LSE diverged from the 656B pool"
- 
- 
--@pytest.mark.parametrize("num_heads", [8, 32])
--@pytest.mark.parametrize("topk", [192, 256])
--def test_sparse_mla_sm120_prefill_dsv4_topk_length_truncation(
--    num_heads: int, topk: int
++
++
 +@pytest.mark.parametrize("num_tokens,num_heads", [(4, 32), (65, 32), (128, 64)])
 +def test_sparse_mla_sm120_glm53_nope_masked_rows_ignore_poisoned_slot_zero(
 +    num_tokens: int, num_heads: int
- ) -> None:
--    torch.manual_seed(0)
++) -> None:
 +    """Masked (-1) candidates gather a zero row, never mutable cache slot 0.
 +
 +    Slot 0 is poisoned with NaNs (values and scales); valid indices exclude
@@ -5377,503 +4374,49 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    valid outputs through 0 * NaN in the value MMA.
 +    """
 +    torch.manual_seed(6)
-     device = torch.device("cuda")
--    topk_len, num_tokens = 133, 128
--    d_qk, d_v = 512, 512
--    page_block_size = 64
--    num_blocks = 64
++    device = torch.device("cuda")
 +    d_qk = d_v = 512
 +    page_block_size, num_blocks, topk = 64, 64, 2176
-     s_kv = num_blocks * page_block_size
- 
-     kv_bf16 = (
-@@ -1972,27 +2007,27 @@ def test_sparse_mla_sm120_prefill_dsv4_topk_length_truncation(
-         )
-         / 10.0
-     ).clamp(-1, 1)
--    kv_packed = quantize_kv_dsv4(kv_bf16)
--    kv_dequant = dequantize_kv_dsv4(kv_packed)
++    s_kv = num_blocks * page_block_size
++
++    kv_bf16 = (
++        torch.randn(
++            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
++        )
++        / 10.0
++    ).clamp(-1, 1)
 +    kv_packed = quantize_kv_glm53_nope(kv_bf16)
 +    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
 +    # Poison slot 0 after computing the reference: NaN values + NaN scales.
 +    kv_packed.view(-1, 656)[0].fill_(0xFF)
- 
-     q = (
-         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-         / 10.0
-     ).clamp(-1, 1)
-     indices = torch.randint(
--        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
++
++    q = (
++        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
++        / 10.0
++    ).clamp(-1, 1)
++    indices = torch.randint(
 +        1, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-     )
--    topk_length = torch.full((num_tokens,), topk_len, dtype=torch.int32, device=device)
--
++    )
 +    indices[:, topk // 2 :] = -1
-     sm_scale = d_qk**-0.5
--    ref_indices = indices.clone()
--    ref_indices[:, topk_len:] = -1
--    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, ref_indices, sm_scale, d_v)
++    sm_scale = d_qk**-0.5
 +    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
- 
-     output = torch.zeros(
-         (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-     )
-     out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
++
++    output = torch.zeros(
++        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
++    )
++    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
 +    mid_out, mid_lse = _make_decode_scratch(num_tokens, num_heads, topk, d_v, device)
-     sparse_mla_sm120_paged_attention(
-         q,
-         kv_packed,
-@@ -2001,40 +2036,41 @@ def test_sparse_mla_sm120_prefill_dsv4_topk_length_truncation(
-         out_lse,
-         sm_scale,
-         d_v=d_v,
--        topk_length=topk_length,
++    sparse_mla_sm120_paged_attention(
++        q,
++        kv_packed,
++        indices,
++        output,
++        out_lse,
++        sm_scale,
++        d_v=d_v,
 +        kv_scale_format="arbitrary_fp32",
 +        mid_out=mid_out,
 +        mid_lse=mid_lse,
-     )
- 
-+    assert torch.isfinite(output.float()).all()
-     torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-     torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
- 
- 
--_DOTS3_SWA_PREFILL_HEADS = [8, 16, 32, 64]
-+# ── DeepSeek-V4.1 (DSV4_1) ────────────────────────────────────────────────
-+# 528B/token: 512B all-FP8 K (rope lanes quantized, no BF16 rope segment) +
-+# 16B footer of 16 UE8M0 scales over 32-wide groups. Selected explicitly via
-+# kv_scale_format="ue8m0_g32" (d_qk=512 collides with DSV4; the 528B payload
-+# collides with GLM53_NOPE).
- 
-+_DSV4_1_DECODE_CONFIGS = [
-+    (8, 512),  # dedicated instantiation, the V4.1 indexer topk
-+    (64, 512),
-+    (128, 512),
-+    (24, 512),  # runtime-H instantiation (in-block pad path)
-+    (64, 500),  # partial tail chunk (runtime topk width)
-+]
- 
--@pytest.mark.parametrize("num_heads", _DOTS3_SWA_PREFILL_HEADS)
--@pytest.mark.parametrize("num_tokens", [65, 128])
-+
-+@pytest.mark.parametrize("num_heads,topk", _DSV4_1_DECODE_CONFIGS)
-+@pytest.mark.parametrize("num_tokens", [1, 16])
- @pytest.mark.parametrize("with_sink", [False, True])
--def test_sparse_mla_sm120_prefill_dots3_swa(
--    num_heads: int, num_tokens: int, with_sink: bool
-+def test_sparse_mla_sm120_decode_dsv4_1(
-+    num_heads: int, topk: int, num_tokens: int, with_sink: bool
- ) -> None:
--    """DOTS3_SWA sliding-window prefill: d_qk 1088 / d_v 1024.
--
--    SG-only, at PrefillTileCfg<DOTS3_SWA>'s BI=32 / 4-math-warp QK tile — the
--    MG layout does not fit D_NOPE=1024 in sm120 smem, so num_heads > 16 is
--    served by replicating one CTA per 16-head tile rather than by MG. That
--    replication is exactly what num_heads 32 and 64 cover here.
--
--    Tolerance is atol 1e-2 / rtol 5e-3, not the 5e-2 the DSv4 prefill cases
--    use. Measured over all 16 parametrizations the worst output error is
--    6.8e-3, with a mean of 1.4e-4 and only 5 of 8.4M elements above 5e-3 —
--    ordinary bf16 accumulation tail, so 5e-3 is below the noise floor here even
--    though DOTS3_SWA decode holds it. The check still has teeth: a V-segment
--    misalignment of 8 or 64 elements moves the worst error to 0.48 / 0.59, ~50x
--    the tolerance. At 5e-2 that defect would pass.
--    """
-+    """DeepSeek-V4.1 decode (decode-dsv4 tile, BI=64, pair-folded XV)."""
-     torch.manual_seed(0)
-     device = torch.device("cuda")
--    d_qk, d_v, topk, window = 1088, 1024, 576, 513
-+    d_qk, d_v = 512, 512
-     page_block_size = 64
-     num_blocks = 64
-     s_kv = num_blocks * page_block_size
-@@ -2045,8 +2081,8 @@ def test_sparse_mla_sm120_prefill_dots3_swa(
-         )
-         / 10.0
-     ).clamp(-1, 1)
--    kv_packed = quantize_kv_dots3_swa(kv_bf16)
--    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+    kv_packed = quantize_kv_dsv4_1(kv_bf16)
-+    kv_dequant = dequantize_kv_dsv4_1(kv_packed)
- 
-     q = (
-         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-@@ -2055,14 +2091,7 @@ def test_sparse_mla_sm120_prefill_dots3_swa(
-     indices = torch.randint(
-         0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-     )
--    # Per-token window lengths, as an SWA metadata builder would emit. Slots
--    # past the length keep VALID indices, so a kernel that ignored topk_length
--    # would fold real KV into the result — that is what gives this coverage.
--    topk_length = torch.randint(
--        1, window + 1, (num_tokens,), device=device, dtype=torch.int32
--    )
--    topk_length[0] = window  # pin one token to the full window
--    topk_length[1] = 0  # pin one token to an empty window (zero tiles)
-+    indices[:, topk // 2 :] = -1
- 
-     attn_sink = (
-         torch.randn(num_heads, device=device, dtype=torch.float32) * 2.0
-@@ -2071,21 +2100,15 @@ def test_sparse_mla_sm120_prefill_dots3_swa(
-     )
- 
-     sm_scale = d_qk**-0.5
--
-     ref_out, ref_lse = _ref_sparse_attn(
--        q,
--        kv_dequant,
--        indices,
--        sm_scale,
--        d_v,
--        attn_sink=attn_sink,
--        topk_length=topk_length,
-+        q, kv_dequant, indices, sm_scale, d_v, attn_sink=attn_sink
-     )
- 
-     output = torch.zeros(
-         (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-     )
-     out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+    mid_out, mid_lse = _make_decode_scratch(num_tokens, num_heads, topk, d_v, device)
- 
-     sparse_mla_sm120_paged_attention(
-         q,
-@@ -2095,36 +2118,72 @@ def test_sparse_mla_sm120_prefill_dots3_swa(
-         out_lse,
-         sm_scale,
-         d_v=d_v,
-+        kv_scale_format="ue8m0_g32",
-         attn_sink=attn_sink,
--        topk_length=topk_length,
-+        mid_out=mid_out,
-+        mid_lse=mid_lse,
-     )
- 
--    torch.testing.assert_close(output, ref_out, atol=1e-2, rtol=5e-3)
--    if attn_sink is None:
--        # Empty row: kernel emits the -1e30 sentinel, the reference -inf.
--        nonempty = topk_length.bool()
--        torch.testing.assert_close(
--            out_lse[nonempty], ref_lse[nonempty], atol=5e-3, rtol=5e-3
--        )
--        assert (out_lse[1] == -1e30).all()
--    else:
--        torch.testing.assert_close(out_lse, ref_lse, atol=5e-3, rtol=5e-3)
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
- 
- 
--@pytest.mark.parametrize("num_heads", [8, 64])
--def test_sparse_mla_sm120_prefill_dots3_swa_no_topk_length(num_heads: int) -> None:
--    """DOTS3_SWA prefill with -1 padding and no topk_length.
-+@pytest.mark.parametrize("num_heads", [8, 24, 64])
-+@pytest.mark.parametrize("valid_column", [0, 64])
-+def test_sparse_mla_sm120_decode_dsv4_1_preserves_every_scale_group(
-+    num_heads: int, valid_column: int
-+) -> None:
-+    """A single candidate exposes lost or exchanged XV folds without averaging.
- 
--    Counterpart to the decode test of the same name: PrefillTileCfg's WINDOW
--    caps the per-token candidate count inside the kernel, so a caller that
--    -1-pads unused slots may omit topk_length. Slots in [WINDOW, TOPK) hold
--    VALID indices, so only the cap can exclude them — without it the kernel
--    would scan all 576 candidates and miss the reference.
-+    Force two chunks through one CTA and put the valid candidate on either
-+    side of the chunk boundary, with the other chunk entirely masked.
-     """
--    torch.manual_seed(0)
-+    from flashinfer.mla._sparse_mla_sm120 import sparse_mla_sm120_decode_dsv4
-+
-     device = torch.device("cuda")
--    d_qk, d_v, topk, window = 1088, 1024, 576, 513
--    page_block_size, num_blocks, num_tokens = 64, 64, 96
-+    num_tokens, topk, d_v = 4, 128, 512
-+    values = (
-+        torch.arange(1, 17, device=device, dtype=torch.bfloat16)
-+        .repeat_interleave(32)
-+        .div(16)
-+    )
-+    kv = torch.zeros(1, 64, 1, d_v, dtype=torch.bfloat16, device=device)
-+    kv[0, 1, 0] = values
-+    packed = quantize_kv_dsv4_1(kv)
-+    expected = dequantize_kv_dsv4_1(packed)[0, 1, 0]
-+    assert torch.unique(expected).numel() == 16
-+    q = torch.zeros(num_tokens, num_heads, d_v, dtype=torch.bfloat16, device=device)
-+    indices = torch.full((num_tokens, topk), -1, dtype=torch.int32, device=device)
-+    indices[:, valid_column] = 1
-+    output = torch.empty_like(q)
-+    lse = torch.empty(num_tokens, num_heads, dtype=torch.float32, device=device)
-+    mid_out, mid_lse = _make_decode_scratch(num_tokens, num_heads, topk, d_v, device)
-+    sparse_mla_sm120_decode_dsv4(
-+        q,
-+        packed,
-+        indices,
-+        mid_out,
-+        mid_lse,
-+        output,
-+        lse,
-+        d_v**-0.5,
-+        chunks_per_block=2,
-+        model_type=_MODEL_TYPE_DSV4_1,
-+    )
-+    torch.testing.assert_close(output, expected.expand_as(output), atol=0, rtol=0)
-+    torch.testing.assert_close(lse, torch.zeros_like(lse), atol=1e-5, rtol=0)
-+
-+
-+@pytest.mark.parametrize("num_heads", [16, 64])
-+def test_sparse_mla_sm120_prefill_dsv4_1(num_heads: int) -> None:
-+    """DeepSeek-V4.1 prefill: SG-only on the BI=32 producer/consumer tile;
-+    H=64 rides CTA replication. num_tokens=65 forces the prefill route."""
-+    torch.manual_seed(5)
-+    device = torch.device("cuda")
-+    d_qk, d_v = 512, 512
-+    num_tokens, topk = 65, 512
-+    page_block_size = 64
-+    num_blocks = 64
-     s_kv = num_blocks * page_block_size
- 
-     kv_bf16 = (
-@@ -2133,8 +2192,8 @@ def test_sparse_mla_sm120_prefill_dots3_swa_no_topk_length(num_heads: int) -> No
-         )
-         / 10.0
-     ).clamp(-1, 1)
--    kv_packed = quantize_kv_dots3_swa(kv_bf16)
--    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+    kv_packed = quantize_kv_dsv4_1(kv_bf16)
-+    kv_dequant = dequantize_kv_dsv4_1(kv_packed)
- 
-     q = (
-         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-@@ -2143,17 +2202,9 @@ def test_sparse_mla_sm120_prefill_dots3_swa_no_topk_length(num_heads: int) -> No
-     indices = torch.randint(
-         0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-     )
--    # Valid entries only inside the window; -1 marks the rest of the window.
--    # [window, topk) keeps valid indices — the WINDOW cap alone must drop them.
--    indices[:, window // 2 : window] = -1
--
-+    indices[:, topk // 2 :] = -1
-     sm_scale = d_qk**-0.5
--
--    # Reference sees exactly the window, via an explicit length.
--    ref_len = torch.full((num_tokens,), window, device=device, dtype=torch.int32)
--    ref_out, ref_lse = _ref_sparse_attn(
--        q, kv_dequant, indices, sm_scale, d_v, topk_length=ref_len
--    )
-+    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
- 
-     output = torch.zeros(
-         (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-@@ -2168,45 +2219,957 @@ def test_sparse_mla_sm120_prefill_dots3_swa_no_topk_length(num_heads: int) -> No
-         out_lse,
-         sm_scale,
-         d_v=d_v,
--    )  # no topk_length
--
--    # Same tolerance rationale as test_sparse_mla_sm120_prefill_dots3_swa.
--    torch.testing.assert_close(output, ref_out, atol=1e-2, rtol=5e-3)
--    torch.testing.assert_close(out_lse, ref_lse, atol=5e-3, rtol=5e-3)
-+        kv_scale_format="ue8m0_g32",
-+    )
- 
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
- 
--@pytest.mark.parametrize("num_heads", [16, 64])
--def test_sparse_mla_sm120_prefill_dots3_swa_offpin_topk(num_heads: int) -> None:
--    """DOTS3_SWA prefill at topk=640 (>= 513, whole tiles, not the 576 pin).
- 
--    topk is a runtime kernel argument; the kernel still clamps the scan to
--    the 513-wide window, so the extra buffer rows only matter through
--    topk_length. Same coverage shape and tolerance rationale as
--    test_sparse_mla_sm120_prefill_dots3_swa.
--    """
-+def test_sparse_mla_sm120_decode_dsv4_1_dual() -> None:
-+    """DSV4_1 dual-cache decode through the TRTLLM-compat entry: SWA main
-+    segment + compressed extra segment, both in the 528B V4.1 layout."""
-     torch.manual_seed(0)
-     device = torch.device("cuda")
--    d_qk, d_v, topk, window = 1088, 1024, 640, 513
--    page_block_size = 64
--    num_blocks = 64
--    num_tokens = 128
--    s_kv = num_blocks * page_block_size
-+    num_tokens, num_heads = 4, 64
-+    topk, extra_topk = 128, 512
-+    d_qk, d_v = 512, 512
-+    main_pbs, extra_pbs = 64, 2
-+    main_num_blocks = 16
-+    extra_num_blocks = (extra_topk + extra_pbs - 1) // extra_pbs
-+    main_s_kv = main_num_blocks * main_pbs
-+    extra_s_kv = extra_num_blocks * extra_pbs
- 
--    kv_bf16 = (
-+    main_bf16 = (
-         torch.randn(
--            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+            main_num_blocks, main_pbs, 1, d_qk, device=device, dtype=torch.bfloat16
-         )
-         / 10.0
-     ).clamp(-1, 1)
--    kv_packed = quantize_kv_dots3_swa(kv_bf16)
--    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+    extra_bf16 = (
-+        torch.randn(
-+            extra_num_blocks, extra_pbs, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    main_packed = quantize_kv_dsv4_1(main_bf16)
-+    extra_packed = quantize_kv_dsv4_1(extra_bf16)
-+    main_dequant = dequantize_kv_dsv4_1(main_packed)
-+    extra_dequant = dequantize_kv_dsv4_1(extra_packed)
- 
-     q = (
-         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-         / 10.0
-     ).clamp(-1, 1)
--    indices = torch.randint(
--        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    main_idx = torch.randint(
-+        0, main_s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    extra_idx = torch.randint(
-+        0, extra_s_kv, (num_tokens, extra_topk), device=device, dtype=torch.int32
-+    )
-+
-+    sm_scale = d_qk**-0.5
-+    virtual_kv = torch.cat(
-+        [main_dequant.reshape(-1, d_qk), extra_dequant.reshape(-1, d_qk)], dim=0
-+    ).reshape(-1, 1, 1, d_qk)
-+    virtual_idx = torch.cat(
-+        [main_idx, torch.where(extra_idx < 0, extra_idx, extra_idx + main_s_kv)], dim=-1
-+    )
-+    ref_out, _ = _ref_sparse_attn(q, virtual_kv, virtual_idx, sm_scale, d_v)
-+
-+    output = flashinfer.mla.trtllm_batch_decode_sparse_mla_dsv4(
-+        query=q.unsqueeze(1),
-+        swa_kv_cache=main_packed,
-+        workspace_buffer=torch.empty(1, dtype=torch.int8, device=device),
-+        sparse_indices=main_idx,
-+        compressed_kv_cache=extra_packed,
-+        swa_topk_lens=torch.full((num_tokens,), topk, dtype=torch.int32, device=device),
-+        extra_sparse_indices=extra_idx,
-+        extra_sparse_topk_lens=torch.full(
-+            (num_tokens,), extra_topk, dtype=torch.int32, device=device
-+        ),
-+        bmm1_scale=sm_scale,
-+        kv_layout="NHD",
-+        kv_cache_format="fp8_dsv41",
-+    )
-+
-+    torch.testing.assert_close(output.squeeze(1), ref_out, atol=5e-2, rtol=5e-2)
-+
-+
-+def test_sparse_mla_sm120_decode_dsv4_1_masked_rows_ignore_poisoned_slot_zero() -> None:
-+    """DSV4_1 decode gathers the shared zero row for masked candidates: slot 0
-+    is poisoned with 0xFF (NaN FP8 values, +inf UE8M0 scales) and must not leak."""
-+    torch.manual_seed(8)
-+    device = torch.device("cuda")
-+    d_qk, d_v = 512, 512
-+    page_block_size, num_blocks, topk = 64, 64, 512
-+    num_tokens, num_heads = 16, 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dsv4_1(kv_bf16)
-+    kv_dequant = dequantize_kv_dsv4_1(kv_packed)
-+    # Poison slot 0 (block 0 token 0): the 512B data row plus its 16B footer scale.
-+    flat = kv_packed.view(num_blocks, -1)
-+    flat[0, :512].fill_(0xFF)
-+    flat[0, page_block_size * 512 : page_block_size * 512 + 16].fill_(0xFF)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        1, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    indices[:, topk // 2 :] = -1
-+    sm_scale = d_qk**-0.5
-+    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+    mid_out, mid_lse = _make_decode_scratch(num_tokens, num_heads, topk, d_v, device)
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
-+        kv_scale_format="ue8m0_g32",
-+        mid_out=mid_out,
-+        mid_lse=mid_lse,
-+    )
-+
-+    assert torch.isfinite(output.float()).all()
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
-+
-+
-+def test_sparse_mla_sm120_prefill_dsv4_1_masked_rows_ignore_poisoned_slot_zero() -> (
-+    None
-+):
-+    """The DSV4_1 prefill gather (512B bulk + 16B scale footer read) applies the
-+    same zero-row masking. num_tokens=128 forces the prefill route."""
-+    torch.manual_seed(10)
-+    device = torch.device("cuda")
-+    d_qk, d_v = 512, 512
-+    page_block_size, num_blocks, topk = 64, 64, 512
-+    num_tokens, num_heads = 128, 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dsv4_1(kv_bf16)
-+    kv_dequant = dequantize_kv_dsv4_1(kv_packed)
-+    flat = kv_packed.view(num_blocks, -1)
-+    flat[0, :512].fill_(0xFF)
-+    flat[0, page_block_size * 512 : page_block_size * 512 + 16].fill_(0xFF)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        1, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    indices[:, topk // 2 :] = -1
-+    sm_scale = d_qk**-0.5
-+    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
-+        kv_scale_format="ue8m0_g32",
 +    )
 +
 +    assert torch.isfinite(output.float()).all()
@@ -6126,48 +4669,60 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    page_block_size, num_blocks, topk = 64, 64, 2048
 +    num_tokens = 128
 +    topk_len = topk - 32  # partial last tile
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
+     s_kv = num_blocks * page_block_size
+ 
+     kv_bf16 = (
+@@ -1719,27 +2284,24 @@ def test_sparse_mla_sm120_decode_glm53_nope(num_heads: int) -> None:
+         )
+         / 10.0
+     ).clamp(-1, 1)
+-    kv_packed = quantize_kv_glm53_nope(kv_bf16)
+-    _assert_has_non_pow2_inline_scales(kv_packed)
+-    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
 +    kv_packed = quantize_kv_dsv3_2(kv_bf16)
 +    kv_dequant = dequantize_kv_dsv3_2(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
+ 
+     q = (
+         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
+         / 10.0
+     ).clamp(-1, 1)
+-    indices = torch.randint(
+-        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
 +    indices, ref_indices, topk_length = _stale_padding_indices(
 +        num_tokens, topk, topk_len, s_kv, device
-+    )
-+    sm_scale = d_qk**-0.5
+     )
+-    indices[:, topk // 2 :] = -1
+     sm_scale = d_qk**-0.5
+-    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
 +    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, ref_indices, sm_scale, d_v)
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
+ 
+     output = torch.zeros(
+         (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
+     )
+     out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
+-    mid_out, mid_lse = _make_decode_scratch(num_tokens, num_heads, topk, d_v, device)
+-
 +    kwargs = {"prefill_impl": prefill_impl} if prefill_impl is not None else {}
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
+     sparse_mla_sm120_paged_attention(
+         q,
+         kv_packed,
+@@ -1748,22 +2310,27 @@ def test_sparse_mla_sm120_decode_glm53_nope(num_heads: int) -> None:
+         out_lse,
+         sm_scale,
+         d_v=d_v,
+-        kv_scale_format="arbitrary_fp32",
+-        mid_out=mid_out,
+-        mid_lse=mid_lse,
 +        topk_length=topk_length,
 +        **kwargs,
-+    )
-+
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
-+
-+
+     )
+ 
+     torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
+     torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
+ 
+ 
+-def test_sparse_mla_sm120_prefill_glm53_nope() -> None:
+-    torch.manual_seed(4)
 +@pytest.mark.parametrize("dual", [False, True])
 +def test_sparse_mla_sm120_prefill_dsv4_bounds_stale_padding(dual: bool) -> None:
 +    """DSv4 MG prefill (single and dual cache) with stale positive padding.
@@ -6176,30 +4731,40 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    rope MMA both re-derive gmem addresses from the raw indices on the math
 +    side, per cache phase for dual."""
 +    torch.manual_seed(13)
-+    device = torch.device("cuda")
+     device = torch.device("cuda")
+-    d_qk = d_v = 512
+-    num_tokens, num_heads, topk = 65, 32, 2176
+-    page_block_size = 64
+-    num_blocks = 64
 +    d_qk, d_v = 512, 512
 +    num_heads, num_tokens = 64, 128
 +    topk, topk_len = 1024, 992  # partial last tile
 +    page_block_size, num_blocks = 64, 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
+     s_kv = num_blocks * page_block_size
+ 
+     kv_bf16 = (
+@@ -1772,26 +2339,56 @@ def test_sparse_mla_sm120_prefill_glm53_nope() -> None:
+         )
+         / 10.0
+     ).clamp(-1, 1)
+-    kv_packed = quantize_kv_glm53_nope(kv_bf16)
+-    _assert_has_non_pow2_inline_scales(kv_packed)
+-    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
 +    kv_packed = quantize_kv_dsv4(kv_bf16)
 +    kv_dequant = dequantize_kv_dsv4(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
+ 
+     q = (
+         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
+         / 10.0
+     ).clamp(-1, 1)
+-    indices = torch.randint(
+-        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
 +    indices, ref_indices, topk_length = _stale_padding_indices(
 +        num_tokens, topk, topk_len, s_kv, device
-+    )
-+    sm_scale = d_qk**-0.5
+     )
+-    indices[:, topk // 2 :] = -1
+     sm_scale = d_qk**-0.5
+-    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
 +    kwargs: dict = {}
 +    if dual:
 +        extra_topk, extra_len = 512, 480  # partial last extra tile
@@ -6234,27 +4799,32 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +        ref_out, ref_lse = _ref_sparse_attn(q, virtual_kv, ref_idx_all, sm_scale, d_v)
 +    else:
 +        ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, ref_indices, sm_scale, d_v)
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
+ 
+     output = torch.zeros(
+         (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
+     )
+     out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
+-
+     sparse_mla_sm120_paged_attention(
+         q,
+         kv_packed,
+@@ -1800,22 +2397,25 @@ def test_sparse_mla_sm120_prefill_glm53_nope() -> None:
+         out_lse,
+         sm_scale,
+         d_v=d_v,
+-        kv_scale_format="arbitrary_fp32",
 +        topk_length=topk_length,
 +        **kwargs,
-+    )
-+
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
-+
-+
+     )
+ 
+     torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
+     torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
+ 
+ 
+-@pytest.mark.parametrize("num_heads", [64, 128])
+-def test_sparse_mla_sm120_prefill_glm53_nope_swapab(num_heads: int) -> None:
+-    """swapAB serves GLM53_NOPE at topk=2176; auto routes to it (bitwise)."""
+-    torch.manual_seed(11)
 +def test_sparse_mla_sm120_prefill_dots3_swa_bounds_stale_padding() -> None:
 +    """DOTS3_SWA (SG/BI=32 split producer-consumer path) with stale padding.
 +
@@ -6262,35 +4832,64 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    runtime bound, so slots in [513, 576) are past the effective length. The
 +    reference masks them with -1."""
 +    torch.manual_seed(14)
-+    device = torch.device("cuda")
+     device = torch.device("cuda")
+-    d_qk = d_v = 512
+-    num_tokens, topk = 128, 2176
+-    page_block_size = 64
+-    num_blocks = 128
 +    d_qk, d_v, topk, window = 1088, 1024, 576, 513
 +    num_tokens, num_heads = 65, 32
 +    page_block_size, num_blocks = 64, 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
+     s_kv = num_blocks * page_block_size
+ 
+     kv_bf16 = (
+@@ -1824,9 +2424,8 @@ def test_sparse_mla_sm120_prefill_glm53_nope_swapab(num_heads: int) -> None:
+         )
+         / 10.0
+     ).clamp(-1, 1)
+-    kv_packed = quantize_kv_glm53_nope(kv_bf16)
+-    _assert_has_non_pow2_inline_scales(kv_packed)
+-    kv_dequant = dequantize_kv_dsv3_2(kv_packed)[..., :d_qk]
 +    kv_packed = quantize_kv_dots3_swa(kv_bf16)
 +    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
+ 
+     q = (
+         torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
+@@ -1835,36 +2434,23 @@ def test_sparse_mla_sm120_prefill_glm53_nope_swapab(num_heads: int) -> None:
+     indices = torch.randint(
+         0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
+     )
+-    indices[:, topk // 2 :] = -1
 +    indices[:, window:] = 1 << 30  # stale garbage past the window, not -1
 +    ref_indices = indices.clone()
 +    ref_indices[:, window:] = -1
 +
-+    sm_scale = d_qk**-0.5
+     sm_scale = d_qk**-0.5
+-    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, indices, sm_scale, d_v)
 +    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, ref_indices, sm_scale, d_v)
-+
+ 
+-    results = {}
+-    for impl in ("swapab", None):
+-        output = torch.zeros(
+-            (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
+-        )
+-        out_lse = torch.zeros(
+-            (num_tokens, num_heads), dtype=torch.float32, device=device
+-        )
+-        sparse_mla_sm120_paged_attention(
+-            q,
+-            kv_packed,
+-            indices,
+-            output,
+-            out_lse,
+-            sm_scale,
+-            d_v=d_v,
+-            kv_scale_format="arbitrary_fp32",
+-            prefill_impl=impl,
+-        )
+-        torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
+-        torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
+-        results[impl] = (output, out_lse)
 +    output = torch.zeros(
 +        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
 +    )
@@ -6298,355 +4897,16 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    sparse_mla_sm120_paged_attention(
 +        q, kv_packed, indices, output, out_lse, sm_scale, d_v=d_v
 +    )
-+
+ 
+-    # The auto policy prefers swapAB at this eligible shape.
+-    assert torch.equal(results["swapab"][0], results[None][0])
+-    assert torch.equal(results["swapab"][1], results[None][1])
 +    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
 +    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
-+
-+
-+_DSV4_PREFILL_CONFIGS = [
-+    (8, 128),
-+    (8, 192),
-+    (8, 256),
-+    (8, 512),
-+    (8, 1024),
-+    (8, 2048),
-+    (16, 128),
-+    (16, 192),
-+    (16, 256),
-+    (32, 192),
-+    (32, 256),
-+    (32, 512),
-+    (64, 192),
-+    (64, 256),
-+    (64, 1024),
-+    (128, 192),
-+    (128, 256),
-+    (128, 1024),
-+]
-+
-+
-+@pytest.mark.parametrize("num_heads,topk", _DSV4_PREFILL_CONFIGS)
-+@pytest.mark.parametrize("num_tokens", [65, 128, 256])
-+@pytest.mark.parametrize("with_sink", [False, True])
-+def test_sparse_mla_sm120_prefill_dsv4(
-+    num_heads: int, topk: int, num_tokens: int, with_sink: bool
-+) -> None:
-+    """DSv4 prefill."""
-+    torch.manual_seed(0)
-+    device = torch.device("cuda")
-+    d_qk, d_v = 512, 512
-+    page_block_size = 64
-+    num_blocks = 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dsv4(kv_bf16)
-+    kv_dequant = dequantize_kv_dsv4(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    indices[:, topk // 2 :] = -1
-+
-+    attn_sink = (
-+        torch.randn(num_heads, device=device, dtype=torch.float32) * 2.0
-+        if with_sink
-+        else None
-+    )
-+
-+    sm_scale = d_qk**-0.5
-+
-+    ref_out, ref_lse = _ref_sparse_attn(
-+        q, kv_dequant, indices, sm_scale, d_v, attn_sink=attn_sink
-+    )
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
-+        attn_sink=attn_sink,
-+    )
-+
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
-+
-+
-+@pytest.mark.parametrize("num_heads", [8, 32])
-+@pytest.mark.parametrize("topk", [192, 256])
-+def test_sparse_mla_sm120_prefill_dsv4_topk_length_truncation(
-+    num_heads: int, topk: int
-+) -> None:
-+    torch.manual_seed(0)
-+    device = torch.device("cuda")
-+    topk_len, num_tokens = 133, 128
-+    d_qk, d_v = 512, 512
-+    page_block_size = 64
-+    num_blocks = 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dsv4(kv_bf16)
-+    kv_dequant = dequantize_kv_dsv4(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    topk_length = torch.full((num_tokens,), topk_len, dtype=torch.int32, device=device)
-+
-+    sm_scale = d_qk**-0.5
-+    ref_indices = indices.clone()
-+    ref_indices[:, topk_len:] = -1
-+    ref_out, ref_lse = _ref_sparse_attn(q, kv_dequant, ref_indices, sm_scale, d_v)
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
-+        topk_length=topk_length,
-+    )
-+
-+    torch.testing.assert_close(output, ref_out, atol=5e-2, rtol=5e-2)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-2, rtol=5e-2)
-+
-+
-+_DOTS3_SWA_PREFILL_HEADS = [8, 16, 32, 64]
-+
-+
-+@pytest.mark.parametrize("num_heads", _DOTS3_SWA_PREFILL_HEADS)
-+@pytest.mark.parametrize("num_tokens", [65, 128])
-+@pytest.mark.parametrize("with_sink", [False, True])
-+def test_sparse_mla_sm120_prefill_dots3_swa(
-+    num_heads: int, num_tokens: int, with_sink: bool
-+) -> None:
-+    """DOTS3_SWA sliding-window prefill: d_qk 1088 / d_v 1024.
-+
-+    SG-only, at PrefillTileCfg<DOTS3_SWA>'s BI=32 / 4-math-warp QK tile — the
-+    MG layout does not fit D_NOPE=1024 in sm120 smem, so num_heads > 16 is
-+    served by replicating one CTA per 16-head tile rather than by MG. That
-+    replication is exactly what num_heads 32 and 64 cover here.
-+
-+    Tolerance is atol 1e-2 / rtol 5e-3, not the 5e-2 the DSv4 prefill cases
-+    use. Measured over all 16 parametrizations the worst output error is
-+    6.8e-3, with a mean of 1.4e-4 and only 5 of 8.4M elements above 5e-3 —
-+    ordinary bf16 accumulation tail, so 5e-3 is below the noise floor here even
-+    though DOTS3_SWA decode holds it. The check still has teeth: a V-segment
-+    misalignment of 8 or 64 elements moves the worst error to 0.48 / 0.59, ~50x
-+    the tolerance. At 5e-2 that defect would pass.
-+    """
-+    torch.manual_seed(0)
-+    device = torch.device("cuda")
-+    d_qk, d_v, topk, window = 1088, 1024, 576, 513
-+    page_block_size = 64
-+    num_blocks = 64
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dots3_swa(kv_bf16)
-+    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    # Per-token window lengths, as an SWA metadata builder would emit. Slots
-+    # past the length keep VALID indices, so a kernel that ignored topk_length
-+    # would fold real KV into the result — that is what gives this coverage.
-+    topk_length = torch.randint(
-+        1, window + 1, (num_tokens,), device=device, dtype=torch.int32
-+    )
-+    topk_length[0] = window  # pin one token to the full window
-+    topk_length[1] = 0  # pin one token to an empty window (zero tiles)
-+
-+    attn_sink = (
-+        torch.randn(num_heads, device=device, dtype=torch.float32) * 2.0
-+        if with_sink
-+        else None
-+    )
-+
-+    sm_scale = d_qk**-0.5
-+
-+    ref_out, ref_lse = _ref_sparse_attn(
-+        q,
-+        kv_dequant,
-+        indices,
-+        sm_scale,
-+        d_v,
-+        attn_sink=attn_sink,
-+        topk_length=topk_length,
-+    )
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
-+        attn_sink=attn_sink,
-+        topk_length=topk_length,
-+    )
-+
-+    torch.testing.assert_close(output, ref_out, atol=1e-2, rtol=5e-3)
-+    if attn_sink is None:
-+        # Empty row: kernel emits the -1e30 sentinel, the reference -inf.
-+        nonempty = topk_length.bool()
-+        torch.testing.assert_close(
-+            out_lse[nonempty], ref_lse[nonempty], atol=5e-3, rtol=5e-3
-+        )
-+        assert (out_lse[1] == -1e30).all()
-+    else:
-+        torch.testing.assert_close(out_lse, ref_lse, atol=5e-3, rtol=5e-3)
-+
-+
-+@pytest.mark.parametrize("num_heads", [8, 64])
-+def test_sparse_mla_sm120_prefill_dots3_swa_no_topk_length(num_heads: int) -> None:
-+    """DOTS3_SWA prefill with -1 padding and no topk_length.
-+
-+    Counterpart to the decode test of the same name: PrefillTileCfg's WINDOW
-+    caps the per-token candidate count inside the kernel, so a caller that
-+    -1-pads unused slots may omit topk_length. Slots in [WINDOW, TOPK) hold
-+    VALID indices, so only the cap can exclude them — without it the kernel
-+    would scan all 576 candidates and miss the reference.
-+    """
-+    torch.manual_seed(0)
-+    device = torch.device("cuda")
-+    d_qk, d_v, topk, window = 1088, 1024, 576, 513
-+    page_block_size, num_blocks, num_tokens = 64, 64, 96
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dots3_swa(kv_bf16)
-+    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-+    )
-+    # Valid entries only inside the window; -1 marks the rest of the window.
-+    # [window, topk) keeps valid indices — the WINDOW cap alone must drop them.
-+    indices[:, window // 2 : window] = -1
-+
-+    sm_scale = d_qk**-0.5
-+
-+    # Reference sees exactly the window, via an explicit length.
-+    ref_len = torch.full((num_tokens,), window, device=device, dtype=torch.int32)
-+    ref_out, ref_lse = _ref_sparse_attn(
-+        q, kv_dequant, indices, sm_scale, d_v, topk_length=ref_len
-+    )
-+
-+    output = torch.zeros(
-+        (num_tokens, num_heads, d_v), dtype=torch.bfloat16, device=device
-+    )
-+    out_lse = torch.zeros((num_tokens, num_heads), dtype=torch.float32, device=device)
-+
-+    sparse_mla_sm120_paged_attention(
-+        q,
-+        kv_packed,
-+        indices,
-+        output,
-+        out_lse,
-+        sm_scale,
-+        d_v=d_v,
-+    )  # no topk_length
-+
-+    # Same tolerance rationale as test_sparse_mla_sm120_prefill_dots3_swa.
-+    torch.testing.assert_close(output, ref_out, atol=1e-2, rtol=5e-3)
-+    torch.testing.assert_close(out_lse, ref_lse, atol=5e-3, rtol=5e-3)
-+
-+
-+@pytest.mark.parametrize("num_heads", [16, 64])
-+def test_sparse_mla_sm120_prefill_dots3_swa_offpin_topk(num_heads: int) -> None:
-+    """DOTS3_SWA prefill at topk=640 (>= 513, whole tiles, not the 576 pin).
-+
-+    topk is a runtime kernel argument; the kernel still clamps the scan to
-+    the 513-wide window, so the extra buffer rows only matter through
-+    topk_length. Same coverage shape and tolerance rationale as
-+    test_sparse_mla_sm120_prefill_dots3_swa.
-+    """
-+    torch.manual_seed(0)
-+    device = torch.device("cuda")
-+    d_qk, d_v, topk, window = 1088, 1024, 640, 513
-+    page_block_size = 64
-+    num_blocks = 64
-+    num_tokens = 128
-+    s_kv = num_blocks * page_block_size
-+
-+    kv_bf16 = (
-+        torch.randn(
-+            num_blocks, page_block_size, 1, d_qk, device=device, dtype=torch.bfloat16
-+        )
-+        / 10.0
-+    ).clamp(-1, 1)
-+    kv_packed = quantize_kv_dots3_swa(kv_bf16)
-+    kv_dequant = dequantize_kv_dots3_swa(kv_packed)
-+
-+    q = (
-+        torch.randn(num_tokens, num_heads, d_qk, device=device, dtype=torch.bfloat16)
-+        / 10.0
-+    ).clamp(-1, 1)
-+    indices = torch.randint(
-+        0, s_kv, (num_tokens, topk), device=device, dtype=torch.int32
-     )
-     topk_length = torch.randint(
-         1, window + 1, (num_tokens,), device=device, dtype=torch.int32
-@@ -2957,11 +3920,11 @@ def test_sparse_mla_sm120_prefill_impl_mg_matches_swapab(num_heads: int) -> None
+ 
+ 
+ _DSV4_PREFILL_CONFIGS = [
+@@ -2957,11 +3543,11 @@ def test_sparse_mla_sm120_prefill_impl_mg_matches_swapab(num_heads: int) -> None
  
  
  def test_sparse_mla_sm120_inline_scale_rejects_padded_block_stride() -> None:
@@ -6661,7 +4921,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
      prefill-routed call.
      """
      q, kv_packed, indices, sm_scale, d_v, _, _ = _make_dsv3_2_prefill_case(
-@@ -2978,17 +3941,315 @@ def test_sparse_mla_sm120_inline_scale_rejects_padded_block_stride() -> None:
+@@ -2978,17 +3564,295 @@ def test_sparse_mla_sm120_inline_scale_rejects_padded_block_stride() -> None:
  
      output = torch.zeros(128, 64, d_v, dtype=torch.bfloat16, device=q.device)
      out_lse = torch.zeros(128, 64, dtype=torch.float32, device=q.device)
@@ -6678,10 +4938,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 -    q, kv_packed, indices, sm_scale, d_v, _, _ = _make_dsv3_2_prefill_case(
 -        64, num_tokens=128
 +@pytest.mark.parametrize("prefill", [False, True])
-+@pytest.mark.parametrize(
-+    "model_type,bpt",
-+    [(_MODEL_TYPE_DSV4, 584), (_MODEL_TYPE_GLM53_NOPE, 528), (_MODEL_TYPE_DSV4_1, 528)],
-+)
++@pytest.mark.parametrize("model_type,bpt", [(1, 584), (3, 528)])
 +@pytest.mark.parametrize("layout", ["2d", "3d"])
 +@pytest.mark.parametrize("misaligned", ["origin", "block"])
 +def test_sparse_mla_sm120_cache_alignment_rejected(
@@ -6713,14 +4970,14 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +                lse,
 +                512**-0.5,
 +                model_type,
-+                1 if model_type == _MODEL_TYPE_DSV4_1 else 2,
++                2,
 +                None,
 +                None,
 +                None,
 +                None,
 +                None,
 +            )
-+        elif model_type == _MODEL_TYPE_GLM53_NOPE:
++        elif model_type == 3:
 +            module.sparse_mla_sm120_decode_dsv3_2(
 +                q,
 +                kv,
@@ -6752,20 +5009,14 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +                None,
 +                None,
 +                None,
-+                model_type,
 +                -1,
 +            )
 +
 +
 +@pytest.mark.parametrize("layout", ["3d", "hnd", "nhd"])
-+@pytest.mark.parametrize(
-+    "bpt,scale_format,impl", [(584, "auto", "mg"), (528, "ue8m0_g32", "auto")]
-+)
-+def test_sparse_mla_sm120_prefill_footer_row_gap_rejected(
-+    layout: str, bpt: int, scale_format: str, impl: str
-+) -> None:
++def test_sparse_mla_sm120_prefill_footer_row_gap_rejected(layout: str) -> None:
 +    """A payload-width view must not hide row padding from footer validation."""
-+    kv = torch.zeros(2, 64, bpt + 16, dtype=torch.uint8, device="cuda")[..., :bpt]
++    kv = torch.zeros(2, 64, 600, dtype=torch.uint8, device="cuda")[..., :584]
 +    if layout == "hnd":
 +        kv = kv.unsqueeze(1)
 +    elif layout == "nhd":
@@ -6776,26 +5027,16 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +    lse = torch.empty(65, 64, dtype=torch.float32, device="cuda")
 +    with pytest.raises(RuntimeError, match="footer-scale rows must stay packed"):
 +        sparse_mla_sm120_paged_attention(
-+            q,
-+            kv,
-+            indices,
-+            output,
-+            lse,
-+            512**-0.5,
-+            d_v=512,
-+            kv_scale_format=scale_format,
-+            prefill_impl=impl,
++            q, kv, indices, output, lse, 512**-0.5, d_v=512, prefill_impl="mg"
 +        )
 +
 +
 +@pytest.mark.parametrize("layout", ["3d", "hnd", "nhd"])
-+@pytest.mark.parametrize(
-+    "model_type,bpt", [(_MODEL_TYPE_DSV4, 584), (_MODEL_TYPE_DSV4_1, 528)]
-+)
++@pytest.mark.parametrize("bpt", [584])
 +@pytest.mark.parametrize("padded_width", [False, True])
 +@pytest.mark.parametrize("extra_cache", [False, True])
 +def test_sparse_mla_sm120_decode_footer_row_gap_rejected(
-+    layout: str, model_type: int, bpt: int, padded_width: bool, extra_cache: bool
++    layout: str, bpt: int, padded_width: bool, extra_cache: bool
 +) -> None:
 +    """The standalone decode binding validates both footer cache views."""
 +    from flashinfer.mla._sparse_mla_sm120 import _get_sparse_mla_sm120_decode_module
@@ -6832,7 +5073,6 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +            kv if extra_cache else None,
 +            indices if extra_cache else None,
 +            None,
-+            model_type,
 +            -1,
 +        )
 +
@@ -6983,7 +5223,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
      )
      kv = torch.zeros(
          *kv_packed.shape[:-1],
-@@ -2998,12 +4259,39 @@ def test_sparse_mla_sm120_inline_scale_prefill_rejects_padded_rows() -> None:
+@@ -2998,12 +3862,39 @@ def test_sparse_mla_sm120_inline_scale_prefill_rejects_padded_rows() -> None:
      )
      kv[..., : kv_packed.shape[-1]] = kv_packed
  
@@ -7027,7 +5267,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
  
  
  @pytest.mark.parametrize("num_heads", [64, 128])
-@@ -3541,7 +4829,13 @@ def test_sparse_mla_sm120_envelope_consistency(
+@@ -3541,7 +4432,13 @@ def test_sparse_mla_sm120_envelope_consistency(
      )
  
      d_qk = 576 if model_type in (0, 2) else (1088 if model_type == 4 else 512)
@@ -7042,7 +5282,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
      d_v = 1024 if model_type == 4 else 512
      num_tokens = 2
      kv_cache = torch.zeros(4, page_block_size * bpt, dtype=torch.uint8, device=device)
-@@ -3581,3 +4875,234 @@ def test_sparse_mla_sm120_envelope_consistency(
+@@ -3581,3 +4478,234 @@ def test_sparse_mla_sm120_envelope_consistency(
      else:
          with pytest.raises(RuntimeError, match="sparse-MLA"):
              call()
@@ -7278,7 +5518,7 @@ index e334e6f8d8dd48294473fe9c8b2acc511964884a..31f43186fa6d86ce5b16543d84d52573
 +            poisoned, torch.full_like(poisoned, 0.25), atol=1e-3, rtol=1e-3
 +        )
 diff --git a/tests/attention/test_sparse_mla_sm120_cpb_model.py b/tests/attention/test_sparse_mla_sm120_cpb_model.py
-index 597ffa8f9f00538e5b3256474aa6d34eed2c59e3..5bc3a650e48705aed00d470d77b16d5affb837e8 100644
+index 597ffa8f9f00538e5b3256474aa6d34eed2c59e3..13f5836ecd4e66aaa1626b20ab9807f84517af29 100644
 --- a/tests/attention/test_sparse_mla_sm120_cpb_model.py
 +++ b/tests/attention/test_sparse_mla_sm120_cpb_model.py
 @@ -288,6 +288,79 @@ def test_missing_or_corrupt_cache_falls_back(clean_cpb_state, tmp_path) -> None:
@@ -7361,31 +5601,11 @@ index 597ffa8f9f00538e5b3256474aa6d34eed2c59e3..5bc3a650e48705aed00d470d77b16d5a
  def _skip_if_low_vram(needed_gib: int) -> None:
      """Skip when the GPU cannot fit the multi-GiB KV pool (mirrors the
      torch.cuda.mem_get_info precedent in test_mla_decode_kernel.py)."""
-@@ -460,6 +533,7 @@ def test_model_cpb_accuracy_guard_dual_cache(
-                 extra_kv_cache,
-                 extra_indices,
-                 None,
-+                -1,  # model_type: legacy width inference (d_qk=512 -> DSV4)
-                 cpb_override,
-             )
- 
 diff --git a/tests/attention/test_sparse_mla_sm120_dispatch.py b/tests/attention/test_sparse_mla_sm120_dispatch.py
-index 64f111c5de98775f0cdb8d0c011710b2012fc9ae..1cd331a779c9f607bba831863c38a351eda5f7e2 100644
+index 64f111c5de98775f0cdb8d0c011710b2012fc9ae..f17096f9d3a855d5412fa0c0c6465c4e6eb2474d 100644
 --- a/tests/attention/test_sparse_mla_sm120_dispatch.py
 +++ b/tests/attention/test_sparse_mla_sm120_dispatch.py
-@@ -49,16 +49,19 @@ from flashinfer.mla import (
- from flashinfer.mla._sparse_mla_sm120 import (
-     _DECODE_DSV3_2_DISPATCH,
-     _DECODE_DSV4_DISPATCH,
-+    _DECODE_DSV4_1_DISPATCH,
-     _DECODE_GLM53_NOPE_DISPATCH,
-     _DECODE_MAX_TOKENS,
-     _DECODE_DOTS3_SWA_DISPATCH,
-     _MODEL_TYPE_DSV3_2,
-     _MODEL_TYPE_DSV4,
-+    _MODEL_TYPE_DSV4_1,
-     _MODEL_TYPE_GLM_NSA,
-     _MODEL_TYPE_GLM53_NOPE,
+@@ -59,6 +59,7 @@ from flashinfer.mla._sparse_mla_sm120 import (
      _MODEL_TYPE_DOTS3_SWA,
      _decode_scratch_views,
      _decode_dispatch_error_message,
@@ -7393,54 +5613,17 @@ index 64f111c5de98775f0cdb8d0c011710b2012fc9ae..1cd331a779c9f607bba831863c38a351
      _resolve_model_type,
  )
  from flashinfer.mla._sparse_mla_sm120_plan import (
-@@ -72,7 +75,14 @@ from flashinfer.mla._sparse_mla_sm120_plan import (
- def test_supported_configs_families() -> None:
-     """The query API mirrors the decode dispatch envelopes exactly."""
-     configs = supported_sparse_mla_sm120_configs()
--    assert set(configs) == {"dsv4", "dsv3_2", "glm_nsa", "glm53_nope", "dots3_swa"}
-+    assert set(configs) == {
-+        "dsv4",
-+        "dsv3_2",
-+        "glm_nsa",
-+        "glm53_nope",
-+        "dots3_swa",
-+        "dsv4_1",
-+    }
-     assert all(
-         isinstance(config, SparseMLASm120DecodeConfig) for config in configs.values()
-     )
-@@ -118,6 +128,16 @@ def test_supported_configs_families() -> None:
-     assert (64, 576) in _DECODE_DOTS3_SWA_DISPATCH
-     assert (64, 512) not in _DECODE_DOTS3_SWA_DISPATCH
- 
-+    dsv4_1 = configs["dsv4_1"]
-+    assert dsv4_1.d_qk == 512
-+    assert dsv4_1.page_block_size == 64
-+    assert dsv4_1.topks == frozenset({512})  # the V4.1 indexer topk
-+    assert dsv4_1.min_topk == 1
-+    assert dsv4_1.bytes_per_token == 528
-+    assert (64, 512) in _DECODE_DSV4_1_DISPATCH
-+    assert (48, 384) in _DECODE_DSV4_1_DISPATCH  # off the calibrated grid
-+    assert (256, 512) not in _DECODE_DSV4_1_DISPATCH
-+
-     # The lazy export resolves through the public flashinfer.mla namespace.
-     assert (
-         flashinfer.mla.supported_sparse_mla_sm120_configs
-@@ -145,6 +165,31 @@ def test_supported_configs_nvfp4_envelope() -> None:
+@@ -145,6 +146,26 @@ def test_supported_configs_nvfp4_envelope() -> None:
          supported_sparse_mla_sm120_configs(kv_cache_format="int4")
  
  
 +@pytest.mark.parametrize("layout", ["2d", "3d", "hnd", "nhd"])
-+def test_equal_payload_sizes_keep_model_selection_explicit(layout: str) -> None:
-+    """GLM NoPE and DSV4_1 share 528 bytes, but have different scale layouts."""
++def test_glm53_canonical_payload_is_scoped_to_model(layout: str) -> None:
++    """A 528-byte row is valid only with GLM NoPE geometry and scale semantics."""
 +    glm = _resolve_model_type(512, "arbitrary_fp32")
-+    dsv41 = _resolve_model_type(512, "ue8m0_g32")
 +    assert glm == _MODEL_TYPE_GLM53_NOPE
-+    assert dsv41 == _MODEL_TYPE_DSV4_1
-+    assert glm != dsv41
 +    assert _resolve_model_type(512, "auto") == _MODEL_TYPE_DSV4
 +    assert supported_sparse_mla_sm120_configs()["glm53_nope"].bytes_per_token == 528
-+    assert supported_sparse_mla_sm120_configs()["dsv4_1"].bytes_per_token == 528
 +    shape = {
 +        "2d": (2, 64 * 528),
 +        "3d": (2, 64, 528),
@@ -7449,7 +5632,6 @@ index 64f111c5de98775f0cdb8d0c011710b2012fc9ae..1cd331a779c9f607bba831863c38a351
 +    }[layout]
 +    cache = torch.empty(shape, dtype=torch.uint8, device="meta")
 +    assert _packed_kv_page_block_size(cache, model_type=glm, name="kv") == 64
-+    assert _packed_kv_page_block_size(cache, model_type=dsv41, name="kv") == 64
 +    for model_type in (_MODEL_TYPE_DSV4, _MODEL_TYPE_DSV3_2, _MODEL_TYPE_GLM_NSA):
 +        with pytest.raises(ValueError):
 +            _packed_kv_page_block_size(cache, model_type=model_type, name="kv")
@@ -7458,106 +5640,6 @@ index 64f111c5de98775f0cdb8d0c011710b2012fc9ae..1cd331a779c9f607bba831863c38a351
  def test_nvfp4_exact_head_scratch_view() -> None:
      """The shared scratch slicer also supports NVFP4's exact-head ABI."""
      mid_out = torch.empty((8, 64, 9, 512), dtype=torch.bfloat16, device="meta")
-@@ -508,6 +553,7 @@ def test_plan_arbitrary_num_heads_rides_runtime_h(known_crossover) -> None:
-         ("dsv4", _MODEL_TYPE_DSV4, 64, 512, "PREFILL_MG"),
-         ("glm53_nope", _MODEL_TYPE_GLM53_NOPE, 32, 2176, "PREFILL_MG"),
-         ("dots3_swa", _MODEL_TYPE_DOTS3_SWA, 64, 576, "PREFILL_SG"),
-+        ("dsv4_1", _MODEL_TYPE_DSV4_1, 64, 512, "PREFILL_SG"),
-     ],
- )
- def test_plan_crossover_injection(
-@@ -820,6 +866,91 @@ def test_plan_dots3_swa_decode_and_prefill(known_crossover) -> None:
-         )
- 
- 
-+def test_resolve_model_type_dsv4_1_explicit_only() -> None:
-+    """DSV4_1 shares d_qk=512 with DSV4 and its 528B payload with GLM53_NOPE,
-+    so it is reachable only through the explicit ue8m0_g32 scale format."""
-+    assert _resolve_model_type(512, "auto") == _MODEL_TYPE_DSV4
-+    assert _resolve_model_type(512, "arbitrary_fp32") == _MODEL_TYPE_GLM53_NOPE
-+    assert _resolve_model_type(512, "ue8m0_g32") == _MODEL_TYPE_DSV4_1
-+    # The format is pinned to the 512-wide layout; other widths reject it.
-+    with pytest.raises(ValueError, match="kv_scale_format"):
-+        _resolve_model_type(576, "ue8m0_g32")
-+    with pytest.raises(ValueError, match="kv_scale_format"):
-+        _resolve_model_type(1088, "ue8m0_g32")
-+
-+
-+def test_plan_dsv4_1_decode_and_prefill(known_crossover) -> None:
-+    """DSV4_1: decode (incl. dual-cache) at (H, 512) for T<=64; SG-only
-+    prefill above (its 32-wide quant groups floor the MG XV warp split)."""
-+    plan_mod, _ = known_crossover
-+    for num_heads in (8, 16, 32, 64):
-+        planned = plan_mod.plan(
-+            4,
-+            num_heads,
-+            512,
-+            _MODEL_TYPE_DSV4_1,
-+            64,
-+            False,
-+            plan_mod._PREFILL_IMPL_AUTO,
-+            torch.device("cpu"),
-+        )
-+        assert planned is not None
-+        assert planned.variant is plan_mod.KernelVariant.DECODE_SPLITK
-+    # Dual-cache decode stays on the decode-dsv4 kernel (same as DSV4).
-+    planned = plan_mod.plan(
-+        4,
-+        64,
-+        512,
-+        _MODEL_TYPE_DSV4_1,
-+        64,
-+        True,
-+        plan_mod._PREFILL_IMPL_AUTO,
-+        torch.device("cpu"),
-+        extra_topk=512,
-+    )
-+    assert planned is not None
-+    assert planned.variant is plan_mod.KernelVariant.DECODE_SPLITK
-+    # Past the decode-form cutoff every supported head count routes to SG.
-+    for num_heads in (8, 16, 32, 64):
-+        planned = plan_mod.plan(
-+            65,
-+            num_heads,
-+            512,
-+            _MODEL_TYPE_DSV4_1,
-+            64,
-+            False,
-+            plan_mod._PREFILL_IMPL_AUTO,
-+            torch.device("cpu"),
-+        )
-+        assert planned is not None
-+        assert planned.variant is plan_mod.KernelVariant.PREFILL_SG
-+    # Dual-cache prefill has no DSV4_1 form: the call decodes instead.
-+    planned = plan_mod.plan(
-+        65,
-+        64,
-+        512,
-+        _MODEL_TYPE_DSV4_1,
-+        64,
-+        True,
-+        plan_mod._PREFILL_IMPL_AUTO,
-+        torch.device("cpu"),
-+        extra_topk=512,
-+    )
-+    assert planned is None  # T > 64 is past the decode-form cutoff
-+    # Forcing swapAB on the SG-only family raises.
-+    with pytest.raises(ValueError, match="V32-family"):
-+        plan_mod.plan(
-+            128,
-+            64,
-+            512,
-+            _MODEL_TYPE_DSV4_1,
-+            64,
-+            False,
-+            plan_mod._PREFILL_IMPL_SWAPAB,
-+            torch.device("cpu"),
-+        )
-+
-+
- def test_plan_prefill_runtime_topk_widths(known_crossover) -> None:
-     """Prefill topk is a runtime kernel argument: every variant serves any
-     whole-tile width (topk >= 1, topk % 64 == 0; DOTS3_SWA also >= 513), and
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
 index 7d822ce3e554274387935faf7c3863d31d4f0a4e..0808b9abb7c80423d9071c4f057fd7cff8c7ebd4 100644
 --- a/tests/moe/test_b12x_fused_moe.py

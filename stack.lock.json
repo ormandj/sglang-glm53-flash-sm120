@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.4.3",
-    "candidate": 5,
-    "candidate_tag": "v0.4.3-rc.5",
+    "candidate": 6,
+    "candidate_tag": "v0.4.3-rc.6",
     "stable_tag": "v0.4.3",
-    "cache_schema": "v83"
+    "cache_schema": "v84"
   },
   "image": {
-    "tag": "v0.4.3-rc.5",
+    "tag": "v0.4.3-rc.6",
     "platform": "linux/amd64"
   },
   "model": {
@@ -47,11 +47,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 5
+      "value": 6
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v83"
+      "value": "v84"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -75,19 +75,19 @@
     },
     {
       "arg": "GLM53_SGLANG_HEAD",
-      "value": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac"
+      "value": "00143e9c23aee2dead5e6fe217bda4fa8739cb92"
     },
     {
       "arg": "GLM53_SGLANG_UPSTREAM_TREE",
-      "value": "163fdbf8bf723dbcfa895c12619506484513ec00"
+      "value": "96c030df146d986c1e38828ea709405ee055416d"
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "8144858b42b9986dd329f2a97a3e077e31852c57"
+      "value": "ccd5e98e7952c86fda7f0779269edfc9f6aa06f0"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "ac05d5d28c62e0b2d95a80792ac3120199acf7746203546963a6686bd0e6567e"
+      "value": "a4ac6ed5bfca5cee9c51c72d9a07bc23588daef00823de1d452d24d1a31b47d1"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -99,19 +99,19 @@
     },
     {
       "arg": "GLM53_FLASHINFER_HEAD",
-      "value": "19a103e6e688f4c2c370a7b5456720089f6999ca"
+      "value": "2b750b2ebe9265bebae1bb8b37e868e7e3fe2a8a"
     },
     {
       "arg": "GLM53_FLASHINFER_UPSTREAM_TREE",
-      "value": "3a185d9aa2aab6d33a3e825f49deaf676041736b"
+      "value": "bbd41ff1c8fca01a13abcc071bbe7dcfe19cf7a8"
     },
     {
       "arg": "GLM53_FLASHINFER_TREE",
-      "value": "7e104af153532c90344c0c574bc193082a816091"
+      "value": "dd8ed31d4492b038b9e3c6e67d09a2c26ad80618"
     },
     {
       "arg": "GLM53_FLASHINFER_PATCH_SHA256",
-      "value": "e804b51e6b19eef3e998879d8d34590f036f3a4bd19ae223687ec74b8e508d73"
+      "value": "858d6cde28052b559e55c9866f83925cac7bdc7b7b4bc3150268640f60f5db41"
     },
     {
       "arg": "GLM53_MODELOPT_REPOSITORY",
@@ -145,12 +145,12 @@
   "integration": {
     "sglang": {
       "repository": "https://github.com/sgl-project/sglang.git",
-      "head": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac",
-      "upstream_tree": "163fdbf8bf723dbcfa895c12619506484513ec00",
-      "tree": "8144858b42b9986dd329f2a97a3e077e31852c57",
+      "head": "00143e9c23aee2dead5e6fe217bda4fa8739cb92",
+      "upstream_tree": "96c030df146d986c1e38828ea709405ee055416d",
+      "tree": "ccd5e98e7952c86fda7f0779269edfc9f6aa06f0",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "ac05d5d28c62e0b2d95a80792ac3120199acf7746203546963a6686bd0e6567e",
-      "upstream_main_base": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac",
+      "patch_sha256": "a4ac6ed5bfca5cee9c51c72d9a07bc23588daef00823de1d452d24d1a31b47d1",
+      "upstream_main_base": "00143e9c23aee2dead5e6fe217bda4fa8739cb92",
       "included_upstream_work": [
         "sglang#36661 at cc78c41a14c7976845c540a02ffe526e013f0d0e: [Scheduler] Tie overlap batch snapshot lifetime to result completion; integrated/adapted to this source tree",
         "sglang#36696 at 1ff89343694a1265516b6147160a78e25f382f1d: [Mamba][Fix] Register a split node under its own key in the mamba radix cache; integrated/adapted to this source tree",
@@ -173,7 +173,7 @@
         "sglang#38213 at 342fba81d1c7fcefd7a58fedab957a63cd719e91: Reduce repeated attention setup during speculative decoding; integrated/adapted to this source tree",
         "sglang#38214 at 65113b94a83c8725babac5613bc12db724ff5f3e: Precompile GLM vision kernels before KV allocation to avoid first-image OOMs; integrated/adapted to this source tree",
         "sglang#38126 at 6a0444c619c9785b170c196b9467e37f15099e5b: feat: support GLM-5 KDA prefill with breakable CUDA graphs; integrated/adapted to this source tree",
-        "sglang#38430 at a36002eba6dd5c27e1b0da5b6a920801e023e31a: Enable compact GLM NoPE KV storage with native FlashInfer; integrated/adapted to this source tree",
+        "sglang#38430 at 28379a7c55687b9694a886550e39120853c9d000: Enable compact GLM NoPE KV storage with native FlashInfer; integrated/adapted to this source tree",
         "sglang#38431 at eb71d35924a95835ff74bbd7029f1e9cf79d150c: Reuse host lengths to avoid KDA prefill synchronization; integrated/adapted to this source tree",
         "sglang#35645 at 3878952b1bd298cbd57d792bceff083b0748e169: Stop waiting admission after resumed chunks and mixed-decode sub-page remainders; includes the author contribution on the current PR head"
       ]
@@ -181,18 +181,18 @@
     "flashinfer": {
       "repository": "https://github.com/flashinfer-ai/flashinfer.git",
       "package_version": "0.7.0",
-      "head": "19a103e6e688f4c2c370a7b5456720089f6999ca",
-      "upstream_tree": "3a185d9aa2aab6d33a3e825f49deaf676041736b",
-      "tree": "7e104af153532c90344c0c574bc193082a816091",
+      "head": "2b750b2ebe9265bebae1bb8b37e868e7e3fe2a8a",
+      "upstream_tree": "bbd41ff1c8fca01a13abcc071bbe7dcfe19cf7a8",
+      "tree": "dd8ed31d4492b038b9e3c6e67d09a2c26ad80618",
       "patch": "patches/flashinfer-glm53-integration.patch",
-      "patch_sha256": "e804b51e6b19eef3e998879d8d34590f036f3a4bd19ae223687ec74b8e508d73",
-      "upstream_main_base": "19a103e6e688f4c2c370a7b5456720089f6999ca",
+      "patch_sha256": "858d6cde28052b559e55c9866f83925cac7bdc7b7b4bc3150268640f60f5db41",
+      "upstream_main_base": "2b750b2ebe9265bebae1bb8b37e868e7e3fe2a8a",
       "included_upstream_work": [
         "flashinfer#4687 at b75d6bfff7735bc14417b8ff6c93c544ccd3f4b6: Fix W4A16 large weight bank addressing; integrated/adapted to this source tree",
         "flashinfer#4827 at 7cc5b29a18377370b3981351eff370d2e72a724d: Prevent SM12x MoE graph replays from corrupting memory after workspace growth; integrated/adapted to this source tree",
         "flashinfer#4910 at 7b0e8004b87d70431a7d172aa1793c14f3dc9929: feat(moe): persistent disk cache for the SM12x W4A16 CuTe-DSL MoE kernels; integrated/adapted to this source tree",
-        "flashinfer#5075 at 00e7865bd825046484452c270c08e4c03a6b8cd4: Runtime sparse MLA row strides and explicit DeepSeek-V4.1 format support by Gabriel Wu; integrated with additional layout validation and regression coverage",
-        "lucifer1004/flashinfer#3 at e7cad40ef1c1c279186c92a22656cdf42325d31c: Sparse MLA layout validation, eight-head GLM decode, calibration invalidation and regression coverage by David Orman, following flashinfer-ai/flashinfer#5075; incorporates the remaining work from flashinfer-ai/flashinfer#5022"
+        "flashinfer#5075 at af1d565c9ea54a3d98c960697f09c97a4c50c148: Runtime sparse MLA row strides and GLM decode head specializations by Gabriel Wu, with layout validation and regression coverage",
+        "lucifer1004/flashinfer#3 at e7cad40ef1c1c279186c92a22656cdf42325d31c: Sparse MLA layout validation, eight-head GLM decode, calibration invalidation and regression coverage by David Orman; incorporated into flashinfer#5075 in be8d7bdb95db4abf68740a7eafc8081cedf0f225 with co-author credit"
       ]
     },
     "modelopt": {
@@ -207,18 +207,18 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "ac05d5d28c62e0b2d95a80792ac3120199acf7746203546963a6686bd0e6567e",
-      "base_head": "dc5f59c3a2c4989a789fcf14ffd1c4c3fdc69dac",
-      "base_tree": "163fdbf8bf723dbcfa895c12619506484513ec00",
-      "result_tree": "8144858b42b9986dd329f2a97a3e077e31852c57"
+      "sha256": "a4ac6ed5bfca5cee9c51c72d9a07bc23588daef00823de1d452d24d1a31b47d1",
+      "base_head": "00143e9c23aee2dead5e6fe217bda4fa8739cb92",
+      "base_tree": "96c030df146d986c1e38828ea709405ee055416d",
+      "result_tree": "ccd5e98e7952c86fda7f0779269edfc9f6aa06f0"
     },
     {
       "name": "flashinfer-glm53-integration",
       "path": "patches/flashinfer-glm53-integration.patch",
-      "sha256": "e804b51e6b19eef3e998879d8d34590f036f3a4bd19ae223687ec74b8e508d73",
-      "base_head": "19a103e6e688f4c2c370a7b5456720089f6999ca",
-      "base_tree": "3a185d9aa2aab6d33a3e825f49deaf676041736b",
-      "result_tree": "7e104af153532c90344c0c574bc193082a816091"
+      "sha256": "858d6cde28052b559e55c9866f83925cac7bdc7b7b4bc3150268640f60f5db41",
+      "base_head": "2b750b2ebe9265bebae1bb8b37e868e7e3fe2a8a",
+      "base_tree": "bbd41ff1c8fca01a13abcc071bbe7dcfe19cf7a8",
+      "result_tree": "dd8ed31d4492b038b9e3c6e67d09a2c26ad80618"
     }
   ],
   "runtime_profile": {

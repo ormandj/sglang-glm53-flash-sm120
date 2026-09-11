@@ -4157,10 +4157,10 @@ index 14f8e910b175d6bbd59119bb365f7745f42bce85..dbc69d8838918df1b011ebd3df2f73cc
      if model_arch == "InternS2MobiusForConditionalGeneration":
          unsupported = []
 diff --git a/python/sglang/srt/arg_groups/overrides.py b/python/sglang/srt/arg_groups/overrides.py
-index b49b490a6f69af2408bae47e8454a80a7fddfea2..5b8949f0fe91e4f4abf5c62bbacb82ad57d5a0e7 100644
+index cd6b64db794c4661f71cd1e2e88bb5a1095e6135..8c8590e45c5bae85684def8df10cdf6fc01c4a24 100644
 --- a/python/sglang/srt/arg_groups/overrides.py
 +++ b/python/sglang/srt/arg_groups/overrides.py
-@@ -620,6 +620,7 @@ def _check_dsa_backend_constraints(
+@@ -622,6 +622,7 @@ def _check_dsa_backend_constraints(
      decode_backend: Optional[str],
      *,
      hip: bool,
@@ -4168,7 +4168,7 @@ index b49b490a6f69af2408bae47e8454a80a7fddfea2..5b8949f0fe91e4f4abf5c62bbacb82ad
  ) -> None:
      """Validate DSA backend / platform / kv-cache-dtype constraints."""
      chosen = {prefill_backend, decode_backend}
-@@ -632,15 +633,9 @@ def _check_dsa_backend_constraints(
+@@ -634,15 +635,9 @@ def _check_dsa_backend_constraints(
              "(flashmla_kv on Hopper, trtllm on Blackwell)."
          )
  
@@ -4187,7 +4187,7 @@ index b49b490a6f69af2408bae47e8454a80a7fddfea2..5b8949f0fe91e4f4abf5c62bbacb82ad
  
  
  def _check_tilelang_dsa_fp8_kv(
-@@ -649,10 +644,50 @@ def _check_tilelang_dsa_fp8_kv(
+@@ -651,10 +646,50 @@ def _check_tilelang_dsa_fp8_kv(
      decode_backend: Optional[str],
      *,
      hip: bool,
@@ -4241,7 +4241,7 @@ index b49b490a6f69af2408bae47e8454a80a7fddfea2..5b8949f0fe91e4f4abf5c62bbacb82ad
      )
  
  
-@@ -698,7 +733,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
+@@ -700,7 +735,13 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
      declared: Dict[str, Any] = {}
      model_arch = hf_config.architectures[0]
      is_glm_sm12_fp8 = (
@@ -4256,7 +4256,7 @@ index b49b490a6f69af2408bae47e8454a80a7fddfea2..5b8949f0fe91e4f4abf5c62bbacb82ad
          and major == 12
          and kv_cache_dtype == "fp8_e4m3"
          and not get_platform().is_hip
-@@ -781,7 +822,11 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
+@@ -783,7 +824,11 @@ def _dsa_split_backend_resolution(view: Any) -> dict:
      prefill = declared.get("dsa_prefill_backend", view.dsa_prefill_backend)
      decode = declared.get("dsa_decode_backend", view.dsa_decode_backend)
      _check_dsa_backend_constraints(
@@ -4304,7 +4304,7 @@ index 2a5e41dbd9c8877226e74ffc47b383f7b5ed9c06..0ccd1376252ef23c22caa61fbf84520a
      if not buckets_rule:
          return
 diff --git a/python/sglang/srt/configs/model_config.py b/python/sglang/srt/configs/model_config.py
-index 0f8874b63b6e0833adc95de8689ed8108573278a..be6bd336e3ce470b3c9a3aa386f464de8db27ec1 100644
+index 4de15464bdfcef00e70d7df40dc408bd017f9ec2..f24fffeaf6a73a1347ee1548e24e5b7e14ae966a 100644
 --- a/python/sglang/srt/configs/model_config.py
 +++ b/python/sglang/srt/configs/model_config.py
 @@ -231,6 +231,19 @@ def is_qwen4_exp(config) -> bool:
@@ -4327,7 +4327,7 @@ index 0f8874b63b6e0833adc95de8689ed8108573278a..be6bd336e3ce470b3c9a3aa386f464de
      # DSV4 and Qwen4-Exp carry the hc-flattened stream across the target->draft
      # boundary; other hc models (hy_v4) collapse to hidden_size first.
      if hc_mult <= 1 or not (is_deepseek_v4(hf_config) or is_qwen4_exp(hf_config)):
-@@ -1234,19 +1247,9 @@ class ModelConfig:
+@@ -1242,19 +1255,9 @@ class ModelConfig:
              self.num_key_value_heads = self.num_attention_heads
          self.hidden_size = self.hf_text_config.hidden_size
          hc_mult = getattr(self.hf_text_config, "hc_mult", 1)
@@ -6655,10 +6655,17 @@ index db8d3a88a33cde00498d29d270a4b9d7122fa663..78a1919a8bfc3af73517c04aee79266d
      return (num_draft_tokens + pool_size - 1) // pool_size
  
 diff --git a/python/sglang/srt/layers/attention/dsa_backend.py b/python/sglang/srt/layers/attention/dsa_backend.py
-index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a805161dc3e 100644
+index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..50b44633b2a4c25b98ee1b6c09154af5ff29c127 100644
 --- a/python/sglang/srt/layers/attention/dsa_backend.py
 +++ b/python/sglang/srt/layers/attention/dsa_backend.py
-@@ -57,6 +57,7 @@ from sglang.srt.environ import envs
+@@ -50,13 +50,12 @@ from sglang.kernels.ops.attention.utils import (
+ from sglang.kernels.ops.kvcache.cache_ops import concat_and_cast_q_fp8_pad
+ from sglang.srt.configs.model_config import (
+     get_dsa_index_kpool,
+-    get_dsa_index_topk,
+-    is_deepseek_dsa,
+ )
+ from sglang.srt.environ import envs
  from sglang.srt.layers.attention.base_attn_backend import AttentionBackend
  from sglang.srt.layers.attention.dsa.dsa_backend_kpool import (
      DeepseekSparseAttnBackendKPoolMixin,
@@ -6666,15 +6673,17 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
      _KPoolForwardInputs,
  )
  from sglang.srt.layers.attention.dsa.dsa_backend_mtp_precompute import (
-@@ -90,6 +91,7 @@ from sglang.srt.layers.cp.utils import is_cp_active
+@@ -88,8 +87,8 @@ from sglang.srt.layers.attention.trtllm_mla_backend import (
+ from sglang.srt.layers.cp.base import get_cp_strategy
+ from sglang.srt.layers.cp.utils import is_cp_active
  from sglang.srt.model_executor.forward_batch_info import ForwardBatch, ForwardMode
- from sglang.srt.runtime_context import get_buffer, get_exec, get_parallel, get_spec
+-from sglang.srt.runtime_context import get_buffer, get_exec, get_parallel, get_spec
  from sglang.srt.utils import (
 +    extend_mem_profile,
      is_cuda,
      is_gfx95_supported,
      is_hip,
-@@ -133,6 +135,10 @@ def prepare_kv_for_attention(
+@@ -133,6 +132,10 @@ def prepare_kv_for_attention(
      )
  
  
@@ -6685,7 +6694,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
  _is_hip = is_hip()
  _is_xpu = is_xpu()
  
-@@ -339,6 +345,36 @@ class DeepseekSparseAttnBackend(
+@@ -339,6 +342,36 @@ class DeepseekSparseAttnBackend(
          self.dsa_index_topk = get_dsa_index_topk(hf_config)
          self.dsa_index_kpool = get_dsa_index_kpool(hf_config)
          self.needs_cpu_seq_lens = self.dsa_index_kpool > 1
@@ -6722,7 +6731,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          self.max_context_len = model_runner.model_config.context_len
          self.num_q_heads = (
              model_runner.model_config.num_attention_heads // get_parallel().attn_tp_size
-@@ -358,6 +394,16 @@ class DeepseekSparseAttnBackend(
+@@ -358,6 +391,16 @@ class DeepseekSparseAttnBackend(
          self.supports_mha_one_shot: bool = True
          self.dsa_prefill_impl: _DSA_IMPL_T = get_exec().kernel.dsa_prefill_backend
          self.dsa_decode_impl: _DSA_IMPL_T = get_exec().kernel.dsa_decode_backend
@@ -6739,7 +6748,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          self.dsa_topk_backend: DSATopKBackend = DSATopKBackend.resolve(model_runner)
          if self.num_q_heads <= 64:
              self.flashmla_kv_num_q_heads = 64
-@@ -513,7 +559,9 @@ class DeepseekSparseAttnBackend(
+@@ -513,7 +556,9 @@ class DeepseekSparseAttnBackend(
          self._q8kv8_born_q_tbo = get_exec().overlap.enable_two_batch_overlap
  
          from sglang.kernels.ops.attention.flash_mla_sm120 import (
@@ -6749,7 +6758,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          )
  
          uses_flashinfer_sparse_mla = _validate_flashinfer_sparse_mla_backend(
-@@ -533,6 +581,20 @@ class DeepseekSparseAttnBackend(
+@@ -533,6 +578,20 @@ class DeepseekSparseAttnBackend(
                      device=model_runner.device,
                  ),
              )
@@ -6770,7 +6779,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          # Allocate global workspace buffer for TRT-LLM kernels (ragged attention on SM100/B200, or trtllm decode)
          elif self.device_sm_major >= 10 or self.dsa_decode_impl == "trtllm":
              self.workspace_buffer = get_buffer(
-@@ -1523,7 +1585,13 @@ class DeepseekSparseAttnBackend(
+@@ -1523,7 +1582,13 @@ class DeepseekSparseAttnBackend(
              # Normal Decode
              max_len = self._graph_page_table_width(metadata)
  
@@ -6785,7 +6794,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
                  fused_dsa_decode_metadata(
                      seq_lens=seq_lens,
                      req_pool_indices=req_pool_indices,
-@@ -1538,6 +1606,7 @@ class DeepseekSparseAttnBackend(
+@@ -1538,6 +1603,7 @@ class DeepseekSparseAttnBackend(
                      max_len=max_len,
                      dsa_index_topk=self.dsa_index_topk,
                      real_page_size=self.real_page_size,
@@ -6793,7 +6802,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  dsa_cache_seqlens = metadata.dsa_cache_seqlens_int32
-@@ -1563,7 +1632,13 @@ class DeepseekSparseAttnBackend(
+@@ -1563,7 +1629,13 @@ class DeepseekSparseAttnBackend(
          elif forward_mode.is_target_verify():
              max_seqlen_k = self._graph_page_table_width(metadata)
  
@@ -6808,7 +6817,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
                  paged_mqa_ctx_lens_2d = None
                  if (
                      self.speculative_num_draft_tokens >= 2
-@@ -1593,6 +1668,7 @@ class DeepseekSparseAttnBackend(
+@@ -1593,6 +1665,7 @@ class DeepseekSparseAttnBackend(
                      real_page_size=self.real_page_size,
                      next_n=self.speculative_num_draft_tokens,
                      paged_mqa_ctx_lens_2d=paged_mqa_ctx_lens_2d,
@@ -6816,7 +6825,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
                  )
                  target_verify_ctx_lens_written = paged_mqa_ctx_lens_2d is not None
                  cache_seqlens = metadata.cache_seqlens_int32
-@@ -1659,7 +1735,13 @@ class DeepseekSparseAttnBackend(
+@@ -1659,7 +1732,13 @@ class DeepseekSparseAttnBackend(
                  device=self.device,
              )
  
@@ -6831,7 +6840,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
                  fused_dsa_draft_extend_metadata(
                      seq_lens=seq_lens,
                      extend_seq_lens=extend_seq_lens,
-@@ -1680,6 +1762,7 @@ class DeepseekSparseAttnBackend(
+@@ -1680,6 +1759,7 @@ class DeepseekSparseAttnBackend(
                      max_extend_len=self.speculative_num_draft_tokens,
                      max_total_len=bs * self.speculative_num_draft_tokens,
                      static_extend_len=True,
@@ -6839,7 +6848,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
                  )
                  cache_seqlens = metadata.cache_seqlens_int32
                  seqlens_expanded = metadata.dsa_seqlens_expanded[:total_extend_len]
-@@ -1811,6 +1894,43 @@ class DeepseekSparseAttnBackend(
+@@ -1811,6 +1891,43 @@ class DeepseekSparseAttnBackend(
  
          metadata = self.decode_cuda_graph_metadata[bs]
  
@@ -6883,7 +6892,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          # Track whether fused kernel succeeded
          fused_kernel_succeeded = False
  
-@@ -1931,28 +2051,86 @@ class DeepseekSparseAttnBackend(
+@@ -1931,28 +2048,86 @@ class DeepseekSparseAttnBackend(
                  flashmla_metadata = metadata.flashmla_metadata.slice(slice(0, size + 1))
                  flashmla_metadata.copy_(precomputed.flashmla_metadata)
  
@@ -6985,7 +6994,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
  
          self.forward_metadata = metadata
  
-@@ -2028,12 +2206,13 @@ class DeepseekSparseAttnBackend(
+@@ -2028,12 +2203,13 @@ class DeepseekSparseAttnBackend(
                      if not layer.is_cross_attention
                      else forward_batch.encoder_out_cache_loc
                  )
@@ -7005,7 +7014,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
  
          # Use MHA kernel if in MHA_ONE_SHOT mode
          if self.use_mha:
-@@ -2127,6 +2306,10 @@ class DeepseekSparseAttnBackend(
+@@ -2127,6 +2303,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -7016,7 +7025,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
              )
          elif dsa_impl == "triton":
              from sglang.kernels.ops.attention.dsa.triton_sparse_mla import (
-@@ -2226,14 +2409,15 @@ class DeepseekSparseAttnBackend(
+@@ -2226,14 +2406,15 @@ class DeepseekSparseAttnBackend(
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
              if topk_transform_method == TopkTransformMethod.RAGGED:
                  page_table_1 = topk_indices
@@ -7040,7 +7049,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          elif dsa_impl == "flashmla_kv":
              if q_rope is not None:
                  q_all = concat_mla_absorb_q_general(q_nope, q_rope)
-@@ -2436,6 +2620,10 @@ class DeepseekSparseAttnBackend(
+@@ -2436,6 +2617,10 @@ class DeepseekSparseAttnBackend(
                  page_table_1=page_table_1,
                  sm_scale=layer.scaling,
                  v_head_dim=layer.v_head_dim,
@@ -7051,7 +7060,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
              )
          elif dsa_impl == "triton":
              return self._forward_triton_decode(
-@@ -2936,6 +3124,7 @@ class DeepseekSparseAttnBackend(
+@@ -2936,6 +3121,7 @@ class DeepseekSparseAttnBackend(
              indices=page_table_1,
              seq_lens=seq_lens,
              workspace_buffer=self.workspace_buffer,
@@ -7059,7 +7068,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
              page_size=self.real_page_size,
              kv_cache_dim=self.kv_cache_dim,
              qk_nope_head_dim=self.qk_nope_head_dim,
-@@ -3080,6 +3269,7 @@ class DeepseekSparseAttnBackend(
+@@ -3080,6 +3266,7 @@ class DeepseekSparseAttnBackend(
          v_head_dim: int,
          page_table_1: torch.Tensor,
          sm_scale: float,
@@ -7067,7 +7076,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
      ) -> torch.Tensor:
          from sglang.kernels.ops.attention.dsa.tilelang_kernel import tilelang_sparse_fwd
  
-@@ -3096,6 +3286,17 @@ class DeepseekSparseAttnBackend(
+@@ -3096,6 +3283,17 @@ class DeepseekSparseAttnBackend(
                  dim=-1,
              )
  
@@ -7085,7 +7094,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          return tilelang_sparse_fwd(
              q=q_all,
              kv=kv_cache,
-@@ -3571,6 +3772,10 @@ class DeepseekSparseAttnBackend(
+@@ -3571,6 +3769,10 @@ class DeepseekSparseAttnBackend(
              skip_softmax_threshold_scale_factor=envs.SGLANG_SKIP_SOFTMAX_DECODE_THRESHOLD_SCALE_FACTOR.get(),
              sparse_mla_top_k_lens=sparse_mla_top_k_lens,
              multi_ctas_kv_counter_buffer=self._multi_ctas_kv_counter_buffer,
@@ -7096,7 +7105,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
          )
  
          return out
-@@ -3755,6 +3960,12 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3755,6 +3957,12 @@ class DeepseekSparseAttnMultiStepBackend:
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_forward_metadata(forward_batch)
  
@@ -7109,7 +7118,7 @@ index 67c0725a060f6bb8926e110c0fcd28e9fc494d16..6357eee5e1367bcab09aab26d66c1a80
      def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
          for i in range(self.speculative_num_steps - 1):
              self.attn_backends[i].init_cuda_graph_state(max_bs, max_num_tokens)
-@@ -3926,15 +4137,31 @@ class DeepseekSparseAttnMultiStepBackend:
+@@ -3926,15 +4134,31 @@ class DeepseekSparseAttnMultiStepBackend:
                          forward_mode=ForwardMode.DECODE,
                      )
          else:
@@ -8569,10 +8578,10 @@ index 4290ad32bfd5f1e8ee68e9fd60fd4465002bbd41..199b52f188ff42c72aa7121dc36cc946
                      # We want to track mamba_track_seqlen_aligned, and it's not the last position,
                      # so we need to add 1 to the seqlen to retrieve the correct mamba state from h.
 diff --git a/python/sglang/srt/managers/schedule_policy.py b/python/sglang/srt/managers/schedule_policy.py
-index 79731c1d5ae0db2d5971768adf2749c547e79c1a..d5a25e7009a99769ec23d8c9b6097c1473dbb134 100644
+index 9fa67710b31a1087a0745c81e103fe93366a882f..555f227fa382c3938cb90f42ceaf1b03d051fc6a 100644
 --- a/python/sglang/srt/managers/schedule_policy.py
 +++ b/python/sglang/srt/managers/schedule_policy.py
-@@ -636,6 +636,20 @@ class PrefillAdder:
+@@ -635,6 +635,20 @@ class PrefillAdder:
              self.rem_mamba_slots = self.token_to_kv_pool_allocator.mamba_allocator.schedulable_available_size()
              if self.is_hybrid_ssm_cache:
                  self.rem_mamba_slots += self.tree_cache.mamba_evictable_size()
@@ -8593,7 +8602,7 @@ index 79731c1d5ae0db2d5971768adf2749c547e79c1a..d5a25e7009a99769ec23d8c9b6097c14
  
          self.priority_scheduling_preemption_threshold = (
              priority_scheduling_preemption_threshold
-@@ -855,6 +869,13 @@ class PrefillAdder:
+@@ -854,6 +868,13 @@ class PrefillAdder:
              >= capacity
          )
  
@@ -8607,7 +8616,7 @@ index 79731c1d5ae0db2d5971768adf2749c547e79c1a..d5a25e7009a99769ec23d8c9b6097c14
      def _mamba_gap_budget_for_req(self, req: Req) -> int:
          """Shared-gap reservation (full-token-equivalents) for a request's new
          mamba state. Charged only on the SHARED Mamba pool (`_mamba_slot_cost > 0`)
-@@ -891,7 +912,10 @@ class PrefillAdder:
+@@ -890,7 +911,10 @@ class PrefillAdder:
              if self.rem_dllm_tokens <= 0:
                  return AddReqResult.OTHER
          else:
@@ -8619,7 +8628,7 @@ index 79731c1d5ae0db2d5971768adf2749c547e79c1a..d5a25e7009a99769ec23d8c9b6097c14
                  return AddReqResult.OTHER
  
          return AddReqResult.CONTINUE
-@@ -903,6 +927,7 @@ class PrefillAdder:
+@@ -902,6 +926,7 @@ class PrefillAdder:
          max_new_tokens: int,
          retracted_stain: bool,
          mamba_gap_reserve: int = 0,
@@ -8701,7 +8710,7 @@ index 79731c1d5ae0db2d5971768adf2749c547e79c1a..d5a25e7009a99769ec23d8c9b6097c14
                  self._account_prefill_cache_admission(req, prefix_len)
  
 diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
-index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15a458da59 100644
+index f0914b18d55382b35c7674b4e59fcf91c7f81d82..92a110bbfd5041efb7a7668ec7b09ad8fcdca5e4 100644
 --- a/python/sglang/srt/managers/scheduler.py
 +++ b/python/sglang/srt/managers/scheduler.py
 @@ -152,6 +152,8 @@ from sglang.srt.managers.io_struct import (
@@ -8732,7 +8741,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
          # Init request dispatcher
          self.init_request_dispatcher()
  
-@@ -1652,12 +1659,6 @@ class Scheduler(
+@@ -1659,12 +1666,6 @@ class Scheduler(
              self.copy_stream
          )
  
@@ -8745,7 +8754,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
      def maybe_init_ngram_embedding(self):
          self.ngram_embedding_manager = (
              self.tp_worker.model_runner.ngram_embedding_manager
-@@ -1784,6 +1785,7 @@ class Scheduler(
+@@ -1791,6 +1792,7 @@ class Scheduler(
                  (ShutdownReq, self.handle_shutdown),
                  (GetInternalStateReq, self.get_internal_state),
                  (SetInternalStateReq, self.set_internal_state),
@@ -8753,7 +8762,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
                  (RpcReqInput, self.handle_rpc_request),
                  (ExpertDistributionReq, self.expert_distribution_handle),
                  (LoadLoRAAdapterReqInput, self.load_lora_adapter),
-@@ -1843,10 +1845,20 @@ class Scheduler(
+@@ -1850,10 +1852,20 @@ class Scheduler(
          Sets up the schedule stream and dispatches to the appropriate event loop.
          The event loop blocks until shutdown.
          """
@@ -8777,7 +8786,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
  
          if use_mlx():
              # MLX overlap uses mx.async_eval for CPU/GPU overlap,
-@@ -3585,6 +3597,7 @@ class Scheduler(
+@@ -3592,6 +3604,7 @@ class Scheduler(
              running_batch.filter_batch()
              if running_batch.is_empty():
                  running_batch.batch_is_full = False
@@ -8785,7 +8794,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
  
          if self.dllm_config is not None:
              new_batch = self.get_new_batch_dllm(running_batch)
-@@ -3713,8 +3726,16 @@ class Scheduler(
+@@ -3720,8 +3733,16 @@ class Scheduler(
              if self.enable_hicache_storage:
                  self._retry_missed_storage_prefetches()
  
@@ -8804,7 +8813,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
              running_batch.batch_is_full = False
  
          if (
-@@ -3797,10 +3818,33 @@ class Scheduler(
+@@ -3804,10 +3825,33 @@ class Scheduler(
              prefill_tile_block_m=prefill_tile_block_m,
          )
  
@@ -8839,7 +8848,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
          if self.enable_lora:
              running_loras = {
                  req.lora_id for req in running_batch.reqs if not req.finished()
-@@ -3814,11 +3858,12 @@ class Scheduler(
+@@ -3821,11 +3865,12 @@ class Scheduler(
                      running_batch.reqs,
                  )
  
@@ -8854,7 +8863,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
              if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
                  continue
  
-@@ -3861,6 +3906,17 @@ class Scheduler(
+@@ -3868,6 +3913,17 @@ class Scheduler(
                      # marks the staged span below once it is surfaced.
                      req.host_hit_is_storage = False
  
@@ -8872,7 +8881,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
              req.init_next_round_input(self.tree_cache)
              if (
                  self.enable_hicache_storage
-@@ -4139,20 +4195,27 @@ class Scheduler(
+@@ -4146,20 +4202,27 @@ class Scheduler(
          batch.prepare_for_decode()
          return batch
  
@@ -8914,7 +8923,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
  
      @contextmanager
      def _forward_isolation(self, batch: ScheduleBatch, *, overlap: bool):
-@@ -4165,12 +4228,11 @@ class Scheduler(
+@@ -4172,12 +4235,11 @@ class Scheduler(
          2. Substitute sampling_info with a forward-only copy (orchestrator=None,
             shares the pre-accumulated penalty buffer) so V2's multiple init_new
             calls don't double-accumulate penalties.
@@ -8932,7 +8941,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
          """
          # 1. snapshot
          snapshot_v2_full = not batch.spec_algorithm.is_none()
-@@ -4185,12 +4247,11 @@ class Scheduler(
+@@ -4192,12 +4254,11 @@ class Scheduler(
          if sched_sampling_info is not None:
              batch.sampling_info = sched_sampling_info.copy_for_forward()
  
@@ -8948,7 +8957,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
          finally:
              if snapshot_v2_full:
                  for name, value in sched_snapshot.items():
-@@ -4251,7 +4312,7 @@ class Scheduler(
+@@ -4258,7 +4319,7 @@ class Scheduler(
                      # post-forward must not un-consume staging.
                      resolve_forward_inputs(batch, self.future_map)
  
@@ -8957,7 +8966,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
                          future_indices = batch.req_pool_indices
  
                          # Spec_v2 fires on_publish mid-worker (between verify and
-@@ -4277,13 +4338,12 @@ class Scheduler(
+@@ -4284,13 +4345,12 @@ class Scheduler(
                          )
                          if batch.spec_algorithm.is_none():
                              self.future_map.publish(future_indices, batch.seq_lens + 1)
@@ -8977,7 +8986,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
                          if self.enable_unified_memory:
                              # Record a `forward_done` event after the forward (before
                              # copy_to_cpu); lazy-compaction `_flush` gates src reuse on
-@@ -4405,7 +4465,11 @@ class Scheduler(
+@@ -4412,7 +4472,11 @@ class Scheduler(
              ret = batch_result
          else:  # embedding or reward model
              if self.enable_overlap:
@@ -8990,7 +8999,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
                  with self.forward_stream_ctx:
                      self.forward_stream.wait_stream(self.schedule_stream)
                      resolve_forward_inputs(batch, self.future_map)
-@@ -4417,7 +4481,11 @@ class Scheduler(
+@@ -4424,7 +4488,11 @@ class Scheduler(
                          pooled_hidden_states=pooler_output.pooled_hidden_states,
                          can_run_cuda_graph=can_run_cuda_graph,
                      )
@@ -9002,7 +9011,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
              else:
                  resolve_forward_inputs(batch, self.future_map)
                  pooler_output, can_run_cuda_graph = (
-@@ -4540,9 +4608,11 @@ class Scheduler(
+@@ -4547,9 +4615,11 @@ class Scheduler(
          # Release the closure and large GPU tensors that are no longer needed.
          # The delay_sample_func closure captures forward_batch (which holds
          # sampling_info with vocab_mask) and logits_output (which holds
@@ -9017,7 +9026,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
          batch_result.delay_sample_func = None
          if batch_result.logits_output is not None:
              batch_result.logits_output.next_token_logits = None
-@@ -4565,31 +4635,42 @@ class Scheduler(
+@@ -4572,31 +4642,42 @@ class Scheduler(
              snapshot=snapshot,
          )
  
@@ -9081,7 +9090,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
  
      def _record_step_counters(
          self, batch: ScheduleBatch, result: GenerationBatchResult
-@@ -4624,7 +4705,7 @@ class Scheduler(
+@@ -4631,7 +4712,7 @@ class Scheduler(
              )
  
      def maybe_send_health_check_signal(self):
@@ -9090,7 +9099,7 @@ index ef046fe91f17c12119c3a2097393a539b9e7a380..36c1314dad34a5a4a4a62a073a9c0a15
              # Return some signal for the health check.
              # This is used to prevent the health check signal being blocked by long context prefill.
              # However, one minor issue is that this code path does not check the status of detokenizer manager.
-@@ -5601,6 +5682,38 @@ class Scheduler(
+@@ -5608,6 +5689,38 @@ class Scheduler(
          if self.idle_sleeper is not None:
              self.idle_sleeper.maybe_sleep()
  
@@ -10966,7 +10975,7 @@ index f602d2c52300ce4645cb58a469b06487d31c7b47..828503b6dcf6bb7487975674e1dcd74e
              storage_backend=storage_backend,
              storage_backend_extra_config_json=storage_backend_extra_config_json,
 diff --git a/python/sglang/srt/model_executor/model_runner.py b/python/sglang/srt/model_executor/model_runner.py
-index aa20efd8ccba59c3ceacf85b32bd8215f96164c4..fba853adad70120dd41513ca4621303d81508ee4 100644
+index 14ad4fb4afe63dbc026a5c723a086ad5c90da27c..d170b4b4264c4e58b6059e55b1a8c7f2165d94e8 100644
 --- a/python/sglang/srt/model_executor/model_runner.py
 +++ b/python/sglang/srt/model_executor/model_runner.py
 @@ -96,6 +96,7 @@ from sglang.srt.model_executor.cuda_graph_config import (
@@ -21281,7 +21290,7 @@ index f1ac81bbfb3195181a837448f7cccea0953f0920..ffb6e160b8c9f110f327b20d0f95b076
              media_url_max_file_size_mb=64,
          )
 diff --git a/test/registered/unit/managers/test_prefill_adder.py b/test/registered/unit/managers/test_prefill_adder.py
-index c881f612818c833bbd43f59c6fb57ed56004e1ed..69f8648bbfb9a0989772112a4d7148eeedb30fea 100644
+index 2fbe8e1eef3700f98983de36d784d6ae1d44b339..053a99817f62cfb72c604fbd32498b36ee4d43a1 100644
 --- a/test/registered/unit/managers/test_prefill_adder.py
 +++ b/test/registered/unit/managers/test_prefill_adder.py
 @@ -50,6 +50,7 @@ class TestPrefillAdder(CustomTestCase):
@@ -27326,10 +27335,10 @@ index 1b72d944034559142c2b8c67ca85ff551af0e0f4..080242ee82fc66cfd9a5b922f320d4ef
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/registered/unit/test_model_overrides.py b/test/registered/unit/test_model_overrides.py
-index 9130888363f9cb870774d713dfdad8603263491f..d366fed73f6bad49a5d9b401c3b59d64d7d26009 100644
+index 7f146151f0fe5eb732f353a043f54aef7f0ee616..04429fe6798b90fa4958ee1071690b4175772f7b 100644
 --- a/test/registered/unit/test_model_overrides.py
 +++ b/test/registered/unit/test_model_overrides.py
-@@ -1924,13 +1924,18 @@ class TestGoldenModelOverrides(_IsolatedPublish):
+@@ -1964,13 +1964,18 @@ class TestGoldenModelOverrides(_IsolatedPublish):
              override_platform(is_hip=False),
              patch("torch.cuda.get_device_capability", return_value=(12, 0)),
          ):

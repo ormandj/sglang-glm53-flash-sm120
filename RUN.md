@@ -31,6 +31,6 @@ Run the `glm-qualification` panel described in [bench/aiperf/README.md](bench/ai
 ## Build from source
 
 ```bash
-docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.3-rc.5 .
-CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v83 IMAGE=sglang-glm53-flash-sm120:v0.4.3-rc.5 ./examples/serve-glm53-flash.sh
+docker build -f Containerfile -t sglang-glm53-flash-sm120:v0.4.3-rc.6 .
+CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v84 IMAGE=sglang-glm53-flash-sm120:v0.4.3-rc.6 ./examples/serve-glm53-flash.sh
 ```
