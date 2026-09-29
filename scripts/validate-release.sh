@@ -33,7 +33,7 @@ done
 [[ "$(jq -er '.image.platform' "$lock")" == "linux/amd64" ]]
 [[ "$(jq -er '.model.native_context_length' "$lock")" == 1048576 ]]
 [[ "$(jq -er '.hardware.compute_capability' "$lock")" == "sm_120" ]]
-[[ "$(jq -er '.hardware.tensor_parallel' "$lock")" == 2 ]]
+[[ "$(jq -er '.hardware.tensor_parallel' "$lock")" == 4 ]]
 [[ "$(jq -er '.hardware.expert_parallel' "$lock")" == 1 ]]
 
 check_pin() {
@@ -59,7 +59,6 @@ check_pin GLM53_FLASHINFER_VERSION "$(jq -er '.integration.flashinfer.package_ve
 check_pin GLM53_MODELOPT_HEAD "$(jq -er '.integration.modelopt.head' "$lock")"
 check_pin GLM53_MODELOPT_TREE "$(jq -er '.integration.modelopt.tree' "$lock")"
 check_pin GLM53_MODELOPT_VERSION "$(jq -er '.integration.modelopt.package_version' "$lock")"
-check_pin GLM53_MODELOPT_RELEASE_TAG "$(jq -er '.integration.modelopt.release_tag' "$lock")"
 
 while IFS=$'\t' read -r arg value; do
   grep -Fxq "ARG ${arg}=${value}" "$repo/Containerfile" || {

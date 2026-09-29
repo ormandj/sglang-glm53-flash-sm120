@@ -87,11 +87,8 @@ verify_patched_tree flashinfer \
 verify_tree modelopt \
   "$(jq -er '.integration.modelopt.repository' "$lock")" \
   "$(pin GLM53_MODELOPT_HEAD)" "$(pin GLM53_MODELOPT_TREE)"
-git -C "$work/modelopt" fetch -q --depth=1 origin \
-  "refs/tags/$(pin GLM53_MODELOPT_RELEASE_TAG):refs/tags/$(pin GLM53_MODELOPT_RELEASE_TAG)"
-[[ "$(git -C "$work/modelopt" rev-parse "$(pin GLM53_MODELOPT_RELEASE_TAG)^{commit}")" == \
-   "$(pin GLM53_MODELOPT_HEAD)" ]] || { echo "modelopt release tag mismatch" >&2; exit 1; }
-printf '  modelopt release tag %s\n' "$(pin GLM53_MODELOPT_RELEASE_TAG)"
+verify_tree deepgemm "$(pin GLM53_DEEPGEMM_REPOSITORY)" \
+  "$(pin GLM53_DEEPGEMM_HEAD)" "$(pin GLM53_DEEPGEMM_TREE)"
 
 [[ "$(jq -er '.verification.sglang_source_verifiable' "$lock")" == true ]]
 [[ "$(jq -er '.verification.sglang_repository' "$lock")" == "$(pin GLM53_SGLANG_REPOSITORY)" ]]

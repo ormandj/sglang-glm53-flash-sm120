@@ -12,6 +12,8 @@ on:
       - stack.lock.json
       - patches/**
       - acceptance_check.py
+      - scripts/build-stack.sh
+      - scripts/prepare-stack.py
 
 env:
   IMAGE_NAME: ${{ github.repository }}

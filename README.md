@@ -70,7 +70,7 @@ to see or change every flag. [`RUN.md`](RUN.md) describes the serving configurat
 - `--max-mamba-cache-size` is recurrent-state slots, not KV cache. Each live
   request uses four to five, so the launcher ships 28 for four requests.
 
-To build this source locally as `sglang-glm53-flash-sm120:v0.4.3`, follow [RUN.md](RUN.md).
+To build this source locally as `sglang-glm53-flash-sm120:v0.5.0-rc.1`, follow [RUN.md](RUN.md).
 
 ## What to expect
 
@@ -119,7 +119,7 @@ source with the producers in [`quantization/`](quantization/).
 podman build --target runtime \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.4.3 .
+  -t sglang-glm53-flash-sm120:v0.5.0-rc.1 .
 ```
 
 The vendor base image supplies the pinned CUDA/PyTorch dependency stack; the SGLang and FlashInfer source trees are verified separately as described above.
