@@ -151,7 +151,6 @@ def test_glm_qualification_uses_the_standardized_release_panel() -> None:
     assert EXPECTED_DECODE["sglang"]["glm-qualification"] == {
         1: 5,
         2: 5,
-        3: 5,
         4: 5,
     }
     assert EXPECTED_PREFILL["glm-qualification"] == {

@@ -6,7 +6,7 @@ This harness measures an already running OpenAI-compatible server. It does not s
 
 Run GLM performance comparisons with fixed native MTP: three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Include reasoning tokens in output throughput. The default launcher uses adaptive MTP for serving; [RUN.md](../../RUN.md) explains the benchmark argument changes.
 
-Use `glm-qualification` for the supported four-request profile. It runs five repetitions at each of C1, C2, C3 and C4, plus five cold prefill requests at each of 8k, 32k, 64k and 128k prompt tokens. Higher-concurrency modes in the shared harness do not establish that this model configuration supports those concurrency levels.
+Use `glm-qualification` for the core panel. It runs five repetitions at each of C1, C2 and C4, plus five cold prefill requests at each of 8k, 32k, 64k and 128k prompt tokens. Use `glm-capacity` for five repetitions at C8 and C16 and three at C32 when the serving profile admits those cohorts. Availability of a benchmark mode does not establish that a model configuration supports its concurrency levels.
 
 The decode workload uses a synthetic coding prompt of approximately 16,384 input tokens, 4,096 output tokens with `ignore_eos=true`, temperature zero, top-p one and a fixed seed panel. Each repetition submits exactly one cohort at its selected concurrency. Analysis covers average context from 17,408 to 20,480 tokens. A window is rejected for prefill activity, queueing, counter resets, incorrect occupancy or insufficient usable context coverage.
 
