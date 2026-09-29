@@ -6,7 +6,7 @@ if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   exit 2
 fi
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|glm-c3|publication" >&2
+  echo "usage: $0 CAMPAIGN_ID BUILD_ID exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-capacity|glm-c1|glm-c2|glm-c3|publication" >&2
   exit 2
 fi
 
@@ -19,7 +19,7 @@ for value in "$campaign" "$build_id"; do
   esac
 done
 case "$mode" in
-  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-c1|glm-c2|glm-c3|publication) ;;
+  exploratory-decode|quick|prefill-quick|decode-supplement|repeat-c2-c4|repeat-c4|repeat-c8|qualification|glm-qualification|glm-capacity|glm-c1|glm-c2|glm-c3|publication) ;;
   *) echo "error: unsupported engine-gate mode: $mode" >&2; exit 2 ;;
 esac
 
@@ -232,12 +232,17 @@ case "$mode" in
     decode_cohort_only=1
     ;;
   glm-qualification)
-    # GLM-5.3-Flash mamba admission uses about four state slots per decoding
-    # request plus transients for in-flight prefills. The production profile
-    # reserves 28 slots and supports the standardized C1/C2/C3/C4 cohort
-    # panel. C5+ cells are outside the four-request serving contract.
+    # Preserve the historical C1/C2/C3/C4 cohort and cold-prefill panel for
+    # matched comparisons. glm-capacity measures the larger admitted cohorts.
     decode_shapes='1:5:4096 2:5:4096 3:5:4096 4:5:4096'
     prefill_shapes='8k-c1:8192:1:5 32k-c1:32768:1:5 64k-c1:65536:1:5 128k-c1:130816:1:5'
+    decode_cohort_only=1
+    ;;
+  glm-capacity)
+    # Extend the unchanged C1-C4 panel on a four-GPU deployment. One cohort
+    # per cell prevents refill prefills from contaminating the decode window.
+    decode_shapes='8:5:4096 16:5:4096 32:3:4096'
+    prefill_shapes=''
     decode_cohort_only=1
     ;;
   qualification)

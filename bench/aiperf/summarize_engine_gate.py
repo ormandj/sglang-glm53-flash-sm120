@@ -28,12 +28,12 @@ EXPECTED_DECODE = {
         "repeat-c4": {4: 5},
         "repeat-c8": {8: 5},
         "qualification": {1: 5, 2: 5, 4: 5, 8: 5, 16: 3, 32: 3},
-        # The GLM production profile reserves 28 mamba slots for its
-        # standardized C1/C2/C3/C4 cohort qualification panel.
+        # Keep the original cohort panel comparable; capacity is separate.
         "glm-c1": {1: 5},
         "glm-c2": {2: 5},
         "glm-c3": {3: 5},
         "glm-qualification": {1: 5, 2: 5, 3: 5, 4: 5},
+        "glm-capacity": {8: 5, 16: 5, 32: 3},
         "publication": {1: 5, 2: 5, 4: 5, 8: 5, 16: 5, 32: 5},
     },
     "vllm": {
@@ -49,6 +49,7 @@ EXPECTED_DECODE = {
         "glm-c2": {2: 5},
         "glm-c3": {3: 5},
         "glm-qualification": {1: 5, 2: 5, 3: 5, 4: 5},
+        "glm-capacity": {8: 5, 16: 5, 32: 3},
         "publication": {1: 5, 2: 5, 4: 5, 8: 5, 16: 5},
     },
 }
@@ -68,6 +69,7 @@ EXPECTED_PREFILL = {
     },
     "glm-c1": {},
     "glm-c2": {},
+    "glm-capacity": {},
     "glm-c3": {},
     "glm-qualification": {
         "8k-c1": 5,
