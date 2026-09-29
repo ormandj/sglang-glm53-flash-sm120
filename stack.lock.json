@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.5.0",
-    "candidate": 1,
-    "candidate_tag": "v0.5.0-rc.1",
+    "candidate": 2,
+    "candidate_tag": "v0.5.0-rc.2",
     "stable_tag": "v0.5.0",
-    "cache_schema": "v85"
+    "cache_schema": "v86"
   },
   "image": {
-    "tag": "v0.5.0-rc.1",
+    "tag": "v0.5.0-rc.2",
     "platform": "linux/amd64"
   },
   "model": {
@@ -44,11 +44,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": 1
+      "value": "2"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v85"
+      "value": "v86"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -80,11 +80,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "39e8e3adf3a6cbbf6c366c2f021a558bf3573836"
+      "value": "ae4531283889f8d6167c8b03e081cac4bbdb7dcb"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "882d23e8737f12214128b904f8c8fd19912c1bb66fff36ce8192bb07451876b4"
+      "value": "a1e63044c1c413df46f330f4ba1c2e6212a90abc538a99841e5fbee733a840cf"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -152,9 +152,9 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "c7be3e935b5034006cd6ae7977b41e2459b4126c",
       "upstream_tree": "754d67baa8f9d3c9c0f6b2aa5f112b826b90eacc",
-      "tree": "39e8e3adf3a6cbbf6c366c2f021a558bf3573836",
+      "tree": "ae4531283889f8d6167c8b03e081cac4bbdb7dcb",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "882d23e8737f12214128b904f8c8fd19912c1bb66fff36ce8192bb07451876b4",
+      "patch_sha256": "a1e63044c1c413df46f330f4ba1c2e6212a90abc538a99841e5fbee733a840cf",
       "upstream_main_base": "c7be3e935b5034006cd6ae7977b41e2459b4126c"
     },
     "flashinfer": {
@@ -186,10 +186,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "882d23e8737f12214128b904f8c8fd19912c1bb66fff36ce8192bb07451876b4",
+      "sha256": "a1e63044c1c413df46f330f4ba1c2e6212a90abc538a99841e5fbee733a840cf",
       "base_head": "c7be3e935b5034006cd6ae7977b41e2459b4126c",
       "base_tree": "754d67baa8f9d3c9c0f6b2aa5f112b826b90eacc",
-      "result_tree": "39e8e3adf3a6cbbf6c366c2f021a558bf3573836"
+      "result_tree": "ae4531283889f8d6167c8b03e081cac4bbdb7dcb"
     },
     {
       "name": "flashinfer-glm53-integration",

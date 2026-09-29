@@ -20,6 +20,13 @@ for dist, name in [('nvidia-modelopt', 'modelopt'), ('sgl-deep-gemm', 'deepgemm'
 assert os.environ['CUBLAS_WORKSPACE_CONFIG'] == ':4096:2:16:8'
 assert md.version('nvidia-cutlass-dsl') == '4.8.0'
 assert md.version('quack-kernels') == '0.6.5'
+# A version match alone could still select the unpatched base-image wheel.
+kernel = md.distribution('sglang-kernel')
+kernel_url = json.loads(kernel.read_text('direct_url.json'))['url']
+assert kernel.version == '0.4.7'
+assert kernel_url.startswith('file:///opt/glm53/wheels/sglang-kernel/')
+assert (root / 'provenance/sglang-kernel-wheels.sha256').is_file()
+
 # Parse every changed Python file so unused alternate paths cannot hide syntax errors.
 import subprocess
 changed = subprocess.check_output(['git', '-C', str(root / 'sources/sglang'), 'diff', '--cached', '--name-only'], text=True).splitlines()

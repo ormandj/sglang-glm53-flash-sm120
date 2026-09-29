@@ -3,7 +3,7 @@ set -euo pipefail
 root=/opt/glm53
 py=/opt/sglang/bin/python
 rustup toolchain install 1.92 --profile minimal
-uv pip install --python "$py" 'setuptools>=80' setuptools-rust 'setuptools-scm>=8,<10' wheel build
+uv pip install --python "$py" 'setuptools>=80' setuptools-rust 'setuptools-scm>=8,<10' wheel build scikit-build-core cmake ninja
 uv run --no-project --python "$py" python "$root/scripts/prepare-stack.py"
 uv pip uninstall --python "$py" flashinfer-python flashinfer-cubin flashinfer-jit-cache sgl-deep-gemm deep-gemm || true
 cd "$root/sources/flashinfer"
@@ -19,6 +19,15 @@ version=$(uv run --no-project --python "$py" python -c 'import json; print(json.
 SETUPTOOLS_SCM_PRETEND_VERSION="$version" uv pip install --python "$py" --no-deps .
 cd "$root/sources/sglang"
 uv pip install --python "$py" --no-build-isolation -e ./python typeguard==4.4.4 'pillow>=12.3.0' protobuf==6.33.5 grpcio-tools==1.81.1 accelerate==1.12.0
+# Build the AOT package from the same patched tree as the Python/JIT runtime.
+# CUDA 13 upstream CMake includes SM120; omit unrelated pre-SM90 and FA3 targets.
+CMAKE_BUILD_PARALLEL_LEVEL=8 uv build --python "$py" --wheel --no-build-isolation \
+  --out-dir "$root/wheels/sglang-kernel" ./python/sglang/kernels/aot \
+  -Ccmake.define.ENABLE_BELOW_SM90=OFF \
+  -Ccmake.define.SGL_KERNEL_ENABLE_FA3=OFF \
+  -Ccmake.define.SGL_KERNEL_COMPILE_THREADS=1
+sha256sum "$root"/wheels/sglang-kernel/*.whl > "$root/provenance/sglang-kernel-wheels.sha256"
+uv pip install --python "$py" --no-deps --reinstall "$root"/wheels/sglang-kernel/*.whl
 uv pip uninstall --python "$py" moviepy
 uv pip install --python "$py" --no-deps nvidia-nccl-cu13==2.30.7
 uv pip freeze --python "$py" > "$root/provenance/installed-packages.txt"

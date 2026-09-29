@@ -7225,6 +7225,32 @@ index c55ddab016..a4dad96f81 100644
                  # mamba_pool is a pure PHYSICAL store; translate both slot ids
                  # virtual->physical (identity for the non-unified memory pool) first.
                  translate = self.cache.req_to_token_pool.translate_mamba_indices
+diff --git a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
+index 70482bf879..f0cc70fefc 100644
+--- a/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
++++ b/python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py
+@@ -1398,6 +1398,12 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+     def _split_node(
+         self, key: RadixKey, child: UnifiedTreeNode, split_len: int
+     ) -> tuple[UnifiedTreeNode, Optional[CacheAction | ComponentAction]]:
++        # Matching and transfer-span splits must preserve complete tree pages.
++        # Reject malformed splits before registering nodes or mutating pointers.
++        assert 0 < split_len < len(child.key) and split_len % self.page_size == 0, (
++            f"invalid radix split: {split_len=}, {self.page_size=}, "
++            f"child_key_len={len(child.key)}"
++        )
+         new_node = self._new_node(priority=child.priority)
+         new_node.children = {key[split_len:].child_key(self.page_size): child}
+         new_node.parent = child.parent
+@@ -1430,7 +1436,7 @@ class UnifiedTreeCore(UnifiedTreeCoreInterface):
+ 
+         for component in self.components:
+             component.redistribute_on_node_split(new_parent=new_node, child=child)
+-        new_node.parent.children[key.child_key(self.page_size)] = new_node
++        new_node.parent.children[new_node.key.child_key(self.page_size)] = new_node
+ 
+         # A split of a backuped node tells the cache to fix its publish list.
+         action: Optional[CacheAction | ComponentAction] = None
 diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
 index 421a215722..b7c51dee0d 100644
 --- a/python/sglang/srt/mem_cache/unified_radix_cache.py
@@ -7531,7 +7557,7 @@ index 604a72f4ed..d29d943a92 100644
          return observer_state
  
 diff --git a/python/sglang/srt/model_executor/pool_configurator.py b/python/sglang/srt/model_executor/pool_configurator.py
-index b0417d545f..76d30ec8a9 100644
+index b0417d545f..0d751df33b 100644
 --- a/python/sglang/srt/model_executor/pool_configurator.py
 +++ b/python/sglang/srt/model_executor/pool_configurator.py
 @@ -240,16 +240,23 @@ class DefaultPoolConfigurator(MemoryPoolConfigurator):
@@ -7541,7 +7567,7 @@ index b0417d545f..76d30ec8a9 100644
 -                    draft_kv_size = int(
 -                        target_kv_size * draft_num_layers / target_kv_num_layers
 +                    # Draft pools are DCP-replicated, not sharded: budget all copies.
-+                    dcp_size = kvc.ps.attn_dcp_size
++                    dcp_size = get_parallel().attn_dcp_size
 +                    draft_kv_size = (
 +                        int(target_kv_size * draft_num_layers / target_kv_num_layers)
 +                        * dcp_size
@@ -7560,7 +7586,7 @@ index b0417d545f..76d30ec8a9 100644
                      )
                      self._cell_size += draft_kv_size + draft_indexer_size
                  else:
-+                    draft_num_layers *= kvc.ps.attn_dcp_size
++                    draft_num_layers *= get_parallel().attn_dcp_size
                      self._cell_size = int(
                          self._cell_size * (1 + draft_num_layers / int(num_layers))
                      )
@@ -7568,7 +7594,7 @@ index b0417d545f..76d30ec8a9 100644
                      - self._draft_swa_layers_num
                      - self._draft_swa_full_layers_num
                  )
-+                dcp_size = kvc.ps.attn_dcp_size
++                dcp_size = get_parallel().attn_dcp_size
 +                self._draft_swa_layers_num *= dcp_size
 +                self._draft_swa_full_layers_num *= dcp_size
 +                self._draft_full_layers_num *= dcp_size
@@ -10850,7 +10876,7 @@ index 0000000000..5cd7b2fc2b
 +    sys.exit(pytest.main([__file__, "-q"]))
 diff --git a/test/registered/kernel/attention/test_dsa_kpool_topk_transform.py b/test/registered/kernel/attention/test_dsa_kpool_topk_transform.py
 new file mode 100644
-index 0000000000..10a3ac9ae3
+index 0000000000..b1920fc791
 --- /dev/null
 +++ b/test/registered/kernel/attention/test_dsa_kpool_topk_transform.py
 @@ -0,0 +1,364 @@
@@ -10880,7 +10906,7 @@ index 0000000000..10a3ac9ae3
 +
 +import torch
 +
-+from sglang.kernels.ops.moe.kpool_topk_transform import (
++from sglang.kernels.ops.attention.dsa.kpool_topk_transform import (
 +    fast_kpool_topk_transform_fused,
 +)
 +from sglang.test.ci.ci_register import register_cuda_ci
@@ -17926,6 +17952,66 @@ index a046833edb..e09c039435 100644
  
          avail_before = allocator.available_size()
          finish_req(cache, req, req.owned_kv_len())
+diff --git a/test/registered/unit/mem_cache/test_unified_tree_split_ownership.py b/test/registered/unit/mem_cache/test_unified_tree_split_ownership.py
+new file mode 100644
+index 0000000000..55721dc6a3
+--- /dev/null
++++ b/test/registered/unit/mem_cache/test_unified_tree_split_ownership.py
+@@ -0,0 +1,54 @@
++from array import array
++from unittest.mock import Mock
++
++import pytest
++
++from sglang.srt.mem_cache.radix_cache import RadixKey
++from sglang.srt.mem_cache.unified_cache.unified_tree_core import (
++    UnifiedTreeCore,
++    UnifiedTreeNode,
++)
++
++
++def fixture():
++    core = UnifiedTreeCore.__new__(UnifiedTreeCore)
++    core.page_size = 64
++    core.component_types = ()
++    core.components = ()
++    core._node_arena = {}
++    core.tlru_bookkeeping = False
++    core._for_each_component_lru = Mock()
++    core._update_evictable_leaf_sets = Mock()
++    core._update_duplicate_tracking = Mock()
++    root = UnifiedTreeNode(())
++    child = UnifiedTreeNode(())
++    child.key = RadixKey(array("q", range(192)), None)
++    child.parent = root
++    root.children[child.key.child_key(core.page_size)] = child
++    return core, root, child
++
++
++@pytest.mark.parametrize("split_len", [64, 128])
++def test_split_registration_and_removal_use_the_same_key(split_len):
++    core, root, child = fixture()
++    prefix, action = core._split_node(child.key, child, split_len)
++    assert action is None
++    assert root.children.pop(prefix.key.child_key(core.page_size)) is prefix
++    assert not root.children
++    assert prefix.children[child.key.child_key(core.page_size)] is child
++    assert child.parent is prefix
++    assert core._node_arena[prefix.id] is prefix
++
++
++@pytest.mark.parametrize("split_len", [0, -64, 32, 192, 256])
++def test_invalid_split_rejected_before_mutation(split_len):
++    core, root, child = fixture()
++    original_key = child.key
++    original_children = dict(root.children)
++    with pytest.raises(AssertionError, match="invalid radix split"):
++        core._split_node(child.key, child, split_len)
++    assert child.parent is root
++    assert child.key is original_key
++    assert root.children == original_children
++    assert not core._node_arena
++    core._for_each_component_lru.assert_not_called()
 diff --git a/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py b/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py
 index b6d4187bdb..4a7abb8b8d 100644
 --- a/test/registered/unit/model_executor/runner/test_prefill_cuda_graph_padding.py
@@ -18306,6 +18392,20 @@ index 0000000000..9a632520b2
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/test/registered/unit/model_executor/test_pool_configurator.py b/test/registered/unit/model_executor/test_pool_configurator.py
+index ff62f8b7dc..fe359b6db3 100644
+--- a/test/registered/unit/model_executor/test_pool_configurator.py
++++ b/test/registered/unit/model_executor/test_pool_configurator.py
+@@ -87,6 +87,9 @@ def _make_model_runner(
+ ):
+     """Create a mock ModelRunner with the fields configurators need."""
+     mr = MagicMock()
++    # Current KVCacheConfigurator gets parallel state from runtime_context.
++    # A permissive mock must not conceal a stale access to the removed field.
++    del mr.ps
+ 
+     mr.use_mla_backend = use_mla_backend
+     mr.is_draft_worker = False
 diff --git a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 index 29805fb3f2..ba67cbc845 100644
 --- a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
