@@ -1,7 +1,7 @@
 # Exact upstream sources and checked integration patches; CUDA/PyTorch from the pinned base.
 ARG GLM53_RELEASE_VERSION=0.5.0
-ARG GLM53_RELEASE_CANDIDATE=3
-ARG GLM53_CACHE_SCHEMA=v87
+ARG GLM53_RELEASE_CANDIDATE=4
+ARG GLM53_CACHE_SCHEMA=v88
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:7a9ef6dc376369247e1dd9bbabc4f3d02a60ca8bc7253574f70d99fb28cbe9a0
 ARG GLM53_SGLANG_BASE_TAG=nightly-dev-cu13-20260928-81f27fb3
 ARG GLM53_SGLANG_BASE_INDEX=sha256:7a9ef6dc376369247e1dd9bbabc4f3d02a60ca8bc7253574f70d99fb28cbe9a0
@@ -9,8 +9,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:7a9ef6dc376369247e1dd9bbabc4f3d02a60
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=c7be3e935b5034006cd6ae7977b41e2459b4126c
 ARG GLM53_SGLANG_UPSTREAM_TREE=754d67baa8f9d3c9c0f6b2aa5f112b826b90eacc
-ARG GLM53_SGLANG_TREE=ae4531283889f8d6167c8b03e081cac4bbdb7dcb
-ARG GLM53_SGLANG_PATCH_SHA256=a1e63044c1c413df46f330f4ba1c2e6212a90abc538a99841e5fbee733a840cf
+ARG GLM53_SGLANG_TREE=d6ba0d49a19ab3b5b12312fc35d08a4c1b95e93e
+ARG GLM53_SGLANG_PATCH_SHA256=f876e842e466eb75759e4b5c59e4eb097eed9abc2f131e4eb6c683dfa1acae4c
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.7.0
 ARG GLM53_FLASHINFER_HEAD=90a709ca842996e3431ece0346d97b73693eff94
@@ -56,8 +56,8 @@ COPY acceptance_check.py /opt/glm53/acceptance_check.py
 RUN bash /opt/glm53/scripts/build-stack.sh
 LABEL org.opencontainers.image.title="GLM-5.3-Flash on SM120" \
       org.opencontainers.image.description="NVIDIA NVFP4 target and native BF16 MTP on four RTX PRO 6000 GPUs" \
-      org.opencontainers.image.version="0.5.0-rc.3" \
+      org.opencontainers.image.version="0.5.0-rc.4" \
       org.opencontainers.image.source=${IMAGE_SOURCE} \
       org.opencontainers.image.revision=${IMAGE_SOURCE_REVISION} \
       ai.hardware.target-architecture="sm120" \
-      ai.release.cache-schema="v87"
+      ai.release.cache-schema="v88"

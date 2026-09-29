@@ -4775,7 +4775,7 @@ index 49e373e01e..c7c782fb26 100644
              # Snapshot the SSM state at the last track-aligned chunk boundary
              # from the kernel's per-chunk states (h) / final states into the
 diff --git a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
-index e0e807aa47..2931fd0379 100644
+index e0e807aa47..b5f15aa091 100644
 --- a/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 +++ b/python/sglang/srt/layers/attention/linear/kernels/kda_triton.py
 @@ -1,3 +1,5 @@
@@ -4811,7 +4811,7 @@ index e0e807aa47..2931fd0379 100644
              A_log=A_log,
              dt_bias=dt_bias,
              lower_bound=lower_bound,
-@@ -252,3 +248,251 @@ class TritonKDAKernel(LinearAttnKernelBase):
+@@ -252,3 +248,273 @@ class TritonKDAKernel(LinearAttnKernelBase):
              track_state=kwargs.get("track_state"),
              track_chunk_idx=kwargs.get("track_chunk_idx"),
          )
@@ -5001,8 +5001,21 @@ index e0e807aa47..2931fd0379 100644
 +    h_pos = 0
 +    num_chunks = sum(-(-n // _KDA_CHUNK_TOKENS) for n in seq_lens)
 +
-+    def run(s, e, cu_list, initial_state, indices):
++    def run(s, e, cu_list, initial_state, indices, seq_start, seq_end, chunk_offset=0):
 +        nonlocal h_out, h_pos
++        call_common = common
++        if common.get("track_state") is not None:
++            # Snapshot rows follow the original batch, while the kernel indexes
++            # the sequences and chunks of this call. A split must translate
++            # both coordinates, including a checkpoint at a block boundary.
++            # Negative/out-of-range chunk indices are not written by the kernel.
++            call_common = dict(
++                common,
++                track_state=common["track_state"][seq_start:seq_end],
++                track_chunk_idx=(
++                    common["track_chunk_idx"][seq_start:seq_end] - chunk_offset
++                ),
++            )
 +        out = chunk_kda(
 +            q=q[:, s:e],
 +            k=k[:, s:e],
@@ -5012,7 +5025,7 @@ index e0e807aa47..2931fd0379 100644
 +            cu_seqlens=_cached_cu_seqlens(cu_list, cu_dtype, device),
 +            initial_state=initial_state,
 +            initial_state_indices=indices,
-+            **common,
++            **call_common,
 +        )
 +        if return_intermediate_states:
 +            h = out[1]
@@ -5040,7 +5053,16 @@ index e0e807aa47..2931fd0379 100644
 +                scratch_index = torch.zeros(1, dtype=cache_indices.dtype, device=device)
 +            for b0 in range(0, length, block):
 +                b1 = min(b0 + block, length)
-+                run(start + b0, start + b1, [0, b1 - b0], scratch, scratch_index)
++                run(
++                    start + b0,
++                    start + b1,
++                    [0, b1 - b0],
++                    scratch,
++                    scratch_index,
++                    i,
++                    i + 1,
++                    b0 // _KDA_CHUNK_TOKENS,
++                )
 +            ssm_states[safe_idx] = torch.where(
 +                valid, scratch.to(ssm_states.dtype), ssm_states[safe_idx]
 +            )
@@ -5056,7 +5078,7 @@ index e0e807aa47..2931fd0379 100644
 +                cu_list = [0]
 +                for m in seq_lens[i:j]:
 +                    cu_list.append(cu_list[-1] + m)
-+                run(start, start + total, cu_list, ssm_states, cache_indices[i:j])
++                run(start, start + total, cu_list, ssm_states, cache_indices[i:j], i, j)
 +            start += total
 +            i = j
 +    if return_intermediate_states:
@@ -11591,10 +11613,10 @@ index 0000000000..034c75f64c
 +    )
 diff --git a/test/registered/kernel/attention/test_kda_extend_blocked.py b/test/registered/kernel/attention/test_kda_extend_blocked.py
 new file mode 100644
-index 0000000000..0841b17119
+index 0000000000..c264d94d85
 --- /dev/null
 +++ b/test/registered/kernel/attention/test_kda_extend_blocked.py
-@@ -0,0 +1,586 @@
+@@ -0,0 +1,650 @@
 +"""Token-blocked KDA extend must match the single-call chunk_kda extend.
 +
 +With SGLANG_KDA_EXTEND_BLOCK_TOKENS set, TritonKDAKernel.extend runs chunk_kda
@@ -11736,7 +11758,14 @@ index 0000000000..0841b17119
 +
 +
 +def _run(
-+    block, inputs, *, return_intermediate_states=False, kernel=None, seq_lens=_TRUE_LENS
++    block,
++    inputs,
++    *,
++    return_intermediate_states=False,
++    kernel=None,
++    seq_lens=_TRUE_LENS,
++    track_state=None,
++    track_chunk_idx=None,
 +):
 +    """Run extend with SGLANG_KDA_EXTEND_BLOCK_TOKENS=block on a fresh pool
 +    copy. ``kernel`` replaces kda_triton.chunk_kda for the call; ``seq_lens``
@@ -11764,6 +11793,8 @@ index 0000000000..0841b17119
 +            lower_bound=-5.0,
 +            extend_seq_lens_cpu=seq_lens,
 +            return_intermediate_states=return_intermediate_states,
++            track_state=track_state,
++            track_chunk_idx=track_chunk_idx,
 +        )
 +    if return_intermediate_states:
 +        o, h = out
@@ -11775,6 +11806,45 @@ index 0000000000..0841b17119
 +
 +
 +class _Checks:
++    def checkTrackSnapshots(self, device, *, kernel=None, pool_dtype=torch.float32):
++        # The serving regression used a 2110-token suffix and saved the state
++        # at token 2048. Also cover a late checkpoint in a second block, whole
++        # sequences grouped after a split, and an untracked row.
++        lens = [128, 2110, 33, 97, 4002, 128]
++        slots = [7, 2, 6, 1, 4, -1]
++        inputs = (
++            _int_inputs(lens, slots, pool_dtype=pool_dtype)
++            if device == "cpu"
++            else _inputs(lens, slots, pool_dtype=pool_dtype, device=device)
++        )
++        chunks = torch.tensor([1, 32, -1, 1, 61, 1], dtype=torch.int32, device=device)
++        shape = (len(lens), *inputs["pool"].shape[1:])
++        reference = torch.full(shape, torch.nan, dtype=torch.float32, device=device)
++        blocked = torch.full_like(reference, torch.nan)
++        _run(
++            0,
++            inputs,
++            kernel=kernel,
++            return_intermediate_states=True,
++            track_state=reference,
++            track_chunk_idx=chunks,
++        )
++        _run(
++            BLOCK,
++            inputs,
++            kernel=kernel,
++            return_intermediate_states=True,
++            track_state=blocked,
++            track_chunk_idx=chunks,
++        )
++        self.assertTrue(torch.isnan(reference[2]).all())
++        self.assertTrue(torch.isnan(blocked[2]).all())
++        active = [0, 1, 3, 4, 5]
++        self.assertTrue(torch.isfinite(reference[active]).all())
++        self.assertTrue(torch.isfinite(blocked[active]).all())
++        self.assertSame(blocked[active], reference[active], "fp32 track snapshots")
++        self.assertEqual(chunks.tolist(), [1, 32, -1, 1, 61, 1])
++
 +    def assertSame(self, got, want, what):
 +        self.assertEqual(tuple(got.shape), tuple(want.shape), what)
 +        self.assertEqual(got.dtype, want.dtype, what)
@@ -11849,6 +11919,11 @@ index 0000000000..0841b17119
 +
 +    def test_blocked_matches_unblocked(self):
 +        self._compare(_inputs(SEQ_LENS, SLOT_INDICES), BLOCK, CALLS)
++
++    def test_track_snapshots_match_unblocked(self):
++        for dtype in (torch.float32, torch.bfloat16):
++            with self.subTest(pool_dtype=dtype):
++                self.checkTrackSnapshots("cuda", pool_dtype=dtype)
 +
 +    def test_blocked_matches_unblocked_intermediate_states(self):
 +        self._compare(
@@ -11962,6 +12037,8 @@ index 0000000000..0841b17119
 +        initial_state,
 +        initial_state_indices,
 +        output_intermediate_states=False,
++        track_state=None,
++        track_chunk_idx=None,
 +        **kwargs,
 +    ):
 +        cu = cu_seqlens.tolist()
@@ -11987,6 +12064,8 @@ index 0000000000..0841b17119
 +            for c in range(s, e, CHUNK):
 +                chunk = v[0, c : min(c + CHUNK, e)].float()
 +                hs.append(state.clone())
++                if track_state is not None and (c - s) // CHUNK == track_chunk_idx[n]:
++                    track_state[n].copy_(state)
 +                v[0, c : min(c + CHUNK, e)] = (2 * chunk + state[..., 0]).to(v.dtype)
 +                state = state + chunk.sum(0)[..., None]
 +            if e > s and indices[n] >= 0:
@@ -12015,6 +12094,13 @@ index 0000000000..0841b17119
 +
 +class TestKdaExtendBlockedPlan(CustomTestCase, _Checks):
 +    """CPU: call plan, metadata fallback and state carry with a fake kernel."""
++
++    def test_track_snapshots_match_unblocked(self):
++        for dtype in (torch.float32, torch.bfloat16):
++            with self.subTest(pool_dtype=dtype):
++                self.checkTrackSnapshots(
++                    "cpu", kernel=_FakeChunkKda(), pool_dtype=dtype
++                )
 +
 +    def test_block_rounding(self):
 +        # Unset (0, the default) or anything below the 64-token chunk
