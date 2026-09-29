@@ -17,6 +17,8 @@ sha256sum dist/*.whl > "$root/provenance/deepgemm-wheels.sha256"
 cd "$root/sources/modelopt"
 version=$(uv run --no-project --python "$py" python -c 'import json; print(json.load(open("/opt/glm53/stack.lock.json"))["integration"]["modelopt"]["package_version"])')
 SETUPTOOLS_SCM_PRETEND_VERSION="$version" uv pip install --python "$py" --no-deps .
+uv pip install --python "$py" --no-build-isolation "$root/sources/transformers" \
+  tokenizers==0.23.1 huggingface-hub==1.31.0 safetensors==0.8.0
 cd "$root/sources/sglang"
 uv pip install --python "$py" --no-build-isolation -e ./python typeguard==4.4.4 'pillow>=12.3.0' protobuf==6.33.5 grpcio-tools==1.81.1 accelerate==1.12.0
 # Build the AOT package from the same patched tree as the Python/JIT runtime.

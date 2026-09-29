@@ -28,7 +28,7 @@ for name, source in lock['integration'].items():
 # These change package metadata, not serving code. Retain the exact diff separately.
 p = root / 'sources/sglang/python/pyproject.toml'
 s = p.read_text()
-for old, new in [('flashinfer_python[cu13]==0.6.18', 'flashinfer_python[cu13]==0.7.0'), ('nvidia-cutlass-dsl[cu13]==4.6.2', 'nvidia-cutlass-dsl[cu13]==4.8.0'), ('quack-kernels==0.6.4', 'quack-kernels==0.6.5')]:
+for old, new in [('flashinfer_python[cu13]==0.6.18', 'flashinfer_python[cu13]==0.7.0'), ('nvidia-cutlass-dsl[cu13]==4.6.2', 'nvidia-cutlass-dsl[cu13]==4.8.0'), ('quack-kernels==0.6.4', 'quack-kernels==0.6.5'), ('transformers==5.12.1', 'transformers==5.18.0.dev0'), ('tokenizers==0.22.2', 'tokenizers==0.23.1')]:
     assert s.count(old) == 1, old
     s = s.replace(old, new)
 p.write_text(s)

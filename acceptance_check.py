@@ -15,8 +15,12 @@ import flashinfer
 assert Path(inspect.getfile(sglang)).is_relative_to(root / 'sources/sglang/python')
 assert flashinfer.__version__ == lock['integration']['flashinfer']['package_version']
 assert flashinfer.__git_commit__ == lock['integration']['flashinfer']['head']
-for dist, name in [('nvidia-modelopt', 'modelopt'), ('sgl-deep-gemm', 'deepgemm')]:
+for dist, name in [('nvidia-modelopt', 'modelopt'), ('sgl-deep-gemm', 'deepgemm'), ('transformers', 'transformers')]:
     assert md.version(dist) == lock['integration'][name]['package_version']
+transformers_url = json.loads(md.distribution('transformers').read_text('direct_url.json'))['url']
+assert transformers_url == 'file:///opt/glm53/sources/transformers'
+for dist, version in lock['processor_dependencies'].items():
+    assert md.version(dist) == version, dist
 assert os.environ['CUBLAS_WORKSPACE_CONFIG'] == ':4096:2:16:8'
 assert md.version('nvidia-cutlass-dsl') == '4.8.0'
 assert md.version('quack-kernels') == '0.6.5'
@@ -56,4 +60,41 @@ from sglang.kernels.ops.attention.flash_mla_sm120 import _GLM53_NOPE_FLASHINFER_
 assert _GLM53_NOPE_FLASHINFER_TOPK == 2176
 from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import get_mla_host_kv_cache_dim
 assert callable(get_mla_host_kv_cache_dim)
-print('Exact source packages, native draft resolution and GLM sparse MLA contracts verified; GPU qualification required.')
+
+# AutoProcessor can silently return a text tokenizer when a model's processor
+# class is unavailable. Verify actual pixels and expansion, not just imports.
+from hashlib import sha256
+from huggingface_hub import snapshot_download
+from PIL import Image
+from sglang.srt.utils.hf_transformers.processor import get_processor
+from transformers import Glm5NextProcessor
+
+metadata_files = ['config.json', 'processor_config.json', 'tokenizer_config.json',
+                  'tokenizer.json', 'chat_template.jinja']
+model_metadata = Path(snapshot_download(
+    lock['model']['source_repository'], revision=lock['model']['source_revision'],
+    allow_patterns=metadata_files,
+))
+processor = get_processor(str(model_metadata), image_processor_backend='torchvision',
+                          trust_remote_code=False, local_files_only=True)
+assert isinstance(processor, Glm5NextProcessor), type(processor).__name__
+tokens = processor(
+    text=['<|begin_of_image|><|image|><|end_of_image|>'],
+    images=[Image.new('RGB', (224, 224), 'red')], device='cpu', return_tensors='pt',
+)
+assert tokens['pixel_values'].numel() > 0
+grid = tokens['image_grid_thw']
+assert tuple(grid.shape) == (1, 3)
+expected = int(grid[0].prod()) // processor.image_processor.merge_size ** 2
+actual = int((tokens['input_ids'] == processor.image_token_id).sum())
+assert actual == expected and actual > 1, (actual, expected)
+assert tokens['pixel_values'].device.type == 'cpu'
+(root / 'provenance/vision-processor-acceptance.json').write_text(json.dumps({
+    'model_revision': lock['model']['source_revision'],
+    'transformers_revision': lock['integration']['transformers']['head'],
+    'processor': type(processor).__name__, 'image_tokens': actual,
+    'pixel_values_shape': list(tokens['pixel_values'].shape),
+    'metadata_sha256': {name: sha256((model_metadata / name).read_bytes()).hexdigest()
+                        for name in metadata_files},
+}, indent=2) + '\n')
+print('Exact source packages, native draft, GLM sparse MLA and real vision processor contracts verified; GPU qualification required.')

@@ -1,7 +1,7 @@
 # Exact upstream sources and checked integration patches; CUDA/PyTorch from the pinned base.
 ARG GLM53_RELEASE_VERSION=0.5.0
-ARG GLM53_RELEASE_CANDIDATE=2
-ARG GLM53_CACHE_SCHEMA=v86
+ARG GLM53_RELEASE_CANDIDATE=3
+ARG GLM53_CACHE_SCHEMA=v87
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:7a9ef6dc376369247e1dd9bbabc4f3d02a60ca8bc7253574f70d99fb28cbe9a0
 ARG GLM53_SGLANG_BASE_TAG=nightly-dev-cu13-20260928-81f27fb3
 ARG GLM53_SGLANG_BASE_INDEX=sha256:7a9ef6dc376369247e1dd9bbabc4f3d02a60ca8bc7253574f70d99fb28cbe9a0
@@ -27,6 +27,11 @@ ARG GLM53_DEEPGEMM_REPOSITORY=https://github.com/sgl-project/DeepGEMM.git
 ARG GLM53_DEEPGEMM_HEAD=c518ae0ab137922333e2d4ff59f77f8bc6ca4b57
 ARG GLM53_DEEPGEMM_TREE=0ee476cce438258aef9a72aef86c246881fbca78
 
+ARG GLM53_TRANSFORMERS_REPOSITORY=https://github.com/huggingface/transformers.git
+ARG GLM53_TRANSFORMERS_HEAD=1e71827951aaebd23e3da65ad33f2eebfb970367
+ARG GLM53_TRANSFORMERS_TREE=fd0770dda26861b65f558cd216cbaa219df8e187
+ARG GLM53_TRANSFORMERS_VERSION=5.18.0.dev0
+
 FROM ${GLM53_SGLANG_BASE} AS runtime
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
@@ -51,8 +56,8 @@ COPY acceptance_check.py /opt/glm53/acceptance_check.py
 RUN bash /opt/glm53/scripts/build-stack.sh
 LABEL org.opencontainers.image.title="GLM-5.3-Flash on SM120" \
       org.opencontainers.image.description="NVIDIA NVFP4 target and native BF16 MTP on four RTX PRO 6000 GPUs" \
-      org.opencontainers.image.version="0.5.0-rc.2" \
+      org.opencontainers.image.version="0.5.0-rc.3" \
       org.opencontainers.image.source=${IMAGE_SOURCE} \
       org.opencontainers.image.revision=${IMAGE_SOURCE_REVISION} \
       ai.hardware.target-architecture="sm120" \
-      ai.release.cache-schema="v86"
+      ai.release.cache-schema="v87"

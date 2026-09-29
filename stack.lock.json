@@ -2,13 +2,13 @@
   "schema": 2,
   "release": {
     "version": "0.5.0",
-    "candidate": 2,
-    "candidate_tag": "v0.5.0-rc.2",
+    "candidate": 3,
+    "candidate_tag": "v0.5.0-rc.3",
     "stable_tag": "v0.5.0",
-    "cache_schema": "v86"
+    "cache_schema": "v87"
   },
   "image": {
-    "tag": "v0.5.0-rc.2",
+    "tag": "v0.5.0-rc.3",
     "platform": "linux/amd64"
   },
   "model": {
@@ -44,11 +44,11 @@
     },
     {
       "arg": "GLM53_RELEASE_CANDIDATE",
-      "value": "2"
+      "value": "3"
     },
     {
       "arg": "GLM53_CACHE_SCHEMA",
-      "value": "v86"
+      "value": "v87"
     },
     {
       "arg": "GLM53_SGLANG_BASE",
@@ -145,6 +145,22 @@
     {
       "arg": "GLM53_DEEPGEMM_TREE",
       "value": "0ee476cce438258aef9a72aef86c246881fbca78"
+    },
+    {
+      "arg": "GLM53_TRANSFORMERS_REPOSITORY",
+      "value": "https://github.com/huggingface/transformers.git"
+    },
+    {
+      "arg": "GLM53_TRANSFORMERS_HEAD",
+      "value": "1e71827951aaebd23e3da65ad33f2eebfb970367"
+    },
+    {
+      "arg": "GLM53_TRANSFORMERS_TREE",
+      "value": "fd0770dda26861b65f558cd216cbaa219df8e187"
+    },
+    {
+      "arg": "GLM53_TRANSFORMERS_VERSION",
+      "value": "5.18.0.dev0"
     }
   ],
   "integration": {
@@ -180,6 +196,13 @@
       "tree": "0ee476cce438258aef9a72aef86c246881fbca78",
       "source_branch": "dev",
       "package_version": "0.2.0+gitc518ae0a"
+    },
+    "transformers": {
+      "repository": "https://github.com/huggingface/transformers.git",
+      "head": "1e71827951aaebd23e3da65ad33f2eebfb970367",
+      "tree": "fd0770dda26861b65f558cd216cbaa219df8e187",
+      "package_version": "5.18.0.dev0",
+      "source_branch": "main"
     }
   },
   "patches": [
@@ -244,5 +267,10 @@
       "url": "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.7.0/flashinfer_cubin-0.7.0-py3-none-any.whl",
       "sha256": "f1821e11ad4ea9666a09c2b04cc16b1e34f601296dc7a7b689649281c0358a9c"
     }
+  },
+  "processor_dependencies": {
+    "tokenizers": "0.23.1",
+    "huggingface-hub": "1.31.0",
+    "safetensors": "0.8.0"
   }
 }

@@ -89,6 +89,8 @@ verify_tree modelopt \
   "$(pin GLM53_MODELOPT_HEAD)" "$(pin GLM53_MODELOPT_TREE)"
 verify_tree deepgemm "$(pin GLM53_DEEPGEMM_REPOSITORY)" \
   "$(pin GLM53_DEEPGEMM_HEAD)" "$(pin GLM53_DEEPGEMM_TREE)"
+verify_tree transformers "$(pin GLM53_TRANSFORMERS_REPOSITORY)" \
+  "$(pin GLM53_TRANSFORMERS_HEAD)" "$(pin GLM53_TRANSFORMERS_TREE)"
 
 [[ "$(jq -er '.verification.sglang_source_verifiable' "$lock")" == true ]]
 [[ "$(jq -er '.verification.sglang_repository' "$lock")" == "$(pin GLM53_SGLANG_REPOSITORY)" ]]
