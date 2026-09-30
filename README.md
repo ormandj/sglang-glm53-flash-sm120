@@ -12,7 +12,7 @@ The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer,
 
 **TP2:** no decode or prefill improvement over v0.4.3 has been established. The current measured rates are lower than the previous published rates, with different power and cache settings: 250 W without HiCache now, versus 300 W with HiCache before.
 
-**TP4:** the same cold 131,173-token prompt at 8,192-token prefills reached its first token in 18.161 seconds on v0.4.3 and 15.549 seconds with v0.5.0 and corrected PCIe peer transport, equivalent to **16.8% higher prompt-processing throughput**. This is a single diagnostic request per configuration with different serving capacities. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
+**TP4:** the same cold 131,173-token prompt at 8,192-token prefills reached its first token in 18.161 seconds on v0.4.3 and 15.549 seconds with v0.5.0 and corrected PCIe peer transport, equivalent to **16.8% higher prompt-processing throughput**. This is a single adaptive-serving diagnostic request per configuration with different serving capacities. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
 
 | Default setting | TP2 | TP4 |
 |---|---:|---:|
@@ -96,7 +96,7 @@ Both use fixed three-step MTP. The previous tests used 300 W and 32 GB/rank HiCa
 
 Current TP2 mean aggregate output is 181.60 / 287.55 / 381.50 tok/s at C1 / C2 / C4. Cold prefill averaged 5,190.98 prompt tok/s at 8K and 6,076.75–6,132.49 prompt tok/s at 32K–128K.
 
-These results use fixed three-step MTP with adaptive switching disabled, 16K coding prompts and 4,096-token capped outputs including reasoning and a post-answer tail. Measurements used a v0.5.0 validation build; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides all means/medians, target-forward rates, windows, sample counts and configuration details.
+The decode and TP2 prefill benchmarks use fixed three-step MTP with adaptive switching disabled, 16K coding prompts and 4,096-token capped outputs including reasoning and a post-answer tail. Measurements used a v0.5.0 validation build; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides all means/medians, target-forward rates, windows, sample counts and configuration details.
 
 ## Limitations
 
