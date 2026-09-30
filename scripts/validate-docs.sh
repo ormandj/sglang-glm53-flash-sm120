@@ -2,15 +2,9 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-candidate_tag=$(jq -er '.candidate_tag' "$repo/release.json")
-cache_schema=$(jq -er '.cache_schema' "$repo/release.json")
-stable_tag=$(jq -er '.stable_tag' "$repo/release.json")
-local_image="sglang-glm53-flash-sm120:${candidate_tag}"
-# Once the current release is public, run instructions and the launcher must
-# select its immutable stable image. Candidate docs keep the candidate default.
-if grep -F -- "The current published stable image is \`${stable_tag}\`" "$repo/README.md" >/dev/null; then
-  local_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
-fi
+published_tag=$(jq -er '.published.tag' "$repo/release.json")
+published_cache_schema=$(jq -er '.published.cache_schema' "$repo/release.json")
+local_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${published_tag}"
 launcher="$repo/examples/serve-glm53-flash.sh"
 launcher_tp4="$repo/examples/serve-glm53-flash-tp4.sh"
 
@@ -28,7 +22,8 @@ require_text() {
 require_text "$repo/README.md" "$local_image"
 require_text "$repo/RUN.md" "IMAGE=${local_image}"
 require_text "$launcher" "IMAGE=\${IMAGE:-${local_image}}"
-require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${cache_schema}"
+require_text "$repo/README.md" "The current published stable image is \`${published_tag}\`"
+require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${published_cache_schema}"
 require_text "$repo/CHANGELOG.md" "# Changelog"
 require_text "$repo/AGENTS.md" 'always uses the complete release name'
 
@@ -98,7 +93,7 @@ done
 require_text "$launcher" '--quantization modelopt_mixed'
 require_text "$repo/README.md" 'ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO'
 require_text "$repo/README.md" 'nvidia/GLM-5.3-Flash-NVFP4'
-require_text "$repo/BENCHMARKS.md" "## ${stable_tag}: TP2 W4A16 fixed native MTP"
+require_text "$repo/BENCHMARKS.md" "## ${published_tag}: TP2 W4A16 fixed native MTP"
 
 for profile in "$launcher" "$launcher_tp4"; do
   if grep -E -- '(^|[[:space:]])--ep([[:space:]]|$)|EP_SIZE' "$profile" >/dev/null; then
@@ -111,4 +106,4 @@ for profile in "$launcher" "$launcher_tp4"; do
   fi
 done
 
-echo "documentation contract valid: ${stable_tag}, cache ${cache_schema}, TP2 W4A16 and TP4 NVIDIA NVFP4 vision+MTP profiles"
+echo "documentation contract valid: ${published_tag}, cache ${published_cache_schema}, TP2 W4A16 and TP4 NVIDIA NVFP4 vision+MTP profiles"
