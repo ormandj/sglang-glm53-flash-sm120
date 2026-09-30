@@ -10,7 +10,9 @@ A SGLang image for serving GLM-5.3-Flash on two or four NVIDIA RTX PRO 6000 Blac
 
 The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer, ModelOpt, DeepGEMM and Transformers, adds the NVIDIA NVFP4 TP4 profile, and corrects recurrent-state checkpoint handling during blocked prefills. See the [changelog](CHANGELOG.md) and [releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases).
 
-**Performance:** TP4 prefill improved after correcting PCIe GPU peer transport on the tested system. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
+**TP2:** no decode or prefill improvement over v0.4.3 has been established. The current measured rates are lower than the previous published rates, with different power and cache settings: 250 W without HiCache now, versus 300 W with HiCache before.
+
+**TP4:** prefill improved after correcting PCIe GPU peer transport on the tested system. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
 
 | Default setting | TP2 | TP4 |
 |---|---:|---:|
