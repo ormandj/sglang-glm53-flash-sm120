@@ -84,7 +84,17 @@ The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the pro
 
 **TP4, NVIDIA NVFP4:** 197.24 mean / 197.40 median output tok/s after MTP and 75.73 mean / 76.51 median target forwards/s at C1 on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W.
 
-**TP2, previous W4A16 checkpoint:** 181.60 / 287.55 / 381.50 mean aggregate output tok/s at C1 / C2 / C4 on two of the same GPUs at 250 W. Cold prefill averaged 5,190.98 prompt tok/s at 8K and 6,076.75–6,132.49 prompt tok/s at 32K–128K.
+**TP2, previous W4A16 checkpoint:** target forwards/s are lower than the [previous published v0.4.3 results](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/BENCHMARKS.md):
+
+| Concurrency | v0.4.3 mean forwards/s | v0.5.0 mean forwards/s | Observed change |
+|---|---:|---:|---:|
+| C1 | 66.91 | 61.78 | −7.7% |
+| C2 | 51.07 | 47.23 | −7.5% |
+| C4 | 35.34 | 32.29 | −8.6% |
+
+Both use fixed three-step MTP. The previous tests used 300 W and 32 GB/rank HiCache; the current tests use 250 W without HiCache. These rates do not isolate a software regression or speedup.
+
+Current TP2 mean aggregate output is 181.60 / 287.55 / 381.50 tok/s at C1 / C2 / C4. Cold prefill averaged 5,190.98 prompt tok/s at 8K and 6,076.75–6,132.49 prompt tok/s at 32K–128K.
 
 These results use fixed three-step MTP with adaptive switching disabled, 16K coding prompts and 4,096-token capped outputs including reasoning and a post-answer tail. Measurements used a v0.5.0 validation build; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides all means/medians, target-forward rates, windows, sample counts and configuration details.
 
