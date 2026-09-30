@@ -30,6 +30,8 @@ TP2/EP1 used `modelopt_mixed`, FP8 E4M3 KV, a 524,288-token context limit and sh
 | C2 | 5 | 287.55 | 284.11 | 47.23 | 47.25 | 3.043 / 3.014 |
 | C4 | 5 | 381.50 | 376.37 | 32.29 | 32.15 | 2.952 / 2.926 |
 
+For a matched C1 comparison, a v0.4.3 validation image measured 65.10 mean / 65.04 median target forwards/s across five repetitions on the same GPU pair at 250 W, using the same checkpoint, 16K coding prompts, client, seeds and fixed MTP settings. The v0.5.0 C1 mean is 5.1% lower. A matched previous-image prefill comparison was not completed.
+
 The workload used 16K coding prompts with chat framing and a forced 4,096-token output cap (`ignore_eos`), including reasoning at the template's default `max` effort and a post-answer tail. Output rates are aggregate across the stated concurrency. Target forwards count batch iterations on rank zero, not one forward per request. Rates use least-squares counter slopes during exact-concurrency decode windows with average context between 17,408 and 20,480 tokens. Output tok/forward/request uses emitted-token and target-forward counter deltas divided by concurrency. Windows lasted 13.67–30.68 seconds with 42–93 samples each, with no prefill, other inference, review or build activity. All 15 windows retained fixed three-step/four-token verification.
 
 Five prompt-seed repetitions ran per concurrency within one server startup. They are prompt-path samples, not independent deployment replicates. The post-answer tail can increase speculative acceptance; these controlled rates do not necessarily represent naturally completed answers or application throughput. TP2 and TP4 use different checkpoints and settings, so their tables are not a matched scaling comparison.
