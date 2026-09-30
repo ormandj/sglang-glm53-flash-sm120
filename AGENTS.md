@@ -18,6 +18,8 @@ Every reference to the image always uses the complete release name, never an abb
 
 Bump release.json candidate for changes to Containerfile, release.json, stack.lock.json or patches/**. Those are the image build inputs. A successful build alone does not qualify a release. Stable images and repository releases are created through the release workflows, with registry digest equality verified before publication.
 
+The workflows have separate outcomes: build-image.yml publishes a candidate image, promote-release.yml publishes the stable image tag, and publish-release.yml creates the source tag and GitHub Release. A source push, successful CI run or stable container tag is not a GitHub Release. Follow [BUILDING.md](BUILDING.md) and verify the non-draft Release, exact source commit, release body and anonymously accessible stable image before reporting publication complete. Preserve existing tags when correcting documentation or CI.
+
 The vendor base supplies the pinned CUDA/PyTorch dependency stack and does not establish SGLang source provenance. stack.lock.json and scripts/verify-patches.sh define the official source bases, checksummed integration patches and resulting trees. A fork integration commit is not an upstream commit. Preserve historical pins.
 
 ## Verification appropriate to the change

@@ -69,3 +69,5 @@ CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v88-tp4 \
 ```
 
 For a local TP2 build, use the previous W4A16 checkpoint and `./examples/serve-glm53-flash.sh` with a separate TP2 cache directory.
+
+[BUILDING.md](BUILDING.md) describes the CI workflows and the separate steps required to publish and verify a GitHub Release. A local build or successful candidate-image workflow does not create a repository Release.
