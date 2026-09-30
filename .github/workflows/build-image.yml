@@ -137,6 +137,21 @@ jobs:
         run: ./scripts/verify-patches.sh
       - name: Build and push immutable candidate tags
         run: |
+          # The source recipe defaults to eight AOT compiler jobs. On this
+          # 16 GiB runner that exhausted RAM plus 35 GiB of swap. Scikit-build's
+          # native-tool arguments cap Ninja at two jobs without changing any
+          # source, architecture, optimization or installed runtime setting.
+          # Keep the CI-only recipe outside the checked-out source context.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          source = Path("Containerfile").read_text()
+          original = "RUN bash /opt/glm53/scripts/build-stack.sh\n"
+          replacement = "RUN SKBUILD_BUILD_TOOL_ARGS=-j2 bash /opt/glm53/scripts/build-stack.sh\n"
+          if source.count(original) != 1:
+              raise SystemExit("expected exactly one stack-build RUN instruction")
+          Path(os.environ["RUNNER_TEMP"], "Containerfile.github").write_text(source.replace(original, replacement))
+          PY
           monitor_resources() {
             while true; do
               date -u +%Y-%m-%dT%H:%M:%SZ
@@ -170,7 +185,7 @@ jobs:
 
           docker buildx build \
             --builder sm120-builder \
-            --file Containerfile \
+            --file "${RUNNER_TEMP}/Containerfile.github" \
             --target runtime \
             --platform linux/amd64 \
             --provenance=false \

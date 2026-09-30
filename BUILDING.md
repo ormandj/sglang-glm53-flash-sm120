@@ -10,6 +10,8 @@ The repository uses three separate workflows. A successful image build does not 
 
 Validation runs check source and documentation. They do not publish an image or Release. Image-input pushes to `main` start a candidate build; documentation and workflow changes do not rebuild an existing candidate. Published image and source tags are immutable.
 
+GitHub-hosted CI limits AOT compilation to two Ninja jobs. The workflow creates a temporary recipe that sets `SKBUILD_BUILD_TOOL_ARGS=-j2` for the stack-build process only. The pinned sources, compiler targets and optimization flags stay the same; the override does not become a serving environment setting. The tracked source recipe remains available for builders with more memory.
+
 ## Publish a new release
 
 Run the release, documentation and source checks described in [RUN.md](RUN.md), and complete hardware qualification before promoting a candidate. Wait for the candidate build to succeed and verify anonymous pull access. If a build fails, inspect its logs before retrying; confirm that the candidate tag is absent before starting another build of that tag.
