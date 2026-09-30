@@ -12,7 +12,7 @@ The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer,
 
 **TP2:** no decode or prefill improvement over v0.4.3 has been established. The current measured rates are lower than the previous published rates, with different power and cache settings: 250 W without HiCache now, versus 300 W with HiCache before.
 
-**TP4:** prefill improved after correcting PCIe GPU peer transport on the tested system. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
+**TP4:** the same cold 131,173-token prompt at 8,192-token prefills reached its first token in 18.161 seconds on v0.4.3 and 15.549 seconds with v0.5.0 and corrected PCIe peer transport, equivalent to **16.8% higher prompt-processing throughput**. This is a single diagnostic request per configuration with different serving capacities. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
 
 | Default setting | TP2 | TP4 |
 |---|---:|---:|
