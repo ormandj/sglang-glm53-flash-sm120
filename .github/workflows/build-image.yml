@@ -2,6 +2,11 @@ name: Build and publish image
 
 on:
   workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Optional full source commit to build
+        required: false
+        type: string
   push:
     branches: [main]
     # Only changes to image inputs start a build. Validation, documentation,
@@ -28,7 +33,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
+      - name: Validate requested source revision
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          if [[ -n "$SOURCE_REVISION" && ! "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full commit SHA" >&2
+            exit 1
+          fi
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.source_revision || github.sha }}
       - name: Reclaim runner disk space
         run: |
           # The CUDA base image, the FlashInfer source build, and the final
@@ -72,6 +87,28 @@ jobs:
           fi
           docker info --format 'Docker root: {{.DockerRootDir}}'
           df -h / /mnt
+      - name: Prepare compiler memory headroom
+        run: |
+          free -m
+          swap_dir=/
+          root_avail=$(df --output=avail -k / | tail -1)
+          mnt_avail=$(df --output=avail -k /mnt | tail -1)
+          if (( mnt_avail > root_avail )); then
+            swap_dir=/mnt
+            root_avail=$mnt_avail
+          fi
+          # Retain at least 64 GiB for image extraction and build layers.
+          if (( root_avail < (32 + 64) * 1024 * 1024 )); then
+            echo "insufficient disk for compiler swap and image layers" >&2
+            exit 1
+          fi
+          swap_file="${swap_dir%/}/glm53-build.swap"
+          sudo fallocate -l 32G "$swap_file"
+          sudo chmod 0600 "$swap_file"
+          sudo mkswap "$swap_file"
+          sudo swapon "$swap_file"
+          free -m
+          swapon --show
       - name: Log in to GHCR
         run: |
           for attempt in 1 2 3; do
@@ -100,6 +137,27 @@ jobs:
         run: ./scripts/verify-patches.sh
       - name: Build and push immutable candidate tags
         run: |
+          monitor_resources() {
+            while true; do
+              date -u +%Y-%m-%dT%H:%M:%SZ
+              free -m
+              df -h / /mnt
+              docker stats --no-stream \
+                --format '{{.Name}} memory={{.MemUsage}} cpu={{.CPUPerc}}' || true
+              # Executable names and RSS only; arguments can contain credentials.
+              ps -eo comm,rss --sort=-rss | head -n 8 || true
+              sleep 30
+            done
+          }
+          monitor_resources &
+          monitor_pid=$!
+          finish_diagnostics() {
+            kill "$monitor_pid" 2>/dev/null || true
+            wait "$monitor_pid" 2>/dev/null || true
+            free -m
+            sudo dmesg --ctime | grep -Ei 'out of memory|killed process|oom' || true
+          }
+          trap finish_diagnostics EXIT
           repository="ghcr.io/${GITHUB_REPOSITORY}"
           candidate_tag=$(jq -er '.candidate_tag' release.json)
           candidate_image="${repository}:${candidate_tag}"
@@ -117,7 +175,7 @@ jobs:
             --platform linux/amd64 \
             --provenance=false \
             --build-arg "IMAGE_SOURCE=https://github.com/${GITHUB_REPOSITORY}" \
-            --build-arg "IMAGE_SOURCE_REVISION=${GITHUB_SHA}" \
+            --build-arg "IMAGE_SOURCE_REVISION=$(git rev-parse HEAD)" \
             --tag "$candidate_image" \
             --tag "$build_image" \
             --push \
