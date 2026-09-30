@@ -82,7 +82,7 @@ The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the pro
 
 **TP4, NVIDIA NVFP4:** 197.24 mean / 197.40 median output tok/s after MTP and 75.73 mean / 76.51 median target forwards/s at C1 on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W.
 
-**TP2, previous W4A16 checkpoint:** current mean target forward rates are **61.78 / 47.23 / 32.29 forwards/s** at C1 / C2 / C4, measured at 250 W. At C1, v0.4.3 measured 65.10 forwards/s on the same cards at 250 W, so v0.5.0 is 5.1% slower.
+**TP2, previous W4A16 checkpoint:** current mean target forward rates are **61.78 / 47.23 / 32.29 forwards/s** at C1 / C2 / C4, measured at 250 W.
 
 Current TP2 mean aggregate output is 181.60 / 287.55 / 381.50 tok/s at C1 / C2 / C4. Cold prefill averaged 5,190.98 prompt tok/s at 8K and 6,076.75–6,132.49 prompt tok/s at 32K–128K.
 
