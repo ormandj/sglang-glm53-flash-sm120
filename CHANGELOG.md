@@ -1,5 +1,7 @@
 # Changelog
 
+Post-release documentation update (2026-09-30): add [TP2 W4A16 fixed-MTP decode and cold-prefill measurements](BENCHMARKS.md#v050-tp2-w4a16-fixed-native-mtp), with per-request and per-repetition data.
+
 ## v0.5.0 (stable; 2026-09-30)
 
 - Add a TP4 launcher for `nvidia/GLM-5.3-Flash-NVFP4`, with a 1,048,576-token request limit, 2,621,440 shared FP8 KV tokens, 32-request admission and 8,192-token prefill chunks on four 96 GB SM120 GPUs.

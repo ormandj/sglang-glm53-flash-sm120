@@ -31,7 +31,7 @@ export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v88-tp2
 ./examples/serve-glm53-flash.sh
 ```
 
-Use `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`, with W4A16 experts and mixed FP8 attention output projections, rather than NVIDIA's checkpoint. This launcher uses TP2/EP1, `modelopt_mixed`, a 524,288-token context limit and shared device pool, four running requests, 4,096-token prefills and 28 BF16 recurrent-state slots. HiCache is optional: `ENABLE_HICACHE=1 HICACHE_SIZE_GB=32` allocates 32 GB per rank. **TP2 performance has not been measured for v0.5.0.**
+Use `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`, with W4A16 experts and mixed FP8 attention output projections, rather than NVIDIA's checkpoint. This launcher uses TP2/EP1, `modelopt_mixed`, a 524,288-token context limit and shared device pool, four running requests, 4,096-token prefills and 28 BF16 recurrent-state slots. HiCache is optional: `ENABLE_HICACHE=1 HICACHE_SIZE_GB=32` allocates 32 GB per rank. [TP2 fixed-MTP measurements](BENCHMARKS.md#v050-tp2-w4a16-fixed-native-mtp) cover C1/C2/C4 decode and cold prefill.
 
 ## Common settings
 
@@ -43,7 +43,7 @@ Adaptive MTP defaults to five draft steps, top-k one and six verification tokens
 
 ## Reproduce the fixed-MTP measurement
 
-The [v0.5.0 measurement](BENCHMARKS.md) uses TP4, the NVIDIA checkpoint and the launcher's other settings, with these MTP arguments:
+The [v0.5.0 measurements](BENCHMARKS.md) use the TP4 NVIDIA and TP2 W4A16 profiles with their documented settings and these MTP arguments:
 
 ```text
 --speculative-algorithm EAGLE
@@ -52,7 +52,7 @@ The [v0.5.0 measurement](BENCHMARKS.md) uses TP4, the NVIDIA checkpoint and the 
 --speculative-num-draft-tokens 4
 ```
 
-Remove `--speculative-adaptive` and `--speculative-adaptive-config` together with its path argument. Keep reasoning enabled and the default chat grammar. Measure C1 with a 16,396-token coding prompt and a deliberate 4,096-token output cap using `ignore_eos`; derive target forward and output rates over the steady decode window described in BENCHMARKS.md. There is no new TP2 benchmark panel.
+Remove `--speculative-adaptive` and `--speculative-adaptive-config` together with its path argument. Keep reasoning enabled and the default chat grammar. Measure TP4 C1 or TP2 C1/C2/C4 with 16K coding prompts including chat framing and a deliberate 4,096-token output cap using `ignore_eos`; derive target forward and output rates over the steady decode window described in BENCHMARKS.md. TP2 cold prefill uses C1 and five requests per 8K/32K/64K/128K shape, ending at the first output token.
 
 ## Build from source
 

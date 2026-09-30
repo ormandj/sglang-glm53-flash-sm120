@@ -16,7 +16,34 @@ Rates are least-squares slopes of the server's cumulative emitted-token and targ
 
 Output tokens include reasoning and a post-answer tail. The tail can increase speculative acceptance, so these are output-capped decode measurements, not naturally completed-answer throughput. Mean and median are taken over the three repetitions; output tokens per forward is the per-repetition output slope divided by the forward slope. These controlled measurements do not necessarily represent real-world performance. There is no matched fixed-MTP comparison against the previous image on this TP4 checkpoint.
 
-Cold prefill throughput was not measured with this fixed-MTP configuration. **TP2 performance was not measured for v0.5.0**, and previous TP2 numbers are not presented as results for this release. Historical results remain in the immutable [v0.4.3 benchmarks](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/BENCHMARKS.md).
+Cold prefill throughput was not measured for this TP4 configuration. Historical results remain in the immutable [v0.4.3 benchmarks](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/BENCHMARKS.md).
+
+## v0.5.0: TP2 W4A16 fixed native MTP
+
+Measured on 2026-09-30 using a v0.5.0 validation build on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs (SM120) at 250 W, with PCIe Gen4 ×16 links across CPU roots, working P2P/IPC and no NVLink. The separately built GHCR image was not benchmarked. The checkpoint was `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`, revision `ee0989a944b0e213589191d7fca63af825a0741e`.
+
+TP2/EP1 used `modelopt_mixed`, FP8 E4M3 KV, a 524,288-token context limit and shared device pool, four-request admission, 28 BF16 recurrent-state slots, 4,096-token prefill chunks and no HiCache. Measurements used fixed native MTP with three draft steps, top-k one and four verification tokens, with adaptive switching disabled. The supplied TP2 launcher instead defaults to adaptive five-step/six-token verification; these results measure the fixed configuration.
+
+| Decode concurrency | Repetitions | Mean aggregate output tok/s after MTP | Median aggregate output tok/s after MTP | Mean target forwards/s | Median target forwards/s | Output tok/forward/request, mean / median |
+|---|---:|---:|---:|---:|---:|---:|
+| C1 | 5 | 181.60 | 167.02 | 61.78 | 61.76 | 2.950 / 2.680 |
+| C2 | 5 | 287.55 | 284.11 | 47.23 | 47.25 | 3.043 / 3.014 |
+| C4 | 5 | 381.50 | 376.37 | 32.29 | 32.15 | 2.952 / 2.926 |
+
+The workload used 16K coding prompts with chat framing and a forced 4,096-token output cap (`ignore_eos`), including reasoning at the template's default `max` effort and a post-answer tail. Output rates are aggregate across the stated concurrency. Target forwards count batch iterations on rank zero, not one forward per request. Rates use least-squares counter slopes during exact-concurrency decode windows with average context between 17,408 and 20,480 tokens. Output tok/forward/request uses emitted-token and target-forward counter deltas divided by concurrency. Windows lasted 13.67–30.68 seconds with 42–93 samples each, with no prefill, other inference, review or build activity. All 15 windows retained fixed three-step/four-token verification.
+
+Five prompt-seed repetitions ran per concurrency within one server startup. They are prompt-path samples, not independent deployment replicates. The post-answer tail can increase speculative acceptance; these controlled rates do not necessarily represent naturally completed answers or application throughput. TP2 and TP4 use different checkpoints and settings, so their tables are not a matched scaling comparison.
+
+Cold prefill used five sequential C1 requests per shape, stopped after the first output token. Cache-hit tokens were zero. Per-request prompt tok/s is actual input tokens divided by time to first token; the table reports its mean and median across five requests. Window prompt tok/s is total actual input tokens divided by elapsed time from the first request send to the last first token, including inter-request gaps. Both include serving overhead and are not GPU-compute-only rates.
+
+| Nominal prompt size | Requests | Mean request prompt tok/s | Median request prompt tok/s | Window prompt tok/s | Median TTFT, seconds |
+|---|---:|---:|---:|---:|---:|
+| 8K | 5 | 5,190.98 | 5,415.84 | 5,135.45 | 1.515 |
+| 32K | 5 | 6,076.75 | 6,100.63 | 6,073.76 | 5.373 |
+| 64K | 5 | 6,124.89 | 6,133.47 | 6,122.75 | 10.687 |
+| 128K | 5 | 6,132.49 | 6,129.46 | 6,131.15 | 21.344 |
+
+Token targets were 8,192, 32,768, 65,536 and 130,816 before chat framing. All cells completed without request errors or server restarts. [Per-repetition and per-request data](bench/results/v0.5.0-tp2-fixed-mtp.json) includes exact input sizes, windows, settings and client revision.
 
 ## Correctness and capacity
 

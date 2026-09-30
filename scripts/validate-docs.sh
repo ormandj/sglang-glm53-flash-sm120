@@ -98,7 +98,7 @@ done
 require_text "$launcher" '--quantization modelopt_mixed'
 require_text "$repo/README.md" 'ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO'
 require_text "$repo/README.md" 'nvidia/GLM-5.3-Flash-NVFP4'
-require_text "$repo/BENCHMARKS.md" "TP2 performance was not measured for ${stable_tag}"
+require_text "$repo/BENCHMARKS.md" "## ${stable_tag}: TP2 W4A16 fixed native MTP"
 
 for profile in "$launcher" "$launcher_tp4"; do
   if grep -E -- '(^|[[:space:]])--ep([[:space:]]|$)|EP_SIZE' "$profile" >/dev/null; then

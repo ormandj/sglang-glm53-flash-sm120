@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TP2 profile for the previous owner W4A16 NVFP4 K32 checkpoint.
-# Performance has not been measured with v0.5.0 at TP2.
+# TP2 fixed-MTP measurements: see BENCHMARKS.md.
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"

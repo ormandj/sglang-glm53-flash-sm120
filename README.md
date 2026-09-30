@@ -20,7 +20,7 @@ The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer,
 | BF16 recurrent-state slots | 28 | 224 |
 | Host cache | Optional, 32 GB/rank | Enabled, 40 GB/rank |
 
-The token pool is shared across requests. A 32-request admission limit does not reserve 32 full 1M-token contexts. TP2 keeps the previous W4A16 checkpoint; **TP2 performance has not been measured for v0.5.0**.
+The token pool is shared across requests. A 32-request admission limit does not reserve 32 full 1M-token contexts. TP2 keeps the previous W4A16 checkpoint; [fixed-MTP measurements](BENCHMARKS.md#v050-tp2-w4a16-fixed-native-mtp) cover C1, C2 and C4 decode and cold prefill up to 128K.
 
 ## Requirements
 
@@ -78,7 +78,7 @@ The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the pro
 
 ## Measurements
 
-A v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W measured **197.24 mean / 197.40 median output tok/s after MTP** and **75.73 mean / 76.51 median target forwards/s** at C1. This used fixed three-step MTP with adaptive switching disabled, a 16,396-token coding prompt and a 4,096-token capped output including reasoning and a post-answer tail. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides the window, sample count, configuration and correctness coverage. TP2 performance was not measured for this release.
+A v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W measured **197.24 mean / 197.40 median output tok/s after MTP** and **75.73 mean / 76.51 median target forwards/s** at C1. This used fixed three-step MTP with adaptive switching disabled, a 16,396-token coding prompt and a 4,096-token capped output including reasoning and a post-answer tail. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides the window, sample count, configuration and correctness coverage. TP2 with the previous W4A16 checkpoint measured 181.60 / 287.55 / 381.50 mean aggregate output tok/s at C1 / C2 / C4 under fixed MTP; its full settings and cold-prefill results are in the same benchmark document.
 
 ## Limitations
 
