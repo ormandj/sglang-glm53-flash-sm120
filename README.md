@@ -10,8 +10,6 @@ A SGLang image for serving GLM-5.3-Flash on two or four NVIDIA RTX PRO 6000 Blac
 
 The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer, ModelOpt, DeepGEMM and Transformers, adds the NVIDIA NVFP4 TP4 profile, and corrects recurrent-state checkpoint handling during blocked prefills. See the [changelog](CHANGELOG.md) and [releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases).
 
-**TP2:** no decode or prefill improvement over v0.4.3 has been established. The current measured rates are lower than the previous published rates, with different power and cache settings: 250 W without HiCache now, versus 300 W with HiCache before.
-
 **TP4:** the same cold 131,173-token prompt at 8,192-token prefills reached its first token in 18.161 seconds on v0.4.3 and 15.549 seconds with v0.5.0 and corrected PCIe peer transport, equivalent to **16.8% higher prompt-processing throughput**. This is a single adaptive-serving diagnostic request per configuration with different serving capacities. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
 
 | Default setting | TP2 | TP4 |
@@ -84,15 +82,7 @@ The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the pro
 
 **TP4, NVIDIA NVFP4:** 197.24 mean / 197.40 median output tok/s after MTP and 75.73 mean / 76.51 median target forwards/s at C1 on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W.
 
-**TP2, previous W4A16 checkpoint:** target forwards/s are lower than the [previous published v0.4.3 results](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/BENCHMARKS.md):
-
-| Concurrency | v0.4.3 mean forwards/s | v0.5.0 mean forwards/s | Observed change |
-|---|---:|---:|---:|
-| C1 | 66.91 | 61.78 | −7.7% |
-| C2 | 51.07 | 47.23 | −7.5% |
-| C4 | 35.34 | 32.29 | −8.6% |
-
-Both use fixed three-step MTP. The previous tests used 300 W and 32 GB/rank HiCache; the current tests use 250 W without HiCache. These rates do not isolate a software regression or speedup.
+**TP2, previous W4A16 checkpoint:** current mean target forward rates are **61.78 / 47.23 / 32.29 forwards/s** at C1 / C2 / C4, measured at 250 W.
 
 Current TP2 mean aggregate output is 181.60 / 287.55 / 381.50 tok/s at C1 / C2 / C4. Cold prefill averaged 5,190.98 prompt tok/s at 8K and 6,076.75–6,132.49 prompt tok/s at 32K–128K.
 
