@@ -1,39 +1,31 @@
 #!/usr/bin/env bash
-# TP2 profile for the previous owner W4A16 NVFP4 K32 checkpoint.
-# Performance has not been measured with v0.5.0 at TP2.
+# TP4 profile for nvidia/GLM-5.3-Flash-NVFP4 on four 96 GB SM120 GPUs.
 set -euo pipefail
 
-: "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
+: "${MODEL_DIR:?set MODEL_DIR to the local NVIDIA GLM-5.3-Flash-NVFP4 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a version-specific persistent cache directory}"
 
 IMAGE=${IMAGE:-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.5.0}
 PORT=${PORT:-8000}
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
-TP_SIZE=${TP_SIZE:-2}
-CONTEXT_LENGTH=${CONTEXT_LENGTH:-524288}
-MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-524288}
-MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-4}
-# GLM's hybrid recurrent state uses up to five slots per live request (four
-# in steady decode plus MTP intermediates). Recurrent-state slots are model
-# state, not ordinary KV cache; 28 is the qualified value for four requests.
-MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-28}
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3}
+TP_SIZE=${TP_SIZE:-4}
+CONTEXT_LENGTH=${CONTEXT_LENGTH:-1048576}
+MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-2621440}
+MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-32}
+# BF16 recurrent-state slots are separate from the shared FP8 KV pool.
+# Keep enough slots for every admitted request and speculative intermediates.
+MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-224}
 
-# HiCache: host-RAM prefix cache tier, DISABLED by default. Reuse of long
-# prompts across requests re-prefills from scratch without it. See
-# RUN.md for cache configuration. To enable it:
-#   ENABLE_HICACHE=1 ./examples/serve-glm53-flash.sh
-# Size the combined KV/index/recurrent host tiers per rank with
-# HICACHE_SIZE_GB (default 32 GB per rank, 64 GB across TP2). Leave
-# additional RAM for model loading and serving.
-ENABLE_HICACHE=${ENABLE_HICACHE:-0}
-HICACHE_SIZE_GB=${HICACHE_SIZE_GB:-32}
-HICACHE_ARGS=""
-if [ "${ENABLE_HICACHE}" = "1" ]; then
-  HICACHE_ARGS="--enable-hierarchical-cache --hicache-size ${HICACHE_SIZE_GB}"
+# HiCache uses 40 decimal GB per rank (160 GB across TP4), in addition to
+# loading and serving memory. Set ENABLE_HICACHE=0 to disable the host tier.
+ENABLE_HICACHE=${ENABLE_HICACHE:-1}
+HICACHE_SIZE_GB=${HICACHE_SIZE_GB:-40}
+HICACHE_ARGS=()
+if [[ "$ENABLE_HICACHE" == 1 ]]; then
+  HICACHE_ARGS=(--enable-hierarchical-cache --hicache-size "$HICACHE_SIZE_GB")
 fi
-CUDA_GRAPH_MAX_BS=${CUDA_GRAPH_MAX_BS:-4}
 MEM_FRACTION=${MEM_FRACTION:-0.99}
-CONTAINER_NAME=${CONTAINER_NAME:-glm53-flash-sm120}
+CONTAINER_NAME=${CONTAINER_NAME:-glm53-flash-sm120-tp4}
 
 if [[ ! -f "$MODEL_DIR/config.json" ]]; then
   echo "MODEL_DIR does not contain config.json: $MODEL_DIR" >&2
@@ -43,11 +35,11 @@ if [[ -e "$CACHE_DIR" && ! -d "$CACHE_DIR" ]]; then
   echo "CACHE_DIR exists but is not a directory: $CACHE_DIR" >&2
   exit 2
 fi
-if [[ "$TP_SIZE" != 2 ]]; then
-  echo "This launcher is scoped to TP_SIZE=2" >&2
+if [[ "$TP_SIZE" != 4 ]]; then
+  echo "This launcher is scoped to TP_SIZE=4" >&2
   exit 2
 fi
-for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do
+for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CONTEXT_LENGTH; do
   current=${!value}
   if ! [[ "$current" =~ ^[1-9][0-9]*$ ]]; then
     echo "$value must be a positive integer" >&2
@@ -56,6 +48,15 @@ for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRA
 done
 if (( MAX_MAMBA_CACHE_SIZE < MAX_RUNNING_REQUESTS * 5 )); then
   echo "MAX_MAMBA_CACHE_SIZE must be at least 5 * MAX_RUNNING_REQUESTS" >&2
+  exit 2
+fi
+
+if (( MAX_RUNNING_REQUESTS > 32 )); then
+  echo "This TP4 profile supports at most 32 running requests" >&2
+  exit 2
+fi
+if (( CONTEXT_LENGTH > 1048576 )); then
+  echo "CONTEXT_LENGTH exceeds the checkpoint's 1048576-token limit" >&2
   exit 2
 fi
 
@@ -72,11 +73,10 @@ if [[ ! -f "$ADAPTIVE_CONFIG" ]]; then
   echo "ADAPTIVE_CONFIG not found: $ADAPTIVE_CONFIG" >&2
   exit 2
 fi
-container_model_path=/models/glm53-flash-w4a16-e4m3-k32
+container_model_path=/models/glm53-flash-nvfp4
 
-# EP is deliberately absent: TP=2 keeps half of the routed-expert bank on each
-# GPU without adding low-concurrency all-to-all imbalance over PCIe. NCCL is
-# used instead of SGLang custom all-reduce because this pair has no NVLink.
+# TP4/EP1 matches the four-GPU PCIe profile. SYS permits NCCL peer access
+# across CPU roots; the driver and platform must provide working GPU P2P.
 exec docker run --rm \
   --name "$CONTAINER_NAME" \
   --entrypoint sglang \
@@ -87,6 +87,7 @@ exec docker run --rm \
   --volume "${model_dir}:${container_model_path}:ro" \
   --volume "${cache_dir}:/root/.cache" \
   --volume "${ADAPTIVE_CONFIG}:/etc/glm53-adaptive/adaptive.json:ro" \
+  --env NCCL_P2P_LEVEL="${NCCL_P2P_LEVEL:-SYS}" \
   --env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
   --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
@@ -94,7 +95,6 @@ exec docker run --rm \
   --env SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1 \
   --env SGLANG_PCIE_IPC_MAX_NUMEL=786432 \
   --env SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1 \
-  --env SGLANG_LM_HEAD_FP8=1 \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
@@ -111,7 +111,7 @@ exec docker run --rm \
   --warmups serving_coverage \
   --image-processor-backend torchvision \
   --mm-preprocessing-device cpu \
-  --quantization modelopt_mixed \
+  --quantization modelopt_fp4 \
   --moe-runner-backend flashinfer_cutlass \
   --disable-shared-experts-fusion \
   --disable-custom-all-reduce \
@@ -121,17 +121,19 @@ exec docker run --rm \
   --max-total-tokens "$MAX_TOTAL_TOKENS" \
   --kv-cache-dtype fp8_e4m3 \
   --mem-fraction-static "$MEM_FRACTION" \
-  --chunked-prefill-size 4096 --max-prefill-tokens 4096 \
+  --chunked-prefill-size 8192 --max-prefill-tokens 8192 \
   --max-running-requests "$MAX_RUNNING_REQUESTS" \
   --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
   --mamba-ssm-dtype bfloat16 \
-  $HICACHE_ARGS \
+  "${HICACHE_ARGS[@]}" \
   --cuda-graph-backend-prefill breakable \
   --cuda-graph-bs-prefill 64 128 \
   --cuda-graph-backend-decode full \
-  --cuda-graph-bs-decode $(seq -s ' ' 1 "$CUDA_GRAPH_MAX_BS") \
+  --cuda-graph-bs-decode 1 2 3 4 8 16 32 \
   --dsa-prefill-backend flashinfer_sparse_mla \
   --dsa-decode-backend flashinfer_sparse_mla \
+  --json-model-override-args '{"text_config":{"quantization_config":{"ignore":["model.layers.45.*"]}}}' \
+  --speculative-draft-model-quantization unquant \
   --speculative-algorithm EAGLE \
   --speculative-num-steps 5 \
   --speculative-eagle-topk 1 \

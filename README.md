@@ -1,130 +1,99 @@
-# GLM-5.3-Flash on two RTX PRO 6000 Blackwell GPUs
+# GLM-5.3-Flash on RTX PRO 6000 Blackwell GPUs
 
-A ready-to-run SGLang image and a matching quantized checkpoint for serving GLM-5.3-Flash on two NVIDIA RTX PRO 6000 Blackwell (96 GB, SM120) GPUs over PCIe. Download the checkpoint and run the launcher for an OpenAI-compatible server with a 524,288-token context limit and shared device token pool, up to four concurrent requests within that pool, speculative decoding, vision input, reasoning and tool calling.
+A SGLang image for serving GLM-5.3-Flash on two or four NVIDIA RTX PRO 6000 Blackwell 96 GB GPUs (SM120) over PCIe. Both profiles provide an OpenAI-compatible API, vision, reasoning, tool calling, FP8 KV cache and native speculative decoding.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.3` |
-| Checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) on Hugging Face |
-| Hardware | 2x RTX PRO 6000 Blackwell (SM120), tensor parallel 2, PCIe |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.5.0` |
+| TP2 checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) |
+| TP4 checkpoint | [`nvidia/GLM-5.3-Flash-NVFP4`](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4) |
 
-The current published stable image is `v0.4.3`. It adopts FlashInfer's model-specific native GLM NoPE cache interface, with runtime row strides and validated cache views, and refreshes the SGLang integration and carried fixes. The 524,288-token shared device pool, four-request admission, compact FP8 cache, reasoning, vision and native speculative decoding remain supported. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases) for details.
+The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer, ModelOpt, DeepGEMM and Transformers, adds the NVIDIA NVFP4 TP4 profile, and corrects recurrent-state checkpoint handling during blocked prefills. See the [changelog](CHANGELOG.md) and [releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases).
 
-The older `v0.2.1` image has a long-prefix HiCache corruption defect. Keep HiCache disabled if continuing to use that version.
+| Default setting | TP2 | TP4 |
+|---|---:|---:|
+| GPUs | 2 × 96 GB SM120 | 4 × 96 GB SM120 |
+| Per-request context limit | 524,288 tokens | 1,048,576 tokens |
+| Shared device token pool | 524,288 tokens | 2,621,440 tokens |
+| Maximum running requests | 4 | 32 |
+| Prefill chunk / token budget | 4,096 | 8,192 |
+| BF16 recurrent-state slots | 28 | 224 |
+| Host cache | Optional, 32 GB/rank | Enabled, 40 GB/rank |
+
+The token pool is shared across requests. A 32-request admission limit does not reserve 32 full 1M-token contexts. TP2 keeps the previous W4A16 checkpoint; **TP2 performance has not been measured for v0.5.0**.
 
 ## Requirements
 
-- Linux x86_64 with a CUDA 13 capable driver, Docker and the NVIDIA
-  Container Toolkit.
-- Two visible SM120 GPUs. Other GPU pairs are untested.
-- About 170 GB of disk for the checkpoint and a few GB for the kernel cache.
-- Optional: 64 GB for the TP2 HiCache pools at 32 GB per rank, plus host RAM
-  for the model-loading and serving processes. HiCache is off by default in
-  the launcher; the benchmark configuration enables it at 32 GB per rank.
+- Linux x86_64, a CUDA 13 capable NVIDIA driver, Docker and the NVIDIA Container Toolkit.
+- Two or four RTX PRO 6000 Blackwell 96 GB GPUs. The TP4 profile was validated on Max-Q cards at 250 W with PCIe Gen4 ×16 links, working peer access across CPU roots and no NVLink. Other GPU configurations are untested.
+- Disk space for the chosen checkpoint and persistent compiled-kernel cache.
+- Host RAM for model loading and serving, plus 160 GB for the default TP4 host cache. TP2's optional host cache adds 64 GB. These cache sizes are decimal GB; they are additional to process memory.
 
-## Run it
+## Run with four GPUs
 
-1. Download the checkpoint.
+```bash
+pip install -U huggingface_hub
+export MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4
+HF_XET_HIGH_PERFORMANCE=1 hf download nvidia/GLM-5.3-Flash-NVFP4 \
+  --revision 09b04e5e74bca08ca8549fc736d4cdd8624bfde3 --local-dir "$MODEL_DIR"
+git clone https://github.com/ormandj/sglang-glm53-flash-sm120
+cd sglang-glm53-flash-sm120
+git checkout v0.5.0
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.5.0
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v88-tp4
+./examples/serve-glm53-flash-tp4.sh
+```
 
-   ```bash
-   pip install -U huggingface_hub
-   export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-   HF_XET_HIGH_PERFORMANCE=1 hf download ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO --local-dir "$MODEL_DIR"
-   ```
+The launcher includes the metadata override needed to load NVIDIA's BF16 native MTP layer without quantizing it. Keep that override and `--speculative-draft-model-quantization unquant` together. TP4 uses tensor parallel 4 and expert parallel 1.
 
-2. Start the server with the launcher from this repository. Enable the optional
-   HiCache settings below to match the benchmark configuration.
+## Run with two GPUs
 
-   ```bash
-   git clone https://github.com/ormandj/sglang-glm53-flash-sm120
-   cd sglang-glm53-flash-sm120
-   export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.4.3
-   export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v84
-   ./examples/serve-glm53-flash.sh
-   ```
+Use the previous W4A16 checkpoint with the TP2 launcher:
 
-   To enable 32 GB of host cache per rank, set
-   `ENABLE_HICACHE=1 HICACHE_SIZE_GB=32` when running the launcher.
-   The first boot compiles kernels into `CACHE_DIR`. Use a fresh `CACHE_DIR` for this image version and wait for warmup to finish. The server is ready when the log prints
-   `The server is fired up and ready to roll!`.
+```bash
+pip install -U huggingface_hub
+export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
+HF_XET_HIGH_PERFORMANCE=1 hf download ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO --local-dir "$MODEL_DIR"
+git clone https://github.com/ormandj/sglang-glm53-flash-sm120
+cd sglang-glm53-flash-sm120
+git checkout v0.5.0
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.5.0
+export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v88-tp2
+./examples/serve-glm53-flash.sh
+```
 
-3. Send a request. The API is OpenAI-compatible on port 8000 and the model
-   name is `glm-5.3-flash`.
+HiCache is off by default at TP2. Set `ENABLE_HICACHE=1 HICACHE_SIZE_GB=32` to enable 32 GB per rank. At TP4, set `ENABLE_HICACHE=0` to disable the default host tier. Use a fresh cache directory for this image and separate directories for the two profiles. The first startup compiles kernels; wait for `The server is fired up and ready to roll!`.
 
-   ```bash
-   curl -s http://localhost:8000/v1/chat/completions \
-     -H 'Content-Type: application/json' \
-     -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"Explain KV cache paging in three sentences."}]}'
-   ```
+## Send a request
 
-   Reasoning is on by default and returned in `reasoning_content`. To turn
-   it off for a request, add `"chat_template_kwargs": {"enable_thinking": false}`.
-   Images go in as standard `image_url` content parts, up to 8,000 image
-   tokens per request.
+```bash
+curl -s http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"Explain KV cache paging in three sentences."}]}'
+```
 
-The launcher is a plain `docker run`; read [`examples/serve-glm53-flash.sh`](examples/serve-glm53-flash.sh)
-to see or change every flag. [`RUN.md`](RUN.md) describes the serving configuration. Keep these settings together:
+Reasoning is enabled by default and returned in `reasoning_content`. To disable it for a request, add `"chat_template_kwargs":{"enable_thinking":false}`. Supply images as standard `image_url` content parts. The checkpoint's processor resizes images to its image-token budget; image tokens consume context capacity.
 
-- Prefill uses breakable CUDA graphs for single-request 64- and 128-token tails; longer prefills retain 4,096-token chunks.
-- `--cuda-graph-bs-decode` lists every batch size up to `--max-running-requests`, so each decode batch uses a graph captured for its size.
-- `--max-mamba-cache-size` is recurrent-state slots, not KV cache. Each live
-  request uses four to five, so the launcher ships 28 for four requests.
+The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the profiles, native MTP settings and source builds.
 
-To build this source locally as `sglang-glm53-flash-sm120:v0.5.0-rc.4`, follow [RUN.md](RUN.md).
+## Measurements
 
-## What to expect
-
-Measurements used a v0.4.3 validation build on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor parallel 2 over PCIe. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. The configuration used W4A16 experts, FP8 KV, a 524,288-token shared device pool, four running requests, 4,096-token prefill chunks, 28 recurrent-state slots and 32 GB of HiCache per rank. Performance comparisons use fixed native MTP with three draft steps, top-k one and four verification tokens, with adaptive switching disabled. The launcher uses adaptive MTP for serving. The source inputs are pinned in [this release's stack lock](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/stack.lock.json).
-
-| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
-|---|---|---:|---:|---:|---:|---:|
-| Decode C1, 5 repetitions | Aggregate output after MTP | 197.5 | 189.8 | 66.91 | 66.91 | 2.97 / 2.88 |
-| Decode C2, 5 repetitions | Aggregate output after MTP | 311.3 | 310.0 | 51.07 | 50.95 | 3.02 / 3.00 |
-| Decode C3, 5 repetitions | Aggregate output after MTP | 377.1 | 380.1 | 41.11 | 41.01 | 3.05 / 3.06 |
-| Decode C4, 5 repetitions | Aggregate output after MTP | 425.1 | 420.7 | 35.34 | 35.35 | 2.99 / 2.94 |
-| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,626.6 | 5,624.2 | n/a | n/a | n/a |
-| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,339.0 | 6,341.4 | n/a | n/a | n/a |
-| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,370.9 | 6,353.0 | n/a | n/a | n/a |
-| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,352.0 | 6,328.9 | n/a | n/a | n/a |
-
-Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 12.7-27.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
-
-Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Every decode response reaches a deliberate 4,096-token output cap with `ignore_eos`; the post-answer tail can increase speculative acceptance, so this is not completed-answer throughput. Prefill tok/s is each cold request's prompt-token count divided by time to first token, summarized over five requests per length. These controlled measurements do not necessarily represent real-world performance.
-
-Compared with v0.4.2, mean output rates changed by +0.67% at C1, +1.74% at C2, +2.19% at C3 and +3.44% at C4; median output changes ranged from -1.67% to +3.00%. Mean and median target forward rates differed by at most 0.54%, and cold-prefill rates by at most 0.62%. Output-rate changes also reflect speculative acceptance in the fixed window, including its post-answer tail. Five sequential repetitions within one startup per image do not establish an isolated speedup or statistical significance. [BENCHMARKS.md](BENCHMARKS.md) contains the full comparison, methodology and adaptive-serving quality results.
+A v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W measured **197.24 mean / 197.40 median output tok/s after MTP** and **75.73 mean / 76.51 median target forwards/s** at C1. This used fixed three-step MTP with adaptive switching disabled, a 16,396-token coding prompt and a 4,096-token capped output including reasoning and a post-answer tail. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides the window, sample count, configuration and correctness coverage. TP2 performance was not measured for this release.
 
 ## Limitations
 
-- Reasoning can exhaust the output budget without producing a final answer. No requests hit the 16,384-token budget in this version’s 1,319-request GSM8K run; see [BENCHMARKS.md](BENCHMARKS.md) for completion and quality results.
-- Custom HiCache configurations with one differently stored MLA draft use additional host memory for its sidecars. Mismatched multiple draft runners and FP4 MLA KV storage with separate scale buffers are unsupported; this does not restrict the supplied W4A16 weight quantization.
-- A request for input logprobs spanning a long prompt can still OOM the scheduler and restart the container. Score only the continuation at the prompt boundary.
-- Memory is tightly sized at `mem-fraction-static=0.99`. Prefill, vision and runtime compilation share the remaining headroom; keep `max-prefill-tokens` equal to the 4,096-token chunk size. Increasing the pool, concurrency or image budget requires new memory acceptance tests.
-- Images use approximately one token per 28x28 pixels up to the checkpoint's 8,000-token limit. Larger images are resized by the processor; image tokens consume context capacity.
-- Some kernels can log `device-loaded after serving started` for additional alignment variants after warmup. A first request delayed by seconds of compilation needs investigation.
-- Measurements cover this two-GPU SM120 profile. Other cards and tensor-parallel sizes are untested.
+- The supplied memory settings are tightly sized. Increasing pool size, concurrency or image budgets requires memory acceptance checks. Keep the prefill budget equal to the chunk size for the selected profile.
+- High-resolution and multiple-image checks establish memory capacity on the TP4 profile; they do not establish OCR or photographic accuracy.
+- Reasoning can consume the output budget before producing a final answer.
+- Requesting input logprobs across a long prompt can exhaust GPU memory and restart the server. Score only the continuation at the prompt boundary.
+- HiCache does not support FP4 MLA KV storage with separate scale buffers or multiple mismatched draft runners. This concerns KV storage, not the supplied FP4 weight checkpoints.
 
-## Reproducibility and building
+## Reproducibility
 
-`stack.lock.json` pins the SGLang and FlashInfer base commits, the
-checksummed patches in [`patches/`](patches/), the ModelOpt commit and the
-vendor base image digests. `scripts/verify-patches.sh` re-fetches the
-official trees, applies the patches and asserts the resulting tree hashes.
-[`QUANTIZATION.md`](QUANTIZATION.md) reproduces the checkpoint from the BF16
-source with the producers in [`quantization/`](quantization/).
+[stack.lock.json](stack.lock.json) pins the official upstream commits, checksummed integration patches, ModelOpt, DeepGEMM, Transformers and vendor base-image digests. [scripts/verify-patches.sh](scripts/verify-patches.sh) fetches the official source trees, applies the patches and verifies the resulting tree hashes. The vendor base supplies the CUDA/PyTorch dependency stack; it does not establish SGLang source provenance.
 
-```bash
-./scripts/validate-release.sh
-./scripts/validate-docs.sh
-./scripts/verify-patches.sh
-podman build --target runtime \
-  --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
-  --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.5.0-rc.4 .
-```
-
-The vendor base image supplies the pinned CUDA/PyTorch dependency stack; the SGLang and FlashInfer source trees are verified separately as described above.
+[QUANTIZATION.md](QUANTIZATION.md) describes the previous owner W4A16 checkpoint used at TP2. TP4 uses NVIDIA's published NVFP4 checkpoint directly.
 
 ## License
 
-See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md). Upstream SGLang,
-FlashInfer, ModelOpt and GLM-5.3-Flash retain their own licenses.
+See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). Upstream SGLang, FlashInfer, ModelOpt and GLM-5.3-Flash retain their own licenses.

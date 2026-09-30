@@ -1,73 +1,27 @@
 # Measured results
 
-## v0.4.3 measurements, 2026-09-11
+## v0.5.0: TP4 fixed native MTP
 
-### Standard fixed-MTP comparison
+Measurements used a v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs (SM120) at 250 W, with PCIe Gen4 ×16 links, working GPU peer access across CPU roots and no NVLink. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. Source inputs are pinned in [this release's stack lock](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.5.0/stack.lock.json).
 
-Measurements used a v0.4.3 validation build on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 300 W, tensor parallel 2 over PCIe. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. The configuration used W4A16 experts, FP8 KV, a 524,288-token shared device pool, four running requests, 4,096-token prefill chunks, 28 recurrent-state slots and 32 GB of HiCache per rank. Performance comparisons use fixed native MTP with three draft steps, top-k one and four verification tokens, with adaptive switching disabled. The launcher uses adaptive MTP for serving. The source inputs are pinned in [this release's stack lock](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/stack.lock.json).
+The checkpoint was `nvidia/GLM-5.3-Flash-NVFP4`, revision `09b04e5e74bca08ca8549fc736d4cdd8624bfde3`, at TP4/EP1 with BF16 native MTP, FP8 E4M3 KV, a 1,048,576-token context limit, 2,621,440 shared device tokens, 32-request admission, 224 BF16 recurrent-state slots, 8,192-token prefill chunks and 40 GB of HiCache per rank. Only one request ran during each measured decode window.
 
-| Workload | Tokens measured | Mean tok/s | Median tok/s | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
-|---|---|---:|---:|---:|---:|---:|
-| Decode C1, 5 repetitions | Aggregate output after MTP | 197.5 | 189.8 | 66.91 | 66.91 | 2.97 / 2.88 |
-| Decode C2, 5 repetitions | Aggregate output after MTP | 311.3 | 310.0 | 51.07 | 50.95 | 3.02 / 3.00 |
-| Decode C3, 5 repetitions | Aggregate output after MTP | 377.1 | 380.1 | 41.11 | 41.01 | 3.05 / 3.06 |
-| Decode C4, 5 repetitions | Aggregate output after MTP | 425.1 | 420.7 | 35.34 | 35.35 | 2.99 / 2.94 |
-| Cold prefill 8k, C1, 5 requests | Prompt tokens (input) | 5,626.6 | 5,624.2 | n/a | n/a | n/a |
-| Cold prefill 32k, C1, 5 requests | Prompt tokens (input) | 6,339.0 | 6,341.4 | n/a | n/a | n/a |
-| Cold prefill 64k, C1, 5 requests | Prompt tokens (input) | 6,370.9 | 6,353.0 | n/a | n/a | n/a |
-| Cold prefill 128k, C1, 5 requests | Prompt tokens (input) | 6,352.0 | 6,328.9 | n/a | n/a | n/a |
+Fixed MTP used three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Reasoning and the default chat grammar remained enabled. Each request used the same 16,396-token coding prompt and reached a deliberate 4,096-token output cap with `ignore_eos`.
 
-Decode window: average context 17,408-20,480 tokens (16k prompt plus 1k-4k output), 12.7-27.7 seconds per repetition. Decode rates aggregate all C concurrent requests. Prefill rows cover each full cold request to its first token.
+| Workload | Repetitions | Mean output tok/s after MTP | Median output tok/s after MTP | Mean target forwards/s | Median target forwards/s | Output tok/forward, mean / median |
+|---|---:|---:|---:|---:|---:|---:|
+| Chat decode C1 | 3 | 197.24 | 197.40 | 75.73 | 76.51 | 2.604 / 2.580 |
 
-Decode tok/s is aggregate output after MTP, including reasoning, across the stated number of concurrent requests. Forward passes/s counts target-model iterations. Every decode response reaches a deliberate 4,096-token output cap with `ignore_eos`; the post-answer tail can increase speculative acceptance, so this is not completed-answer throughput. Prefill tok/s is each cold request's prompt-token count divided by time to first token, summarized over five requests per length. These controlled measurements do not necessarily represent real-world performance.
+Rates are least-squares slopes of the server's cumulative emitted-token and target-forward counters over the steady decode interval with context between 17,408 and 20,480 tokens. Accepted windows lasted 14.57–15.27 seconds. Each window had exactly one request, fixed three-step/four-token verification, no prefill activity and no overlapping benchmark or review traffic. Three chat repetitions were interleaved with separate native-generation controls within one server startup; those controls are not part of the table.
 
-Output tok/forward/request is a separate measured distribution, so multiplying table means need not reproduce the mean output rate. The following table also reports aggregate cold-prompt throughput over the complete cell.
+Output tokens include reasoning and a post-answer tail. The tail can increase speculative acceptance, so these are output-capped decode measurements, not naturally completed-answer throughput. Mean and median are taken over the three repetitions; output tokens per forward is the per-repetition output slope divided by the forward slope. These controlled measurements do not necessarily represent real-world performance. There is no matched fixed-MTP comparison against the previous image on this TP4 checkpoint.
 
-| Cold prefill, C1 | Mean TTFT | Median TTFT | Aggregate prompt tok/s over the cell |
-|---|---:|---:|---:|
-| 8k | 1.458 s | 1.459 s | 5,619.4 |
-| 32k | 5.171 s | 5.169 s | 6,336.2 |
-| 64k | 10.289 s | 10.318 s | 6,368.8 |
-| 128k | 20.597 s | 20.672 s | 6,350.6 |
+Cold prefill throughput was not measured with this fixed-MTP configuration. **TP2 performance was not measured for v0.5.0**, and previous TP2 numbers are not presented as results for this release. Historical results remain in the immutable [v0.4.3 benchmarks](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.4.3/BENCHMARKS.md).
 
-### Comparison with v0.4.2
+## Correctness and capacity
 
-The v0.4.2 baseline uses the previously measured fixed-three-step panel with the same physical GPUs, power limit, driver, checkpoint, 524,288-token shared pool, serving settings, workloads, random seeds and analysis definitions. Both images use three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Sequential repetitions within one startup per image do not isolate individual changes or establish statistical significance.
+The TP4 validation build passed focused CPU and GPU regressions for blocked KDA checkpoint indexing. Eight GPU regression cases passed after the correction and failed against the pre-fix implementation. Five increasing cached-prefix serving stages passed at both 4,096- and 8,192-token prefills.
 
-| Concurrency | Version | Mean output tok/s after MTP | Median output tok/s after MTP | Mean forwards/s | Median forwards/s | Output tok/forward/request, mean / median |
-|---|---|---:|---:|---:|---:|---:|
-| C1 | v0.4.2 | 196.1 | 193.0 | 66.78 | 66.72 | 2.95 / 2.96 |
-| C1 | v0.4.3 | 197.5 | 189.8 | 66.91 | 66.91 | 2.97 / 2.88 |
-| C2 | v0.4.2 | 306.0 | 306.8 | 50.99 | 50.89 | 3.00 / 3.02 |
-| C2 | v0.4.3 | 311.3 | 310.0 | 51.07 | 50.95 | 3.02 / 3.00 |
-| C3 | v0.4.2 | 369.0 | 370.2 | 41.08 | 41.03 | 2.99 / 3.05 |
-| C3 | v0.4.3 | 377.1 | 380.1 | 41.11 | 41.01 | 3.05 / 3.06 |
-| C4 | v0.4.2 | 411.0 | 408.4 | 35.38 | 35.16 | 2.90 / 2.91 |
-| C4 | v0.4.3 | 425.1 | 420.7 | 35.34 | 35.35 | 2.99 / 2.94 |
+The adaptive serving profile separately processed a 1,025,012-token prompt with seven ordered recall markers on cold and cached paths, and a forced host-cache restore of 408,064 tokens. Multiple-image capacity checks used four and eight 7680×4320 solid-color images, including four concurrent requests with four images each, followed by 32 concurrent cold text requests without an out-of-memory failure or restart. The processor resizes images according to its token budget; these fixtures test capacity and execution, not OCR or photographic accuracy.
 
-Fixed native MTP: 3 draft steps, top-k 1, 4 verification tokens; adaptive switching disabled. Five repetitions per version and concurrency, 17,408-20,480 average context tokens, 12.7-29.3 seconds per measured window. Output is aggregate across the cohort. All requests use a fixed 4,096-token ignore_eos window including a post-answer tail; these are controlled measurements, not completed-answer throughput.
-
-| Cold prefill, C1 | v0.4.2 mean / median prompt tok/s | v0.4.3 mean / median prompt tok/s | Mean / median change |
-|---|---:|---:|---:|
-| 8k, 5 requests per version | 5,647.7 / 5,659.0 | 5,626.6 / 5,624.2 | -0.37% / -0.61% |
-| 32k, 5 requests per version | 6,352.0 / 6,359.6 | 6,339.0 / 6,341.4 | -0.20% / -0.29% |
-| 64k, 5 requests per version | 6,361.1 / 6,345.1 | 6,370.9 / 6,353.0 | +0.15% / +0.13% |
-| 128k, 5 requests per version | 6,346.7 / 6,319.5 | 6,352.0 / 6,328.9 | +0.08% / +0.15% |
-
-Compared with v0.4.2, mean output rates changed by +0.67% at C1, +1.74% at C2, +2.19% at C3 and +3.44% at C4; median output changes ranged from -1.67% to +3.00%. Mean and median target forward rates differed by at most 0.54%, and cold-prefill rates by at most 0.62%. Output-rate changes also reflect speculative acceptance in the fixed window, including its post-answer tail. Five sequential repetitions within one startup per image do not establish an isolated speedup or statistical significance.
-
-### Correctness coverage
-
-The measured validation build passed CPU and GPU checks for sparse-attention layout selection, masked reads, GLM head-count specializations, graph replay, cache transfers, MHC, W4A16 MoE and scheduler ownership. HiCache coverage included packed transfers and mixed target/draft sidecars under Compute Sanitizer, with zero reported sanitizer errors. Serving checks covered five forced host restores followed by device replays and approximately 400k-token positional recall through cold, device and host-cache paths. These checks exercise the changed paths and carried integrations on the stated two-GPU platform.
-
-### Answer quality and startup
-
-The launcher uses adaptive three/five-step MTP for serving. The following quality and reliability checks used that serving configuration; published performance comparisons use the fixed-MTP standard above.
-
-The adaptive-serving GSM8K run completed all 1,319 requests without request errors or output caps. With the unchanged 16,384-token budget and default reasoning, the GLM-aware extractor matched 1,283 answers and the stock extractor matched 1,176. The matched v0.4.2 run had 1,279 GLM-aware matches, including 1,277 from completed responses, and 1,166 stock matches; two responses exhausted the budget while reasoning. These single runs do not establish quality improvement or equivalence.
-
-The unchanged long-context GSM8K workload scored 143/150 at approximately 73k tokens and 142/150 at approximately 400k tokens, compared with 144/150 and 143/150 for v0.4.2. These checks used a 2,048-token budget and `reasoning_effort: low`; the harness retained extracted answers but not finish reasons, so completion status is unknown.
-
-On the first boot of the measured validation build, the first short thinking response finished in 0.826 seconds and the first sampled response in 0.620 seconds. A 7680×4320 image followed by four simultaneous independent cold 4k-token requests completed without an out-of-memory failure or restart, both after startup and after the quality workload. A 523,787-token prompt also ran with a deliberate 256-token output window. The 524,288-token device pool is shared across requests; it is not a per-request reservation.
-
-The reusable workloads and measurement tools are in [bench/](bench/). Other GPU pairs and tensor-parallel sizes have not been measured.
+The shared device pool is not a per-request reservation. Image tokens, text tokens and other live requests consume that shared capacity. The supplied adaptive launcher uses the three/five-step ladder for serving; the performance table above uses fixed MTP.

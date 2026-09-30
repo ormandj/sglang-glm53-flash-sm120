@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.0 (stable; 2026-09-30)
+
+- Add a TP4 launcher for `nvidia/GLM-5.3-Flash-NVFP4`, with a 1,048,576-token request limit, 2,621,440 shared FP8 KV tokens, 32-request admission and 8,192-token prefill chunks on four 96 GB SM120 GPUs.
+- Preserve the previous `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO` checkpoint and TP2 launcher. TP2 performance has not been measured for this release.
+- Refresh the pinned SGLang, FlashInfer, ModelOpt, DeepGEMM and Transformers sources. FlashInfer includes the merged upstream #5075 compact-row/correctness changes and #5197 native SM120 execution refactor.
+- Correct recurrent-state checkpoint coordinates across blocked KDA prefills and cached-prefix reuse. Support CPU torchvision preprocessing with the native GLM processor.
+- Configure the NVIDIA checkpoint's BF16 native MTP layer explicitly, and retain the bounded three/five-step adaptive ladder for serving.
+- Use separate fresh kernel caches: `/srv/cache/sglang-glm53-flash-sm120-v88-tp2` and `/srv/cache/sglang-glm53-flash-sm120-v88-tp4`. TP4 HiCache defaults to 40 GB per rank; TP2 HiCache remains optional at 32 GB per rank.
+
+### Measurements
+
+A v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W measured 197.24 mean / 197.40 median output tok/s after MTP and 75.73 mean / 76.51 median target forwards/s at C1. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. The three repetitions used fixed three-step MTP with adaptive switching disabled, a 16,396-token coding prompt and a 4,096-token output cap including reasoning and a post-answer tail. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.5.0/BENCHMARKS.md) for measurement windows and correctness/capacity coverage. TP2 and fixed-MTP cold-prefill performance were not measured for this release.
+
+### Known limitations
+
+- The device token pool is shared; 32 admitted requests do not each receive a 1M-token reservation.
+- Reasoning can exhaust the output budget before producing a final answer. Requesting input logprobs across a long prompt can exhaust GPU memory; score the continuation at the prompt boundary.
+- The documented memory envelope applies to the supplied profiles. Larger pools, image budgets or concurrency require memory acceptance checks.
+
+
 ## v0.4.3 (stable; 2026-09-11)
 
 - Use FlashInfer's model-specific GLM NoPE cache metadata and native sparse-attention implementation. Preserve the compact 528-byte FP8 row format: 512 payload bytes plus 16 bytes of scales.

@@ -12,8 +12,9 @@ if grep -F -- "The current published stable image is \`${stable_tag}\`" "$repo/R
   local_image="ghcr.io/ormandj/sglang-glm53-flash-sm120:${stable_tag}"
 fi
 launcher="$repo/examples/serve-glm53-flash.sh"
+launcher_tp4="$repo/examples/serve-glm53-flash-tp4.sh"
 
-for file in README.md RUN.md CHANGELOG.md AGENTS.md NOTICE.md "$launcher"; do
+for file in README.md RUN.md CHANGELOG.md AGENTS.md NOTICE.md BENCHMARKS.md "$launcher" "$launcher_tp4"; do
   [[ -s "$repo/$file" || -s "$file" ]] || { echo "required file missing: $file" >&2; exit 1; }
 done
 
@@ -36,7 +37,7 @@ if grep -E -- '^## Releases$|([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal
   exit 1
 fi
 
-for file in README.md CHANGELOG.md AGENTS.md NOTICE.md; do
+for file in README.md RUN.md BENCHMARKS.md CHANGELOG.md AGENTS.md NOTICE.md; do
   if grep -E -- '([a-z0-9-]+\.)?home\.[a-z0-9.-]+|registry\.internal\.example|/Users/[^/]+/|~/git/[^/]+/|(^|[^[:alnum:]_])(this|our) homelab([^[:alnum:]_]|$)' "$repo/$file" >/dev/null; then
     echo "$file contains private operational details" >&2
     exit 1
@@ -74,17 +75,40 @@ critical=(
 )
 for value in "${critical[@]}"; do require_text "$launcher" "$value"; done
 
-if grep -E -- '(^|[[:space:]])--ep([[:space:]]|$)|EP_SIZE' "$launcher" >/dev/null; then
-  echo "launcher must not enable Expert Parallel at TP=2" >&2
-  exit 1
-fi
-if grep -F -- 'flashinfer_mxfp4' "$launcher" >/dev/null; then
-  echo "launcher carries the rejected MXFP4 runner" >&2
-  exit 1
-fi
-if grep -F -- '--trust-remote-code' "$launcher" >/dev/null; then
-  echo "native GLM support must not require trust-remote-code" >&2
-  exit 1
-fi
+tp4_critical=(
+  "IMAGE=\${IMAGE:-${local_image}}"
+  'TP_SIZE=${TP_SIZE:-4}'
+  'CONTEXT_LENGTH=${CONTEXT_LENGTH:-1048576}'
+  'MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-2621440}'
+  'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-32}'
+  'MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-224}'
+  'HICACHE_SIZE_GB=${HICACHE_SIZE_GB:-40}'
+  '--quantization modelopt_fp4'
+  '--chunked-prefill-size 8192 --max-prefill-tokens 8192'
+  '--cuda-graph-bs-decode 1 2 3 4 8 16 32'
+  '--speculative-draft-model-quantization unquant'
+  '--json-model-override-args'
+  'model.layers.45.*'
+  '--env NCCL_P2P_LEVEL="${NCCL_P2P_LEVEL:-SYS}"'
+)
+for value in "${tp4_critical[@]}"; do require_text "$launcher_tp4" "$value"; done
+for value in '--enable-multimodal' '--mm-preprocessing-device cpu' '--image-processor-backend torchvision' '--kv-cache-dtype fp8_e4m3' '--dsa-prefill-backend flashinfer_sparse_mla' '--dsa-decode-backend flashinfer_sparse_mla' '--speculative-adaptive' '--reasoning-parser glm45' '--tool-call-parser glm47'; do
+  require_text "$launcher_tp4" "$value"
+done
+require_text "$launcher" '--quantization modelopt_mixed'
+require_text "$repo/README.md" 'ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO'
+require_text "$repo/README.md" 'nvidia/GLM-5.3-Flash-NVFP4'
+require_text "$repo/BENCHMARKS.md" "TP2 performance was not measured for ${stable_tag}"
 
-echo "documentation contract valid: ${candidate_tag}, cache ${cache_schema}, TP2 vision+MTP profile"
+for profile in "$launcher" "$launcher_tp4"; do
+  if grep -E -- '(^|[[:space:]])--ep([[:space:]]|$)|EP_SIZE' "$profile" >/dev/null; then
+    echo "launcher must keep expert parallel 1: $profile" >&2
+    exit 1
+  fi
+  if grep -E -- 'flashinfer_mxfp4|--trust-remote-code' "$profile" >/dev/null; then
+    echo "launcher carries an unsupported runner or remote-code setting: $profile" >&2
+    exit 1
+  fi
+done
+
+echo "documentation contract valid: ${stable_tag}, cache ${cache_schema}, TP2 W4A16 and TP4 NVIDIA NVFP4 vision+MTP profiles"
