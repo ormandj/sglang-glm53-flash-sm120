@@ -10,6 +10,8 @@ A SGLang image for serving GLM-5.3-Flash on two or four NVIDIA RTX PRO 6000 Blac
 
 The current published stable image is `v0.5.0`. It refreshes SGLang, FlashInfer, ModelOpt, DeepGEMM and Transformers, adds the NVIDIA NVFP4 TP4 profile, and corrects recurrent-state checkpoint handling during blocked prefills. See the [changelog](CHANGELOG.md) and [releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases).
 
+**Performance:** TP4 prefill improved after correcting PCIe GPU peer transport on the tested system. A decode speedup over v0.4.3 has not been established. See the [measured rates](#measurements).
+
 | Default setting | TP2 | TP4 |
 |---|---:|---:|
 | GPUs | 2 × 96 GB SM120 | 4 × 96 GB SM120 |
@@ -78,7 +80,11 @@ The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the pro
 
 ## Measurements
 
-A v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W measured **197.24 mean / 197.40 median output tok/s after MTP** and **75.73 mean / 76.51 median target forwards/s** at C1. This used fixed three-step MTP with adaptive switching disabled, a 16,396-token coding prompt and a 4,096-token capped output including reasoning and a post-answer tail. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides the window, sample count, configuration and correctness coverage. TP2 with the previous W4A16 checkpoint measured 181.60 / 287.55 / 381.50 mean aggregate output tok/s at C1 / C2 / C4 under fixed MTP; its full settings and cold-prefill results are in the same benchmark document.
+**TP4, NVIDIA NVFP4:** 197.24 mean / 197.40 median output tok/s after MTP and 75.73 mean / 76.51 median target forwards/s at C1 on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W.
+
+**TP2, previous W4A16 checkpoint:** 181.60 / 287.55 / 381.50 mean aggregate output tok/s at C1 / C2 / C4 on two of the same GPUs at 250 W. Cold prefill averaged 5,190.98 prompt tok/s at 8K and 6,076.75–6,132.49 prompt tok/s at 32K–128K.
+
+These results use fixed three-step MTP with adaptive switching disabled, 16K coding prompts and 4,096-token capped outputs including reasoning and a post-answer tail. Measurements used a v0.5.0 validation build; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. [BENCHMARKS.md](BENCHMARKS.md) provides all means/medians, target-forward rates, windows, sample counts and configuration details.
 
 ## Limitations
 
