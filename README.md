@@ -72,7 +72,7 @@ curl -s http://localhost:8000/v1/chat/completions \
   -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"Explain KV cache paging in three sentences."}]}'
 ```
 
-Reasoning is enabled by default and returned in `reasoning_content`. To disable it for a request, add `"chat_template_kwargs":{"enable_thinking":false}`. Supply images as standard `image_url` content parts. The checkpoint's processor resizes images to its image-token budget; image tokens consume context capacity.
+Both checkpoints always enable reasoning with their bundled chat template and return it in `reasoning_content`. Set `"reasoning_effort":"low"` or `"reasoning_effort":"high"` to select an effort level; the template otherwise defaults to `max`. Supply images as standard `image_url` content parts. The checkpoint's processor resizes images to its image-token budget; image tokens consume context capacity.
 
 The launchers are plain `docker run` commands. [RUN.md](RUN.md) explains the profiles, native MTP settings and source builds.
 

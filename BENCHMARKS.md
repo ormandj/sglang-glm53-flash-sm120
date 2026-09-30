@@ -6,7 +6,7 @@ Measurements used a v0.5.0 validation build on four RTX PRO 6000 Blackwell Max-Q
 
 The checkpoint was `nvidia/GLM-5.3-Flash-NVFP4`, revision `09b04e5e74bca08ca8549fc736d4cdd8624bfde3`, at TP4/EP1 with BF16 native MTP, FP8 E4M3 KV, a 1,048,576-token context limit, 2,621,440 shared device tokens, 32-request admission, 224 BF16 recurrent-state slots, 8,192-token prefill chunks and 40 GB of HiCache per rank. Only one request ran during each measured decode window.
 
-Fixed MTP used three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Reasoning and the default chat grammar remained enabled. Each request used the same 16,396-token coding prompt and reached a deliberate 4,096-token output cap with `ignore_eos`.
+Fixed MTP used three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Reasoning used the template’s default `max` effort, and the default chat grammar remained enabled. Each request used the same 16,396-token coding prompt and reached a deliberate 4,096-token output cap with `ignore_eos`.
 
 | Workload | Repetitions | Mean output tok/s after MTP | Median output tok/s after MTP | Mean target forwards/s | Median target forwards/s | Output tok/forward, mean / median |
 |---|---:|---:|---:|---:|---:|---:|

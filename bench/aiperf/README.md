@@ -12,7 +12,7 @@ The decode workload uses a synthetic coding prompt of approximately 16,384 input
 
 Report mean and median output tokens/s after MTP alongside mean and median target forward passes/s, plus output tokens per forward per request, concurrency and the measured window. Output throughput aggregates the concurrent requests. A target forward is a model iteration, not an emitted token. The fixed-output workload includes a post-answer tail that can increase speculative acceptance; it is not completed-answer throughput.
 
-Cold prefill throughput is each request's prompt-token count divided by its time to first token, summarized by mean and median over five requests per length. Those one-output-token probes disable thinking so the streaming content validator can observe the token. This measurement setting does not change serving reasoning policy.
+Cold prefill throughput is each request's prompt-token count divided by its time to first token, summarized by mean and median over five requests per length. The probes cap output at one token. The bundled GLM templates always enable reasoning and ignore `enable_thinking:false`; first-token collection must accept reasoning events as well as content.
 
 These controlled measurements do not necessarily represent real-world performance. Sequential repetitions within one process do not establish statistical significance or isolate individual patches. Compare identical workloads, seeds, model weights, hardware and analysis definitions, and state any configuration differences.
 
@@ -23,7 +23,8 @@ AIPerf is pinned by [aiperf.lock.json](aiperf.lock.json). Install that revision 
 ```bash
 export CUDA_VISIBLE_DEVICES=9
 export MODEL_NAME=glm-5.3-flash
-export TOKENIZER_PATH=/models/glm53-flash-w4a16-e4m3-k32
+export TOKENIZER_PATH=/models/glm53-flash-nvfp4  # TP4 launcher mount
+# For TP2: export TOKENIZER_PATH=/models/glm53-flash-w4a16-e4m3-k32
 export INFERENCE_URL=http://127.0.0.1:8000
 export SERVER_METRICS_URL=http://127.0.0.1:8000/metrics
 export BENCH_ENGINE=sglang
