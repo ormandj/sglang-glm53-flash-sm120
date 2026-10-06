@@ -19,6 +19,8 @@ Environment:
   FORGEJO_URL    Required Forgejo base URL
   PACKAGE_OWNER  Required package owner
   PACKAGE_NAME   Required container package name
+  KEEP_REFERENCED_DIR  Optional checkout (e.g. the GitOps repository); every
+                 "<PACKAGE_NAME>:<tag>" referenced under it is also kept
   KEEP_RELEASES  Number of release tags and build aliases to keep (default: 6)
 EOF
 }
@@ -107,6 +109,16 @@ mapfile -t build_versions < <(
 )
 
 declare -A keep=()
+if [[ -n "${KEEP_REFERENCED_DIR:-}" ]]; then
+  [[ -d "$KEEP_REFERENCED_DIR" ]] || {
+    echo "KEEP_REFERENCED_DIR does not exist: $KEEP_REFERENCED_DIR" >&2
+    exit 1
+  }
+  while IFS= read -r version; do
+    keep["$version"]=1
+  done < <(grep -rhoE "${package_name}:[A-Za-z0-9._-]+" "$KEEP_REFERENCED_DIR" \
+    | cut -d: -f2 | sort -u)
+fi
 for version in "${release_versions[@]:0:keep_releases}"; do
   keep["$version"]=1
 done

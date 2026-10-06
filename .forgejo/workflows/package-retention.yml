@@ -1,4 +1,4 @@
-name: Retain six container releases
+name: Retain container releases
 
 on:
   schedule:
@@ -21,11 +21,20 @@ jobs:
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Retain six releases and build aliases
+      # Never delete a tag a deployment manifest still references.
+      - name: Check out GitOps
+        env:
+          FORGEJO_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          git -c http.extraHeader="Authorization: token ${FORGEJO_TOKEN}" \
+            clone --depth 1 ${{ github.server_url }}/homelab/gitops.git /tmp/gitops
+
+      - name: Retain releases, build aliases and deployed tags
         env:
           FORGEJO_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
           FORGEJO_URL: ${{ github.server_url }}
-          KEEP_RELEASES: '6'
+          KEEP_RELEASES: '3'
+          KEEP_REFERENCED_DIR: /tmp/gitops/clusters
         run: |
           export PACKAGE_OWNER="${GITHUB_REPOSITORY%%/*}"
           export PACKAGE_NAME="${GITHUB_REPOSITORY#*/}"
