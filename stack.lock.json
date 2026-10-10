@@ -80,11 +80,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "e5d3c283381166288f2f2a98c5d2464c921a2cf5"
+      "value": "5d7307c446e37e55835b0cd22e29881e48286dd2"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "c31b713342ea1164588e9a6b84277e6f8789a037608b2c31c78b90482563d16e"
+      "value": "0188721687830cee9fdb7cde26d9dbdf25e3b31a4778bd6be963b7febc4d7be7"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -168,9 +168,9 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "3831e7e0918052be50ef38b3ff62154573e213d7",
       "upstream_tree": "eb4fd3d60d53b7ea11eb100c29fd0bd110d7cb1c",
-      "tree": "e5d3c283381166288f2f2a98c5d2464c921a2cf5",
+      "tree": "5d7307c446e37e55835b0cd22e29881e48286dd2",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "c31b713342ea1164588e9a6b84277e6f8789a037608b2c31c78b90482563d16e",
+      "patch_sha256": "0188721687830cee9fdb7cde26d9dbdf25e3b31a4778bd6be963b7febc4d7be7",
       "upstream_main_base": "3831e7e0918052be50ef38b3ff62154573e213d7"
     },
     "flashinfer": {
@@ -209,10 +209,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "c31b713342ea1164588e9a6b84277e6f8789a037608b2c31c78b90482563d16e",
+      "sha256": "0188721687830cee9fdb7cde26d9dbdf25e3b31a4778bd6be963b7febc4d7be7",
       "base_head": "3831e7e0918052be50ef38b3ff62154573e213d7",
       "base_tree": "eb4fd3d60d53b7ea11eb100c29fd0bd110d7cb1c",
-      "result_tree": "e5d3c283381166288f2f2a98c5d2464c921a2cf5"
+      "result_tree": "5d7307c446e37e55835b0cd22e29881e48286dd2"
     },
     {
       "name": "flashinfer-glm53-integration",

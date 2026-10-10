@@ -7704,7 +7704,7 @@ index 0000000000000000000000000000000000000000..74c0ab74205d87d32ac14351a549c1e4
 +    owners.append(owner)
 +    return True
 diff --git a/python/sglang/srt/models/deepseek_nextn.py b/python/sglang/srt/models/deepseek_nextn.py
-index 462b2039c70ef001193db96bdc1c335dcbbcb095..2306a6a814dee4c26c57a5f04164507f662485ae 100644
+index 462b2039c70ef001193db96bdc1c335dcbbcb095..de4e9a6c354a9f2e5bc817070eea2098f4928500 100644
 --- a/python/sglang/srt/models/deepseek_nextn.py
 +++ b/python/sglang/srt/models/deepseek_nextn.py
 @@ -55,11 +55,28 @@ _is_npu = is_npu()
@@ -7751,7 +7751,20 @@ index 462b2039c70ef001193db96bdc1c335dcbbcb095..2306a6a814dee4c26c57a5f04164507f
  
          self.vocab_size = config.vocab_size
  
-@@ -247,6 +262,7 @@ class DeepseekModelNextN(nn.Module):
+@@ -150,7 +165,11 @@ class DeepseekModelNextN(nn.Module):
+             and forward_batch.contains_mm_inputs()
+             and not forward_batch.forward_mode.is_draft_extend_v2()
+         ):
+-            assert input_embeds is not None
++            if input_embeds is None:
++                raise RuntimeError(
++                    "Multimodal NEXTN draft prefill requires "
++                    "forward_batch.mm_input_embeds"
++                )
+             last_indices = (
+                 forward_batch.extend_start_loc + forward_batch.extend_seq_lens - 1
+             ).long()
+@@ -247,6 +266,7 @@ class DeepseekModelNextN(nn.Module):
  class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
      # The draft checkpoint reports the NextN architecture name.
      fused_shared_experts_architecture = "DeepseekV3ForCausalLMNextN"
@@ -7759,7 +7772,7 @@ index 462b2039c70ef001193db96bdc1c335dcbbcb095..2306a6a814dee4c26c57a5f04164507f
  
      # Support amd/DeepSeek-R1-0528-MXFP4 renaming: model.layers.61*.
      # Ref: HF config.json for amd/DeepSeek-R1-0528-MXFP4
-@@ -288,7 +304,10 @@ class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
+@@ -288,7 +308,10 @@ class DeepseekV3ForCausalLMNextN(DeepseekV3ForCausalLM):
          nextn_quant_config = self._resolve_nextn_quant_config(config, quant_config)
  
          self.model = DeepseekModelNextN(
@@ -14312,7 +14325,7 @@ index 0000000000000000000000000000000000000000..947b916a84a4df9d976c3695d6aa380a
 +    unittest.main()
 diff --git a/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..2e2ca7457861bbd71ecc77ffa61342b7f22210f5
+index 0000000000000000000000000000000000000000..86f75de034904de86e30571c5ae68db686018fb7
 --- /dev/null
 +++ b/test/registered/unit/layers/attention/test_dsa_logits_gate_owner.py
 @@ -0,0 +1,237 @@
@@ -14361,7 +14374,7 @@ index 0000000000000000000000000000000000000000..2e2ca7457861bbd71ecc77ffa61342b7
 +        metadata = mock.Mock()
 +        metadata.get_page_table_64.return_value = block_tables
 +        metadata.get_seqlens_expanded.return_value = seqlens
-+        pool = mock.Mock(page_size=64)
++        pool = mock.Mock(page_size=64, index_page_size=64)
 +        fake_deep_gemm = mock.Mock()
 +        fake_deep_gemm.fp8_paged_mqa_logits.return_value = logits
 +
@@ -14817,10 +14830,10 @@ index a9c4909efc864da8883e9a5fb4e8bb12aa070aae..a3e69694c9837c6494764b8eb039cc90
          )
 diff --git a/test/registered/unit/managers/test_scheduler_chunk_budget.py b/test/registered/unit/managers/test_scheduler_chunk_budget.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..95561803cb8f882963cab1076d1d1862cc871228
+index 0000000000000000000000000000000000000000..dd5d33b7ceffa5fe67f4cb3855d5ec622307ce57
 --- /dev/null
 +++ b/test/registered/unit/managers/test_scheduler_chunk_budget.py
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,363 @@
 +"""Regression tests for waiting admission after resuming a chunked request."""
 +
 +import unittest
@@ -14865,6 +14878,7 @@ index 0000000000000000000000000000000000000000..95561803cb8f882963cab1076d1d1862
 +    scheduler.enable_priority_preemption = False
 +    scheduler.enable_priority_scheduling = False
 +    scheduler.enable_lmcache = False
++    scheduler.enable_skip_finishing_decode = False
 +    scheduler.is_hybrid_swa = False
 +    scheduler.is_hybrid_ssm = False
 +    scheduler.min_free_slots_delayer = None
@@ -16750,7 +16764,7 @@ index 6293e301a8ea0f0927842e29d7a5a12e41024dde..af8093074a2a2289dac1690367bb46ab
          runner = self._make_runner()
          runner.use_captured_attn_metadata = False
 diff --git a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
-index 8a3d88887f791791f8efdff1622263bb63c300e0..ba3eb04f1b46d29fd7cda42109270515ef81306e 100644
+index 8a3d88887f791791f8efdff1622263bb63c300e0..11213d55c4c6d19c3a2e37f2d060bd5a511522a6 100644
 --- a/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 +++ b/test/registered/unit/model_executor/runner_backend/test_full_cuda_graph_backend.py
 @@ -20,7 +20,9 @@ profiler stepping) is pure-Python and runs on CPU.
@@ -16800,14 +16814,14 @@ index 8a3d88887f791791f8efdff1622263bb63c300e0..ba3eb04f1b46d29fd7cda42109270515
 +                captured_refs.append(weakref.ref(owner))
 +            return object()
 +
-+        with mock.patch("torch.cuda.CUDAGraph", return_value="GRAPH-1"):
++        with mock.patch("torch.cuda.CUDAGraph", return_value=mock.MagicMock()):
 +            backend.capture_one(shape_key, forward_fn)
 +
 +        self.assertEqual(len(captured_refs), 1)
 +        self.assertIsNotNone(captured_refs[0]())
 +        self.assertEqual(len(backend._capture_owners[shape_key]), 1)
 +
-+        with mock.patch("torch.cuda.CUDAGraph", return_value="GRAPH-2"):
++        with mock.patch("torch.cuda.CUDAGraph", return_value=mock.MagicMock()):
 +            backend.capture_one(shape_key, forward_fn)
 +        gc.collect()
 +
@@ -16827,7 +16841,7 @@ index 8a3d88887f791791f8efdff1622263bb63c300e0..ba3eb04f1b46d29fd7cda42109270515
 +        shape_key = ShapeKey(size=2)
 +        capture_inputs = object()
 +
-+        with mock.patch("torch.cuda.CUDAGraph", return_value="GRAPH"):
++        with mock.patch("torch.cuda.CUDAGraph", return_value=mock.MagicMock()):
 +            backend.capture_one(
 +                shape_key, lambda: object(), capture_inputs=capture_inputs
 +            )
@@ -17155,7 +17169,7 @@ index 7d20eb7be68c9a06b14eb8287afdcd62628df705..8f9f9af82d7ac82bc3a1c86a0a1409de
      mr.use_mla_backend = use_mla_backend
      mr.is_draft_worker = False
 diff --git a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
-index f36d92caa6a392d50ffdcd78f8e5c2a6c369d054..31006b3a469791b699f82c231920a0b5c7e13ebb 100644
+index f36d92caa6a392d50ffdcd78f8e5c2a6c369d054..b79e19d91fc122704a7fe1c457844aa382178e47 100644
 --- a/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 +++ b/test/registered/unit/model_executor/test_prefill_cuda_graph_runner.py
 @@ -25,6 +25,7 @@ from sglang.srt.model_executor.forward_batch_info import (
@@ -17245,7 +17259,15 @@ index f36d92caa6a392d50ffdcd78f8e5c2a6c369d054..31006b3a469791b699f82c231920a0b5
          runner._capture_req_slots = 3
          runner._prefix_chunk_len = 2
          runner._prefix_chunk_capacity = 6
-@@ -668,6 +706,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+@@ -610,6 +648,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
+         runner.max_context_size = None
+         runner._capture_chunked_prefix = False
+         runner.has_mha_companion_layers = False
++        runner._bcg_ragged_shapes = False
+ 
+         batch = ForwardBatch(
+             forward_mode=ForwardMode.EXTEND,
+@@ -668,6 +707,7 @@ class TestPrefillCudaGraphRunnerChunkedPrefix(CustomTestCase):
  
      def test_prefix_gate_only_applies_to_chunked_prefix_variant(self):
          runner = PrefillCudaGraphRunner.__new__(PrefillCudaGraphRunner)
@@ -17431,10 +17453,10 @@ index dad4ab6dd69b5ad9a39a21f5fff9fd895a10abd3..841792ddb40c748002fd24e51615b2b1
  if __name__ == "__main__":
 diff --git a/test/registered/unit/models/test_glm5_next_vision_precompile.py b/test/registered/unit/models/test_glm5_next_vision_precompile.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..bac1831e2ac0c1ccbe91d6456d363bc137c483c6
+index 0000000000000000000000000000000000000000..3054478b3056b7e35bf1a34389882737206ea0a6
 --- /dev/null
 +++ b/test/registered/unit/models/test_glm5_next_vision_precompile.py
-@@ -0,0 +1,338 @@
+@@ -0,0 +1,340 @@
 +"""Argument-contract tests for the GLM-5-Next vision-tower precompile hook.
 +
 +These tests verify what ``precompile_kernels_after_loading`` passes to
@@ -17532,6 +17554,8 @@ index 0000000000000000000000000000000000000000..bac1831e2ac0c1ccbe91d6456d363bc1
 +    )
 +    nn.Module.__init__(model)
 +    model.encoder_only = True
++    # No language model: only the vision warmups run.
++    model.model = None
 +    model.visual = visual
 +    model.pp_group = SimpleNamespace(is_first_rank=is_first_rank)
 +    return model
@@ -18517,7 +18541,7 @@ index 0000000000000000000000000000000000000000..e9bb5fb271ddb40f07915c88b804752d
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/test/registered/unit/test_flashinfer_sparse_mla.py b/test/registered/unit/test_flashinfer_sparse_mla.py
-index 2f770adf169009e7926cc7abb770766422b38c4e..c56a0cffae68e6b9b97262e33107d29fa24be07c 100644
+index 2f770adf169009e7926cc7abb770766422b38c4e..0c2b4cf8adabc8840145f051d6ad7cfd0a27d3a3 100644
 --- a/test/registered/unit/test_flashinfer_sparse_mla.py
 +++ b/test/registered/unit/test_flashinfer_sparse_mla.py
 @@ -1,75 +1,189 @@
@@ -18786,7 +18810,7 @@ index 2f770adf169009e7926cc7abb770766422b38c4e..c56a0cffae68e6b9b97262e33107d29f
  
      def test_accepts_triton_sparse_mla_for_prefill(self):
          # triton_sparse_mla is selectable for prefill on this platform while
-@@ -127,5 +243,277 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
+@@ -127,5 +243,279 @@ class TestFlashInferSparseMLABackendGate(unittest.TestCase):
          self.assertIn("kv_cache_dtype=torch.float8_e4m3fn", message)
  
  
@@ -18872,8 +18896,9 @@ index 2f770adf169009e7926cc7abb770766422b38c4e..c56a0cffae68e6b9b97262e33107d29f
 +        )
 +
 +        class Request(SimpleNamespace):
-+            def set_extend_range(self, start, end):
-+                self.extend_range = SimpleNamespace(length=end - start)
++            @property
++            def extend_len(self):
++                return self.extend_end - self.prefix_len
 +
 +        for length, result in (
 +            (8192, AddReqResult.CONTINUE),
@@ -18883,13 +18908,14 @@ index 2f770adf169009e7926cc7abb770766422b38c4e..c56a0cffae68e6b9b97262e33107d29f
 +                full_untruncated_fill_ids=range(length),
 +                origin_input_ids=range(length),
 +                prefix_indices=[],
++                prefix_len=0,
 +                output_ids=[],
 +                sampling_params=SimpleNamespace(ignore_eos=True, max_new_tokens=8),
 +                retracted_stain=False,
 +            )
 +            self.assertIs(adder.add_one_req(req, False, None), result)
 +        self.assertEqual(len(adder.can_run_list), 2)
-+        admitted = sum(req.extend_range.length for req in adder.can_run_list)
++        admitted = sum(req.extend_len for req in adder.can_run_list)
 +        self.assertEqual(admitted, 38192)
 +        capacity = _flashinfer_sparse_mla_max_tokens(
 +            chunked_prefill_size=None,
