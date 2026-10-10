@@ -56,8 +56,8 @@ model_hook._apply_glm5_next_sm120_defaults('Glm5NextForConditionalGeneration')
 assert not envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get()
 from sglang.kernels.ops.attention.flash_mla_sm120 import _GLM53_NOPE_FLASHINFER_TOPK
 assert _GLM53_NOPE_FLASHINFER_TOPK == 2176
-from sglang.srt.mem_cache.hybrid_cache.hybrid_pool_assembler import get_mla_host_kv_cache_dim
-assert callable(get_mla_host_kv_cache_dim)
+from sglang.srt.mem_cache.hybrid_cache.host_pool_config import packed_kv_rows_match
+assert callable(packed_kv_rows_match)
 
 # AutoProcessor can silently return a text tokenizer when a model's processor
 # class is unavailable. Verify actual pixels and expansion, not just imports.
