@@ -6114,6 +6114,27 @@ index 81230b84c323e5b10592e964b2e1bd087c606063..7ecb85a87aa5696b569eb4ed5d94d495
      def handle_freeze_gc(self, recv_req: FreezeGCReq):
          """Handle freeze_gc request: freeze scheduler's GC and forward to detokenizer."""
          freeze_gc("Scheduler")
+diff --git a/python/sglang/srt/managers/scheduler_components/batch_result_processor.py b/python/sglang/srt/managers/scheduler_components/batch_result_processor.py
+index f404cb0d831593c95746ec8d838dc4ae493837a2..5cd36259956838ac8b7beaa439c749eab1d54d32 100644
+--- a/python/sglang/srt/managers/scheduler_components/batch_result_processor.py
++++ b/python/sglang/srt/managers/scheduler_components/batch_result_processor.py
+@@ -1608,7 +1608,15 @@ class SchedulerBatchResultProcessor:
+                 return True, committed_len
+         elif result.num_correct_drafts_per_req_cpu is not None:
+             cur = req.seqlen - 1
+-            prev = cur - result.num_correct_drafts_per_req_cpu[i] - 1
++            num_non_draft = result.num_non_draft_tokens_per_req
++            retained = result.grammar_retained_tokens
++            if retained is not None and retained[i] is not None:
++                # NOTE(kpham-sgl): grammar-truncated run, minus non-draft
++                # tokens ahead of the tracked verify window (UNO's root).
++                num_committed = max(len(retained[i]) - (num_non_draft - 1), 0)
++            else:
++                num_committed = result.num_correct_drafts_per_req_cpu[i] + 1
++            prev = cur - num_committed
+             if cur // interval != prev // interval:
+                 return True, cur // interval * interval
+ 
 diff --git a/python/sglang/srt/managers/tokenizer_control_mixin.py b/python/sglang/srt/managers/tokenizer_control_mixin.py
 index f62afbae8ed6023cdb161649af1eb70120437731..58c93b0d43e550c31c17e3a1cdb7087fdfd161e0 100644
 --- a/python/sglang/srt/managers/tokenizer_control_mixin.py
@@ -7029,7 +7050,7 @@ index 3413fc7114ce0ef7b712030adf71f2843fdd2414..364ad017776f8dc06114b121bdb7665e
              "Sorted by CUDA Time:\n"
              + prof_context.key_averages(group_by_input_shape=True).table(
 diff --git a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
-index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a0458547608a6fc0a 100644
+index 7a11965ca46d84455e4aef54e00175fc61ade6da..3d3c743a8060ba1ab692c1f3618a60ec0eee1eda 100644
 --- a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
 +++ b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
 @@ -54,6 +54,7 @@ from sglang.kernels.ops.kvcache.kv_indices import (
@@ -7040,7 +7061,15 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
  from sglang.srt.layers.attention.dsa.utils import is_dsa_enable_prefill_cp
  from sglang.srt.layers.cp.bcg import (
      PrefillCPBCGInput,
-@@ -461,6 +462,26 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -77,6 +78,7 @@ from sglang.srt.layers.dp_attention import (
+ )
+ from sglang.srt.layers.logits_processor import LogitsProcessorOutput
+ from sglang.srt.layers.pooler import EmbeddingPoolerOutput
++from sglang.srt.managers.cache_controller import LayerDoneCounter
+ from sglang.srt.model_executor.cuda_graph_buffer_registry import (
+     CudaGraphBufferRegistry,
+     build_prefill_registry,
+@@ -461,6 +463,26 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
          self.has_mha_companion_layers = any(
              layer is not None for layer in self.mha_companion_layers
          )
@@ -7067,7 +7096,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          self.moe_layers = self.model_runner.moe_layers
          self.moe_fusions = self.model_runner.moe_fusions
          self.dsa_indexers = getattr(self.model_runner, "dsa_indexers", None)
-@@ -1037,6 +1058,8 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1037,6 +1059,8 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
  
      def _shape_key(self, num_tokens: int, forward_batch: ForwardBatch) -> ShapeKey:
          variant = None
@@ -7076,7 +7105,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          if self._capture_chunked_prefix:
              prefix_lens = forward_batch.extend_prefix_lens_cpu
              local_max_prefix_len = (
-@@ -1054,6 +1077,12 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1054,6 +1078,12 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
                  variant = _chunked_prefix_variant(captured_n)
          return ShapeKey(size=num_tokens, variant_label=variant)
  
@@ -7089,7 +7118,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
      def _create_chunked_prefix_buffers(self) -> _ChunkedPrefixCaptureBuffers:
          """Allocate the stable chunk-metadata tensors shared by all variants."""
          max_chunks = max(self._prefix_capture_variants)
-@@ -1349,6 +1378,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1349,6 +1379,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
              return True
          if num_tokens > self.max_num_tokens:
              return False
@@ -7099,7 +7128,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          # No exact-shape check: load_batch bucket-pads; only reject
          # disproportionate padding waste.
          padded_num_tokens = self._pad_to_bucket(num_tokens, self.capture_num_tokens)
-@@ -1404,6 +1436,14 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1404,6 +1437,14 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
              batch_max_context_len=batch_max_context_len,
          ):
              return False
@@ -7114,7 +7143,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          if getattr(self, "enable_cp_bcg_capture", False) and is_cp_active(
              forward_batch
          ):
-@@ -1436,7 +1476,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1436,7 +1477,9 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
              hidden_states=self.static_draft_hidden_states[:num_tokens],
          )
  
@@ -7125,7 +7154,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          """Build a dummy prefill ForwardBatch for capture/warmup at this shape.
  
          Default tensor inputs are fresh literals; under a Breakable
-@@ -1459,10 +1501,21 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1459,10 +1502,21 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
          # A prefill bucket is an aggregate token count. Capture it as the
          # fewest synthetic requests, with every request containing no more
          # than context_length tokens.
@@ -7151,7 +7180,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          if self.prefill_backend_name == Backend.FULL:
              # Full captures a fixed request-axis shape; unused slots are
              # zero-length sentinels after the context-bounded real requests.
-@@ -1618,8 +1671,11 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1618,8 +1672,11 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
                      stream=get_or_create_global_graph_capture_stream()
                  ) as graph_capture_context:
                      self.stream = graph_capture_context.stream
@@ -7164,7 +7193,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          finally:
              dp_flags.capturing_prefill_graph = False
          if dp_flags.prefill_graph_has_dp_gather:
-@@ -1655,20 +1711,45 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1655,20 +1712,45 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
                  capture_range.set_description(
                      f"Capturing prefill shape ({num_tokens=} {avail_mem=:.2f} GB)"
                  )
@@ -7218,7 +7247,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
          if self.enable_cp_bcg_capture:
              assert self.prefill_cp_bcg_input is not None
              self.prefill_cp_bcg_input.prepare(
-@@ -1692,7 +1773,7 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1692,7 +1774,7 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
              variant_label=(
                  _chunked_prefix_variant(prefix_num_chunks)
                  if prefix_num_chunks
@@ -7227,7 +7256,7 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
              ),
          )
          if prefix_num_chunks:
-@@ -1749,7 +1830,7 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -1749,7 +1831,7 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
              shape_key,
              run_once,
              # DP padding can install capture-only tensors on this dummy batch;
@@ -7236,7 +7265,36 @@ index 7a11965ca46d84455e4aef54e00175fc61ade6da..5c49f388dc826e26047bbe5a04585476
              capture_inputs=(
                  forward_batch
                  if forward_batch.global_num_tokens_gpu is not None
-@@ -2233,8 +2314,12 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+@@ -2224,17 +2306,41 @@ class PrefillCudaGraphRunner(BaseCudaGraphRunner):
+                 f"capture mode ({self.capture_hidden_mode.name})."
+             )
+ 
++    def _wait_for_hicache_load_back(self) -> None:
++        """Order the forward stream behind the pending HiCache load-back.
++
++        The pools' per-layer ``layer_transfer_counter.wait_until`` calls are
++        Python-side and only run on replay inside eager graph breaks. The full
++        backend replays the whole transformer body as one graph, and breakable
++        graphs that capture linear-attention extends replay those layers
++        without a break, so wait once on the load op's final event before
++        replay.
++        """
++        counter = self.model_runner.token_to_kv_pool.layer_transfer_counter
++        if isinstance(counter, LayerDoneCounter) and counter.consumer_index >= 0:
++            self.device_module.current_stream().wait_event(
++                counter.events[counter.consumer_index].finish_event
++            )
++
+     def execute(
+         self, forward_batch: ForwardBatch, **kwargs
+     ) -> Optional[Union[LogitsProcessorOutput, PPProxyTensors, EmbeddingPoolerOutput]]:
+         self._validate_capture_hidden_mode(forward_batch)
+         with self.backend.replay_session():
+             static_forward_batch = self.load_batch(forward_batch, **kwargs)
++            # Breakable graphs that capture linear-attention extends (KDA) also
++            # skip those layers' Python-side per-layer waits on replay.
++            if self._is_full_backend or self.use_captured_attn_metadata:
++                self._wait_for_hicache_load_back()
              static_num_tokens = len(static_forward_batch.input_ids)
              raw_num_tokens = self.raw_num_tokens
              shape_key = self._shape_key(static_num_tokens, forward_batch)
@@ -9573,6 +9631,177 @@ index 0000000000000000000000000000000000000000..2595190fe8b10e3e3549205ab2a7abdf
 +    import sys
 +
 +    sys.exit(pytest.main([__file__, "-v"]))
+diff --git a/test/registered/e2e/radix_cache/test_mamba_extra_buffer_spec_grammar.py b/test/registered/e2e/radix_cache/test_mamba_extra_buffer_spec_grammar.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..72186c78873ac80382abe483fedc47da82b9b704
+--- /dev/null
++++ b/test/registered/e2e/radix_cache/test_mamba_extra_buffer_spec_grammar.py
+@@ -0,0 +1,165 @@
++"""A prefix-cache hit on a hybrid model's decode checkpoint must score the
++continuation like a cache miss, also when the cached request finished under a
++grammar while speculative decoding was on."""
++
++import unittest
++
++import requests
++from transformers import AutoTokenizer
++
++from sglang.test.ci.ci_register import register_cuda_ci
++from sglang.test.test_utils import (
++    DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
++    DEFAULT_URL_FOR_TEST,
++    CustomTestCase,
++    popen_launch_server,
++    terminate_and_kill_process_tree,
++)
++
++register_cuda_ci(est_time=180, stage="base-b", runner_config="1-gpu-large")
++
++MODEL = "Qwen/Qwen3.5-0.8B"
++# Default --mamba-track-interval: the grid on which decode checkpoints the
++# recurrent state for the prefix cache.
++TRACK_INTERVAL = 256
++PHRASE = "The answer is yes. "
++REGEX = "The answer is yes\\. "
++FILLER = (
++    "The history of the printing press begins in the fifteenth century, when "
++    "movable type transformed how books were made and shared across Europe. "
++) * 12
++FOLLOW_UP = " In summary, the most important consequence of this invention was"
++# extra_buffer needs the Triton linear-attention backend; NGRAM drafts from
++# the prompt tail, so no draft model is needed.
++SERVER_ARGS = [
++    "--random-seed",
++    "1",
++    "--linear-attn-backend",
++    "triton",
++    "--mamba-backend",
++    "triton",
++    "--mamba-radix-cache-strategy",
++    "extra_buffer",
++    "--max-mamba-cache-size",
++    "32",
++    "--max-total-tokens",
++    "16384",
++    "--mem-fraction-static",
++    "0.3",
++    "--grammar-backend",
++    "xgrammar",
++    "--speculative-algorithm",
++    "NGRAM",
++    "--speculative-num-draft-tokens",
++    "4",
++    "--speculative-ngram-max-bfs-breadth",
++    "1",
++]
++# Total absolute logprob difference over the scored suffix. A correct
++# checkpoint scores within ~1 nat of a cache miss (bf16 kernel noise); a
++# wrong recurrent state scores tens of nats away.
++MAX_SCORE_DELTA = 3.0
++
++
++class TestMambaExtraBufferSpecGrammar(CustomTestCase):
++    @classmethod
++    def setUpClass(cls):
++        cls.base_url = DEFAULT_URL_FOR_TEST
++        cls.process = popen_launch_server(
++            MODEL,
++            cls.base_url,
++            timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
++            other_args=SERVER_ARGS,
++        )
++        tokenizer = AutoTokenizer.from_pretrained(MODEL)
++        cls.phrase_ids = tokenizer.encode(PHRASE, add_special_tokens=False)
++        cls.filler_ids = tokenizer.encode(FILLER, add_special_tokens=False)
++        cls.follow_up_ids = tokenizer.encode(FOLLOW_UP, add_special_tokens=False)
++
++    @classmethod
++    def tearDownClass(cls):
++        if hasattr(cls, "process") and cls.process:
++            terminate_and_kill_process_tree(cls.process)
++
++    def _generate(self, body):
++        body.setdefault("sampling_params", {}).setdefault("temperature", 0)
++        response = requests.post(self.base_url + "/generate", json=body, timeout=120)
++        response.raise_for_status()
++        return response.json()
++
++    def _flush_cache(self):
++        requests.post(self.base_url + "/flush_cache", timeout=60).raise_for_status()
++
++    def _constrained(self, input_ids):
++        result = self._generate(
++            {
++                "input_ids": input_ids,
++                "sampling_params": {"max_new_tokens": 32, "regex": REGEX},
++            }
++        )
++        self.assertEqual(result["meta_info"]["finish_reason"]["type"], "stop")
++        self.assertGreaterEqual(result["meta_info"]["spec_verify_ct"], 1)
++        return result["output_ids"]
++
++    def _score_suffix(self, input_ids):
++        result = self._generate(
++            {
++                "input_ids": input_ids,
++                "sampling_params": {"max_new_tokens": 8},
++                "return_logprob": True,
++                "logprob_start_len": TRACK_INTERVAL,
++            }
++        )
++        logprobs = [
++            logprob
++            for logprob, _token_id, _text in result["meta_info"]["input_token_logprobs"]
++            if logprob is not None
++        ]
++        return logprobs, result["meta_info"]["cached_tokens"]
++
++    def test_cached_continuation_matches_cache_miss(self):
++        # The token the constrained run stops on; repeating "<phrase><stop>"
++        # in the prompt tail lets the drafter propose tokens past the
++        # terminator, so verify can accept more than the grammar keeps.
++        stop_id = self._constrained(self.filler_ids[:64] + self.phrase_ids * 4)[-1]
++        pattern = (self.phrase_ids + [stop_id]) * 6
++
++        # Sweep the prompt length so the constrained run's final step lands
++        # on every offset around the checkpoint boundary.
++        resumed_at_checkpoint = 0
++        for prompt_len in range(TRACK_INTERVAL - 10, TRACK_INTERVAL + 2):
++            self._flush_cache()
++            # Unrelated traffic so recycled cache slots are not blank.
++            for k in range(2):
++                self._generate(
++                    {
++                        "text": f"Write a short story about planet number {2 * prompt_len + k}. ",
++                        "sampling_params": {"max_new_tokens": 24},
++                    }
++                )
++            prompt = self.filler_ids[: prompt_len - len(pattern)] + pattern
++            follow_up = prompt + self._constrained(prompt) + self.follow_up_ids
++
++            hit_logprobs, cached_tokens = self._score_suffix(follow_up)
++            self._flush_cache()
++            miss_logprobs, _ = self._score_suffix(follow_up)
++
++            resumed_at_checkpoint += cached_tokens == TRACK_INTERVAL
++            self.assertEqual(len(hit_logprobs), len(miss_logprobs))
++            delta = sum(abs(a - b) for a, b in zip(hit_logprobs, miss_logprobs))
++            self.assertLess(
++                delta,
++                MAX_SCORE_DELTA,
++                f"prompt_len={prompt_len}: continuation scored {delta:.2f} nats "
++                f"away from the cache miss (cached_tokens={cached_tokens})",
++            )
++        self.assertGreater(
++            resumed_at_checkpoint,
++            0,
++            "no follow-up resumed from the decode checkpoint; the sweep no "
++            "longer reaches the boundary",
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_dsa_capture_owner_cuda.py b/test/registered/kernels/ops/attention/test_dsa_capture_owner_cuda.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..5cd7b2fc2bfa56c5eef5abbf8eb823acf0fd97b9
@@ -10969,10 +11198,10 @@ index 0000000000000000000000000000000000000000..f46f6b4064ed658837318ce9015bb675
 +    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_kda_extend_blocked.py b/test/registered/kernels/ops/attention/test_kda_extend_blocked.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..279d6bb104b5bef0edd04346382e740ad44618ff
+index 0000000000000000000000000000000000000000..63d6a4106bfacd774c6e69c2606b453a96464ae5
 --- /dev/null
 +++ b/test/registered/kernels/ops/attention/test_kda_extend_blocked.py
-@@ -0,0 +1,786 @@
+@@ -0,0 +1,809 @@
 +"""Token-blocked KDA extend must match the single-call chunk_kda extend.
 +
 +With SGLANG_KDA_EXTEND_BLOCK_TOKENS set, TritonKDAKernel.extend runs chunk_kda
@@ -11191,6 +11420,7 @@ index 0000000000000000000000000000000000000000..279d6bb104b5bef0edd04346382e740a
 +    track_state=None,
 +    track_chunk_idx=None,
 +    lower_bound=-5.0,
++    chunk_tables=None,
 +):
 +    """Run extend with SGLANG_KDA_EXTEND_BLOCK_TOKENS=block on a fresh pool
 +    copy. ``kernel`` replaces kda_triton.chunk_kda for the call; ``seq_lens``
@@ -11220,6 +11450,11 @@ index 0000000000000000000000000000000000000000..279d6bb104b5bef0edd04346382e740a
 +            return_intermediate_states=return_intermediate_states,
 +            track_state=track_state,
 +            track_chunk_idx=track_chunk_idx,
++            **(
++                dict(chunk_indices=chunk_tables[0], chunk_offsets=chunk_tables[1])
++                if chunk_tables is not None
++                else {}
++            ),
 +        )
 +    if return_intermediate_states:
 +        o, h = out
@@ -11492,6 +11727,7 @@ index 0000000000000000000000000000000000000000..279d6bb104b5bef0edd04346382e740a
 +                tokens=q.shape[1],
 +                cu=cu,
 +                fuse_intra=kwargs.get("fuse_intra"),
++                chunk_tables=(kwargs.get("chunk_indices"), kwargs.get("chunk_offsets")),
 +                indices=indices,
 +                state=initial_state,
 +                cu_seqlens=cu_seqlens,
@@ -11736,6 +11972,22 @@ index 0000000000000000000000000000000000000000..279d6bb104b5bef0edd04346382e740a
 +                single = _FakeChunkKda()
 +                _run(0, inputs, kernel=single)
 +                self.assertEqual([c["fuse_intra"] for c in single.calls], [None])
++
++    def test_blocks_build_their_own_chunk_tables(self):
++        # Chunk tables passed by the caller index the whole extend; a block
++        # call must derive its own from its cu_seqlens.
++        inputs = _int_inputs(SEQ_LENS, SLOT_INDICES)
++        tables = (torch.zeros(4, 2, dtype=torch.int32), torch.zeros(5, dtype=torch.int32))
++        single = _FakeChunkKda()
++        _run(0, inputs, kernel=single, chunk_tables=tables)
++        self.assertIs(single.calls[0]["chunk_tables"][0], tables[0])
++        self.assertIs(single.calls[0]["chunk_tables"][1], tables[1])
++        blocked = _FakeChunkKda()
++        _run(BLOCK, inputs, kernel=blocked, chunk_tables=tables)
++        self.assertEqual([c["tokens"] for c in blocked.calls], CALLS)
++        self.assertEqual(
++            [c["chunk_tables"] for c in blocked.calls], [(None, None)] * len(CALLS)
++        )
 +
 +    def test_standard_gate_reference_values(self):
 +        # The expected values the GPU standard-gate regression checks against.
@@ -16571,6 +16823,63 @@ index 0000000000000000000000000000000000000000..af9cf9846953907e5eebf924bfcd0340
 +            with self.assertRaises(RuntimeError):
 +                runner._execute_eager(plain_extend(4096), None)
 +        self.assertEqual(spy.entered, [4096])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test/registered/unit/model_executor/test_full_prefill_graph_hicache_load_fence.py b/test/registered/unit/model_executor/test_full_prefill_graph_hicache_load_fence.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b3315f390f70baef4bd72ec9cad3f222a1c07681
+--- /dev/null
++++ b/test/registered/unit/model_executor/test_full_prefill_graph_hicache_load_fence.py
+@@ -0,0 +1,51 @@
++import unittest
++from types import SimpleNamespace
++
++from sglang.srt.managers.cache_controller import LayerDoneCounter
++from sglang.srt.model_executor.runner.prefill_cuda_graph_runner import (
++    PrefillCudaGraphRunner,
++)
++from sglang.test.ci.ci_register import register_cpu_ci
++from sglang.test.test_utils import CustomTestCase
++
++register_cpu_ci(est_time=5, suite="base-a-test-cpu")
++
++
++def _counter(consumer_index):
++    counter = object.__new__(LayerDoneCounter)
++    counter.events = [SimpleNamespace(finish_event=f"finish-{i}") for i in range(3)]
++    counter.producer_index = consumer_index
++    counter.consumer_index = consumer_index
++    return counter
++
++
++def _runner(counter):
++    waited = []
++    stream = SimpleNamespace(wait_event=waited.append)
++    runner = object.__new__(PrefillCudaGraphRunner)
++    runner.device_module = SimpleNamespace(current_stream=lambda: stream)
++    runner.model_runner = SimpleNamespace(
++        token_to_kv_pool=SimpleNamespace(layer_transfer_counter=counter)
++    )
++    return runner, waited
++
++
++class TestFullPrefillGraphHiCacheLoadFence(CustomTestCase):
++    def test_pending_load_back_waits_on_final_event(self):
++        runner, waited = _runner(_counter(consumer_index=1))
++        runner._wait_for_hicache_load_back()
++        self.assertEqual(waited, ["finish-1"])
++
++    def test_no_pending_load_back_no_wait(self):
++        runner, waited = _runner(_counter(consumer_index=-1))
++        runner._wait_for_hicache_load_back()
++        self.assertEqual(waited, [])
++
++    def test_no_hicache_no_wait(self):
++        runner, waited = _runner(None)
++        runner._wait_for_hicache_load_back()
++        self.assertEqual(waited, [])
 +
 +
 +if __name__ == "__main__":
