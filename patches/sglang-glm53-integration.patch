@@ -5124,6 +5124,158 @@ index 1db31e073889fc02a263dc277b9d753393368ad1..c1837ca7785b1d52ccba22bcda2dc28f
      flashinfer_cutlass_fused_moe, _ = _flashinfer_cutlass_fused_moe()
  
      dispatch_output = _prescale_router_weight_on_input(dispatch_output, runner_config)
+diff --git a/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_7_1/E=289,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json b/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_7_1/E=289,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json
+new file mode 100644
+index 0000000000000000000000000000000000000000..821c0266189f5c195a5c70770fa58b833532b79a
+--- /dev/null
++++ b/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_7_1/E=289,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json	
+@@ -0,0 +1,146 @@
++{
++    "1": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "2": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 4
++    },
++    "4": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "8": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "12": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 5
++    },
++    "16": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "24": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 32,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "32": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "48": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 5
++    },
++    "64": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "96": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 8,
++        "num_stages": 2
++    },
++    "128": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "256": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "512": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 2
++    },
++    "1024": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "2048": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 8,
++        "num_stages": 2
++    },
++    "4096": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 256,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 8,
++        "num_stages": 2
++    },
++    "8192": {
++        "BLOCK_SIZE_M": 128,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 8,
++        "num_stages": 2
++    }
++}
 diff --git a/python/sglang/srt/layers/quantization/modelopt_quant.py b/python/sglang/srt/layers/quantization/modelopt_quant.py
 index a91d928ef8cec9cd005f833ee36c5b02a7c65243..9154136d7ac140cf06874f8c5adc6cc27ad4805b 100755
 --- a/python/sglang/srt/layers/quantization/modelopt_quant.py
@@ -16277,37 +16429,6 @@ index 0000000000000000000000000000000000000000..740630972d73cff1d8f3b25692752d99
 +
 +if __name__ == "__main__":
 +    unittest.main()
-diff --git a/test/registered/unit/mem_cache/test_mem_pool_host.py b/test/registered/unit/mem_cache/test_mem_pool_host.py
-index 005b77123266deacf826bc10cf2d5f9c15319ee6..87493d68542aa09b22a30c954436523860a22fde 100644
---- a/test/registered/unit/mem_cache/test_mem_pool_host.py
-+++ b/test/registered/unit/mem_cache/test_mem_pool_host.py
-@@ -355,6 +355,26 @@ class TestHostMemoryBudget(CustomTestCase):
-             self.assertEqual(base.ranks_per_host(), 8)
- 
- 
-+class TestDSAIndexerCleanup(CustomTestCase):
-+    def test_destroy_releases_index_registration_once(self):
-+        # The registered index buffer is not kv_buffer, so the inherited
-+        # cleanup alone would leave it registered.
-+        pool = object.__new__(DSAIndexerPoolHost)
-+        buffer = torch.empty((2, 8448), dtype=torch.uint8)
-+        pool.index_k_with_scale_buffer = buffer
-+        pool.pin_memory = True
-+        cudart = unittest.mock.Mock()
-+        cudart.cudaHostUnregister.return_value = 0
-+        with (
-+            unittest.mock.patch("sglang.srt.mem_cache.pool_host.dsa._is_cuda", True),
-+            unittest.mock.patch("torch.cuda.cudart", return_value=cudart),
-+        ):
-+            pool.destroy()
-+            pool.destroy()
-+        cudart.cudaHostUnregister.assert_called_once_with(buffer.data_ptr())
-+        self.assertIsNone(pool.index_k_with_scale_buffer)
-+
-+
- class TestHostPoolGroup(CustomTestCase):
-     @staticmethod
-     def _backup_under_host_pressure(
 diff --git a/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py b/test/registered/unit/mem_cache/test_paged_allocator_snapshot.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..4f880c3c778a2755c772cdb46b388fcd69bdf3d7

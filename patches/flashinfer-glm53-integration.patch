@@ -1,3 +1,1064 @@
+diff --git a/benchmarks/bench_b12x_w4a16_route_pack.py b/benchmarks/bench_b12x_w4a16_route_pack.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..09efc9d9a261830b154903f8b6da725592a5f94e
+--- /dev/null
++++ b/benchmarks/bench_b12x_w4a16_route_pack.py
+@@ -0,0 +1,283 @@
++#!/usr/bin/env python3
++"""Compare W4A16 route-pack modules in an isolated GPU test process.
++
++Reference and candidate are standalone copies of moe_w4a16_route_pack.py from
++the base and proposed FlashInfer revisions. Run with the candidate installed. Integer metadata is checked exactly before
++sort; sorted routes are checked against a CPU oracle, including graph replay.
++Timings cover the complete pack, with 100 calls captured in each graph to
++amortize Python replay overhead. For example, save the base module with
++`git show BASE:flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py`
++and pass its path as --reference and the proposed module as --candidate.
++"""
++
++import argparse
++import hashlib
++import importlib.util
++import json
++from pathlib import Path
++import statistics
++import subprocess
++import sys
++
++import torch
++import triton
++
++
++def load(path, name):
++    qualified = f"flashinfer.fused_moe.cute_dsl.blackwell_sm12x.{name}"
++    spec = importlib.util.spec_from_file_location(qualified, path)
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[qualified] = module
++    spec.loader.exec_module(module)
++    return module
++
++
++def workspace(module, ids, block, experts, exact=False):
++    capacity = (
++        ids.numel()
++        if exact
++        else module.route_pack_numel_capacity(ids.numel(), topk=ids.shape[-1])
++    )
++    slots = max(module.max_packed_route_slots(capacity, block, experts), 1)
++    sizes = (slots, triton.cdiv(slots, block), 1, experts + 1)
++    keys = (
++        "packed_route_indices",
++        "block_expert_ids",
++        "packed_route_count",
++        "expert_offsets",
++    )
++    return {
++        k: torch.full((s,), -777, dtype=torch.int32, device="cuda")
++        for k, s in zip(keys, sizes, strict=True)
++    }
++
++
++def prefix(module, ids, block, experts, mapping, buffers):
++    slots = buffers["packed_route_indices"].numel()
++    blocks = buffers["block_expert_ids"].numel()
++    capacity = module.route_pack_numel_capacity(ids.numel(), topk=ids.shape[-1])
++    if slots < module.max_packed_route_slots(capacity, block, experts):
++        capacity = ids.numel()
++    kwargs = dict(
++        NUMEL_CAPACITY=capacity,
++        BLOCK_SIZE=block,
++        NUM_EXPERTS=experts,
++        MAX_PACKED_ROUTES=slots,
++        MAX_ROUTE_BLOCKS=blocks,
++        HAS_EXPERT_MAP=mapping is not None,
++        BLOCK_E=triton.next_power_of_2(experts),
++        BLOCK_T=256,
++        BLOCK_ROUTE_INIT=triton.next_power_of_2(slots),
++        BLOCK_M=triton.next_power_of_2(blocks),
++        num_warps=8,
++    )
++    if "LOG2_BLOCK_E" in module._pack_topk_routes_small_prefix_kernel.arg_names:
++        kwargs["LOG2_BLOCK_E"] = kwargs["BLOCK_E"].bit_length() - 1
++    module._pack_topk_routes_small_prefix_kernel[(1,)](
++        ids,
++        mapping if mapping is not None else ids,
++        *buffers.values(),
++        ids.numel(),
++        **kwargs,
++    )
++
++
++def check(ids, block, experts, mapping, buffers):
++    raw = ids.cpu().flatten().long()
++    valid = (raw >= 0) & (raw < experts)
++    mapped = raw if mapping is None else mapping.cpu().long()[raw.clamp(0, experts - 1)]
++    valid &= (mapped >= 0) & (mapped < experts)
++    counts = torch.bincount(mapped[valid], minlength=experts)
++    padded = ((counts + block - 1) // block) * block
++    total = int(padded.sum())
++    routes = buffers["packed_route_indices"].cpu().long()
++    owners = buffers["block_expert_ids"].cpu().long()
++    assert int(buffers["packed_route_count"].item()) == total
++    expected_owners = torch.repeat_interleave(torch.arange(experts), padded // block)
++    assert torch.equal(owners[: total // block], expected_owners)
++    assert (owners[total // block :] == -1).all()
++    assert (routes[total:] == raw.numel()).all()
++    cursor = 0
++    for expert, size in enumerate(padded.tolist()):
++        section = routes[cursor : cursor + size]
++        assert ((section >= 0) & (section <= raw.numel())).all()
++        payload = section[section < raw.numel()].sort().values
++        expected = torch.nonzero(valid & (mapped == expert)).flatten()
++        assert torch.equal(payload, expected), expert
++        cursor += size
++
++
++def pattern(tokens, experts, dtype, kind, seed):
++    generator = torch.Generator().manual_seed(seed)
++    if kind == "random":
++        x = torch.randint(0, experts, (tokens, 8), generator=generator, dtype=dtype)
++    elif kind == "skew":
++        x = torch.randint(
++            0, min(experts, 3), (tokens, 8), generator=generator, dtype=dtype
++        )
++    elif kind == "last":
++        x = torch.full((tokens, 8), experts - 1, dtype=dtype)
++    elif kind == "unique":
++        x = torch.arange(tokens * 8, dtype=dtype).reshape(tokens, 8) % experts
++    else:
++        x = torch.full((tokens, 8), -1, dtype=dtype)
++        x.flatten()[::3] = experts
++    return x.cuda()
++
++
++def validate(reference, candidate, quick):
++    checked = 0
++    cases = [(288, n, 8) for n in (1, 4, 8, 12, 16)]
++    if not quick:
++        cases += [
++            (e, n, b)
++            for e in (1, 7, 16, 128, 257, 512)
++            for n in (1, 9, 16)
++            for b in (8, 48)
++        ]
++    if not quick:
++        cases += [(16, 48, 8), (16, 48, 48)]
++    for experts, tokens, block in cases:
++        for dtype in (torch.int32, torch.int64):
++            for exact in (False, True):
++                ids = pattern(tokens, experts, dtype, "random", checked)
++                a = workspace(reference, ids, block, experts, exact)
++                b = workspace(candidate, ids, block, experts, exact)
++                # Bound direct small-prefix checks to the dispatcher's domain.
++                small = (
++                    triton.next_power_of_2(a["packed_route_indices"].numel()) <= 4096
++                    and triton.next_power_of_2(a["block_expert_ids"].numel()) <= 128
++                    and triton.next_power_of_2(experts)
++                    * triton.next_power_of_2(a["block_expert_ids"].numel())
++                    <= 65536
++                )
++                for has_map in (False, True):
++                    mapping = None
++                    if has_map:
++                        mapping = torch.arange(
++                            experts, dtype=torch.int32, device="cuda"
++                        ) % max(1, experts // 2)
++                        mapping[::3] = -1
++                        mapping[1::5] = experts
++
++                    def fn():
++                        return candidate.pack_topk_routes_by_expert(
++                            ids, block, experts, expert_map=mapping, **b
++                        )
++
++                    fn()
++                    graph = torch.cuda.CUDAGraph()
++                    with torch.cuda.graph(graph):
++                        fn()
++                    for kind in ("random", "skew", "last", "unique", "invalid"):
++                        ids.copy_(pattern(tokens, experts, dtype, kind, checked + 13))
++                        if small:
++                            prefix(reference, ids, block, experts, mapping, a)
++                            prefix(candidate, ids, block, experts, mapping, b)
++                            for key in a:
++                                assert torch.equal(a[key], b[key]), (
++                                    key,
++                                    experts,
++                                    tokens,
++                                    block,
++                                    kind,
++                                )
++                        for tensor in b.values():
++                            tensor.fill_(-777)
++                        graph.replay()
++                        check(ids, block, experts, mapping, b)
++                        checked += 1
++    return checked
++
++
++def benchmark(reference, candidate, repeats):
++    rows = []
++    for tokens in (4, 8, 12, 16, 24, 32):
++        for kind in ("random", "skew", "last"):
++            ids = pattern(tokens, 288, torch.int32, kind, 20260906 + tokens)
++            graphs, owners = {}, []
++            for name, module in (("reference", reference), ("candidate", candidate)):
++                buffers = workspace(module, ids, 8, 288)
++                owners.append(buffers)
++
++                def fn():
++                    return module.pack_topk_routes_by_expert(ids, 8, 288, **buffers)
++
++                for _ in range(5):
++                    fn()
++                graph = torch.cuda.CUDAGraph()
++                with torch.cuda.graph(graph):
++                    for _ in range(100):
++                        fn()
++                graphs[name] = graph
++            samples = {name: [] for name in graphs}
++            for rep in range(repeats):
++                for name in list(graphs) if rep % 2 == 0 else list(reversed(graphs)):
++                    graph = graphs[name]
++                    graph.replay()
++                    start, end = [
++                        torch.cuda.Event(enable_timing=True) for _ in range(2)
++                    ]
++                    start.record()
++                    for _ in range(10):
++                        graph.replay()
++                    end.record()
++                    end.synchronize()
++                    samples[name].append(
++                        start.elapsed_time(end)
++                    )  # ms / 1000 calls == us/call
++            row = dict(
++                tokens=tokens,
++                topk=8,
++                experts=288,
++                block_size=8,
++                pattern=kind,
++                samples_us=samples,
++                median_us={k: statistics.median(v) for k, v in samples.items()},
++            )
++            rows.append(row)
++            print(json.dumps(row), flush=True)
++    return rows
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--reference", type=Path, required=True)
++    parser.add_argument("--candidate", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--quick", action="store_true")
++    parser.add_argument("--validate-only", action="store_true")
++    parser.add_argument("--repeats", type=int, default=12)
++    args = parser.parse_args()
++    torch.set_num_threads(1)
++    reference, candidate = (
++        load(args.reference, "route_pack_reference"),
++        load(args.candidate, "route_pack_candidate"),
++    )
++    result = dict(
++        torch=torch.__version__,
++        triton=triton.__version__,
++        gpu=torch.cuda.get_device_name(),
++        source_sha256={
++            k: hashlib.sha256(p.read_bytes()).hexdigest()
++            for k, p in (("reference", args.reference), ("candidate", args.candidate))
++        },
++        timing="CUDA events, 100 full pack calls per captured graph, 10 replays/sample, alternating order",
++    )
++    result["integer_and_graph_cases"] = validate(reference, candidate, args.quick)
++    print("Validated", result["integer_and_graph_cases"], flush=True)
++    if not args.validate_only:
++        result["timings"] = benchmark(reference, candidate, args.repeats)
++    result["gpu_status"] = subprocess.check_output(
++        [
++            "nvidia-smi",
++            "--query-gpu=uuid,temperature.gpu,clocks.sm,power.draw,power.limit",
++            "--format=csv",
++        ],
++        text=True,
++    )
++    args.output.write_text(json.dumps(result, indent=2) + "\n")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benchmarks/bench_b12x_w4a16_route_pack_sm120.json b/benchmarks/bench_b12x_w4a16_route_pack_sm120.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..c64e28bb598a9dcd3566f856e0db2ead8502a329
+--- /dev/null
++++ b/benchmarks/bench_b12x_w4a16_route_pack_sm120.json
+@@ -0,0 +1,752 @@
++{
++  "torch": "2.13.0+cu130",
++  "triton": "3.7.1",
++  "gpu": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
++  "source_sha256": {
++    "reference": "ecf89b722084ab65b8877f7f7c3f6072de659b29c9436707edc05f86f47d1b24",
++    "candidate": "335234a7a64a5a4cf4bd0c9e97fd0a0ed9a2e5992f8888a485e747ad194f78dc"
++  },
++  "timing": "CUDA events, 100 full pack calls per captured graph, 10 replays/sample, alternating order",
++  "integer_and_graph_cases": 1720,
++  "timings": [
++    {
++      "tokens": 4,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          59.99923324584961,
++          59.99513626098633,
++          60.00128173828125,
++          59.99513626098633,
++          59.986942291259766,
++          59.988990783691406,
++          59.99513626098633,
++          59.99103927612305,
++          59.99513626098633,
++          59.99923324584961,
++          59.99923324584961,
++          59.98284912109375
++        ],
++        "candidate": [
++          4.314112186431885,
++          4.314112186431885,
++          4.312064170837402,
++          4.314112186431885,
++          4.314112186431885,
++          4.312064170837402,
++          4.312064170837402,
++          4.312064170837402,
++          4.31001615524292,
++          4.314112186431885,
++          4.314112186431885,
++          4.31001615524292
++        ]
++      },
++      "median_us": {
++        "reference": 59.99513626098633,
++        "candidate": 4.3130881786346436
++      }
++    },
++    {
++      "tokens": 4,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          59.93779373168945,
++          59.93574523925781,
++          59.94803237915039,
++          59.93369674682617,
++          59.93164825439453,
++          59.92755126953125,
++          59.92959976196289,
++          59.93574523925781,
++          59.93983840942383,
++          59.93779373168945,
++          59.93779373168945,
++          59.93369674682617
++        ],
++        "candidate": [
++          4.229119777679443,
++          4.226047992706299,
++          4.223999977111816,
++          4.226047992706299,
++          4.223999977111816,
++          4.221951961517334,
++          4.223999977111816,
++          4.223999977111816,
++          4.227071762084961,
++          4.230144023895264,
++          4.228096008300781,
++          4.228096008300781
++        ]
++      },
++      "median_us": {
++        "reference": 59.93574523925781,
++        "candidate": 4.226047992706299
++      }
++    },
++    {
++      "tokens": 4,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          60.00128173828125,
++          59.988990783691406,
++          59.99513626098633,
++          59.98284912109375,
++          60.003326416015625,
++          60.005374908447266,
++          59.99923324584961,
++          59.99718475341797,
++          60.003326416015625,
++          60.003326416015625,
++          60.01152038574219,
++          60.007423400878906
++        ],
++        "candidate": [
++          4.2936320304870605,
++          4.291584014892578,
++          4.290559768676758,
++          4.287487983703613,
++          4.289535999298096,
++          4.289535999298096,
++          4.291584014892578,
++          4.289535999298096,
++          4.289535999298096,
++          4.291584014892578,
++          4.291584014892578,
++          4.289535999298096
++        ]
++      },
++      "median_us": {
++        "reference": 60.00230407714844,
++        "candidate": 4.290047883987427
++      }
++    },
++    {
++      "tokens": 8,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          62.38412857055664,
++          62.38822555541992,
++          62.38617706298828,
++          62.39231872558594,
++          62.406654357910156,
++          62.40460968017578,
++          62.41075134277344,
++          62.39641571044922,
++          62.39436721801758,
++          62.39231872558594,
++          62.39231872558594,
++          62.39846420288086
++        ],
++        "candidate": [
++          4.29260778427124,
++          4.289535999298096,
++          4.299776077270508,
++          4.30079984664917,
++          4.297728061676025,
++          4.2936320304870605,
++          4.2936320304870605,
++          4.295680046081543,
++          4.297728061676025,
++          4.297728061676025,
++          4.2936320304870605,
++          4.297728061676025
++        ]
++      },
++      "median_us": {
++        "reference": 62.39334297180176,
++        "candidate": 4.296704053878784
++      }
++    },
++    {
++      "tokens": 8,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          62.232574462890625,
++          62.24486541748047,
++          62.234622955322266,
++          62.24076843261719,
++          62.24281692504883,
++          62.24076843261719,
++          62.25715255737305,
++          62.251007080078125,
++          62.25920104980469,
++          62.248958587646484,
++          62.248958587646484,
++          62.248958587646484
++        ],
++        "candidate": [
++          4.2096638679504395,
++          4.215807914733887,
++          4.2096638679504395,
++          4.207615852355957,
++          4.213759899139404,
++          4.215807914733887,
++          4.215807914733887,
++          4.217855930328369,
++          4.211711883544922,
++          4.211711883544922,
++          4.215807914733887,
++          4.213759899139404
++        ]
++      },
++      "median_us": {
++        "reference": 62.24691200256348,
++        "candidate": 4.213759899139404
++      }
++    },
++    {
++      "tokens": 8,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          62.3001594543457,
++          62.302207946777344,
++          62.291969299316406,
++          62.2817268371582,
++          62.29401779174805,
++          62.29606246948242,
++          62.291969299316406,
++          62.3001594543457,
++          62.27967834472656,
++          62.29401779174805,
++          62.285823822021484,
++          62.289920806884766
++        ],
++        "candidate": [
++          4.238336086273193,
++          4.238336086273193,
++          4.240384101867676,
++          4.238336086273193,
++          4.236288070678711,
++          4.236288070678711,
++          4.236288070678711,
++          4.236288070678711,
++          4.2342400550842285,
++          4.2342400550842285,
++          4.238336086273193,
++          4.236288070678711
++        ]
++      },
++      "median_us": {
++        "reference": 62.29299354553223,
++        "candidate": 4.236288070678711
++      }
++    },
++    {
++      "tokens": 12,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          70.32524871826172,
++          70.3109130859375,
++          70.31910705566406,
++          70.3088607788086,
++          70.32115173339844,
++          70.31705474853516,
++          70.30067443847656,
++          70.28428649902344,
++          70.30271911621094,
++          70.3109130859375,
++          70.28633880615234,
++          70.29862213134766
++        ],
++        "candidate": [
++          4.245503902435303,
++          4.240384101867676,
++          4.246528148651123,
++          4.246528148651123,
++          4.242432117462158,
++          4.246528148651123,
++          4.242432117462158,
++          4.242432117462158,
++          4.244480133056641,
++          4.246528148651123,
++          4.240384101867676,
++          4.244480133056641
++        ]
++      },
++      "median_us": {
++        "reference": 70.30988693237305,
++        "candidate": 4.244480133056641
++      }
++    },
++    {
++      "tokens": 12,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          70.23513793945312,
++          70.22284698486328,
++          70.24537658691406,
++          70.22489929199219,
++          70.22694396972656,
++          70.22489929199219,
++          70.23308563232422,
++          70.23104095458984,
++          70.23104095458984,
++          70.2392349243164,
++          70.23513793945312,
++          70.22898864746094
++        ],
++        "candidate": [
++          4.196352005004883,
++          4.193280220031738,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.193280220031738,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221
++        ]
++      },
++      "median_us": {
++        "reference": 70.23104095458984,
++        "candidate": 4.195328235626221
++      }
++    },
++    {
++      "tokens": 12,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          70.30067443847656,
++          70.30681610107422,
++          70.31295776367188,
++          70.30477142333984,
++          70.30681610107422,
++          70.30681610107422,
++          70.31295776367188,
++          70.31295776367188,
++          70.3109130859375,
++          70.31295776367188,
++          70.31295776367188,
++          70.3088607788086
++        ],
++        "candidate": [
++          4.228096008300781,
++          4.230144023895264,
++          4.228096008300781,
++          4.230144023895264,
++          4.229119777679443,
++          4.226047992706299,
++          4.227071762084961,
++          4.229119777679443,
++          4.232192039489746,
++          4.232192039489746,
++          4.228096008300781,
++          4.228096008300781
++        ]
++      },
++      "median_us": {
++        "reference": 70.30988693237305,
++        "candidate": 4.228607892990112
++      }
++    },
++    {
++      "tokens": 16,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          70.46451568603516,
++          70.46451568603516,
++          70.46656036376953,
++          70.46451568603516,
++          70.46451568603516,
++          70.46451568603516,
++          70.46656036376953,
++          70.50956726074219,
++          70.46041870117188,
++          70.47270202636719,
++          70.4686050415039,
++          70.4686050415039
++        ],
++        "candidate": [
++          4.246528148651123,
++          4.244480133056641,
++          4.2485761642456055,
++          4.246528148651123,
++          4.246528148651123,
++          4.246528148651123,
++          4.246528148651123,
++          4.246528148651123,
++          4.2485761642456055,
++          4.25267219543457,
++          4.246528148651123,
++          4.2485761642456055
++        ]
++      },
++      "median_us": {
++        "reference": 70.46553802490234,
++        "candidate": 4.246528148651123
++      }
++    },
++    {
++      "tokens": 16,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          70.41535949707031,
++          70.41535949707031,
++          70.4194564819336,
++          70.41741180419922,
++          70.40512084960938,
++          70.41331481933594,
++          70.40512084960938,
++          70.41741180419922,
++          70.40921783447266,
++          70.41331481933594,
++          70.42150115966797,
++          70.42355346679688
++        ],
++        "candidate": [
++          4.192255973815918,
++          4.195328235626221,
++          4.2485761642456055,
++          4.195328235626221,
++          4.195328235626221,
++          4.197375774383545,
++          4.191232204437256,
++          4.193280220031738,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221,
++          4.195328235626221
++        ]
++      },
++      "median_us": {
++        "reference": 70.41535949707031,
++        "candidate": 4.195328235626221
++      }
++    },
++    {
++      "tokens": 16,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          70.55052947998047,
++          70.55052947998047,
++          70.54438018798828,
++          70.54438018798828,
++          70.52595520019531,
++          70.52799987792969,
++          70.52799987792969,
++          70.53004455566406,
++          70.51980590820312,
++          70.53823852539062,
++          70.51776123046875,
++          70.5116195678711
++        ],
++        "candidate": [
++          4.3079681396484375,
++          4.305920124053955,
++          4.305920124053955,
++          4.303872108459473,
++          4.303872108459473,
++          4.303872108459473,
++          4.30182409286499,
++          4.303872108459473,
++          4.305920124053955,
++          4.302847862243652,
++          4.30182409286499,
++          4.299776077270508
++        ]
++      },
++      "median_us": {
++        "reference": 70.52902221679688,
++        "candidate": 4.303872108459473
++      }
++    },
++    {
++      "tokens": 24,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          63.903743743896484,
++          63.909889221191406,
++          63.9180793762207,
++          63.920127868652344,
++          63.9180793762207,
++          63.91398239135742,
++          63.905792236328125,
++          63.91603088378906,
++          63.91193771362305,
++          63.93036651611328,
++          63.89759826660156,
++          63.91193771362305
++        ],
++        "candidate": [
++          63.752193450927734,
++          63.76038360595703,
++          63.76652908325195,
++          63.78905487060547,
++          63.78086471557617,
++          63.77676773071289,
++          63.77062225341797,
++          63.77676773071289,
++          63.77267074584961,
++          63.78496170043945,
++          63.77471923828125,
++          63.768577575683594
++        ]
++      },
++      "median_us": {
++        "reference": 63.912960052490234,
++        "candidate": 63.77369499206543
++      }
++    },
++    {
++      "tokens": 24,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          63.933441162109375,
++          63.9365119934082,
++          63.924224853515625,
++          63.93241500854492,
++          63.940608978271484,
++          63.940608978271484,
++          63.93241500854492,
++          63.93446350097656,
++          63.9365119934082,
++          63.9365119934082,
++          63.93241500854492,
++          63.9365119934082
++        ],
++        "candidate": [
++          63.89350509643555,
++          63.883262634277344,
++          63.8996467590332,
++          63.8996467590332,
++          63.903743743896484,
++          63.91398239135742,
++          63.89350509643555,
++          63.903743743896484,
++          63.901695251464844,
++          63.89350509643555,
++          63.885311126708984,
++          63.8812141418457
++        ]
++      },
++      "median_us": {
++        "reference": 63.93548774719238,
++        "candidate": 63.896575927734375
++      }
++    },
++    {
++      "tokens": 24,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          63.95084762573242,
++          63.94675064086914,
++          63.95084762573242,
++          63.9447021484375,
++          63.94879913330078,
++          63.93241500854492,
++          63.9549446105957,
++          63.95289611816406,
++          63.96518325805664,
++          63.9549446105957,
++          63.95289611816406,
++          63.94675064086914
++        ],
++        "candidate": [
++          64.07577514648438,
++          64.08396911621094,
++          64.08396911621094,
++          64.07987213134766,
++          64.08806610107422,
++          64.0921630859375,
++          64.07577514648438,
++          64.08601379394531,
++          64.06963348388672,
++          64.0901107788086,
++          64.0901107788086,
++          64.08191680908203
++        ]
++      },
++      "median_us": {
++        "reference": 63.95084762573242,
++        "candidate": 64.08396911621094
++      }
++    },
++    {
++      "tokens": 32,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "random",
++      "samples_us": {
++        "reference": [
++          63.928321838378906,
++          63.93036651611328,
++          63.93241500854492,
++          63.93241500854492,
++          63.938560485839844,
++          63.942657470703125,
++          63.938560485839844,
++          63.956993103027344,
++          63.940608978271484,
++          63.94675064086914,
++          63.959041595458984,
++          63.94675064086914
++        ],
++        "candidate": [
++          64.036865234375,
++          64.03276824951172,
++          64.03276824951172,
++          64.04300689697266,
++          64.03276824951172,
++          64.036865234375,
++          64.036865234375,
++          64.036865234375,
++          64.04096221923828,
++          64.0532455444336,
++          64.03890991210938,
++          64.04710388183594
++        ]
++      },
++      "median_us": {
++        "reference": 63.939584732055664,
++        "candidate": 64.036865234375
++      }
++    },
++    {
++      "tokens": 32,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "skew",
++      "samples_us": {
++        "reference": [
++          63.928321838378906,
++          63.926273345947266,
++          63.93241500854492,
++          63.9365119934082,
++          63.940608978271484,
++          63.942657470703125,
++          63.93446350097656,
++          63.942657470703125,
++          63.938560485839844,
++          63.940608978271484,
++          63.94675064086914,
++          63.938560485839844
++        ],
++        "candidate": [
++          63.84844970703125,
++          63.850494384765625,
++          63.85663986206055,
++          63.852542877197266,
++          63.86278533935547,
++          63.84025573730469,
++          63.852542877197266,
++          63.85663986206055,
++          63.85663986206055,
++          63.86073684692383,
++          63.85663986206055,
++          63.850494384765625
++        ]
++      },
++      "median_us": {
++        "reference": 63.938560485839844,
++        "candidate": 63.854591369628906
++      }
++    },
++    {
++      "tokens": 32,
++      "topk": 8,
++      "experts": 288,
++      "block_size": 8,
++      "pattern": "last",
++      "samples_us": {
++        "reference": [
++          64.16998291015625,
++          64.16793823242188,
++          64.16588592529297,
++          64.17407989501953,
++          64.17407989501953,
++          64.15564727783203,
++          64.17817687988281,
++          64.17203521728516,
++          64.1761245727539,
++          64.16793823242188,
++          64.1761245727539,
++          64.17203521728516
++        ],
++        "candidate": [
++          64.0979232788086,
++          64.0921630859375,
++          64.0901107788086,
++          64.08191680908203,
++          64.06963348388672,
++          64.07782745361328,
++          64.09420776367188,
++          64.09625244140625,
++          64.0901107788086,
++          64.0921630859375,
++          64.08396911621094,
++          64.09625244140625
++        ]
++      },
++      "median_us": {
++        "reference": 64.17203521728516,
++        "candidate": 64.09113693237305
++      }
++    }
++  ],
++  "gpu_status": "uuid, temperature.gpu, clocks.current.sm [MHz], power.draw [W], power.limit [W]\nGPU-4b6a1e3a-4e8f-95c7-9f90-be37abc0b7a4, 72, 2355 MHz, 111.28 W, 300.00 W\nGPU-bfdf4699-e4d9-b46a-6503-21a001973e6c, 42, 180 MHz, 16.00 W, 300.00 W\n"
++}
+diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
+index e7f6d24b9db504e61a97c9e1bc07424fd4cd7592..9efe5282a5f32e01095c947932d3c2db59117f62 100644
+--- a/flashinfer/fused_moe/api.py
++++ b/flashinfer/fused_moe/api.py
+@@ -2446,6 +2446,9 @@ class B12xW4A16Config:
+     ):
+         """Build the ``b12x_w4a16`` weight view from checkpoint fp4 weights.
+ 
++        Supports ModelOpt and CompressedTensors K/16 scale conventions.
++        Use the native ``B12xMoEWrapper`` API for K/32 source formats.
++
+         Register the result with ``MoEWeightPack.prepare_for("b12x_w4a16", ...)``.
+         See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
+         """
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 index 0143f258fe1eeacb20af39f62757e0af8e74eb95..a3a6c75817f2fa7a412fbba9f978ae7894d5d3b7 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
@@ -391,6 +1452,1735 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
  
  
  def _validate_static_workspace_for_launch(
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
+index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e261d3655 100644
+--- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import hashlib
+ from dataclasses import dataclass, replace
+ from typing import Any, Callable
+ 
+@@ -9,14 +10,11 @@ import cuda.bindings.driver as cuda
+ import cutlass
+ import cutlass.cute as cute
+ import torch
+-from cutlass.base_dsl.compiler import OptLevel
+ from cutlass._mlir.dialects import llvm
+ from cutlass.cutlass_dsl import Int32, Int64, T, Uint32, dsl_user_op
+ 
+ from .moe_w4a16_compiler import (
+-    KernelCompileSpec,
+     clear_compile_cache,
+-    compile as cached_compile,
+ )
+ from .moe_w4a16_fp4_helpers import (
+     atomic_add_global_i32,
+@@ -75,6 +73,7 @@ from .moe_w4a16_fp4_helpers import (
+     warp_reduce,
+ )
+ from flashinfer.cute_dsl.utils import current_cuda_stream, make_ptr
++from flashinfer.jit.cute_dsl_core import build_and_load_cute_dsl_kernel
+ from .moe_w4a16_route_pack import (
+     pack_topk_routes_by_expert as _pack_topk_routes_by_expert,
+ )
+@@ -117,6 +116,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
+ _NF3_CODEBOOK = (-1.0, -0.6047, -0.3563, -0.1275, 0.1275, 0.3563, 0.6047, 1.0)
+ _SCALE_FORMATS = {
+     "e4m3_k16": "e4m3_k16",
++    "e4m3_k32": "e4m3_k32",
+     "e8m0_k32": "e8m0_k32",
+ }
+ _E8M0_K32_FP16_GLOBAL_COMPENSATION = float(2.0**7)
+@@ -361,6 +361,7 @@ def _candidate_tile_fits(
+     scale_format: str = "e4m3_k16",
+     weight_layout: str = "packed",
+     allow_logical_tail: bool = False,
++    allow_tile_k_32: bool = False,
+ ) -> bool:
+     if int(tile_k) == -1 or int(tile_n) == -1 or int(cta_threads) == -1:
+         return False
+@@ -381,7 +382,8 @@ def _candidate_tile_fits(
+         or int(tile_k) % scale_group_size != 0
+     ):
+         return False
+-    if int(tile_n) < 64 or int(tile_k) < 64 or int(cta_threads) < 128:
++    min_tile_k = 32 if allow_tile_k_32 else 64
++    if int(tile_n) < 64 or int(tile_k) < min_tile_k or int(cta_threads) < 128:
+         return False
+     smem_bytes = _shared_memory_footprint(
+         cta_m_blocks=cta_m_blocks,
+@@ -1490,8 +1492,12 @@ class W4A16GemmKernel:
+                 scales_expert_stride = Int32((self.size_n * self.size_k) // (32 * 16))
+         else:
+             scales_expert_stride = Int32((self.size_n * self.size_k) // (16 * 16))
+-        b_expert_off = (
+-            Int32((self.size_n * self.size_k) // (_PACK_FACTOR * 4)) * expert_idx
++        # A pooled expert cache may make the flat packed bank larger than 2 Gi
++        # int32 elements. Keep weight-bank addressing 64-bit end-to-end; an
++        # Int32 expert offset silently wraps and makes cp.async read an invalid
++        # address even when the bank itself crossed the ABI as a raw pointer.
++        b_expert_off = Int64((self.size_n * self.size_k) // (_PACK_FACTOR * 4)) * Int64(
++            expert_idx
+         )
+         scales_expert_off = scales_expert_stride * expert_idx
+ 
+@@ -1503,12 +1509,12 @@ class W4A16GemmKernel:
+         a_rows_per_iter = Int32(self.cta_threads // self.a_gl_rd_delta_o)
+ 
+         if cutlass.const_expr(self.cta_threads <= self.b_sh_stride):
+-            b_gl_rd_base = tid
++            b_gl_rd_base = Int64(tid)
+         else:
+-            b_gl_rd_base = b_gl_stride * (tid // Int32(self.b_sh_stride)) + (
+-                tid % Int32(self.b_sh_stride)
+-            )
+-        b_gl_rd_base += b_expert_off + Int32(self.b_sh_stride) * output_n_tile
++            b_gl_rd_base = Int64(b_gl_stride) * Int64(
++                tid // Int32(self.b_sh_stride)
++            ) + Int64(tid % Int32(self.b_sh_stride))
++        b_gl_rd_base += b_expert_off + Int64(self.b_sh_stride) * Int64(output_n_tile)
+         b_sh_rd = tid
+         b_sh_rd += (b_sh_rd // Int32(self.b_sh_stride)) * Int32(
+             self.b_sh_stride * (self.b_sh_wr_iters - 1)
+@@ -1910,7 +1916,7 @@ class W4A16GemmKernel:
+         b_gl_stride: Int32,
+         s_gl_stride: Int32,
+         scales_expert_off: Int32,
+-        b_gl_rd_base: Int32,
++        b_gl_rd_base: Int64,
+         a_gl_rd_row: Int32,
+         a_gl_rd_col0: Int32,
+         a_sh_wr: Int32,
+@@ -3010,7 +3016,7 @@ class W4A16GemmKernel:
+         b_gl_stride: Int32,
+         s_gl_stride: Int32,
+         scales_expert_off: Int32,
+-        b_gl_rd_base: Int32,
++        b_gl_rd_base: Int64,
+         a_gl_rd_row: Int32,
+         a_gl_rd_col0: Int32,
+         a_sh_wr: Int32,
+@@ -3064,9 +3070,9 @@ class W4A16GemmKernel:
+             nf3_units_per_expert = (self.size_n * self.size_k) // 32
+             nf3_ntile_stride = (self.size_k // 16) * (self.tile_n // 2)
+             nf3_span_base_unit = (
+-                Int32(nf3_units_per_expert) * expert_idx
+-                + Int32(nf3_ntile_stride) * output_n_tile
+-                + tile_idx * Int32(self.cta_k_blocks * self.b_sh_stride)
++                Int64(nf3_units_per_expert) * Int64(expert_idx)
++                + Int64(nf3_ntile_stride) * Int64(output_n_tile)
++                + Int64(tile_idx) * Int64(self.cta_k_blocks * self.b_sh_stride)
+             )
+             for i in cutlass.range_constexpr(self.b_sh_wr_iters_nf3):
+                 nf3_chunk = Int32(i * self.cta_threads) + tid
+@@ -3078,7 +3084,7 @@ class W4A16GemmKernel:
+                 )
+                 # int32-element index of the chunk's first word:
+                 # (span_base_unit*12 + chunk*16) / 4 = span_base_unit*3 + chunk*4.
+-                b_src_i32 = nf3_span_base_unit * Int32(3) + nf3_chunk * Int32(4)
++                b_src_i32 = nf3_span_base_unit * Int64(3) + Int64(nf3_chunk) * Int64(4)
+                 cp_async4_shared_global_pred(
+                     b_dst,
+                     get_ptr_as_int64(b_i32_flat, b_src_i32),
+@@ -3090,8 +3096,8 @@ class W4A16GemmKernel:
+         ):
+             b_src_int4 = (
+                 b_gl_rd_base
+-                + tile_idx * Int32(self.cta_k_blocks) * b_gl_stride
+-                + Int32(i * (self.cta_threads // self.b_sh_stride)) * b_gl_stride
++                + Int64(tile_idx) * Int64(self.cta_k_blocks) * Int64(b_gl_stride)
++                + Int64(i * (self.cta_threads // self.b_sh_stride)) * Int64(b_gl_stride)
+             )
+             b_dst = self._int4_addr(
+                 smem_base,
+@@ -3103,7 +3109,7 @@ class W4A16GemmKernel:
+             if cutlass.const_expr(self.weight_layout == "packed"):
+                 cp_async4_shared_global(
+                     b_dst,
+-                    get_ptr_as_int64(b_i32_flat, b_src_int4 * Int32(4)),
++                    get_ptr_as_int64(b_i32_flat, b_src_int4 * Int64(4)),
+                 )
+             else:
+                 self._stage_b_tile_modelopt_native(
+@@ -3163,7 +3169,7 @@ class W4A16GemmKernel:
+         b_gl_stride: Int32,
+         s_gl_stride: Int32,
+         scales_expert_off: Int32,
+-        b_gl_rd_base: Int32,
++        b_gl_rd_base: Int64,
+         a_gl_rd_row: Int32,
+         a_gl_rd_col0: Int32,
+         a_sh_wr: Int32,
+@@ -3211,7 +3217,7 @@ class W4A16GemmKernel:
+         b_gl_stride: Int32,
+         s_gl_stride: Int32,
+         scales_expert_off: Int32,
+-        b_gl_rd_base: Int32,
++        b_gl_rd_base: Int64,
+         a_gl_rd_row: Int32,
+         a_gl_rd_col0: Int32,
+         a_sh_wr: Int32,
+@@ -3264,7 +3270,7 @@ class W4A16GemmKernel:
+         b_gl_stride: Int32,
+         s_gl_stride: Int32,
+         scales_expert_off: Int32,
+-        b_gl_rd_base: Int32,
++        b_gl_rd_base: Int64,
+         a_gl_rd_row: Int32,
+         a_gl_rd_col0: Int32,
+         a_sh_wr: Int32,
+@@ -4298,8 +4304,8 @@ class W4A16FusedMoeKernel:
+     def __call__(
+         self,
+         a_bf16_ptr: cute.Pointer,
+-        w13_i32_flat: cute.Tensor,
+-        w2_i32_flat: cute.Tensor,
++        w13_flat_ptr: cute.Pointer,
++        w2_flat_ptr: cute.Pointer,
+         fc1_bf16_flat: cute.Tensor,
+         activated_bf16_flat: cute.Tensor,
+         fc2_bf16_flat: cute.Tensor,
+@@ -4324,6 +4330,40 @@ class W4A16FusedMoeKernel:
+             a_bf16_ptr,
+             layout=cute.make_layout((active_m * Int32(self.hidden_size),), stride=(1,)),
+         )
++        if cutlass.const_expr(self.weight_layout == "modelopt"):
++            w13_elements = self.num_experts * self.fc1_cols * (self.hidden_size // 2)
++            w2_elements = (
++                self.num_experts * self.hidden_size * (self.intermediate_size // 2)
++            )
++        elif cutlass.const_expr(self.weight_layout == "nf3_2p1"):
++            w13_elements = (
++                self.num_experts * (self.hidden_size // 16) * (self.fc1_cols // 2) * 3
++            )
++            w2_elements = (
++                self.num_experts
++                * (self.intermediate_size // 16)
++                * (self.hidden_size // 2)
++                * 3
++            )
++        else:
++            w13_elements = (
++                self.num_experts * (self.hidden_size // 16) * (self.fc1_cols // 16 * 32)
++            )
++            w2_elements = (
++                self.num_experts
++                * (self.intermediate_size // 16)
++                * (self.hidden_size // 16 * 32)
++            )
++        # A serving runtime may pool cache slots across layers, producing weight
++        # banks with more than INT32_MAX elements. Passing those banks through a
++        # dynamic DLPack memref overflows CuTe DSL's runtime shape descriptor.
++        # The kernel only needs aligned base addresses and compile-time lengths.
++        w13_i32_flat = cute.make_tensor(
++            w13_flat_ptr, layout=cute.make_layout((w13_elements,), stride=(1,))
++        )
++        w2_i32_flat = cute.make_tensor(
++            w2_flat_ptr, layout=cute.make_layout((w2_elements,), stride=(1,))
++        )
+         topk_weights_flat = cute.make_tensor(
+             topk_weights_ptr,
+             layout=cute.make_layout((active_m * Int32(self.top_k),), stride=(1,)),
+@@ -4943,10 +4983,19 @@ class W4A16TopKSumKernel:
+         self,
+         fc2_ptr: cute.Pointer,
+         topk_ids_ptr: cute.Pointer,
+-        output_ptr: cute.Pointer,
++        output_anchor: cute.Tensor,
+         active_m: cutlass.Int32,
+         stream: cuda.CUstream,
+     ):
++        # ``output`` travels as a shape-[1] DLTensor rather than a typed
++        # pointer: it is the only device-carrying param in the TVM-FFI
++        # signature, and the env-stream lookup anchors on it (raw pointers
++        # carry no device, and the builder raises at compile time without
++        # one -- see the direct-micro barrier notes in #4701). Only the
++        # base address is taken from the anchor; the full output buffer is
++        # addressed through the dynamically-shaped tensor rebuilt below, so
++        # the baked [1] shape never bounds a device-side access.
++        output_ptr = output_anchor.iterator
+         fc2_flat = cute.make_tensor(
+             fc2_ptr,
+             layout=cute.make_layout(
+@@ -5002,6 +5051,64 @@ _ACTIVATION_CACHE: dict[tuple, W4A16ActivationCompileResult] = {}
+ _SUM_CACHE: dict[tuple, W4A16TopKSumCompileResult] = {}
+ 
+ 
++# ---------------------------------------------------------------------------
++# On-disk kernel cache
++#
++# The W4A16 kernels adopt the shared on-disk CuTe-DSL cache (#3874, #4029;
++# docs/design_docs/cute_dsl_kernel_cache.md) the same way the b12x MMA
++# kernels (#4331) and the direct-micro kernel (#4701) do: TVM-FFI compiles
++# are exported as ``.o`` and a fresh process JITLinks them instead of
++# re-running the MLIR pipeline. The in-process caches above stay as the
++# first lookup layer.
++#
++# Deliberately a *separate* module directory from ``b12x_moe`` and
++# ``b12x_moe_direct_micro``: a module's ``meta.json`` carries one
++# ``source_sha256`` for every kernel in its directory and a mismatch wipes
++# the whole directory, so sharing a module across adopters with different
++# source lists would make them alternately invalidate each other.
++_CUTE_DSL_MODULE = "b12x_moe_w4a16"
++
++
++def _w4a16_kernel_source_files() -> tuple[str, ...]:
++    """Source files whose content invalidates the on-disk kernel cache.
++
++    Every module contributing device code to the W4A16 kernels: this file,
++    the shared W4A16 device helpers, and the CuTe-DSL utilities the host
++    entries are built from. The list is shared by all kernels of the
++    module; a change wipes and lazily rebuilds the whole module directory.
++    """
++    from flashinfer.cute_dsl import utils as cute_dsl_utils
++
++    from . import (
++        moe_w4a16_activations,
++        moe_w4a16_fp4_helpers,
++        moe_w4a16_route_pack,
++    )
++
++    return (
++        __file__,
++        moe_w4a16_activations.__file__,
++        moe_w4a16_fp4_helpers.__file__,
++        moe_w4a16_route_pack.__file__,
++        cute_dsl_utils.__file__,
++    )
++
++
++def _w4a16_disk_kernel_name(prefix: str, facts: str, cache_key: tuple) -> str:
++    """On-disk kernel name: readable facts plus a digest of the full cache key.
++
++    The kernel-name string is the sole per-kernel disk-cache key (the module
++    ``meta.json`` guards only arch / DSL version / source hashes), so the
++    name must be injective over every compile fact. The readable ``facts``
++    are for humans; injectivity is carried by the digest of ``cache_key`` --
++    the same key that already gates the in-process caches, so its coverage
++    of the codegen parameters is a pre-existing invariant rather than one
++    this naming layer introduces.
++    """
++    digest = hashlib.sha256(repr(cache_key).encode()).hexdigest()[:12]
++    return f"{prefix}_{facts}_{digest}"
++
++
+ def _normalize_element_dtype(dtype: torch.dtype) -> str:
+     if dtype == torch.bfloat16:
+         return "bf16"
+@@ -5015,7 +5122,8 @@ def _normalize_scale_format(scale_format: str) -> str:
+         return _SCALE_FORMATS[scale_format.lower()]
+     except KeyError as exc:
+         raise ValueError(
+-            "scale_format must be one of 'e4m3_k16' or 'e8m0_k32', "
++            "scale_format must be one of 'e4m3_k16', 'e4m3_k32', or "
++            "'e8m0_k32', "
+             f"got {scale_format!r}"
+         ) from exc
+ 
+@@ -5111,11 +5219,14 @@ def compile_w4a16_gemm(
+         )
+ 
+     compile_size_m = _fake_m_for_specialization(size_m)
+-    compile_route_blocks = 1
+-    compile_route_slots = compile_route_blocks * int(moe_block_size)
++    # Extent policy (see compile_w4a16_fused_moe): only m-independent tensors
++    # with real size contracts bake true extents; every m-, route- or
++    # scratch-capacity tensor bakes (1,) barrier-style, since extents are
++    # exact-checked by TVM-FFI but never bound a device-side access, and an
++    # extent varying with an unkeyed fact would poison artifact reuse.
+     a_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_size_m * size_k,),
++        (1,),
+         assumed_align=16,
+     )
+     b_fake = cute.runtime.make_fake_compact_tensor(
+@@ -5125,7 +5236,7 @@ def compile_w4a16_gemm(
+     )
+     c_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_size_m * top_k * size_n,),
++        (1,),
+         assumed_align=16,
+     )
+     scales_fake = cute.runtime.make_fake_compact_tensor(
+@@ -5147,12 +5258,12 @@ def compile_w4a16_gemm(
+     )
+     packed_routes_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Int32,
+-        (compile_route_slots,),
++        (1,),
+         assumed_align=16,
+     )
+     block_experts_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Int32,
+-        (compile_route_blocks,),
++        (1,),
+         assumed_align=16,
+     )
+     route_count_fake = cute.runtime.make_fake_compact_tensor(
+@@ -5162,49 +5273,56 @@ def compile_w4a16_gemm(
+     )
+     topk_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Float32,
+-        (compile_size_m * top_k,),
++        (1,),
+         assumed_align=4,
+     )
+     c_tmp_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Float32,
+-        (
+-            max(
+-                size_n * compile_route_slots,
+-                4 * 256 * moe_block_size * 256,
+-            ),
+-        ),
++        (1,),
+         assumed_align=16,
+     )
+     locks_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Int32,
+-        (4 * 256,),
++        (1,),
+         assumed_align=16,
+     )
+ 
+     raise_if_kernel_resolution_frozen(
+         "cute.compile", target=kernel, cache_key=cache_key
+     )
+-    compiled = cached_compile(
+-        kernel,
+-        a_fake,
+-        b_fake,
+-        c_fake,
+-        scales_fake,
+-        global_scale_fake,
+-        packed_routes_fake,
+-        block_experts_fake,
+-        route_count_fake,
+-        topk_fake,
+-        c_tmp_fake,
+-        locks_fake,
+-        Int32(compile_size_m),
+-        Int32(1),
+-        current_cuda_stream(),
+-        compile_spec=KernelCompileSpec.from_key(
+-            "moe.w4a16.gemm",
+-            1,
++
++    stream_fake = cute.runtime.make_fake_stream(use_tvm_ffi_env_stream=True)
++
++    def compile_fn():
++        return cute.compile(
++            kernel,
++            a_fake,
++            b_fake,
++            c_fake,
++            scales_fake,
++            global_scale_fake,
++            packed_routes_fake,
++            block_experts_fake,
++            route_count_fake,
++            topk_fake,
++            c_tmp_fake,
++            locks_fake,
++            Int32(compile_size_m),
++            Int32(1),
++            stream_fake,
++            options="--opt-level 2 --enable-tvm-ffi",
++        )
++
++    compiled = build_and_load_cute_dsl_kernel(
++        _CUTE_DSL_MODULE,
++        _w4a16_disk_kernel_name(
++            "gemm",
++            f"{element_dtype}_e{num_experts}_n{size_n}"
++            f"_k{size_k}_t{top_k}_b{moe_block_size}",
+             cache_key,
+         ),
++        compile_fn,
++        extra_key_files=_w4a16_kernel_source_files(),
+     )
+     result = W4A16GemmCompileResult(
+         compiled=compiled,
+@@ -5465,16 +5583,18 @@ def compile_w4a16_fused_moe(
+         and fc1_mn_after <= int(sms)
+     ):
+         ultra_fc2_tile_k = 32
+-        ultra_smem = _shared_memory_footprint(
++        if _candidate_tile_fits(
++            problem_n=hidden_size,
++            problem_k=intermediate_size,
+             cta_m_blocks=_covering_count(moe_block_size, 16),
+             tile_n=512,
+             tile_k=ultra_fc2_tile_k,
++            cta_threads=256,
++            max_shared_mem=int(max_shared_mem) - 512,
+             scale_format=scale_format,
+             weight_layout=weight_layout,
+-        )
+-        if (
+-            int(intermediate_size) % ultra_fc2_tile_k == 0
+-            and ultra_smem <= int(max_shared_mem) - 512
++            allow_logical_tail=allow_native_logical_tail,
++            allow_tile_k_32=True,
+         ):
+             fc2_tile_n = 512
+             fc2_tile_k = ultra_fc2_tile_k
+@@ -5511,6 +5631,12 @@ def compile_w4a16_fused_moe(
+                 scale_format=scale_format,
+                 weight_layout=weight_layout,
+                 allow_logical_tail=allow_native_logical_tail,
++                allow_tile_k_32=(
++                    bool(tc_decode_fused_sum)
++                    and name == "fc2"
++                    and forced_tk == 32
++                    and forced_tn == 512
++                ),
+             ):
+                 raise ValueError(
+                     f"force_tile_config {name} tile "
+@@ -5559,61 +5685,40 @@ def compile_w4a16_fused_moe(
+             blocks_per_sm=kernel.blocks_per_sm,
+         )
+ 
+-    compile_size_m = _fake_m_for_specialization(size_m)
+-    compile_routed_rows = int(compile_size_m) * int(top_k)
+-    compile_route_blocks = compile_routed_rows if direct_topk_routes else 1
+-    compile_route_slots = compile_route_blocks * int(moe_block_size)
+-    packed_route_fake_elements = (
+-        compile_routed_rows if direct_topk_routes else compile_route_slots
+-    )
++    # Extent policy: TVM-FFI exact-checks every DLTensor's baked extent at
++    # call time, extents never bound a device-side access (the kernels
++    # index through stride math bounded by their scalar arguments), and
++    # the kernel cache key does not track the m bucket -- one artifact is
++    # shared across m for a given specialization. So only m-independent
++    # tensors with real size contracts (weights, scales, global scales,
++    # activation_amax) bake true extents; every m-, route- or
++    # scratch-capacity tensor bakes (1,) barrier-style (#4701), since any
++    # extent that varies with an unkeyed fact would poison cross-m reuse
++    # of the cached artifact.
+     a_fake = make_ptr(cutlass_dtype, 16, cute.AddressSpace.gmem, assumed_align=16)
+     if weight_layout == "modelopt":
+-        w13_fake = cute.runtime.make_fake_compact_tensor(
+-            cutlass.Uint8,
+-            (num_experts * fc1_cols * (hidden_size // 2),),
+-            assumed_align=16,
+-        )
+-        w2_fake = cute.runtime.make_fake_compact_tensor(
+-            cutlass.Uint8,
+-            (num_experts * hidden_size * (intermediate_size // 2),),
+-            assumed_align=16,
+-        )
++        w13_fake = make_ptr(cutlass.Uint8, 16, cute.AddressSpace.gmem, assumed_align=16)
++        w2_fake = make_ptr(cutlass.Uint8, 16, cute.AddressSpace.gmem, assumed_align=16)
+     elif weight_layout == "nf3_2p1":
+         # NF3: int32, 3 words per 32-code unit; (size_n // 2) units per K16 row.
+-        w13_fake = cute.runtime.make_fake_compact_tensor(
+-            cutlass.Int32,
+-            (num_experts * (hidden_size // 16) * (fc1_cols // 2) * 3,),
+-            assumed_align=16,
+-        )
+-        w2_fake = cute.runtime.make_fake_compact_tensor(
+-            cutlass.Int32,
+-            (num_experts * (intermediate_size // 16) * (hidden_size // 2) * 3,),
+-            assumed_align=16,
+-        )
++        w13_fake = make_ptr(cutlass.Int32, 16, cute.AddressSpace.gmem, assumed_align=16)
++        w2_fake = make_ptr(cutlass.Int32, 16, cute.AddressSpace.gmem, assumed_align=16)
+     else:
+-        w13_fake = cute.runtime.make_fake_compact_tensor(
+-            cutlass.Int32,
+-            (num_experts * (hidden_size // 16) * (fc1_cols // 16 * 32),),
+-            assumed_align=16,
+-        )
+-        w2_fake = cute.runtime.make_fake_compact_tensor(
+-            cutlass.Int32,
+-            (num_experts * (intermediate_size // 16) * (hidden_size // 16 * 32),),
+-            assumed_align=16,
+-        )
++        w13_fake = make_ptr(cutlass.Int32, 16, cute.AddressSpace.gmem, assumed_align=16)
++        w2_fake = make_ptr(cutlass.Int32, 16, cute.AddressSpace.gmem, assumed_align=16)
+     fc1_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_routed_rows * fc1_cols,),
++        (1,),
+         assumed_align=16,
+     )
+     activated_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_routed_rows * intermediate_size,),
++        (1,),
+         assumed_align=16,
+     )
+     fc2_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_routed_rows * hidden_size,),
++        (1,),
+         assumed_align=16,
+     )
+     w13_scales_fake = cute.runtime.make_fake_compact_tensor(
+@@ -5654,12 +5759,12 @@ def compile_w4a16_fused_moe(
+     )
+     packed_routes_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Int32,
+-        (packed_route_fake_elements,),
++        (1,),
+         assumed_align=16,
+     )
+     block_experts_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Int32,
+-        (compile_route_blocks,),
++        (1,),
+         assumed_align=16,
+     )
+     route_count_fake = cute.runtime.make_fake_compact_tensor(
+@@ -5673,65 +5778,82 @@ def compile_w4a16_fused_moe(
+         assumed_align=4,
+     )
+     topk_fake = make_ptr(cutlass.Float32, 4, cute.AddressSpace.gmem, assumed_align=4)
++    # Pure scratch: the historical max(..., 4*256*mbs*256) extents were
++    # fiction (the real allocation follows packed_gemm_scratch_elements
++    # and is far smaller), and TVM-FFI exact-checks baked extents at
++    # call time. Bake (1,) barrier-style (#4701): the kernel reaches the
++    # full buffer through stride math bounded by its scalar arguments,
++    # so the extent never bounds an access.
+     fc1_c_tmp_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Float32,
+-        (
+-            max(
+-                fc1_cols * compile_route_slots,
+-                4 * 256 * moe_block_size * 256,
+-            ),
+-        ),
++        (1,),
+         assumed_align=16,
+     )
+     fc2_c_tmp_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Float32,
+-        (
+-            max(
+-                hidden_size * compile_route_slots,
+-                4 * 256 * moe_block_size * 256,
+-            ),
+-        ),
++        (1,),
+         assumed_align=16,
+     )
++    # Same fiction class as the c_tmp extents: 4*256+2 assumed a
++    # <=256-SM part, while the real workspace allocation follows
++    # sms*4+2 and is smaller on smaller parts. Bake (1,).
+     locks_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass.Int32,
+-        (4 * 256 + 2,),
++        (1,),
+         assumed_align=16,
+     )
+ 
+     raise_if_kernel_resolution_frozen(
+         "cute.compile", target=kernel, cache_key=cache_key
+     )
+-    compiled = cached_compile(
+-        kernel,
+-        a_fake,
+-        w13_fake,
+-        w2_fake,
+-        fc1_fake,
+-        activated_fake,
+-        fc2_fake,
+-        w13_scales_fake,
+-        w2_scales_fake,
+-        w13_global_fake,
+-        w2_global_fake,
+-        packed_routes_fake,
+-        block_experts_fake,
+-        route_count_fake,
+-        activation_amax_fake,
+-        0,
+-        topk_fake,
+-        fc1_c_tmp_fake,
+-        fc2_c_tmp_fake,
+-        locks_fake,
+-        1,
+-        1,
+-        current_cuda_stream(),
+-        compile_spec=KernelCompileSpec.from_key(
+-            "moe.w4a16.fused_moe",
++    # A fake stream + --enable-tvm-ffi so the compile can round-trip through
++    # the on-disk cache (see the topk-sum entry for the full rationale).
++    # OptLevel(3) is preserved as an option string: this is the
++    # performance-critical kernel and its opt level is an explicit choice.
++    stream_fake = cute.runtime.make_fake_stream(use_tvm_ffi_env_stream=True)
++
++    def compile_fn():
++        return cute.compile(
++            kernel,
++            a_fake,
++            w13_fake,
++            w2_fake,
++            fc1_fake,
++            activated_fake,
++            fc2_fake,
++            w13_scales_fake,
++            w2_scales_fake,
++            w13_global_fake,
++            w2_global_fake,
++            packed_routes_fake,
++            block_experts_fake,
++            route_count_fake,
++            activation_amax_fake,
++            0,
++            topk_fake,
++            fc1_c_tmp_fake,
++            fc2_c_tmp_fake,
++            locks_fake,
++            1,
+             1,
++            stream_fake,
++            options="--opt-level 3 --enable-tvm-ffi",
++        )
++
++    # The on-disk artifact name must be injective over every compile fact;
++    # ``cache_key`` carries the kernel's full ``__cache_key__`` (tiles,
++    # flags, swiglu scalars, row bucket), so the readable facts are suffixed
++    # with a digest of it.
++    compiled = build_and_load_cute_dsl_kernel(
++        _CUTE_DSL_MODULE,
++        _w4a16_disk_kernel_name(
++            "fused",
++            f"{element_dtype}_e{num_experts}_t{top_k}"
++            f"_h{hidden_size}_i{intermediate_size}_b{moe_block_size}",
+             cache_key,
+         ),
+-        dsl_compile_options=OptLevel(3),
++        compile_fn,
++        extra_key_files=_w4a16_kernel_source_files(),
+     )
+     result = W4A16FusedMoeCompileResult(
+         compiled=compiled,
+@@ -5787,7 +5909,7 @@ def compile_w4a16_activation(
+ ) -> W4A16ActivationCompileResult:
+     cutlass_dtype = _cutlass_element_dtype(element_dtype)
+     activation = normalize_moe_activation(activation)
+-    is_gated = validate_activation(activation)
++    validate_activation(activation)
+     swiglu_limit, swiglu_alpha, swiglu_beta = _normalize_activation_swiglu_params(
+         activation,
+         swiglu_limit,
+@@ -5812,32 +5934,57 @@ def compile_w4a16_activation(
+     if cached is not None:
+         return replace(cached, rows=rows)
+ 
+-    w13_shards = 2 if is_gated else 1
+-    compile_rows = _fake_m_for_specialization(rows)
++    # Extent policy (see compile_w4a16_fused_moe): the row bucket is not
++    # part of the cache key -- the in-process cache deliberately reuses one
++    # compiled kernel across rows via ``replace(cached, rows=rows)`` -- so
++    # the m-varying extents bake (1,) and one artifact serves every rows
++    # value. The kernel bounds all accesses by its ``active_rows`` scalar.
+     fc1_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_rows * w13_shards * intermediate_size,),
++        (1,),
+         assumed_align=16,
+     )
+     activated_fake = cute.runtime.make_fake_compact_tensor(
+         cutlass_dtype,
+-        (compile_rows * intermediate_size,),
++        (1,),
+         assumed_align=16,
+     )
+     raise_if_kernel_resolution_frozen(
+         "cute.compile", target=kernel, cache_key=cache_key
+     )
+-    compiled = cached_compile(
+-        kernel,
+-        fc1_fake,
+-        activated_fake,
+-        Int32(compile_rows),
+-        current_cuda_stream(),
+-        compile_spec=KernelCompileSpec.from_key(
+-            "moe.w4a16.activation",
+-            1,
++
++    # TVM-FFI env-stream compile through the on-disk cache (see the topk-sum
++    # entry for the full rationale). fc1/activated are already DLTensor
++    # params, so they double as the env-stream anchors; their baked fake
++    # shapes never bound a device-side access (the kernel indexes by
++    # ``active_rows``), so launches pass views of the real buffers cut to
++    # the baked shapes.
++    stream_fake = cute.runtime.make_fake_stream(use_tvm_ffi_env_stream=True)
++
++    def compile_fn():
++        return cute.compile(
++            kernel,
++            fc1_fake,
++            activated_fake,
++            Int32(1),
++            stream_fake,
++            options="--opt-level 2 --enable-tvm-ffi",
++        )
++
++    # The on-disk artifact name must be injective over every compile fact.
++    # ``cache_key`` also carries the swiglu scalars, fast-math and gating
++    # flags; the row bucket is deliberately excluded so one artifact can
++    # be reused across rows. The readable facts are suffixed with a digest
++    # of the full key.
++    compiled = build_and_load_cute_dsl_kernel(
++        _CUTE_DSL_MODULE,
++        _w4a16_disk_kernel_name(
++            "activation",
++            f"{element_dtype}_i{intermediate_size}_{activation}",
+             cache_key,
+         ),
++        compile_fn,
++        extra_key_files=_w4a16_kernel_source_files(),
+     )
+     result = W4A16ActivationCompileResult(
+         compiled=compiled,
+@@ -5867,7 +6014,11 @@ def compile_w4a16_topk_sum(
+ 
+     fc2_fake = make_ptr(cutlass_dtype, 16, cute.AddressSpace.gmem, assumed_align=16)
+     topk_ids_fake = make_ptr(Int32, 16, cute.AddressSpace.gmem, assumed_align=4)
+-    output_fake = make_ptr(cutlass_dtype, 16, cute.AddressSpace.gmem, assumed_align=16)
++    output_anchor_fake = cute.runtime.make_fake_compact_tensor(
++        cutlass_dtype,
++        (1,),
++        assumed_align=16,
++    )
+     kernel = W4A16TopKSumKernel(
+         topk=topk,
+         hidden_size=hidden_size,
+@@ -5876,18 +6027,33 @@ def compile_w4a16_topk_sum(
+     raise_if_kernel_resolution_frozen(
+         "cute.compile", target=kernel, cache_key=cache_key
+     )
+-    compiled = cached_compile(
+-        kernel,
+-        fc2_fake,
+-        topk_ids_fake,
+-        output_fake,
+-        1,
+-        current_cuda_stream(),
+-        compile_spec=KernelCompileSpec.from_key(
+-            "moe.w4a16.topk_sum",
++
++    # A fake stream rather than ``current_cuda_stream()``: a live stream
++    # handle baked into an exported ``.o`` is meaningless to the process
++    # that reloads it. ``--enable-tvm-ffi`` is mandatory, not a tuning
++    # choice: JitSpecCuteDsl exports with ``export_to_c()`` and reloads
++    # with ``load_module(..., enable_tvm_ffi=True)``, so a kernel compiled
++    # without it cannot round-trip through the disk cache.
++    stream_fake = cute.runtime.make_fake_stream(use_tvm_ffi_env_stream=True)
++
++    def compile_fn():
++        return cute.compile(
++            kernel,
++            fc2_fake,
++            topk_ids_fake,
++            output_anchor_fake,
+             1,
+-            cache_key,
++            stream_fake,
++            options="--opt-level 2 --enable-tvm-ffi",
++        )
++
++    compiled = build_and_load_cute_dsl_kernel(
++        _CUTE_DSL_MODULE,
++        _w4a16_disk_kernel_name(
++            "topk_sum", f"{element_dtype}_t{topk}_h{hidden_size}", cache_key
+         ),
++        compile_fn,
++        extra_key_files=_w4a16_kernel_source_files(),
+     )
+     result = W4A16TopKSumCompileResult(
+         compiled=compiled,
+@@ -5954,9 +6120,6 @@ def _w4a16_fused_moe_launch_flat(
+     collect_activation_amax = bool(collect_activation_amax)
+     if collect_activation_amax and activation_amax is None:
+         raise ValueError("activation_amax is required for calibrated W4A16 launch")
+-    activation_amax_arg = (
+-        activation_amax.view(-1) if activation_amax is not None else w13_global_scale
+-    )
+     fused = compile_w4a16_fused_moe(
+         size_m=size_m,
+         hidden_size=hidden_size,
+@@ -5986,36 +6149,66 @@ def _w4a16_fused_moe_launch_flat(
+         # identical cache entry instead of silently recompiling with auto tiles.
+         force_tile_config=(fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n),
+     )
++    # TVM-FFI launch ABI (see compile_w4a16_fused_moe): pointer params travel
++    # as raw ``data_ptr()`` ints, including weights whose device-side
++    # address arithmetic is 64-bit; exact-shape DLTensor params (scales,
++    # global scales, a real activation_amax) pass full flat views --
++    # TVM-FFI's own shape check against the baked fake shapes is the loud
++    # assert for them; capacity-style DLTensor params are cut to the exact
++    # lengths the kernel was compiled against. There is no stream argument:
++    # the kernel compiled against a TVM-FFI env stream, which supplies the
++    # caller's current stream.
++    if stream_int != int(current_cuda_stream()):
++        raise ValueError(
++            "W4A16 fused MoE launch requires the current CUDA stream: the "
++            "TVM-FFI env-stream ABI cannot target another stream"
++        )
++
++    # TVM-FFI exact-checks every DLTensor's baked extent at call time, yet
++    # extents never bound a device-side access (stride math bounded by the
++    # scalar arguments; the pre-FFI launch passed buffers whose sizes bore
++    # no relation to the fakes). So each DLTensor view is cut to the exact
++    # baked extent: m-independent params (weights, scales, global scales,
++    # activation_amax) bake their real sizes and their cuts equal the full
++    # buffers; m-bucketed capacity params bake bucket-sized extents every
++    # in-bucket runtime buffer covers; pure scratch is baked (1,).
++    def _cut(buf: torch.Tensor, length: int, name: str) -> torch.Tensor:
++        flat = buf.view(-1)
++        if flat.numel() < length:
++            raise ValueError(
++                f"W4A16 fused MoE launch: {name} holds {flat.numel()} "
++                f"elements; the compiled specialization requires >= {length}"
++            )
++        return flat[:length]
++
++    amax_len = num_experts * 2
++    if activation_amax is not None:
++        activation_amax_arg = _cut(activation_amax, amax_len, "activation_amax")
++    else:
++        # const_expr-dead when amax collection is off; any F32 device buffer
++        # covers the baked (2 * num_experts) extent, so borrow the FC1 scratch.
++        activation_amax_arg = _cut(fc1_scratch, amax_len, "activation_amax stand-in")
++
+     fused.compiled(
+-        make_ptr(
+-            _cutlass_element_dtype(element_dtype),
+-            a_input.data_ptr(),
+-            cute.AddressSpace.gmem,
+-            assumed_align=16,
+-        ),
+-        w13_arg,
+-        w2_arg,
+-        fc1_out,
+-        activated,
+-        fc2_out,
+-        w13_scale_i32,
+-        w2_scale_i32,
+-        w13_global_scale,
+-        w2_global_scale,
+-        packed_route_indices,
+-        block_expert_ids,
+-        packed_route_count,
++        a_input.data_ptr(),
++        w13_arg.data_ptr(),
++        w2_arg.data_ptr(),
++        _cut(fc1_out, 1, "fc1_out"),
++        _cut(activated, 1, "activated"),
++        _cut(fc2_out, 1, "fc2_out"),
++        w13_scale_i32.view(-1),
++        w2_scale_i32.view(-1),
++        w13_global_scale.view(-1),
++        w2_global_scale.view(-1),
++        _cut(packed_route_indices, 1, "packed_route_indices"),
++        _cut(block_expert_ids, 1, "block_expert_ids"),
++        _cut(packed_route_count, 1, "packed_route_count"),
+         activation_amax_arg,
+         int(layer_idx),
+-        make_ptr(
+-            cutlass.Float32,
+-            topk_weights.data_ptr(),
+-            cute.AddressSpace.gmem,
+-            assumed_align=4,
+-        ),
+-        fc1_scratch,
+-        fc2_scratch,
+-        workspace,
++        topk_weights.data_ptr(),
++        _cut(fc1_scratch, 1, "fc1_scratch"),
++        _cut(fc2_scratch, 1, "fc2_scratch"),
++        _cut(workspace, 1, "workspace locks"),
+         m,
+         _w4a16_fused_persistent_grid_x(
+             fused=fused,
+@@ -6026,7 +6219,6 @@ def _w4a16_fused_moe_launch_flat(
+             direct_topk_routes=bool(direct_topk_routes),
+             sms=sms,
+         ),
+-        cuda.CUstream(stream_int),
+     )
+ 
+ 
+@@ -6443,27 +6635,25 @@ def _w4a16_topk_sum_launch_flat(
+         hidden_size=hidden_size,
+         element_dtype=element_dtype,
+     )
++    # TVM-FFI ABI (see ``compile_w4a16_topk_sum``): the fc2 pointer travels
++    # as a raw ``data_ptr()`` int, ``output`` as a length-1 view of the real
++    # output buffer (the DLTensor anchor the env-stream lookup needs; the
++    # kernel takes only the base address from it), and there is no stream
++    # argument -- the kernel compiled against
++    # ``make_fake_stream(use_tvm_ffi_env_stream=True)``, so TVM-FFI supplies
++    # the caller's current stream and the parameter is absent from the
++    # compiled signature. ``.view(-1)`` never copies (it raises instead), so
++    # the anchor is guaranteed to alias the real output storage.
++    if stream_int != int(current_cuda_stream()):
++        raise ValueError(
++            "W4A16 top-k sum launch requires the current CUDA stream: the "
++            "TVM-FFI env-stream ABI cannot target another stream"
++        )
+     sum_kernel.compiled(
+-        make_ptr(
+-            _cutlass_element_dtype(element_dtype),
+-            fc2_out.data_ptr(),
+-            cute.AddressSpace.gmem,
+-            assumed_align=16,
+-        ),
+-        make_ptr(
+-            Int32,
+-            topk_ids.data_ptr(),
+-            cute.AddressSpace.gmem,
+-            assumed_align=4,
+-        ),
+-        make_ptr(
+-            _cutlass_element_dtype(element_dtype),
+-            output.data_ptr(),
+-            cute.AddressSpace.gmem,
+-            assumed_align=16,
+-        ),
++        fc2_out.data_ptr(),
++        topk_ids.data_ptr(),
++        output.view(-1)[:1],
+         m,
+-        cuda.CUstream(stream_int),
+     )
+ 
+ 
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
+index ce043109ab9b6f1c666c7da782a6f2b2266481f0..71351036f32720714fcc3e254006525b78e45016 100644
+--- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
+@@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
+ _SOURCE_FORMATS = {
+     "modelopt": "modelopt",
+     "modelopt_nvfp4": "modelopt",
++    "modelopt_e4m3_k32": "modelopt_e4m3_k32",
++    "e4m3_k32": "modelopt_e4m3_k32",
+     "fp4_e8m0_k32": "fp4_e8m0_k32",
+     "compressed_tensors": "compressed_tensors",
+     "compressed-tensors": "compressed_tensors",
+@@ -40,7 +42,7 @@ _W13_LAYOUTS = {
+     "up_gate": "w13",
+     "gate_up": "w31",
+ }
+-_MODEL_OPT_NVFP4_FORMATS = {"modelopt"}
++_MODEL_OPT_NVFP4_FORMATS = {"modelopt", "modelopt_e4m3_k32"}
+ 
+ 
+ @dataclass(frozen=True)
+@@ -209,7 +211,7 @@ def _normalize_source_format(source_format: str) -> str:
+         return _SOURCE_FORMATS[source_format.lower()]
+     except KeyError as exc:
+         raise ValueError(
+-            "source_format must be one of 'modelopt', "
++            "source_format must be one of 'modelopt', 'modelopt_e4m3_k32', "
+             "'fp4_e8m0_k32', or 'compressed_tensors', "
+             f"got {source_format!r}"
+         ) from exc
+@@ -269,6 +271,32 @@ def _validate_e8m0_k32_scales(
+     raise TypeError(f"{name} must be torch.uint8 or torch.float8_e8m0fnu")
+ 
+ 
++def _validate_e4m3_k32_scales(
++    scales: torch.Tensor,
++    *,
++    rows: int,
++    cols: int,
++    name: str,
++) -> torch.Tensor:
++    """Validate logical ModelOpt-style E4M3 K/32 expert scales."""
++    if scales.ndim != 3:
++        raise ValueError(
++            f"{name} must be [E, {int(rows)}, {int(cols) // 32}], "
++            f"got {tuple(scales.shape)}"
++        )
++    if int(cols) % 32 != 0:
++        raise ValueError(f"{name} requires K divisible by 32, got {int(cols)}")
++    expected = (int(scales.shape[0]), int(rows), int(cols) // 32)
++    if tuple(scales.shape) != expected:
++        raise ValueError(
++            f"{name} must have shape [E, {int(rows)}, {int(cols) // 32}], "
++            f"got {tuple(scales.shape)}"
++        )
++    if scales.dtype != torch.float8_e4m3fn:
++        raise TypeError(f"{name} must use torch.float8_e4m3fn")
++    return scales.contiguous()
++
++
+ def _pack_e8m0_k32_scales(
+     scales: torch.Tensor,
+     *,
+@@ -538,8 +566,11 @@ def _permute_nvfp4_scales(
+     size_k: int,
+     size_n: int,
+     a_dtype: torch.dtype,
++    group_size: int = 16,
+     row_rotation: int | None = None,
+ ) -> tuple[torch.Tensor, torch.Tensor]:
++    if group_size not in (16, 32):
++        raise ValueError(f"E4M3 W4A16 group_size must be 16 or 32, got {group_size}")
+     combined_scale_factor = _nvfp4_compute_scale_factor(scales, a_dtype)
+     packed_scales: torch.Tensor | None = None
+     for expert in range(scales.shape[0]):
+@@ -553,7 +584,7 @@ def _permute_nvfp4_scales(
+             expert_source.T,
+             size_k=size_k,
+             size_n=size_n,
+-            group_size=16,
++            group_size=group_size,
+         )
+         expert_packed = _process_nvfp4_packed_scales(
+             expert_scales,
+@@ -568,7 +599,7 @@ def _permute_nvfp4_scales(
+         packed_scales[expert].copy_(expert_packed)
+     if packed_scales is None:
+         packed_scales = torch.empty(
+-            (0, size_k // _PACKED_TILE_SIZE, size_n // 2),
++            (0, size_k // group_size, size_n),
+             dtype=torch.float8_e4m3fn,
+             device=scales.device,
+         )
+@@ -729,6 +760,104 @@ def prepare_w4a16_modelopt_nvfp4_weights(
+     )
+ 
+ 
++def prepare_w4a16_modelopt_e4m3_k32_weights(
++    w13_fp4: torch.Tensor,
++    w13_blockscale: torch.Tensor,
++    w13_global_scale: torch.Tensor,
++    w2_fp4: torch.Tensor,
++    w2_blockscale: torch.Tensor,
++    w2_global_scale: torch.Tensor,
++    *,
++    activation: str,
++    params_dtype: torch.dtype = torch.bfloat16,
++    w13_layout: str = "w13",
++    reuse_input_storage: bool = False,
++) -> W4A16PackedWeights:
++    """Prepare E2M1 weights with logical E4M3 scales at a K/32 cadence.
++
++    This is a weight-only ModelOpt contract: activations stay BF16 while each
++    32-value weight block uses an E4M3 scale and each expert projection retains
++    its FP32 global scale.  The larger block preserves NVFP4's fractional scale
++    semantics while halving scale storage relative to conventional K/16 NVFP4.
++    """
++    w13_layout = _normalize_w13_layout(w13_layout)
++    shape = validate_w4a16_packed_inputs(
++        w13_fp4,
++        w13_global_scale,
++        w2_fp4,
++        w2_global_scale,
++        activation=activation,
++    )
++    num_experts = shape.num_experts
++    hidden_size = shape.hidden_size
++    intermediate_size = shape.intermediate_size
++    w13_rows = shape.w13_rows
++    is_gated = shape.is_gated
++
++    w13_scale = _validate_e4m3_k32_scales(
++        w13_blockscale,
++        rows=w13_rows,
++        cols=hidden_size,
++        name="w13_blockscale",
++    )
++    w2_scale = _validate_e4m3_k32_scales(
++        w2_blockscale,
++        rows=hidden_size,
++        cols=intermediate_size,
++        name="w2_blockscale",
++    )
++    w13_row_rotation = intermediate_size if is_gated and w13_layout == "w13" else None
++
++    packed_w13 = _repack_weight(
++        w13_fp4 if reuse_input_storage else w13_fp4.contiguous(),
++        size_k=hidden_size,
++        size_n=w13_rows,
++        row_rotation=w13_row_rotation,
++        reuse_input_storage=reuse_input_storage,
++    )
++    packed_w2 = _repack_weight(
++        w2_fp4 if reuse_input_storage else w2_fp4.contiguous(),
++        size_k=intermediate_size,
++        size_n=hidden_size,
++        reuse_input_storage=reuse_input_storage,
++    )
++    packed_w13_scale, packed_w13_global_scale = _permute_nvfp4_scales(
++        w13_scale,
++        w13_global_scale.contiguous(),
++        size_k=hidden_size,
++        size_n=w13_rows,
++        a_dtype=params_dtype,
++        group_size=32,
++        row_rotation=w13_row_rotation,
++    )
++    packed_w2_scale, packed_w2_global_scale = _permute_nvfp4_scales(
++        w2_scale,
++        w2_global_scale.contiguous(),
++        size_k=intermediate_size,
++        size_n=hidden_size,
++        a_dtype=params_dtype,
++        group_size=32,
++    )
++
++    return W4A16PackedWeights(
++        w13=packed_w13,
++        w13_scale=packed_w13_scale,
++        w13_global_scale=packed_w13_global_scale,
++        w2=packed_w2,
++        w2_scale=packed_w2_scale,
++        w2_global_scale=packed_w2_global_scale,
++        workspace=_make_workspace(w13_fp4.device, max_blocks_per_sm=4),
++        hidden_size=hidden_size,
++        intermediate_size=intermediate_size,
++        num_experts=num_experts,
++        is_gated=is_gated,
++        params_dtype=params_dtype,
++        source_format="modelopt_e4m3_k32",
++        w13_layout=w13_layout,
++        scale_format="e4m3_k32",
++    )
++
++
+ def prepare_w4a16_compressed_tensors_weights(
+     w13_fp4: torch.Tensor,
+     w13_blockscale: torch.Tensor,
+@@ -872,6 +1001,10 @@ def prepare_w4a16_packed_weights(
+         return prepare_w4a16_modelopt_nvfp4_weights(
+             *args, w13_layout=w13_layout, **kwargs
+         )
++    if source_format == "modelopt_e4m3_k32":
++        return prepare_w4a16_modelopt_e4m3_k32_weights(
++            *args, w13_layout=w13_layout, **kwargs
++        )
+     if source_format == "compressed_tensors":
+         return prepare_w4a16_compressed_tensors_weights(
+             *args, w13_layout=w13_layout, **kwargs
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
+index 664f2a886faaac20f86d4c184528359f53988cd9..278eac0309901070188d4187972583e07671ca4c 100644
+--- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
+@@ -162,6 +162,7 @@ def _pack_topk_routes_small_prefix_kernel(
+     BLOCK_T: tl.constexpr,
+     BLOCK_ROUTE_INIT: tl.constexpr,
+     BLOCK_M: tl.constexpr,
++    LOG2_BLOCK_E: tl.constexpr,
+ ):
+     experts = tl.arange(0, BLOCK_E)
+     expert_mask = experts < NUM_EXPERTS
+@@ -180,10 +181,8 @@ def _pack_topk_routes_small_prefix_kernel(
+             ids = tl.load(expert_map + safe_ids, mask=valid, other=-1).to(tl.int32)
+             valid = valid & (ids >= 0) & (ids < NUM_EXPERTS)
+ 
+-        matches = (
+-            (experts[:, None] == ids[None, :]) & expert_mask[:, None] & valid[None, :]
+-        )
+-        counts += tl.sum(matches.to(tl.int32), axis=1)
++        # Avoid materializing a BLOCK_E by BLOCK_T comparison tile for counts.
++        counts += tl.histogram(ids, BLOCK_E, mask=valid)
+ 
+     padded = ((counts + BLOCK_SIZE - 1) // BLOCK_SIZE) * BLOCK_SIZE
+     padded = tl.where(expert_mask, padded, 0)
+@@ -204,13 +203,17 @@ def _pack_topk_routes_small_prefix_kernel(
+ 
+     block_offsets = tl.arange(0, BLOCK_M)
+     block_rows = block_offsets * BLOCK_SIZE
+-    active = (
+-        (block_offsets[None, :] < MAX_ROUTE_BLOCKS)
+-        & expert_mask[:, None]
+-        & (block_rows[None, :] >= prefix[:, None])
+-        & (block_rows[None, :] < inclusive[:, None])
+-    )
+-    block_experts = tl.max(tl.where(active, experts[:, None], -1), axis=0)
++    # Upper-bound search also avoids an expert-by-block tile. Repeated prefix
++    # values from empty experts must be skipped, including trailing padding.
++    lo = tl.full((BLOCK_M,), 0, tl.int32)
++    hi = tl.full((BLOCK_M,), BLOCK_E - 1, tl.int32)
++    for _ in range(LOG2_BLOCK_E):
++        mid = (lo + hi) // 2
++        end = tl.gather(inclusive, mid, axis=0)
++        advance = end <= block_rows
++        lo = tl.where(advance, mid + 1, lo)
++        hi = tl.where(advance, hi, mid)
++    block_experts = tl.where(block_rows < total, lo, -1)
+     tl.store(
+         block_expert_ids + block_offsets,
+         block_experts,
+@@ -401,6 +404,7 @@ def pack_topk_routes_by_expert(
+             BLOCK_T=_COUNT_BLOCK_T,
+             BLOCK_ROUTE_INIT=block_route_init,
+             BLOCK_M=block_m,
++            LOG2_BLOCK_E=block_e.bit_length() - 1,
+             num_warps=8,
+         )
+     else:
+diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
+index 0e5767159d9dc3550332ee1a517c0f1a7f2ea53d..89503fa7cfe4759771bef5a75a7f845c3c0b4d1d 100644
+--- a/flashinfer/fused_moe/prepare.py
++++ b/flashinfer/fused_moe/prepare.py
+@@ -2779,8 +2779,8 @@ def prepare_b12x_w4a16_weights(
+     activation : str
+         Kernel activation name: ``"silu"`` or ``"relu2"``.
+     source_format : str
+-        Checkpoint scale convention: ``"modelopt"`` or
+-        ``"compressed_tensors"``.
++        Checkpoint scale convention: ``"modelopt"`` or ``"compressed_tensors"``.
++        K/32 source formats require the native ``B12xMoEWrapper`` API.
+ 
+     Returns
+     -------
+@@ -2798,6 +2798,13 @@ def prepare_b12x_w4a16_weights(
+     )
+ 
+     source_format = _normalize_source_format(source_format)
++    if source_format not in ("modelopt", "compressed_tensors"):
++        raise ValueError(
++            "The unified b12x_w4a16 weight view requires ModelOpt or "
++            "CompressedTensors K/16 scales; use B12xMoEWrapper for K/32 formats."
++        )
++    # The tensor-only unified view is consumed as ModelOpt by the runner.
++    # Canonicalize checkpoint scale conventions before warming that same cache.
+     w1_global_scale = _source_global_scale(w1_global_scale, source_format=source_format)
+     w2_global_scale = _source_global_scale(w2_global_scale, source_format=source_format)
+     _get_w4a16_packed_weights(
+diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
+index 3876f2241b5c0b51c8a773a61936558d1d4fe315..574384333d604d3568b6cfc22e875458e49e1996 100644
+--- a/tests/moe/test_b12x_fused_moe.py
++++ b/tests/moe/test_b12x_fused_moe.py
+@@ -220,6 +220,29 @@ def test_w4a16_static_tiler_uses_64_when_intermediate_not_128_aligned():
+     assert tile_n == 64
+ 
+ 
++@cute_dsl_available
++def test_w4a16_tc_decode_ultra_fc2_tile_replay_is_valid():
++    """The custom-op replay must accept the TC-decode tile auto-selection."""
++    from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_kernel import (
++        _candidate_tile_fits,
++    )
++
++    kwargs = dict(
++        problem_n=2048,
++        problem_k=256,
++        cta_m_blocks=1,
++        tile_n=512,
++        tile_k=32,
++        cta_threads=256,
++        max_shared_mem=100_864,
++        scale_format="e4m3_k32",
++        weight_layout="modelopt",
++    )
++
++    assert not _candidate_tile_fits(**kwargs)
++    assert _candidate_tile_fits(**kwargs, allow_tile_k_32=True)
++
++
+ @cute_dsl_available
+ def test_w4a16_quant_mode_selects_internal_workspace(monkeypatch):
+     """Callers provide quant_mode; dispatch owns the concrete workspace type."""
+@@ -3546,6 +3569,64 @@ def _class_def(path, name):
+     raise AssertionError(f"{name} not found in {path}")
+ 
+ 
++def _function_def(path, name):
++    for node in ast.walk(ast.parse(path.read_text())):
++        if isinstance(node, ast.FunctionDef) and node.name == name:
++            return node
++    raise AssertionError(f"{name} not found in {path}")
++
++
++def test_w4a16_large_weight_banks_cross_compile_boundary_as_pointers():
++    """Weight-bank shapes must not enter CuTe's 32-bit dynamic memref ABI."""
++    path = _FUSED_MOE_DIR / "cute_dsl" / "blackwell_sm12x" / "moe_w4a16_kernel.py"
++    kernel = _class_def(path, "W4A16FusedMoeKernel")
++    call = next(
++        node
++        for node in kernel.body
++        if isinstance(node, ast.FunctionDef) and node.name == "__call__"
++    )
++    annotations = {
++        arg.arg: ast.unparse(arg.annotation) if arg.annotation else None
++        for arg in call.args.args
++    }
++    assert annotations["w13_flat_ptr"] == "cute.Pointer"
++    assert annotations["w2_flat_ptr"] == "cute.Pointer"
++
++    launch = _function_def(path, "_w4a16_fused_moe_launch_flat")
++    compiled_call = next(
++        node
++        for node in ast.walk(launch)
++        if isinstance(node, ast.Call)
++        and isinstance(node.func, ast.Attribute)
++        and node.func.attr == "compiled"
++    )
++    for argument in compiled_call.args[1:3]:
++        assert isinstance(argument, ast.Call)
++        assert isinstance(argument.func, ast.Name)
++        assert argument.func.id == "make_ptr"
++
++    gemm = _class_def(path, "W4A16GemmKernel")
++    stream_offsets = next(
++        node
++        for node in gemm.body
++        if isinstance(node, ast.FunctionDef) and node.name == "_tile_stream_offsets"
++    )
++    stream_source = ast.unparse(stream_offsets)
++    assert "b_expert_off = Int64" in stream_source
++    assert "Int64(expert_idx)" in stream_source
++
++    stage = next(
++        node
++        for node in gemm.body
++        if isinstance(node, ast.FunctionDef) and node.name == "_stage_k_tile_async"
++    )
++    annotations = {
++        arg.arg: ast.unparse(arg.annotation) if arg.annotation else None
++        for arg in stage.args.args
++    }
++    assert annotations["b_gl_rd_base"] == "Int64"
++
++
+ def _self_deps(class_def, entry):
+     """All ``self.<attr>`` reads reachable from method ``entry``."""
+     methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
+diff --git a/tests/moe/test_b12x_w4a16_kernel_cache.py b/tests/moe/test_b12x_w4a16_kernel_cache.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f897834f54e45f574f559836cc1df83bd2c8d453
+--- /dev/null
++++ b/tests/moe/test_b12x_w4a16_kernel_cache.py
+@@ -0,0 +1,234 @@
++"""
++Copyright (c) 2026 by FlashInfer team.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++
++Cache-contract tests for the SM12x W4A16 CuTe-DSL disk-cache adopters.
++
++The kernel-name string is the sole per-kernel disk-cache key (the module
++``meta.json`` guards only arch / DSL version / source hashes), so a name that
++ignores a codegen parameter makes two different kernels collide on one
++artifact. Unlike the direct-micro adopter's explicit-facts names
++(``test_b12x_moe_kernel_cache.py``), the W4A16 names carry readable facts for
++humans plus a sha256 digest of the entry's full ``cache_key`` -- the same key
++that already gates the in-process caches -- so injectivity over the codegen
++parameters is inherited from that digest rather than from the readable text.
++These tests pin the properties that inheritance relies on:
++
++1. Digest sensitivity: any perturbation of the cache key changes the name,
++   including the float-sign and None-vs-0 cases that sanitized readable text
++   alone would collide on.
++2. Determinism: equal keys always produce the identical name.
++3. Symbol safety: produced names are valid filename/symbol components.
++4. On GPU, the disk layer round-trips: a compiled artifact is persisted,
++   survives an in-process cache clear, is re-served from disk unchanged, and
++   the warm-loaded kernel is CUDA-graph capturable.
++"""
++
++from __future__ import annotations
++
++import re
++
++import pytest
++
++pytest.importorskip("cutlass")
++
++import torch  # noqa: E402
++
++from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_kernel import (  # noqa: E402
++    _CUTE_DSL_MODULE,
++    _w4a16_disk_kernel_name,
++    _w4a16_topk_sum_launch_flat,
++    clear_w4a16_kernel_cache,
++    compile_w4a16_activation,
++    compile_w4a16_topk_sum,
++    is_gated_moe_activation,
++)
++
++_SYMBOL_RE = re.compile(r"^[A-Za-z0-9_]+$")
++
++# A representative cache key mixing every value kind the W4A16 entries put in
++# theirs: tags, dtype strings, ints, bools, floats and None.
++_BASE_KEY = (
++    "w4a16_activation",
++    ("bf16", 768, "silu", True, True, 1.702, 1.0, None, 2),
++)
++
++
++def _perturbations(key):
++    """Yield keys differing from ``key`` in exactly one nested element."""
++    inner = key[1]
++    yield ("w4a16_gemm", inner)  # tag change
++    for idx, replacement in (
++        (0, "fp16"),
++        (1, 1536),
++        (2, "relu2"),
++        (3, False),
++        (4, False),
++        (5, -1.702),  # sign flip: sanitized text alone would collide
++        (6, 2.0),
++        (7, 7.0),  # None -> float
++        (8, 1),
++    ):
++        mutated = list(inner)
++        mutated[idx] = replacement
++        yield (key[0], tuple(mutated))
++
++
++def test_disk_name_digest_sensitivity():
++    base = _w4a16_disk_kernel_name("activation", "bf16_i768_silu", _BASE_KEY)
++    seen = {base}
++    for perturbed_key in _perturbations(_BASE_KEY):
++        name = _w4a16_disk_kernel_name("activation", "bf16_i768_silu", perturbed_key)
++        assert name != base, (
++            f"key perturbation did not change the name: {perturbed_key}"
++        )
++        assert name not in seen, f"two distinct keys collided on {name}"
++        seen.add(name)
++
++
++def test_disk_name_determinism():
++    a = _w4a16_disk_kernel_name("fused", "bf16_e64_t2_h512_i256_b8", _BASE_KEY)
++    b = _w4a16_disk_kernel_name(
++        "fused", "bf16_e64_t2_h512_i256_b8", ("w4a16_activation", _BASE_KEY[1])
++    )
++    assert a == b, "equal keys must produce the identical artifact name"
++
++
++def test_disk_name_prefix_separates_entries():
++    facts = "bf16_t8_h2048"
++    assert _w4a16_disk_kernel_name(
++        "topk_sum", facts, _BASE_KEY
++    ) != _w4a16_disk_kernel_name("activation", facts, _BASE_KEY)
++
++
++def test_disk_name_symbol_safety():
++    for prefix, facts in (
++        ("topk_sum", "bf16_t8_h2048"),
++        ("activation", "bf16_i768_silu"),
++        ("fused", "bf16_e64_t2_h512_i256_b8"),
++        ("gemm", "bf16_e64_n512_k512_t2_b8"),
++    ):
++        name = _w4a16_disk_kernel_name(prefix, facts, _BASE_KEY)
++        assert _SYMBOL_RE.match(name), f"unsafe artifact name: {name!r}"
++
++
++def _w4a16_module_artifacts():
++    from flashinfer.jit import env as jit_env
++
++    artifacts = {}
++    root = jit_env.FLASHINFER_JIT_DIR
++    if not root.is_dir():
++        return artifacts
++    for module_dir in root.glob(f"{_CUTE_DSL_MODULE}*"):
++        for entry in module_dir.glob("*.o"):
++            artifacts[entry.name] = entry.stat().st_mtime_ns
++    return artifacts
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
++def test_topk_sum_disk_round_trip():
++    m, topk, hidden = 64, 8, 2048
++    clear_w4a16_kernel_cache()
++    compile_w4a16_topk_sum(m=m, topk=topk, hidden_size=hidden, element_dtype="bf16")
++    after_cold = _w4a16_module_artifacts()
++    assert any(name.startswith("topk_sum_") for name in after_cold), (
++        "cold compile did not persist a topk_sum artifact"
++    )
++
++    # A cleared in-process cache forces the next compile through the disk
++    # layer; the artifact set (names and mtimes) must be served unchanged.
++    clear_w4a16_kernel_cache()
++    compile_w4a16_topk_sum(m=m, topk=topk, hidden_size=hidden, element_dtype="bf16")
++    after_warm = _w4a16_module_artifacts()
++    assert after_warm == after_cold, "warm load rewrote or dropped artifacts"
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
++def test_topk_sum_warm_artifact_numerics_and_graph_capture():
++    m, topk, hidden = 64, 8, 2048
++    tol = dict(rtol=1.6e-2, atol=1e-3)
++
++    # Ensure the artifact exists on disk, then force the disk-load path.
++    clear_w4a16_kernel_cache()
++    compile_w4a16_topk_sum(m=m, topk=topk, hidden_size=hidden, element_dtype="bf16")
++    clear_w4a16_kernel_cache()
++
++    torch.manual_seed(0)
++    fc2 = torch.randn(m * topk, hidden, device="cuda", dtype=torch.bfloat16)
++    out = torch.empty(m, hidden, device="cuda", dtype=torch.bfloat16)
++    stream_int = int(torch.cuda.current_stream().cuda_stream)
++    _w4a16_topk_sum_launch_flat(fc2, out, m, topk, hidden, "bf16", stream_int)
++    torch.cuda.synchronize()
++    ref = fc2.view(m, topk, hidden).float().sum(dim=1).to(torch.bfloat16)
++    assert torch.allclose(out.float(), ref.float(), **tol)
++
++    fc2_g = fc2.clone()
++    out_g = torch.empty_like(out)
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        _w4a16_topk_sum_launch_flat(
++            fc2_g,
++            out_g,
++            m,
++            topk,
++            hidden,
++            "bf16",
++            int(torch.cuda.current_stream().cuda_stream),
++        )
++    fc2_g.copy_(torch.randn(m * topk, hidden, device="cuda", dtype=torch.bfloat16))
++    graph.replay()
++    torch.cuda.synchronize()
++    ref_g = fc2_g.view(m, topk, hidden).float().sum(dim=1).to(torch.bfloat16)
++    assert torch.allclose(out_g.float(), ref_g.float(), **tol)
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
++def test_activation_row_buckets_share_one_artifact(tmp_path, monkeypatch):
++    """Both row-specialization buckets must resolve to one disk artifact.
++
++    The activation cache key deliberately excludes the row bucket -- the
++    in-process cache reuses one compiled kernel across rows via
++    ``replace(cached, rows=rows)`` -- so under the extent policy the
++    m-varying fake extents bake (1,) and a single artifact serves every
++    rows value, warm-launchable at any row count.
++    """
++    from flashinfer.jit import env as jit_env
++
++    # Isolate this test's artifacts from whatever the persistent JIT
++    # directory has accumulated: the builder and the artifact scanner both
++    # read jit_env.FLASHINFER_JIT_DIR dynamically, so patching it redirects
++    # real .o writes, not just the scan.
++    monkeypatch.setattr(jit_env, "FLASHINFER_JIT_DIR", tmp_path)
++
++    inter = 768
++    clear_w4a16_kernel_cache()
++    compile_w4a16_activation(rows=1, intermediate_size=inter, activation="silu")
++    after_bucket1 = _w4a16_module_artifacts()
++    clear_w4a16_kernel_cache()
++    compile_w4a16_activation(rows=64, intermediate_size=inter, activation="silu")
++    after_bucket2 = _w4a16_module_artifacts()
++    act_names = [n for n in after_bucket2 if n.startswith("activation_")]
++    assert len(act_names) == 1, f"row buckets split into artifacts: {act_names}"
++    assert after_bucket2 == after_bucket1, "second bucket rewrote the artifact"
++
++    shards = 2 if is_gated_moe_activation("silu") else 1
++    for rows in (1, 64):
++        result = compile_w4a16_activation(
++            rows=rows, intermediate_size=inter, activation="silu"
++        )
++        fc1 = torch.randn(rows * shards * inter, device="cuda", dtype=torch.bfloat16)
++        activated = torch.zeros(rows * inter, device="cuda", dtype=torch.bfloat16)
++        result.compiled(fc1[:1], activated[:1], rows)
++        torch.cuda.synchronize()
++        assert activated.abs().sum().item() > 0, f"no output written at rows={rows}"
+diff --git a/tests/moe/test_b12x_w4a16_route_pack.py b/tests/moe/test_b12x_w4a16_route_pack.py
+index 4e122e2f688e59673ebe92394d58b3edef010105..fdb8f08a08a916567b2d8da1cddfbe9e1cfdf055 100644
+--- a/tests/moe/test_b12x_w4a16_route_pack.py
++++ b/tests/moe/test_b12x_w4a16_route_pack.py
+@@ -330,3 +330,83 @@ def test_w4a16_workspace_route_buffers_cover_route_pack_capacity(monkeypatch):
+         required = max_packed_route_slots(numel_capacity, block_size, num_experts)
+         assert slots >= required
+         assert blocks >= (required + block_size - 1) // block_size
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
++@pytest.mark.parametrize(
++    "num_experts,tokens,block_size",
++    [(e, n, 8) for e in (1, 7, 288, 512) for n in (1, 9, 16)]
++    + [(16, 48, 8), (16, 48, 48), (288, 16, 48)],
++)
++@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
++@pytest.mark.parametrize("mapped", [False, True])
++def test_route_pack_graph_replay_replaces_expert_distribution(
++    num_experts, tokens, block_size, dtype, mapped
++):
++    """Changing routes must replace counts, empty experts and padding in place."""
++    from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_host import (
++        max_packed_route_slots,
++        route_pack_numel_capacity,
++    )
++
++    topk = 8
++    ids = torch.zeros((tokens, topk), dtype=dtype, device="cuda")
++    expert_map = None
++    if mapped:
++        expert_map = torch.arange(num_experts, dtype=torch.int32, device="cuda")
++        expert_map.remainder_(max(1, num_experts // 2))
++        expert_map[::3] = -1
++        expert_map[1::5] = num_experts
++    capacity = route_pack_numel_capacity(ids.numel(), topk=topk)
++    slots = max_packed_route_slots(capacity, block_size, num_experts)
++    workspace = {
++        "packed_route_indices": torch.empty(slots, dtype=torch.int32, device="cuda"),
++        "block_expert_ids": torch.empty(
++            math.ceil(slots / block_size), dtype=torch.int32, device="cuda"
++        ),
++        "packed_route_count": torch.empty(1, dtype=torch.int32, device="cuda"),
++        "expert_offsets": torch.empty(
++            num_experts + 1, dtype=torch.int32, device="cuda"
++        ),
++    }
++
++    def run():
++        return pack_topk_routes_by_expert(
++            ids, block_size, num_experts, expert_map=expert_map, **workspace
++        )
++
++    run()
++    graph = torch.cuda.CUDAGraph()
++    with torch.cuda.graph(graph):
++        packed, owners, count = run()
++
++    generator = torch.Generator().manual_seed(20260906)
++    host_inputs = [
++        torch.randint(0, num_experts, ids.shape, dtype=dtype, generator=generator),
++        torch.full(ids.shape, num_experts - 1, dtype=dtype),
++        torch.arange(ids.numel(), dtype=dtype).reshape(ids.shape) % num_experts,
++        torch.full(ids.shape, -1, dtype=dtype),
++        torch.full(ids.shape, num_experts, dtype=dtype),
++        torch.zeros(ids.shape, dtype=dtype),
++    ]
++    for host_ids in host_inputs:
++        ids.copy_(host_ids)
++        for buffer in workspace.values():
++            buffer.fill_(-777)
++        graph.replay()
++        expected_ids, valid, expected_count, expected_owners = _expected_route_pack(
++            ids, block_size, num_experts, expert_map
++        )
++        total = int(expected_count.item())
++        assert torch.equal(count.cpu(), expected_count)
++        assert torch.equal(owners[: total // block_size].cpu(), expected_owners)
++        assert bool((owners[total // block_size :] == -1).all())
++        assert bool((packed[total:] == ids.numel()).all())
++        host_routes = packed[:total].cpu().long()
++        assert bool(((host_routes >= 0) & (host_routes <= ids.numel())).all())
++        payload = host_routes[host_routes < ids.numel()]
++        assert torch.equal(payload.sort().values, torch.nonzero(valid).flatten())
++        for i, expert in enumerate(expected_owners.tolist()):
++            routes = host_routes[i * block_size : (i + 1) * block_size]
++            routes = routes[routes < ids.numel()]
++            assert bool((expected_ids[routes] == expert).all())
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..a069ebb4279e759d4dd3157ceca3955e258a2960
@@ -998,3 +3788,72 @@ index 0000000000000000000000000000000000000000..a069ebb4279e759d4dd3157ceca3955e
 +    import sys
 +
 +    sys.exit(pytest.main([__file__, "-q"]))
+diff --git a/tests/moe/test_unified_moe_b12x.py b/tests/moe/test_unified_moe_b12x.py
+index 92157c5db9ca87051d1dd157be75c4dfb959e851..9e66ea9eb98bad40563d6a3cd7de26108ea34433 100644
+--- a/tests/moe/test_unified_moe_b12x.py
++++ b/tests/moe/test_unified_moe_b12x.py
+@@ -96,6 +96,26 @@ class TestB12xBackendOptions:
+ 
+ 
+ class TestB12xUnifiedValidation:
++    @pytest.mark.parametrize(
++        "source_format", ["modelopt_e4m3_k32", "e4m3_k32", "fp4_e8m0_k32"]
++    )
++    def test_unified_w4a16_rejects_formats_without_a_matching_view(self, source_format):
++        from flashinfer.fused_moe.prepare import prepare_b12x_w4a16_weights
++
++        # Validation must precede packing or any CUDA allocation.
++        placeholder = torch.empty(0)
++        with pytest.raises(ValueError, match="use B12xMoEWrapper for K/32"):
++            prepare_b12x_w4a16_weights(
++                placeholder,
++                placeholder,
++                placeholder,
++                placeholder,
++                placeholder,
++                placeholder,
++                activation="silu",
++                source_format=source_format,
++            )
++
+     @staticmethod
+     def _runner(config, runner_type=B12xNvfp4Runner):
+         runner = runner_type.__new__(runner_type)
+@@ -1043,6 +1063,9 @@ class TestUnifiedB12xConformance:
+             top_k=2,
+             seed=321,
+         )
++        if variant is QuantVariant.W4A16:
++            tensors["w1_alpha"].fill_(1.75)
++            tensors["w2_alpha"].fill_(0.75)
+         layer, act_pack, weight_pack = _make_b12x_layer_and_packs(
+             tensors,
+             quant=variant,
+@@ -1095,8 +1118,9 @@ class TestUnifiedB12xConformance:
+         tensors["w1_alpha"].fill_(1.75)
+         tensors["w2_alpha"].fill_(0.75)
+         prepared_views = []
++        outputs = []
+         for source_format in ("modelopt", "compressed_tensors"):
+-            _, _, weight_pack = _make_b12x_layer_and_packs(
++            layer, act_pack, weight_pack = _make_b12x_layer_and_packs(
+                 tensors,
+                 quant=QuantConfig(
+                     weight=QuantFormat.NVFP4, activation=QuantFormat.BF16
+@@ -1108,6 +1132,7 @@ class TestUnifiedB12xConformance:
+                 source_format=source_format,
+             )
+             prepared_views.append(weight_pack.get_view("b12x_w4a16"))
++            outputs.append(_run_b12x_unified(layer, act_pack, weight_pack).clone())
+         for field in (
+             "w1_weight",
+             "w1_weight_sf",
+@@ -1124,6 +1149,8 @@ class TestUnifiedB12xConformance:
+                 atol=0,
+             )
+ 
++        torch.testing.assert_close(outputs[0], outputs[1], rtol=0.05, atol=0.05)
++
+     def test_w4a16_ep_partials_sum_to_full(self):
+         """Contiguous-shard EP through the unified API: two fake ranks'
+         partials must sum to the full single-rank output."""
