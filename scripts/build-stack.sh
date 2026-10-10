@@ -8,8 +8,6 @@ uv run --no-project --python "$py" python "$root/scripts/prepare-stack.py"
 uv pip uninstall --python "$py" flashinfer-python flashinfer-cubin flashinfer-jit-cache sgl-deep-gemm deep-gemm || true
 cd "$root/sources/flashinfer"
 uv pip install --python "$py" --no-build-isolation '.[cu13]' 'nvidia-cutlass-dsl[cu13]==4.8.0'
-artifact=$(uv run --no-project --python "$py" python -c 'import json; a=json.load(open("/opt/glm53/stack.lock.json"))["artifacts"]["flashinfer_cubin"]; print(a["url"]+"#sha256="+a["sha256"])')
-uv pip install --python "$py" --no-deps "flashinfer-cubin @ $artifact"
 cd "$root/sources/deepgemm"
 uv run --no-project --python "$py" bash build_sgl_deep_gemm.sh
 uv pip install --python "$py" --no-deps dist/*.whl
@@ -18,7 +16,7 @@ cd "$root/sources/modelopt"
 version=$(uv run --no-project --python "$py" python -c 'import json; print(json.load(open("/opt/glm53/stack.lock.json"))["integration"]["modelopt"]["package_version"])')
 SETUPTOOLS_SCM_PRETEND_VERSION="$version" uv pip install --python "$py" --no-deps .
 uv pip install --python "$py" --no-build-isolation "$root/sources/transformers" \
-  tokenizers==0.23.1 huggingface-hub==1.31.0 safetensors==0.8.0
+  tokenizers==0.23.2 huggingface-hub==1.31.0 safetensors==0.8.0
 cd "$root/sources/sglang"
 uv pip install --python "$py" --no-build-isolation -e ./python typeguard==4.4.4 'pillow>=12.3.0' protobuf==6.33.5 grpcio-tools==1.81.1 accelerate==1.12.0
 # Build the AOT package from the same patched tree as the Python/JIT runtime.

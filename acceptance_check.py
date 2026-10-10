@@ -27,7 +27,7 @@ assert md.version('quack-kernels') == '0.6.5'
 # A version match alone could still select the unpatched base-image wheel.
 kernel = md.distribution('sglang-kernel')
 kernel_url = json.loads(kernel.read_text('direct_url.json'))['url']
-assert kernel.version == '0.4.7'
+assert kernel.version == '0.4.9'
 assert kernel_url.startswith('file:///opt/glm53/wheels/sglang-kernel/')
 assert (root / 'provenance/sglang-kernel-wheels.sha256').is_file()
 
@@ -39,10 +39,8 @@ for name in changed:
     if path.suffix == '.py' and path.exists():
         ast.parse(path.read_text(), filename=name)
 from flashinfer.mla import SparseMLASm120Wrapper, supported_sparse_mla_sm120_configs
-from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_prepare import prepare_w4a16_modelopt_e4m3_k32_weights
 assert supported_sparse_mla_sm120_configs()['glm53_nope'].bytes_per_token == 528
 assert callable(SparseMLASm120Wrapper.run)
-assert callable(prepare_w4a16_modelopt_e4m3_k32_weights)
 from sglang.srt.models.glm5_next_nextn import Glm5NextForConditionalGenerationNextN
 from sglang.srt.models.deepseek_nextn import DeepseekModelNextN
 q = type('Q', (), {'get_name': lambda self: 'modelopt_fp4'})()

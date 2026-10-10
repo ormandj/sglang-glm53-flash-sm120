@@ -1,11 +1,11 @@
 {
   "schema": 1,
   "product": "sglang-glm53-flash-sm120",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "candidate": 1,
-  "candidate_tag": "v0.5.1-rc.1",
-  "stable_tag": "v0.5.1",
-  "cache_schema": "v89",
+  "candidate_tag": "v0.6.0-rc.1",
+  "stable_tag": "v0.6.0",
+  "cache_schema": "v90",
   "published": {
     "tag": "v0.5.0",
     "cache_schema": "v88"
