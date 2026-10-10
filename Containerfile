@@ -52,8 +52,10 @@ COPY stack.lock.json /opt/glm53/stack.lock.json
 COPY patches/sglang-glm53-integration.patch /opt/glm53/patches/sglang-glm53-integration.patch
 COPY patches/flashinfer-glm53-integration.patch /opt/glm53/patches/flashinfer-glm53-integration.patch
 COPY scripts/build-stack.sh scripts/prepare-stack.py /opt/glm53/scripts/
-COPY acceptance_check.py /opt/glm53/acceptance_check.py
 RUN bash /opt/glm53/scripts/build-stack.sh
+# Separate layer: acceptance edits must not invalidate the stack build.
+COPY acceptance_check.py /opt/glm53/acceptance_check.py
+RUN CUDA_VISIBLE_DEVICES=9 /opt/sglang/bin/python /opt/glm53/acceptance_check.py
 LABEL org.opencontainers.image.title="GLM-5.3-Flash on SM120" \
       org.opencontainers.image.description="Z.ai FP8 target, FP8 KV and native MTP on four RTX PRO 6000 GPUs" \
       org.opencontainers.image.version="0.6.0-rc.1" \

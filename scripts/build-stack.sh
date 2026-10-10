@@ -44,4 +44,3 @@ uv pip install --python "$py" --no-deps --reinstall "$root"/wheels/sglang-kernel
 uv pip uninstall --python "$py" moviepy
 uv pip install --python "$py" --no-deps nvidia-nccl-cu13==2.30.7
 uv pip freeze --python "$py" > "$root/provenance/installed-packages.txt"
-CUDA_VISIBLE_DEVICES=9 uv run --no-project --python "$py" python "$root/acceptance_check.py"
