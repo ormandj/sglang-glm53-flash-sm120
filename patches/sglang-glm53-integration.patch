@@ -3989,7 +3989,7 @@ index 2608621f6ab5af5ebb6a019e34db882a4f230f19..e29c941b6ec24a1e65b60702e5eb4dd1
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 90959d8cd107717d6ab882189e535f92bf6d9d28..023508174ecaa3121de8892c40275a9581a927cb 100644
+index 90959d8cd107717d6ab882189e535f92bf6d9d28..1a9dc3788f64695e75d372b8a48d466f90d2b847 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -468,6 +468,9 @@ class Envs:
@@ -4044,6 +4044,16 @@ index 90959d8cd107717d6ab882189e535f92bf6d9d28..023508174ecaa3121de8892c40275a95
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
+@@ -1734,6 +1758,9 @@ class Envs:
+     SGLANG_DSA_MQA_LOGITS_FREE_MEM_FRACTION = EnvFloat(0.2)
+     SGLANG_ENABLE_PCG_DSV2_DUAL_STREAM = EnvBool(False)
+     SGLANG_DSA_TOPK_BROADCAST = EnvBool(False)
++    # Split k-pool indexer prefill rows across attention-TP ranks and all-gather the
++    # top-k once query rows x pooled keys reach this many elements; 0 disables.
++    SGLANG_DSA_INDEXER_ROW_SPLIT_MIN_ELEMS = EnvInt(0)
+     SGLANG_DISABLE_DSA_INDEXER_FUSION = EnvBool(False)
+     # HIP analog of CUDA SGLANG_DISABLE_DSA_INDEXER_FUSION (default on).
+     # Set 1 for the legacy split writer. Omits Hadamard; pre-quant logits match.
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_backend_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_backend_kpool.py
 index 23896054adcd39f55dc0f78b0641d0b6fbd2eeb0..e825ef24c71fe5a297a3c64a8dfcb92e2ad34bbf 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_backend_kpool.py
@@ -4210,7 +4220,7 @@ index 303372481d05364693c8ecb795252e43a5f40693..9804f77eb8c6ff2ab4ed953a283ef2bf
          # A padded eager IDLE rank has no real requests and therefore no valid
          # DSA page-table rows to index. Return invalid rows with the physical DP
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-index 8aae41a421407056d2101357ad10a74091622143..04a80f4d477694714968a8c809786f59bf0a2742 100644
+index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864a23ec96f 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 @@ -15,6 +15,8 @@ from sglang.srt.layers.attention.dsa.dsa_indexer import (
@@ -4222,7 +4232,60 @@ index 8aae41a421407056d2101357ad10a74091622143..04a80f4d477694714968a8c809786f59
  from sglang.srt.layers.attention.dsa.paged_mqa_logits_backend import (
      DSAPagedMQALogitsBackend,
  )
-@@ -236,12 +238,16 @@ class IndexerKPool(MultiPlatformOp):
+@@ -31,7 +33,7 @@ from sglang.srt.layers.attention.mqa_logits_utils import (
+ )
+ from sglang.srt.layers.layernorm import LayerNorm
+ from sglang.srt.layers.utils.multi_platform import MultiPlatformOp
+-from sglang.srt.utils import add_prefix, ceil_align, is_cuda, is_hip, is_npu
++from sglang.srt.utils import add_prefix, ceil_align, ceil_div, is_cuda, is_hip, is_npu
+ 
+ if is_cuda():
+     try:
+@@ -61,7 +63,7 @@ from sglang.srt.model_executor.runner_backend_utils.breakable_cuda_graph import
+     is_in_breakable_cuda_graph,
+ )
+ from sglang.srt.model_executor.runner_utils import capture_mode
+-from sglang.srt.runtime_context import get_device, get_exec
++from sglang.srt.runtime_context import get_device, get_exec, get_parallel
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -125,6 +127,34 @@ def _mqa_logits_row_chunks(
+     )
+ 
+ 
++def _extend_logits_elems(forward_batch: ForwardBatch, kpool: int) -> int:
++    """Query rows times pooled keys over the batch's requests; 0 without host lengths."""
++    if forward_batch.seq_lens_cpu is None or forward_batch.extend_seq_lens_cpu is None:
++        return 0
++    return sum(
++        int(q_len) * (int(seq_len) // kpool)
++        for q_len, seq_len in zip(
++            forward_batch.extend_seq_lens_cpu, forward_batch.seq_lens_cpu.tolist()
++        )
++    )
++
++
++def _indexer_row_split_group(*, num_rows: int, logits_elems: int):
++    """The attention-TP group to split indexer rows over, or None to score all rows.
++
++    Inputs are identical on every rank of the group, so all ranks agree.
++    """
++    min_elems = envs.SGLANG_DSA_INDEXER_ROW_SPLIT_MIN_ELEMS.get()
++    if min_elems <= 0 or logits_elems < min_elems:
++        return None
++    if capture_mode.is_capture_mode or torch.cuda.is_current_stream_capturing():
++        return None
++    group = get_parallel().attn_tp_group
++    if group.world_size == 1 or num_rows < 4 * group.world_size:
++        return None
++    return group
++
++
+ class IndexerKPool(MultiPlatformOp):
+     def __init__(
+         self,
+@@ -236,12 +266,16 @@ class IndexerKPool(MultiPlatformOp):
          self.softmax_scale = self.head_dim**-0.5
  
      @torch.compile(dynamic=True)
@@ -4240,7 +4303,7 @@ index 8aae41a421407056d2101357ad10a74091622143..04a80f4d477694714968a8c809786f59
      @torch.compile(dynamic=True)
      def _project_and_scale_head_gates(self, x: torch.Tensor) -> torch.Tensor:
          weights, _ = self.weights_proj(x.float())
-@@ -253,10 +259,22 @@ class IndexerKPool(MultiPlatformOp):
+@@ -253,10 +287,22 @@ class IndexerKPool(MultiPlatformOp):
      ) -> torch.Tensor:
          return weights.unsqueeze(-1) * q_scale * self.softmax_scale
  
@@ -4266,7 +4329,7 @@ index 8aae41a421407056d2101357ad10a74091622143..04a80f4d477694714968a8c809786f59
  
      def _can_overlap_prefill(
          self,
-@@ -1063,6 +1081,7 @@ class IndexerKPool(MultiPlatformOp):
+@@ -1063,6 +1109,7 @@ class IndexerKPool(MultiPlatformOp):
                  clean_logits=False,
              )
  
@@ -4274,6 +4337,128 @@ index 8aae41a421407056d2101357ad10a74091622143..04a80f4d477694714968a8c809786f59
          page_table_1, topk_offsets, _ = self._kpool_fused_topk_mapping(metadata)
          topk_result = self._topk_from_kpool_logits(
              logits,
+@@ -1090,9 +1137,86 @@ class IndexerKPool(MultiPlatformOp):
+         topk_row_starts: Optional[torch.Tensor],
+         row_chunks: Tuple[slice, ...],
+         out_rows: Optional[int],
++        logits_elems: int,
+     ) -> torch.Tensor:
+         # Each row's top-k reads only its own logits row, pooled length and
+         # page-table row, so row chunks select the same pages as one pass.
++        rows_kwargs = dict(
++            q_fp8=q_fp8,
++            weights=weights,
++            kv_fp8=kv_fp8,
++            logits_starts=logits_starts,
++            logits_ends=logits_ends,
++            pool_lens=pool_lens,
++            seq_lens=seq_lens,
++            page_table=page_table,
++            page_table_row_index=page_table_row_index,
++            topk_offsets=topk_offsets,
++            topk_row_starts=topk_row_starts,
++        )
++        num_rows = row_chunks[-1].stop
++        group = (
++            None
++            if kv_fp8 is None
++            else _indexer_row_split_group(
++                num_rows=num_rows, logits_elems=logits_elems
++            )
++        )
++        if group is None:
++            return self._kpool_topk_rows(
++                **rows_kwargs, row_chunks=row_chunks, row_base=0, out_rows=out_rows
++            )
++
++        # The same independence lets each rank score a contiguous share of the
++        # rows; the gathered shares equal one pass on every rank.
++        share = ceil_div(num_rows, group.world_size)
++        lo = min(group.rank_in_group * share, num_rows)
++        hi = min(lo + share, num_rows)
++        local_chunks = tuple(
++            slice(max(c.start, lo), min(c.stop, hi))
++            for c in row_chunks
++            if c.start < hi and c.stop > lo
++        )
++        local = self._kpool_topk_rows(
++            **rows_kwargs, row_chunks=local_chunks, row_base=lo, out_rows=share
++        )
++        gathered = torch.empty(
++            (group.world_size * share, local.shape[1]),
++            dtype=local.dtype,
++            device=local.device,
++        )
++        group.all_gather_into_tensor(gathered, local)
++        num_out_rows = num_rows if out_rows is None else out_rows
++        if num_out_rows <= gathered.shape[0]:
++            return gathered[:num_out_rows]
++        padded = torch.full(
++            (num_out_rows, gathered.shape[1]),
++            -1,
++            dtype=gathered.dtype,
++            device=gathered.device,
++        )
++        padded[: gathered.shape[0]] = gathered
++        return padded
++
++    def _kpool_topk_rows(
++        self,
++        *,
++        q_fp8: torch.Tensor,
++        weights: torch.Tensor,
++        kv_fp8: Optional[Tuple[torch.Tensor, torch.Tensor]],
++        logits_starts: Optional[torch.Tensor],
++        logits_ends: torch.Tensor,
++        pool_lens: torch.Tensor,
++        seq_lens: Optional[torch.Tensor],
++        page_table: Optional[torch.Tensor],
++        page_table_row_index: Optional[torch.Tensor],
++        topk_offsets: Optional[torch.Tensor],
++        topk_row_starts: Optional[torch.Tensor],
++        row_chunks: Tuple[slice, ...],
++        row_base: int,
++        out_rows: Optional[int],
++    ) -> torch.Tensor:
++        """Top-k of ``row_chunks``, returned as rows ``row_base`` onward."""
+         single_chunk = len(row_chunks) == 1
+         topk_result = None
+         for rows in row_chunks:
+@@ -1139,14 +1263,16 @@ class IndexerKPool(MultiPlatformOp):
+             del logits
+             if topk_result is None:
+                 # Rows past the last chunk are padding, matching out_rows.
+-                num_out_rows = row_chunks[-1].stop if out_rows is None else out_rows
++                num_out_rows = (
++                    row_chunks[-1].stop - row_base if out_rows is None else out_rows
++                )
+                 topk_result = torch.full(
+                     (num_out_rows, topk_chunk.shape[1]),
+                     -1,
+                     dtype=topk_chunk.dtype,
+                     device=topk_chunk.device,
+                 )
+-            topk_result[rows] = topk_chunk
++            topk_result[rows.start - row_base : rows.stop - row_base] = topk_chunk
+         assert topk_result is not None
+         return topk_result
+ 
+@@ -1227,6 +1353,7 @@ class IndexerKPool(MultiPlatformOp):
+                 num_rows=n_real, num_cols=total_k_rows, device=device
+             ),
+             out_rows=total_q,
++            logits_elems=_extend_logits_elems(forward_batch, self.index_kpool),
+         )
+ 
+     def _get_topk_ragged_kpool(
+@@ -1473,6 +1600,7 @@ class IndexerKPool(MultiPlatformOp):
+                     num_rows=q_len, num_cols=pool_seq_len, device=q_fp8.device
+                 ),
+                 out_rows=None,
++                logits_elems=q_len * pool_seq_len,
+             )
+ 
+             topk_result[q_slice] = local_topk
 diff --git a/python/sglang/srt/layers/attention/dsa/graph_buffer_lifetime.py b/python/sglang/srt/layers/attention/dsa/graph_buffer_lifetime.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..08adcc7ae2f2d9a31b6f02185d1002bc9e9972ed
@@ -10249,6 +10434,162 @@ index 0000000000000000000000000000000000000000..6229911ad5015e84bf196004fbf1e629
 +    import sys
 +
 +    sys.exit(pytest.main([__file__, "-q"]))
+diff --git a/test/registered/kernels/ops/attention/test_dsa_kpool_indexer_row_split.py b/test/registered/kernels/ops/attention/test_dsa_kpool_indexer_row_split.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3c613e03951f105f981aa794eb84ff7a4ac7d4fc
+--- /dev/null
++++ b/test/registered/kernels/ops/attention/test_dsa_kpool_indexer_row_split.py
+@@ -0,0 +1,150 @@
++"""Row-split k-pool indexer prefill: every rank scores a share of the query rows and
++the shares are all-gathered. The gathered top-k must select what one rank scoring
++every row selects.
++
++Ranks are simulated on one GPU with the real DeepGEMM logits and fused top-k
++kernels. The radix selector breaks score ties arbitrarily, so pooled columns are
++compared by the scores they select; tail columns are positional and compared exactly.
++"""
++
++import unittest
++from unittest import mock
++
++import torch
++
++from sglang.srt.layers.attention.dsa import dsa_indexer_kpool
++from sglang.srt.layers.attention.dsa.dsa_indexer_kpool import IndexerKPool
++from sglang.test.ci.ci_register import register_cuda_ci
++from sglang.test.test_utils import CustomTestCase
++
++register_cuda_ci(est_time=30, stage="base-b-kernel-unit", runner_config="1-gpu-large")
++
++KPOOL, TOPK, HEADS, HEAD_DIM = 4, 2048, 32, 128
++
++
++class _FakeGroup:
++    def __init__(self, rank, world_size, shares):
++        self.rank_in_group = rank
++        self.world_size = world_size
++        self.shares = shares
++
++    def all_gather_into_tensor(self, output, input):
++        self.shares[self.rank_in_group] = input.clone()
++        if len(self.shares) == self.world_size:
++            output.copy_(torch.cat([self.shares[r] for r in range(self.world_size)]))
++
++
++def _indexer():
++    indexer = IndexerKPool.__new__(IndexerKPool)
++    indexer.index_kpool = KPOOL
++    indexer.index_topk = TOPK
++    return indexer
++
++
++@unittest.skipUnless(
++    torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 9,
++    "Requires a DeepGEMM-capable GPU",
++)
++class TestKpoolIndexerRowSplit(CustomTestCase):
++    def _inputs(self, rows, groups):
++        torch.manual_seed(0)
++        dev = "cuda"
++        q = torch.randn(rows, HEADS, HEAD_DIM, device=dev).to(torch.float8_e4m3fn)
++        k = torch.randn(groups, HEAD_DIM, device=dev).to(torch.float8_e4m3fn)
++        k_scale = torch.rand(groups, device=dev) + 0.5
++        weights = torch.randn(rows, HEADS, device=dev)
++        # Some rows hold fewer valid groups than group_topk, leaving -1 columns.
++        pool_lens = torch.randint(256, groups + 1, (rows,), device=dev, dtype=torch.int32)
++        seq_lens = pool_lens * KPOOL + torch.randint(
++            0, KPOOL, (rows,), device=dev, dtype=torch.int32
++        )
++        return dict(
++            q_fp8=q,
++            weights=weights,
++            kv_fp8=(k, k_scale),
++            logits_starts=torch.zeros(rows, device=dev, dtype=torch.int32),
++            logits_ends=pool_lens,
++            pool_lens=pool_lens,
++            seq_lens=seq_lens,
++            page_table=None,
++            page_table_row_index=None,
++            topk_offsets=None,
++            topk_row_starts=torch.zeros(rows, device=dev, dtype=torch.int32),
++        )
++
++    def _selected_scores(self, logits, out):
++        pooled = out[:, :TOPK].long()
++        scores = logits.gather(1, (pooled.clamp(min=0) // KPOOL))
++        scores = torch.where(pooled >= 0, scores, torch.full_like(scores, -float("inf")))
++        return scores.sort(dim=1).values
++
++    def _check(self, rows, groups, row_chunks, out_rows, world_size=4):
++        indexer = _indexer()
++        inputs = self._inputs(rows, groups)
++        with mock.patch.object(dsa_indexer_kpool, "_indexer_row_split_group", lambda **_: None):
++            ref = indexer._kpool_topk_by_row_chunks(
++                **inputs,
++                row_chunks=(slice(0, rows),),
++                out_rows=out_rows,
++                logits_elems=rows * groups,
++            )
++
++        shares = {}
++
++        def run(rank):
++            group = _FakeGroup(rank, world_size, shares)
++            with mock.patch.object(
++                dsa_indexer_kpool, "_indexer_row_split_group", lambda **_: group
++            ):
++                return indexer._kpool_topk_by_row_chunks(
++                    **inputs,
++                    row_chunks=row_chunks,
++                    out_rows=out_rows,
++                    logits_elems=rows * groups,
++                )
++
++        # The first pass collects every rank's share; the second gathers them.
++        for rank in range(world_size):
++            run(rank)
++        results = [run(rank) for rank in range(world_size)]
++
++        k, k_scale = inputs["kv_fp8"]
++        logits = IndexerKPool._fp8_mqa_logits(
++            q_fp8=inputs["q_fp8"],
++            k_fp8=k,
++            k_scale=k_scale,
++            weights=inputs["weights"],
++            starts=inputs["logits_starts"],
++            ends=inputs["logits_ends"],
++            clean_logits=True,
++        )
++        expected_rows = rows if out_rows is None else out_rows
++        for rank, out in enumerate(results):
++            with self.subTest(rank=rank):
++                self.assertEqual(tuple(out.shape), tuple(ref.shape))
++                self.assertEqual(out.shape[0], expected_rows)
++                self.assertTrue(torch.equal(out[:, TOPK:], ref[:, TOPK:]))
++                self.assertTrue(torch.all(out[rows:] == -1))
++                self.assertTrue(
++                    torch.equal(
++                        self._selected_scores(logits, out[:rows]),
++                        self._selected_scores(logits, ref[:rows]),
++                    )
++                )
++
++    def test_single_chunk(self):
++        self._check(rows=512, groups=2048, row_chunks=(slice(0, 512),), out_rows=None)
++
++    def test_budget_chunks_straddle_rank_shares(self):
++        # 515 rows give shares of 129 with a short last share; the budget chunks
++        # cut across share boundaries, and out_rows adds padding rows.
++        self._check(
++            rows=515,
++            groups=2048,
++            row_chunks=(slice(0, 200), slice(200, 400), slice(400, 515)),
++            out_rows=520,
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_dsa_kpool_topk_transform.py b/test/registered/kernels/ops/attention/test_dsa_kpool_topk_transform.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..fe29498fa36f966839d6ea7a4f08b0db2dcc6f57
