@@ -3989,18 +3989,20 @@ index 2608621f6ab5af5ebb6a019e34db882a4f230f19..e29c941b6ec24a1e65b60702e5eb4dd1
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 90959d8cd107717d6ab882189e535f92bf6d9d28..ec7379c85dddcb4557f78a4859a2b0935ffe4eac 100644
+index 90959d8cd107717d6ab882189e535f92bf6d9d28..023508174ecaa3121de8892c40275a9581a927cb 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
-@@ -468,6 +468,7 @@ class Envs:
+@@ -468,6 +468,9 @@ class Envs:
      # precedence when both are set.
      SGLANG_GRAPH_BATCH_CAPTURE = EnvBool(False)
      SGLANG_TORCH_PROFILER_DIR = EnvStr("/tmp")
 +    SGLANG_LM_HEAD_FP8 = EnvBool(False)
++    # Block-FP8 copy of the LM head used only by the speculative draft.
++    SGLANG_DRAFT_LM_HEAD_FP8 = EnvBool(False)
      # Allocator-history buffer for /start_profile activities=["MEM"]; the
      # default truncates long windows (each entry is one alloc/free event).
      SGLANG_MEM_PROFILE_MAX_ENTRIES = EnvInt(100000)
-@@ -598,6 +599,16 @@ class Envs:
+@@ -598,6 +601,16 @@ class Envs:
      SGLANG_AITER_PAGED_PREFILL_ASM = EnvBool(True)
      # size the KV pool after CUDA-graph capture
      SGLANG_ENABLE_POST_CAPTURE_KV_SIZING = EnvBool(False)
@@ -4017,7 +4019,7 @@ index 90959d8cd107717d6ab882189e535f92bf6d9d28..ec7379c85dddcb4557f78a4859a2b093
  
      # ===================================================================
      # Scheduler token budgeting and admission
-@@ -1487,6 +1498,9 @@ class Envs:
+@@ -1487,6 +1500,9 @@ class Envs:
      # CUDA graphs and execution buffers
      # ===================================================================
      SGLANG_USE_BREAKABLE_CUDA_GRAPH = EnvBool(False)
@@ -4027,7 +4029,7 @@ index 90959d8cd107717d6ab882189e535f92bf6d9d28..ec7379c85dddcb4557f78a4859a2b093
      # Guards CUDA graph executable dedup via cudaGraphExecUpdate.
      SGLANG_ENABLE_CUDA_GRAPH_DEDUP = EnvBool(False)
      SGLANG_MEMORY_SAVER_CUDA_GRAPH = EnvBool(False)
-@@ -1505,6 +1519,14 @@ class Envs:
+@@ -1505,6 +1521,14 @@ class Envs:
      # Sequences a captured KDA extend bucket accepts; a larger prefill batch on
      # any dp rank runs the step eagerly. Bounds the padded grids and scratch.
      SGLANG_KDA_PREFILL_GRAPH_MAX_SEQS = EnvInt(128)
@@ -8504,13 +8506,33 @@ index 3b035cf9c9e0698f016da9cee6a4b88f07092d8e..a360eb592baa51b3ac8401a52ac65b1f
          logits_output=logits_output,
          next_token_ids=predict,
 diff --git a/python/sglang/srt/speculative/eagle_worker_v2.py b/python/sglang/srt/speculative/eagle_worker_v2.py
-index debbfc7bc5059da29cca7c3f71a9001c89272280..c1f65c1655462d4a8362aa5815642352434e4b9a 100644
+index debbfc7bc5059da29cca7c3f71a9001c89272280..b322580c9645d5141c6affc6b91c8968c5cc114e 100644
 --- a/python/sglang/srt/speculative/eagle_worker_v2.py
 +++ b/python/sglang/srt/speculative/eagle_worker_v2.py
-@@ -143,6 +143,25 @@ _is_xpu = is_xpu()
+@@ -1,4 +1,5 @@
+ import contextlib
++import copy
+ import logging
+ import time
+ from typing import List, Optional
+@@ -143,6 +144,39 @@ _is_xpu = is_xpu()
  logger = logging.getLogger(__name__)
  
  
++class _RowPaddedLMHeadMethod:
++    """Apply a block-FP8 head whose rows were padded to a 128 multiple."""
++
++    def __init__(self, inner, rows: int):
++        self.inner = inner
++        self.rows = rows
++
++    def apply(self, layer, x, bias=None):
++        out = self.inner.apply(layer, x, bias)
++        if out.shape[-1] != self.rows:
++            out = out[..., : self.rows].contiguous()
++        return out
++
++
 +def _block_quant_fp8_chunked(
 +    weight: torch.Tensor, block: int = 128, rows_per_chunk: int = 1024
 +) -> tuple[torch.Tensor, torch.Tensor]:
@@ -8533,16 +8555,22 @@ index debbfc7bc5059da29cca7c3f71a9001c89272280..c1f65c1655462d4a8362aa5815642352
  def _qsa_index_share_requested(hf_config) -> bool:
      """--json-model-override-args writes top-level hf_config attributes, while
      checkpoint configs carry the flag on the nested text_config; read both."""
-@@ -352,6 +371,69 @@ class EagleDraftWorker(EagleDraftWorkerBase):
+@@ -352,6 +386,94 @@ class EagleDraftWorker(EagleDraftWorkerBase):
              # Share the embedding and lm_head
              self.draft_runner.model.set_embed_and_head(embed, head)
              maybe_share_target_lm_head()
 +            if envs.SGLANG_LM_HEAD_FP8.get() and self.hot_token_id is None:
 +                del head  # Release this reference to the BF16 head before replacement.
 +                self._quantize_shared_lm_head_fp8(embed)
++            elif envs.SGLANG_DRAFT_LM_HEAD_FP8.get() and self.hot_token_id is None:
++                self._quantize_shared_lm_head_fp8(embed, draft_only=True)
 +
-+    def _quantize_shared_lm_head_fp8(self, embed: torch.Tensor) -> None:
-+        """Quantize and share the static target/draft head for block-FP8 GEMM."""
++    def _quantize_shared_lm_head_fp8(
++        self, embed: torch.Tensor, draft_only: bool = False
++    ) -> None:
++        """Quantize the static head for block-FP8 GEMM, shared by target and
++        draft, or (draft_only) as a separate draft copy that leaves the target
++        head and therefore the output distribution unchanged."""
 +        from torch.nn import Parameter
 +
 +        from sglang.srt.layers.quantization.fp8 import Fp8Config, Fp8LinearMethod
@@ -8569,7 +8597,7 @@ index debbfc7bc5059da29cca7c3f71a9001c89272280..c1f65c1655462d4a8362aa5815642352
 +        if embed is not None and embed.data_ptr() == weight.data_ptr():
 +            logger.warning("SGLANG_LM_HEAD_FP8: head tied to embedding; skipped")
 +            return
-+        if weight.dim() != 2 or weight.dtype not in (torch.bfloat16, torch.float16) or any(d % 128 for d in weight.shape):
++        if weight.dim() != 2 or weight.dtype not in (torch.bfloat16, torch.float16) or weight.shape[1] % 128:
 +            logger.warning("SGLANG_LM_HEAD_FP8: unsupported head %s %s; skipped", weight.dtype, tuple(weight.shape))
 +            return
 +        method = Fp8LinearMethod(
@@ -8586,20 +8614,39 @@ index debbfc7bc5059da29cca7c3f71a9001c89272280..c1f65c1655462d4a8362aa5815642352
 +            # DeepGEMM requires UE8M0 requantization during weight loading.
 +            logger.warning("SGLANG_LM_HEAD_FP8: DeepGEMM needs prepared scales; skipped")
 +            return
-+        quantized, scales = _block_quant_fp8_chunked(weight)
++        # A TP vocab shard need not be a 128 multiple (154880 / 4 = 38720):
++        # pad zero rows for the block GEMM and slice them off its output.
++        rows = weight.shape[0]
++        padded = torch.nn.functional.pad(weight, (0, 0, 0, (-rows) % 128))
++        quantized, scales = _block_quant_fp8_chunked(padded)
++        del padded
++        head_method = method if quantized.shape[0] == rows else _RowPaddedLMHeadMethod(method, rows)
 +        q_param = Parameter(quantized, requires_grad=False)
 +        s_param = Parameter(scales, requires_grad=False)
-+        for head in (target_head, draft_head):
++        if draft_only:
++            draft_head = copy.copy(target_head)
++            draft_head._parameters = dict(target_head._parameters)
++            draft_head._buffers = dict(target_head._buffers)
++            draft_head._modules = dict(target_head._modules)
++            self.draft_runner.model.lm_head = draft_head
++            heads = (draft_head,)
++        else:
++            heads = (target_head, draft_head)
++        for head in heads:
 +            # This static conversion does not support later BF16 weight reloads.
 +            del head.weight
 +            head.weight = q_param
 +            head.weight_scale_inv = s_param
-+            head.quant_method = method
++            head.quant_method = head_method
 +            # An on-the-fly block-FP8 head has no preprocessed MXFP8 view.
 +            head.block_fp8_mxfp8_ready = False
 +        del weight
 +        torch.cuda.empty_cache()
-+        logger.info("Shared lm_head quantized to block FP8: %s", tuple(quantized.shape))
++        logger.info(
++            "%s lm_head quantized to block FP8: %s",
++            "Draft" if draft_only else "Shared",
++            tuple(quantized.shape),
++        )
  
      def _resolve_shared_embed_and_head(self):
          target_runner = self.target_worker.model_runner

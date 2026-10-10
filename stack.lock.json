@@ -80,11 +80,11 @@
     },
     {
       "arg": "GLM53_SGLANG_TREE",
-      "value": "39c10d7ef0d1ab81a24cc9fc9514cac01aecbcc3"
+      "value": "e5d3c283381166288f2f2a98c5d2464c921a2cf5"
     },
     {
       "arg": "GLM53_SGLANG_PATCH_SHA256",
-      "value": "0d787a25d09b79cb268b72755b9ce1339624db06fb4b373cf59aba8a90537779"
+      "value": "c31b713342ea1164588e9a6b84277e6f8789a037608b2c31c78b90482563d16e"
     },
     {
       "arg": "GLM53_FLASHINFER_REPOSITORY",
@@ -168,9 +168,9 @@
       "repository": "https://github.com/sgl-project/sglang.git",
       "head": "3831e7e0918052be50ef38b3ff62154573e213d7",
       "upstream_tree": "eb4fd3d60d53b7ea11eb100c29fd0bd110d7cb1c",
-      "tree": "39c10d7ef0d1ab81a24cc9fc9514cac01aecbcc3",
+      "tree": "e5d3c283381166288f2f2a98c5d2464c921a2cf5",
       "patch": "patches/sglang-glm53-integration.patch",
-      "patch_sha256": "0d787a25d09b79cb268b72755b9ce1339624db06fb4b373cf59aba8a90537779",
+      "patch_sha256": "c31b713342ea1164588e9a6b84277e6f8789a037608b2c31c78b90482563d16e",
       "upstream_main_base": "3831e7e0918052be50ef38b3ff62154573e213d7"
     },
     "flashinfer": {
@@ -209,10 +209,10 @@
     {
       "name": "sglang-glm53-integration",
       "path": "patches/sglang-glm53-integration.patch",
-      "sha256": "0d787a25d09b79cb268b72755b9ce1339624db06fb4b373cf59aba8a90537779",
+      "sha256": "c31b713342ea1164588e9a6b84277e6f8789a037608b2c31c78b90482563d16e",
       "base_head": "3831e7e0918052be50ef38b3ff62154573e213d7",
       "base_tree": "eb4fd3d60d53b7ea11eb100c29fd0bd110d7cb1c",
-      "result_tree": "39c10d7ef0d1ab81a24cc9fc9514cac01aecbcc3"
+      "result_tree": "e5d3c283381166288f2f2a98c5d2464c921a2cf5"
     },
     {
       "name": "flashinfer-glm53-integration",
@@ -229,12 +229,11 @@
     "vision": true,
     "kv_cache_dtype": "fp8_e4m3",
     "dsa_backend": "native FlashInfer SM120 sparse MLA with 528-byte scaled-FP8 NoPE rows",
-    "speculation": "native EAGLE/NextN MTP, adaptive 5/1/6",
+    "speculation": "native EAGLE/NextN MTP, fixed 3/1/4; block-FP8 draft-only LM head",
     "reasoning_parser": "glm45",
     "tool_call_parser": "glm47",
-    "target_total_token_pool": 524288,
-    "target_concurrency": null,
-    "mamba_state_slots_at_c4": 28,
+    "target_total_token_pool": 1048576,
+    "target_concurrency": 16,
     "cublas_workspace_config": ":4096:2:16:8",
     "image_env_defaults": {
       "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "1",
@@ -243,10 +242,15 @@
     },
     "prefill_cuda_graph_backend": "breakable",
     "prefill_cuda_graph_tokens": [
+      16,
+      32,
       64,
-      128
+      128,
+      256,
+      512
     ],
-    "prefill_cuda_graph_max_batch_size": 1
+    "prefill_cuda_graph_max_batch_size": 1,
+    "mamba_state_slots": 96
   },
   "verification": {
     "sglang_source_verifiable": true,
