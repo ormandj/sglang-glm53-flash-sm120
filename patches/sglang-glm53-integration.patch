@@ -3157,6 +3157,369 @@ index b5785fa8e6de618c730b71aae3dd8f80bccf376f..68fee06e42b301bb0c9cf09ca714b697
  def validate_buckets_rule(arg_name: str, buckets_rule: List[str]):
      if not buckets_rule:
          return
+diff --git a/python/sglang/srt/batch_overlap/operations.py b/python/sglang/srt/batch_overlap/operations.py
+index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8833dbf33 100644
+--- a/python/sglang/srt/batch_overlap/operations.py
++++ b/python/sglang/srt/batch_overlap/operations.py
+@@ -14,6 +14,7 @@ from typing import (
+     Union,
+ )
+ 
++from sglang.srt.batch_overlap import prefill_mbo
+ from sglang.srt.layers.dp_attention import set_dp_buffer_len
+ from sglang.srt.model_executor.forward_context import (
+     forward_context,
+@@ -54,8 +55,12 @@ def execute_overlapped_operations(
+ 
+     stages_a = _convert_operations_to_stages(operations_a)
+     stages_b = _convert_operations_to_stages(operations_b)
+-    executor_a = _StageExecutor("a", stages_a, inputs=inputs_a, child_ctx=child_ctx_a)
+-    executor_b = _StageExecutor("b", stages_b, inputs=inputs_b, child_ctx=child_ctx_b)
++    executor_a = _StageExecutor(
++        "a", stages_a, inputs=inputs_a, child_ctx=child_ctx_a, microbatch=0
++    )
++    executor_b = _StageExecutor(
++        "b", stages_b, inputs=inputs_b, child_ctx=child_ctx_b, microbatch=1
++    )
+ 
+     for _ in range(delta_stage):
+         executor_a.next()
+@@ -77,9 +82,13 @@ def _resolve_tbo_child_contexts():
+     backend that handles TBO splitting internally like DeepSeek MHA's
+     resolve_attn_backend path)."""
+     # Lazy import to avoid circular dependency at module load time.
++    from sglang.srt.batch_overlap import prefill_mbo
+     from sglang.srt.layers.attention.tbo_backend import TboAttnBackend
+ 
+     ctx = get_forward_context()
++    mbo_children = prefill_mbo.active_child_backends()
++    if mbo_children is not None:
++        return tuple(replace(ctx, attn_backend=child) for child in mbo_children)
+     backend = ctx.attn_backend
+     if not isinstance(backend, TboAttnBackend):
+         return None, None
+@@ -111,8 +120,10 @@ class _StageExecutor:
+         stages: List[Stage],
+         inputs: dict,
+         child_ctx: Optional[ForwardContext] = None,
++        microbatch: int = 0,
+     ):
+         self._debug_name = debug_name
++        self._microbatch = microbatch
+         self._stages = stages
+         self._index = 0
+         self._stage_state = _StateDict()
+@@ -128,7 +139,10 @@ class _StageExecutor:
+         self._global_dp_buffer_len = forward_batch.global_dp_buffer_len
+         self._local_dp_buffer_len = forward_batch.tbo_padded_len
+         self._global_num_tokens = forward_batch.global_num_tokens_cpu
+-        self._is_dp_max_padding = forward_batch.dp_padding_mode.is_max_len()
++        self._is_dp_max_padding = (
++            forward_batch.dp_padding_mode is not None
++            and forward_batch.dp_padding_mode.is_max_len()
++        )
+ 
+     def next(self):
+         assert not self.done
+@@ -138,12 +152,14 @@ class _StageExecutor:
+         # TODO: We currently always call set_dp_buffer_len here because sub-batches
+         # may have different padded lengths. It can likely be removed after TBO slice &
+         # pad logic is refactored.
+-        set_dp_buffer_len(
+-            self._global_dp_buffer_len,
+-            self._local_dp_buffer_len,
+-            self._is_dp_max_padding,
+-            self._global_num_tokens,
+-        )
++        if self._global_dp_buffer_len is not None:
++            set_dp_buffer_len(
++                self._global_dp_buffer_len,
++                self._local_dp_buffer_len,
++                self._is_dp_max_padding,
++                self._global_num_tokens,
++            )
++        prefill_mbo.set_microbatch(self._microbatch)
+ 
+         ctx_mgr = (
+             forward_context(self._child_ctx)
+diff --git a/python/sglang/srt/batch_overlap/operations_strategy.py b/python/sglang/srt/batch_overlap/operations_strategy.py
+index af2171e3d8d17bf3a877c76be7956b9699cb573b..eebb57ece623acf6ccc6031a1f2ae9dbef7354f0 100644
+--- a/python/sglang/srt/batch_overlap/operations_strategy.py
++++ b/python/sglang/srt/batch_overlap/operations_strategy.py
+@@ -63,6 +63,17 @@ class OperationsStrategy:
+                     for layer in layers
+                 ]
+             )
++        elif layer_name == "Glm5NextDecoderLayer":
++            ops: List[Operation] = []
++            for layer in layers:
++                ops += [
++                    layer.op_mbo_attn,
++                    operations.YieldOperation(),
++                    layer.op_mbo_ffn,
++                    operations.YieldOperation(),
++                ]
++            ops.append(layers[-1].op_mbo_finish)
++            return OperationsStrategy(operations=ops, tbo_delta_stages=0)
+         elif layer_name == "DeepseekV4DecoderLayer":
+             return OperationsStrategy.concat(
+                 [
+diff --git a/python/sglang/srt/batch_overlap/prefill_mbo.py b/python/sglang/srt/batch_overlap/prefill_mbo.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6a27c02d2
+--- /dev/null
++++ b/python/sglang/srt/batch_overlap/prefill_mbo.py
+@@ -0,0 +1,221 @@
++"""Two-microbatch prefill for TP all-reduce models.
++
++A large single-request extend is split into two halves that run layer by layer
++in turn. Each half's tensor-parallel all-reduce runs on a side stream, on its own
++NCCL communicator, while the other half computes. Opt in with
++``SGLANG_PREFILL_MBO``.
++"""
++
++from __future__ import annotations
++
++import logging
++from typing import TYPE_CHECKING, List, Optional
++
++import torch
++
++from sglang.srt.environ import envs
++
++if TYPE_CHECKING:
++    from sglang.srt.layers.attention.base_attn_backend import AttentionBackend
++    from sglang.srt.model_executor.forward_batch_info import ForwardBatch
++
++logger = logging.getLogger(__name__)
++
++# KV pages, k-pool groups and KDA chunks of both halves must stay aligned.
++_SPLIT_ALIGN = 256
++
++_child_backends: Optional[List[AttentionBackend]] = None
++_active = False
++_microbatch = 0
++_comm_stream: Optional[torch.cuda.Stream] = None
++_comm_group = None
++
++
++def enabled() -> bool:
++    return envs.SGLANG_PREFILL_MBO.get()
++
++
++def setup(child_backends: List[AttentionBackend], tp_ranks: List[int]) -> None:
++    """Called once on every TP rank in the same order (creates a process group)."""
++    global _child_backends, _comm_group
++    _child_backends = child_backends
++    _comm_group = torch.distributed.new_group(ranks=tp_ranks, backend="nccl")
++
++
++def active_child_backends() -> Optional[List[AttentionBackend]]:
++    return _child_backends if _active else None
++
++
++def current_microbatch() -> int:
++    return _microbatch
++
++
++def set_microbatch(index: int) -> None:
++    global _microbatch
++    _microbatch = index
++
++
++def end_forward() -> None:
++    global _active, _microbatch
++    _active = False
++    _microbatch = 0
++
++
++def _split_tokens(forward_batch: ForwardBatch) -> Optional[int]:
++    from sglang.srt.model_executor.forward_batch_info import ForwardMode
++
++    if _child_backends is None or forward_batch.forward_mode != ForwardMode.EXTEND:
++        return None
++    if forward_batch.batch_size != 1 or (
++        torch.cuda.is_available() and torch.cuda.is_current_stream_capturing()
++    ):
++        return None
++    num_tokens = forward_batch.extend_seq_lens_cpu[0]
++    if num_tokens < envs.SGLANG_PREFILL_MBO_MIN_TOKENS.get():
++        return None
++    if forward_batch.input_ids.shape[0] != num_tokens:
++        return None
++    prefix = forward_batch.extend_prefix_lens_cpu[0]
++    split = (prefix + num_tokens // 2) // _SPLIT_ALIGN * _SPLIT_ALIGN - prefix
++    if split < _SPLIT_ALIGN or num_tokens - split < _SPLIT_ALIGN:
++        return None
++    return split
++
++
++_TRACK_FIELDS = (
++    "mamba_track_indices",
++    "mamba_track_mask",
++    "mamba_track_seqlens",
++    "mamba_prefill_track_mask_cpu",
++    "mamba_track_seqlens_cpu",
++)
++_PRE_FORWARD_FIELDS = (
++    "mamba_cow_src_indices",
++    "mamba_cow_dst_indices",
++    "mamba_clear_indices",
++)
++
++
++def maybe_split(forward_batch: ForwardBatch) -> bool:
++    """Split an eligible extend into two children with their own attention metadata."""
++    global _active
++    _active = False
++    split = _split_tokens(forward_batch)
++    if split is None:
++        return False
++
++    from sglang.srt.batch_overlap.two_batch_overlap import (
++        TboForwardBatchPreparer,
++        _update_device_and_sum_field_from_cpu_field,
++    )
++    from sglang.srt.model_executor.forward_batch_info import compute_position
++    from sglang.srt.runtime_context import attention_backends
++
++    num_tokens = forward_batch.extend_seq_lens_cpu[0]
++    prefix = forward_batch.extend_prefix_lens_cpu[0]
++
++    # Track fields belong to the child whose tokens reach the tracked length;
++    # copy-on-write and clears already ran on the parent before the forward.
++    track = {k: getattr(forward_batch, k) for k in _TRACK_FIELDS}
++    pre = {k: getattr(forward_batch, k) for k in _PRE_FORWARD_FIELDS}
++    for k in (*_TRACK_FIELDS, *_PRE_FORWARD_FIELDS):
++        setattr(forward_batch, k, None)
++    try:
++        non_padded = (
++            TboForwardBatchPreparer.compute_tbo_children_num_token_non_padded_raw(
++                tbo_split_token_index=split, num_token_non_padded=num_tokens
++            )
++        )
++        children = [
++            TboForwardBatchPreparer.filter_batch(
++                forward_batch,
++                start_token_index=start,
++                end_token_index=end,
++                start_seq_index=0,
++                end_seq_index=1,
++                out_num_token_non_padded=non_padded[i : i + 1],
++                out_num_token_non_padded_cpu=end - start,
++            )
++            for i, (start, end) in enumerate(((0, split), (split, num_tokens)))
++        ]
++    finally:
++        for k, v in (*track.items(), *pre.items()):
++            setattr(forward_batch, k, v)
++
++    child_a, child_b = children
++    child_a.extend_seq_lens_cpu = [split]
++    child_b.extend_seq_lens_cpu = [num_tokens - split]
++    for child in children:
++        _update_device_and_sum_field_from_cpu_field(
++            child, "extend_seq_lens_cpu", "extend_seq_lens", "extend_num_tokens"
++        )
++    child_a.seq_lens_cpu = child_a.seq_lens_cpu.clone()
++    child_a.seq_lens_cpu[0] = prefix + split
++    _update_device_and_sum_field_from_cpu_field(
++        child_a, "seq_lens_cpu", "seq_lens", "seq_lens_sum"
++    )
++    child_b.extend_prefix_lens_cpu = [prefix + split]
++    _update_device_and_sum_field_from_cpu_field(
++        child_b, "extend_prefix_lens_cpu", "extend_prefix_lens", None
++    )
++    prefill_backend, _ = attention_backends()
++    _, child_b.extend_start_loc = compute_position(
++        prefill_backend,
++        child_b.extend_prefix_lens,
++        child_b.extend_seq_lens,
++        child_b.extend_num_tokens,
++    )
++
++    tracks = track["mamba_track_mask"] is not None
++    if tracks:
++        tracked = (track["mamba_prefill_track_mask_cpu"] or [True])[0]
++        owner = (
++            child_a
++            if not tracked or track["mamba_track_seqlens_cpu"][0] <= prefix + split
++            else child_b
++        )
++        for k, v in track.items():
++            setattr(owner, k, v)
++
++    forward_batch.tbo_split_seq_index = 0
++    forward_batch.tbo_children = children
++    for backend, child in zip(_child_backends, children):
++        backend.init_forward_metadata(child)
++    _active = True
++    return True
++
++
++def start_all_reduce(tensor: torch.Tensor) -> torch.cuda.Event:
++    """All-reduce ``tensor`` in place on the side stream; returns its completion event."""
++    global _comm_stream
++    if _comm_stream is None:
++        _comm_stream = torch.cuda.Stream()
++    _comm_stream.wait_stream(torch.cuda.current_stream())
++    with torch.cuda.stream(_comm_stream):
++        torch.distributed.all_reduce(tensor, group=_comm_group)
++        event = torch.cuda.Event()
++        event.record()
++    return event
++
++
++class InFlightSum:
++    """An all-reduce started on the side stream; complete() joins it."""
++
++    __slots__ = ("value", "event")
++
++    def __init__(self, value: torch.Tensor):
++        self.value = value
++        self.event = start_all_reduce(value)
++
++    def complete(self) -> torch.Tensor:
++        torch.cuda.current_stream().wait_event(self.event)
++        return self.value
++
++
++def start_pending_sum(stream) -> None:
++    """Start the all-reduce a stage's recorded partial output owes."""
++    from sglang.srt.layers.layer_boundary.residual.stream import DeclaredSum
++
++    pending = stream.pending
++    assert pending is not None and isinstance(pending.owed, DeclaredSum)
++    pending.owed = InFlightSum(pending.value)
+diff --git a/python/sglang/srt/batch_overlap/two_batch_overlap.py b/python/sglang/srt/batch_overlap/two_batch_overlap.py
+index c4e457851eaf5a8cf2b734070c154ad7fb0a7a4e..c91e200b1d498f0296c2ead6db9e46afc5ba9267 100644
+--- a/python/sglang/srt/batch_overlap/two_batch_overlap.py
++++ b/python/sglang/srt/batch_overlap/two_batch_overlap.py
+@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence
+ 
+ import torch
+ 
++from sglang.srt.batch_overlap import prefill_mbo
+ from sglang.srt.batch_overlap.operations import (
+     execute_operations,
+     execute_overlapped_operations,
+@@ -951,7 +952,7 @@ def model_forward_stages(
+ ):
+     """Run stage operations with an independent residual stream per microbatch."""
+     strategy = OperationsStrategy.init_new_tbo(
+-        layers, forward_batch.global_forward_mode
++        layers, forward_batch.global_forward_mode or forward_batch.forward_mode
+     )
+     inputs = dict(
+         positions=positions,
+@@ -994,6 +995,7 @@ def model_forward_stages(
+             operations_arr=[strategy.operations] * 2,
+             delta_stages=[0, strategy.tbo_delta_stages],
+         )
++    prefill_mbo.end_forward()
+     for output in outputs:
+         output["residual"] = residual_batch.stream_of(output["forward_batch"])
+     hidden_states, forward_batch.residual_stream = _model_forward_tbo_merge_outputs(
 diff --git a/python/sglang/srt/configs/model_config.py b/python/sglang/srt/configs/model_config.py
 index 9ef405b8569d7fae1dd30b39d75d2c84bb25d441..ca5ea22da541ac3eae2b2ea21c924df47b21a583 100644
 --- a/python/sglang/srt/configs/model_config.py
@@ -3989,7 +4352,7 @@ index 2608621f6ab5af5ebb6a019e34db882a4f230f19..e29c941b6ec24a1e65b60702e5eb4dd1
  async def prefill_shapes(disaggregation_mode: str, tokenizer_manager: TokenizerManager):
      """Warmup Triton kernels across a wide range of prefill seq_lens (up to 32K).
 diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
-index 90959d8cd107717d6ab882189e535f92bf6d9d28..1a9dc3788f64695e75d372b8a48d466f90d2b847 100644
+index 90959d8cd107717d6ab882189e535f92bf6d9d28..dc3ac1b3eb99a1ef003661cc89f418797f3ae812 100644
 --- a/python/sglang/srt/environ.py
 +++ b/python/sglang/srt/environ.py
 @@ -468,6 +468,9 @@ class Envs:
@@ -4044,13 +4407,17 @@ index 90959d8cd107717d6ab882189e535f92bf6d9d28..1a9dc3788f64695e75d372b8a48d466f
  
      # ===================================================================
      # Tokenizer, request state, embeddings, and reasoning controls
-@@ -1734,6 +1758,9 @@ class Envs:
+@@ -1734,6 +1758,13 @@ class Envs:
      SGLANG_DSA_MQA_LOGITS_FREE_MEM_FRACTION = EnvFloat(0.2)
      SGLANG_ENABLE_PCG_DSV2_DUAL_STREAM = EnvBool(False)
      SGLANG_DSA_TOPK_BROADCAST = EnvBool(False)
 +    # Split k-pool indexer prefill rows across attention-TP ranks and all-gather the
 +    # top-k once query rows x pooled keys reach this many elements; 0 disables.
 +    SGLANG_DSA_INDEXER_ROW_SPLIT_MIN_ELEMS = EnvInt(0)
++    # Split large single-request extends into two microbatches whose TP
++    # all-reduces overlap the other's compute (GLM-5-Next).
++    SGLANG_PREFILL_MBO = EnvBool(False)
++    SGLANG_PREFILL_MBO_MIN_TOKENS = EnvInt(4096)
      SGLANG_DISABLE_DSA_INDEXER_FUSION = EnvBool(False)
      # HIP analog of CUDA SGLANG_DISABLE_DSA_INDEXER_FUSION (default on).
      # Set 1 for the legacy split writer. Omits Hadamard; pre-quant logits match.
@@ -5198,6 +5565,55 @@ index 37018f0397cb4e97a97f9cd9cebb944ecec6206a..9d3b7214591fb42bfa27061643946d18
      parallel = get_parallel()
      if not parallel.dcp_enabled:
          return torch.cat([prefix_kv_a, prefix_k_pe], dim=-1)
+diff --git a/python/sglang/srt/layers/layer_boundary/residual/mhc.py b/python/sglang/srt/layers/layer_boundary/residual/mhc.py
+index 6aa41f9d80b5cd15b88d4af0824ebc1cb0991d86..8a82cc572f825109b5c4375379331113680e0fc9 100644
+--- a/python/sglang/srt/layers/layer_boundary/residual/mhc.py
++++ b/python/sglang/srt/layers/layer_boundary/residual/mhc.py
+@@ -13,12 +13,13 @@
+ # ==============================================================================
+ """Hyper-connection residual streams."""
+ 
+-from dataclasses import dataclass
+-from typing import Callable, Optional
++from dataclasses import dataclass, field
++from typing import Callable, List, Optional
+ 
+ import torch
+ 
+ from sglang.kernels.ops.layernorm.mhc import hc_contract, hc_expand
++from sglang.srt.batch_overlap import prefill_mbo
+ from sglang.srt.layers.layer_boundary.residual import LayerResidualOps
+ from sglang.srt.runtime_context import get_parallel
+ 
+@@ -41,8 +42,26 @@ class MHCState:
+     # The last layer's write-back also contracts the streams into the hidden
+     # states the layer stack hands on.
+     is_last_layer: bool = False
+-    h_res: Optional[torch.Tensor] = None
+-    h_post: Optional[torch.Tensor] = None
++    # h_res and h_post per prefill microbatch, which interleave within a layer.
++    _coefficients: List[List[Optional[torch.Tensor]]] = field(
++        default_factory=lambda: [[None, None], [None, None]]
++    )
++
++    @property
++    def h_res(self) -> Optional[torch.Tensor]:
++        return self._coefficients[prefill_mbo.current_microbatch()][0]
++
++    @h_res.setter
++    def h_res(self, value: Optional[torch.Tensor]) -> None:
++        self._coefficients[prefill_mbo.current_microbatch()][0] = value
++
++    @property
++    def h_post(self) -> Optional[torch.Tensor]:
++        return self._coefficients[prefill_mbo.current_microbatch()][1]
++
++    @h_post.setter
++    def h_post(self, value: Optional[torch.Tensor]) -> None:
++        self._coefficients[prefill_mbo.current_microbatch()][1] = value
+ 
+     @staticmethod
+     def _resolve_out_norm(out_norm):
 diff --git a/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py b/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 index 1db31e073889fc02a263dc277b9d753393368ad1..c1837ca7785b1d52ccba22bcda2dc28f9be65ca2 100644
 --- a/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
@@ -7334,6 +7750,39 @@ index 949f134da97195d43c6833e36f716dd5e1259bd1..e18e610848804f77843d138812f1c4d4
          sampling_info.grammar_mask = None
          return observer_state
  
+diff --git a/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py b/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py
+index dd4544de5c623bba4a059e5def71ac8e7810befd..36bab11371929168260631bd58016fbd3fc22dd4 100644
+--- a/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py
++++ b/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py
+@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional
+ 
+ import msgspec
+ 
++from sglang.srt.batch_overlap import prefill_mbo
+ from sglang.srt.environ import envs
+ from sglang.srt.layers.attention.attention_registry import (
+     ATTENTION_BACKENDS,
+@@ -133,6 +134,20 @@ def build_attention_backends(*, model_runner: ModelRunner) -> AttentionBackends:
+         )
+         decode_attn_backend = None
+         decode_attn_backend_group = []
++        if prefill_mbo.enabled() and not model_runner.is_draft_worker:
++            from sglang.srt.distributed.parallel_state import get_tp_group
++
++            prefill_mbo.setup(
++                [
++                    _build_resolved_backend(
++                        model_runner=model_runner,
++                        resolved=resolved,
++                        init_new_workspace=False,
++                    )
++                    for _ in range(2)
++                ],
++                get_tp_group().ranks,
++            )
+ 
+     if (
+         model_runner.device == "npu"
 diff --git a/python/sglang/srt/model_executor/pool_configurator.py b/python/sglang/srt/model_executor/pool_configurator.py
 index 38da3198b7e8cb0b5b78cae85bf320429ee677a0..97a269e51d992b5e18048c2b167e57495a4c817f 100644
 --- a/python/sglang/srt/model_executor/pool_configurator.py
@@ -7415,6 +7864,27 @@ index 3413fc7114ce0ef7b712030adf71f2843fdd2414..364ad017776f8dc06114b121bdb7665e
          log_message = (
              "Sorted by CUDA Time:\n"
              + prof_context.key_averages(group_by_input_shape=True).table(
+diff --git a/python/sglang/srt/model_executor/runner/eager_runner.py b/python/sglang/srt/model_executor/runner/eager_runner.py
+index 5115e4c90c7752cbb0d033d5fd4aa6d3b6ef709c..ffd03e1de78951ed3521fb91de0ea74331ee97a7 100644
+--- a/python/sglang/srt/model_executor/runner/eager_runner.py
++++ b/python/sglang/srt/model_executor/runner/eager_runner.py
+@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Tuple, Union
+ 
+ import torch
+ 
++from sglang.srt.batch_overlap import prefill_mbo
+ from sglang.srt.dllm.config import DllmConfig
+ from sglang.srt.environ import envs
+ from sglang.srt.layers.cp.utils import (
+@@ -324,6 +325,8 @@ class EagerRunner(BaseRunner):
+                 # e.g. Moss-VL's prefill cross-attention custom mask.
+                 model_runner.model.prepare_forward_batch(forward_batch)
+             model_runner.attn_backend.init_forward_metadata(forward_batch)
++            if prefill_mbo.enabled() and not model_runner.is_draft_worker:
++                prefill_mbo.maybe_split(forward_batch)
+             model_runner.attn_backend.prepare_prefill_shared_read_snapshot(
+                 forward_batch,
+                 num_qo_tokens=len(forward_batch.input_ids),
 diff --git a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py b/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
 index 7a11965ca46d84455e4aef54e00175fc61ade6da..3d3c743a8060ba1ab692c1f3618a60ec0eee1eda 100644
 --- a/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py
@@ -7970,10 +8440,18 @@ index 462b2039c70ef001193db96bdc1c335dcbbcb095..de4e9a6c354a9f2e5bc817070eea2098
          self.lm_head = ParallelLMHead(
              config.vocab_size,
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
-index 7fce8b739380ccbbd6ba03e134a6395f516b0029..8def68b41a4a19907ff53d15bdb3b4f96c1e3460 100644
+index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebbd34691af 100644
 --- a/python/sglang/srt/models/glm5_next.py
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -123,6 +123,7 @@ from sglang.srt.runtime_context import (
+@@ -11,6 +11,7 @@ from sglang.kernels.ops.attention.fla.fused_norm_gate import FusedRMSNormGated
+ from sglang.kernels.ops.layernorm.mhc import hc_contract
+ from sglang.kernels.ops.layernorm.mhc import hc_post as _hc_post_fn
+ from sglang.kernels.ops.layernorm.mhc import hc_pre as _hc_pre_fn
++from sglang.srt.batch_overlap import prefill_mbo
+ from sglang.srt.batch_overlap.two_batch_overlap import (
+     model_forward_stages,
+ )
+@@ -123,6 +124,7 @@ from sglang.srt.runtime_context import (
  from sglang.srt.speculative.spec_info import SpeculativeAlgorithm
  from sglang.srt.utils.common import (
      BumpAllocator,
@@ -7981,7 +8459,83 @@ index 7fce8b739380ccbbd6ba03e134a6395f516b0029..8def68b41a4a19907ff53d15bdb3b4f9
      LazyValue,
      add_prefix,
      log_info_on_rank0,
-@@ -1308,6 +1309,222 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -809,6 +811,7 @@ class Glm5NextDecoderLayer(nn.Module):
+                 ),
+                 is_last_layer=terminal,
+             ).residual_ops()
++        self._ffn_update = residual.ffn_update
+         self.attn_boundary, self.ffn_boundary = append_stages(
+             (
+                 declare_attn(
+@@ -924,6 +927,67 @@ class Glm5NextDecoderLayer(nn.Module):
+             hc_mult=self.config.hc_mult,
+         )
+ 
++    def op_mbo_attn(
++        self,
++        state,
++        hidden_states,
++        positions,
++        forward_batch,
++        zero_allocator=None,
++        ffn_sum=None,
++        **kwargs,
++    ):
++        """Prefill microbatch stage 1: write the previous FFN output, run the
++        attention and start its all-reduce."""
++        if ffn_sum is not None:
++            hidden_states = self._mbo_write_ffn(ffn_sum, forward_batch)
++        hidden_states = self.attn_boundary.prepare(hidden_states, forward_batch)
++        hidden_states = self.self_attn(
++            positions=positions,
++            hidden_states=hidden_states,
++            forward_batch=forward_batch,
++            zero_allocator=zero_allocator,
++            input_on_attn_tp_slices=self.attn_boundary.input_on_attn_tp_slices,
++            prev_topk_indices=None,
++        )
++        if isinstance(hidden_states, tuple):
++            hidden_states = hidden_states[0]
++        get_attn_tp_context().clear_attn_inputs()
++        hidden_states = self.attn_boundary.finish(hidden_states, forward_batch)
++        prefill_mbo.start_pending_sum(residual_batch.stream_of(forward_batch))
++        return dict(
++            hidden_states=hidden_states,
++            positions=positions,
++            forward_batch=forward_batch,
++            zero_allocator=zero_allocator,
++            **kwargs,
++        )
++
++    def op_mbo_ffn(self, state, hidden_states, forward_batch, **kwargs):
++        """Prefill microbatch stage 2: join the attention sum, run the FFN and
++        start its all-reduce."""
++        hidden_states = residual_batch.stream_of(forward_batch).complete(hidden_states)
++        hidden_states = self.ffn_boundary.prepare(hidden_states, forward_batch)
++        hidden_states = self.mlp(hidden_states, forward_batch, None)
++        return dict(
++            hidden_states=None,
++            ffn_sum=(prefill_mbo.InFlightSum(hidden_states), self._ffn_update),
++            forward_batch=forward_batch,
++            **kwargs,
++        )
++
++    def op_mbo_finish(self, state, ffn_sum, forward_batch, **kwargs):
++        return dict(
++            hidden_states=self._mbo_write_ffn(ffn_sum, forward_batch),
++            forward_batch=forward_batch,
++        )
++
++    @staticmethod
++    def _mbo_write_ffn(ffn_sum, forward_batch):
++        in_flight, update = ffn_sum
++        stream = residual_batch.stream_of(forward_batch)
++        return stream.write(update.update(in_flight.complete(), stream.residual))
++
+     def _is_layer_sparse(self, layer_id: int, is_nextn: bool) -> bool:
+         return is_nextn or (
+             self.config.n_routed_experts is not None
+@@ -1308,6 +1372,222 @@ class Glm5NextForConditionalGeneration(nn.Module):
              self.config.rope_scaling or {}
          )
  
@@ -12993,6 +13547,90 @@ index 6084fdd4c682dc539fdd5d91a644bbc294214367..33c8fc45ea7bb949b14d0aa435e6f340
  
  
  if __name__ == "__main__":
+diff --git a/test/registered/unit/batch_overlap/test_prefill_mbo.py b/test/registered/unit/batch_overlap/test_prefill_mbo.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f279a3b8ae197871422f2fa3ab9c2ce71dfd96a4
+--- /dev/null
++++ b/test/registered/unit/batch_overlap/test_prefill_mbo.py
+@@ -0,0 +1,78 @@
++"""Two-microbatch prefill: the split point and per-microbatch mHC coefficients."""
++
++import unittest
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import torch
++
++from sglang.srt.batch_overlap import prefill_mbo
++from sglang.srt.layers.layer_boundary.residual.mhc import MHCState
++from sglang.srt.model_executor.forward_batch_info import ForwardMode
++from sglang.test.ci.ci_register import register_cpu_ci
++from sglang.test.test_utils import CustomTestCase
++
++register_cpu_ci(est_time=5, suite="base-a-test-cpu")
++
++
++def _batch(prefix, tokens, *, mode=ForwardMode.EXTEND, batch_size=1):
++    return SimpleNamespace(
++        forward_mode=mode,
++        batch_size=batch_size,
++        extend_seq_lens_cpu=[tokens],
++        extend_prefix_lens_cpu=[prefix],
++        input_ids=torch.zeros(tokens, dtype=torch.int64),
++    )
++
++
++class TestSplitPoint(CustomTestCase):
++    def setUp(self):
++        patcher = patch.object(prefill_mbo, "_child_backends", [object(), object()])
++        patcher.start()
++        self.addCleanup(patcher.stop)
++
++    def test_full_chunk_splits_in_half(self):
++        self.assertEqual(prefill_mbo._split_tokens(_batch(8192, 8192)), 4096)
++
++    def test_split_lands_on_an_aligned_absolute_position(self):
++        split = prefill_mbo._split_tokens(_batch(300, 5000))
++        self.assertEqual((300 + split) % prefill_mbo._SPLIT_ALIGN, 0)
++        self.assertLessEqual(abs(split - 2500), prefill_mbo._SPLIT_ALIGN)
++
++    def test_ineligible_batches_are_not_split(self):
++        self.assertIsNone(prefill_mbo._split_tokens(_batch(0, 1024)))
++        self.assertIsNone(prefill_mbo._split_tokens(_batch(0, 8192, batch_size=2)))
++        self.assertIsNone(
++            prefill_mbo._split_tokens(_batch(0, 8192, mode=ForwardMode.MIXED))
++        )
++
++
++class TestMhcCoefficientsPerMicrobatch(CustomTestCase):
++    def tearDown(self):
++        prefill_mbo.set_microbatch(0)
++
++    def test_interleaved_reads_keep_their_own_coefficients(self):
++        posts = []
++
++        def hc_pre(hidden_states, *_):
++            tag = hidden_states[0, 0].item()
++            return hidden_states, torch.tensor([tag]), torch.tensor([10 * tag]), False
++
++        state = MHCState(
++            hc_mult=1,
++            hc_attn_pre=hc_pre,
++            hc_ffn_pre=hc_pre,
++            hc_post=lambda x, r, h_res, h_post: posts.append((h_res, h_post)) or x,
++        )
++        for microbatch, tag in ((0, 1.0), (1, 2.0)):
++            prefill_mbo.set_microbatch(microbatch)
++            state.read_attn_input(torch.full((2, 4), tag))
++        for microbatch in (0, 1):
++            prefill_mbo.set_microbatch(microbatch)
++            state.apply_post(torch.zeros(2, 4), torch.zeros(2, 4))
++
++        self.assertEqual([(r.item(), p.item()) for r, p in posts], [(1, 10), (2, 20)])
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/test/registered/unit/configs/test_model_config_shapes.py b/test/registered/unit/configs/test_model_config_shapes.py
 index 69caf6beabe9a1c2e1881293c6764627a79de868..c6766d34d4b20c4c77023e2c4e60f8fe1aca584e 100644
 --- a/test/registered/unit/configs/test_model_config_shapes.py
