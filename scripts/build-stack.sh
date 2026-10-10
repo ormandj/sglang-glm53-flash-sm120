@@ -6,6 +6,19 @@ rustup toolchain install 1.92 --profile minimal
 uv pip install --python "$py" 'setuptools>=80' setuptools-rust 'setuptools-scm>=8,<10' wheel build scikit-build-core cmake ninja
 uv run --no-project --python "$py" python "$root/scripts/prepare-stack.py"
 uv pip uninstall --python "$py" flashinfer-python flashinfer-cubin flashinfer-jit-cache sgl-deep-gemm deep-gemm || true
+# The base may ship further flashinfer-jit-cache provider distributions; this image JIT-compiles from source.
+leftover=$(uv pip freeze --python "$py" | sed -n 's/^\(flashinfer[-_][A-Za-z0-9_.-]*\)[ =@].*/\1/p')
+if [ -n "$leftover" ]; then uv pip uninstall --python "$py" $leftover; fi
+"$py" - <<'PY'
+import importlib.metadata as md, importlib.util as u, pathlib, shutil
+spec = u.find_spec("flashinfer_jit_cache")
+if spec is not None:
+    owners = md.packages_distributions().get("flashinfer_jit_cache")
+    assert not owners, owners
+    for location in spec.submodule_search_locations or [pathlib.Path(spec.origin).parent]:
+        shutil.rmtree(location)
+assert u.find_spec("flashinfer_jit_cache") is None
+PY
 cd "$root/sources/flashinfer"
 uv pip install --python "$py" --no-build-isolation '.[cu13]' 'nvidia-cutlass-dsl[cu13]==4.8.0'
 cd "$root/sources/deepgemm"
