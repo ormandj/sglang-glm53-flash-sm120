@@ -10043,10 +10043,10 @@ index 0000000000000000000000000000000000000000..72186c78873ac80382abe483fedc47da
 +    unittest.main()
 diff --git a/test/registered/kernels/ops/attention/test_dsa_capture_owner_cuda.py b/test/registered/kernels/ops/attention/test_dsa_capture_owner_cuda.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..5cd7b2fc2bfa56c5eef5abbf8eb823acf0fd97b9
+index 0000000000000000000000000000000000000000..6229911ad5015e84bf196004fbf1e6293c9b032c
 --- /dev/null
 +++ b/test/registered/kernels/ops/attention/test_dsa_capture_owner_cuda.py
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,202 @@
 +import pytest
 +import torch
 +
@@ -10217,12 +10217,14 @@ index 0000000000000000000000000000000000000000..5cd7b2fc2bfa56c5eef5abbf8eb823ac
 +        FullCudaGraphBackend,
 +    )
 +
++    from sglang.srt.runtime_context import get_parallel
++
 +    indexer = object.__new__(Indexer)
 +    runner = mock.Mock()
 +    runner.device_module = torch.cuda
-+    runner.model_runner.tp_group.barrier = lambda: None
 +    runner.enable_profile_cuda_graph = False
-+    backend = FullCudaGraphBackend(runner)
++    with get_parallel().override(tp_group=mock.Mock(barrier=lambda: None)):
++        backend = FullCudaGraphBackend(runner)
 +
 +    values = torch.randn(8, device="cuda")
 +    produced = {}
@@ -10249,7 +10251,7 @@ index 0000000000000000000000000000000000000000..5cd7b2fc2bfa56c5eef5abbf8eb823ac
 +    sys.exit(pytest.main([__file__, "-q"]))
 diff --git a/test/registered/kernels/ops/attention/test_dsa_kpool_topk_transform.py b/test/registered/kernels/ops/attention/test_dsa_kpool_topk_transform.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1920fc791346dea3c8dd5c48c4f2de488cdfb2d
+index 0000000000000000000000000000000000000000..fe29498fa36f966839d6ea7a4f08b0db2dcc6f57
 --- /dev/null
 +++ b/test/registered/kernels/ops/attention/test_dsa_kpool_topk_transform.py
 @@ -0,0 +1,364 @@
@@ -10396,7 +10398,7 @@ index 0000000000000000000000000000000000000000..b1920fc791346dea3c8dd5c48c4f2de4
 +        out = fast_kpool_topk_transform_fused(
 +            score=score,
 +            lengths=lengths,
-+            pool_size=POOL_SIZE,
++            kpool=POOL_SIZE,
 +            topk=group_topk * POOL_SIZE,
 +            page_table=page_table,
 +            topk_indices_offset=topk_indices_offset,
@@ -10585,7 +10587,7 @@ index 0000000000000000000000000000000000000000..b1920fc791346dea3c8dd5c48c4f2de4
 +        out = fast_kpool_topk_transform_fused(
 +            score=score.cuda(),
 +            lengths=lengths.cuda(),
-+            pool_size=pool_size,
++            kpool=pool_size,
 +            topk=topk,
 +            page_table=page_table.cuda(),
 +            seq_lens=seq_lens.cuda(),
@@ -12491,7 +12493,7 @@ index 99866d2e6abe98964ccc44be440dea0f5923ec10..ecad2c70db9059d65d2f55babd72666d
      indices = indices.cpu().long()
      window = window.cpu()
 diff --git a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
-index 6084fdd4c682dc539fdd5d91a644bbc294214367..c74f4ea99d6cd7e23c334a0960fb1e86c2459cba 100644
+index 6084fdd4c682dc539fdd5d91a644bbc294214367..33c8fc45ea7bb949b14d0aa435e6f340d9a46c1f 100644
 --- a/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 +++ b/test/registered/kernels/ops/layernorm/test_mhc_kernels.py
 @@ -6,6 +6,9 @@ import torch
@@ -12596,7 +12598,7 @@ index 6084fdd4c682dc539fdd5d91a644bbc294214367..c74f4ea99d6cd7e23c334a0960fb1e86
 +    monkeypatch.setattr(mhc, "is_dsa_prefill_cp_interleave", lambda: False)
 +    monkeypatch.setattr(mhc, "use_symmetric_memory", lambda *a, **kw: nullcontext())
 +    monkeypatch.setattr(mhc, "is_allocation_symmetric", lambda: False)
-+    monkeypatch.setattr(mhc, "get_tp_group", lambda: None)
++    monkeypatch.setattr(mhc, "get_parallel", lambda: SimpleNamespace(tp_group=None))
 +    torch.manual_seed(20260830)
 +    device = torch.device("cuda")
 +    hc_mult, hidden_size, num_tokens = 4, 4096, 8
