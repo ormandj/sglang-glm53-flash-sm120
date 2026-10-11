@@ -4587,7 +4587,7 @@ index 303372481d05364693c8ecb795252e43a5f40693..9804f77eb8c6ff2ab4ed953a283ef2bf
          # A padded eager IDLE rank has no real requests and therefore no valid
          # DSA page-table rows to index. Return invalid rows with the physical DP
 diff --git a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
-index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864a23ec96f 100644
+index 8aae41a421407056d2101357ad10a74091622143..f73af0aa6916e0be8f9c975ef8ab365d05225911 100644
 --- a/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 +++ b/python/sglang/srt/layers/attention/dsa/dsa_indexer_kpool.py
 @@ -15,6 +15,8 @@ from sglang.srt.layers.attention.dsa.dsa_indexer import (
@@ -4617,7 +4617,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
  
  logger = logging.getLogger(__name__)
  
-@@ -125,6 +127,34 @@ def _mqa_logits_row_chunks(
+@@ -125,6 +127,42 @@ def _mqa_logits_row_chunks(
      )
  
  
@@ -4641,9 +4641,17 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
 +    min_elems = envs.SGLANG_DSA_INDEXER_ROW_SPLIT_MIN_ELEMS.get()
 +    if min_elems <= 0 or logits_elems < min_elems:
 +        return None
-+    if capture_mode.is_capture_mode or torch.cuda.is_current_stream_capturing():
++    if (
++        capture_mode.is_capture_mode
++        or torch.cuda.is_current_stream_capturing()
++        or is_in_breakable_cuda_graph()
++    ):
 +        return None
-+    group = get_parallel().attn_tp_group
++    parallel = get_parallel()
++    # Under context parallelism the ranks hold different rows.
++    if parallel.attn_cp_size > 1:
++        return None
++    group = parallel.attn_tp_group
 +    if group.world_size == 1 or num_rows < 4 * group.world_size:
 +        return None
 +    return group
@@ -4652,7 +4660,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
  class IndexerKPool(MultiPlatformOp):
      def __init__(
          self,
-@@ -236,12 +266,16 @@ class IndexerKPool(MultiPlatformOp):
+@@ -236,12 +274,16 @@ class IndexerKPool(MultiPlatformOp):
          self.softmax_scale = self.head_dim**-0.5
  
      @torch.compile(dynamic=True)
@@ -4670,7 +4678,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
      @torch.compile(dynamic=True)
      def _project_and_scale_head_gates(self, x: torch.Tensor) -> torch.Tensor:
          weights, _ = self.weights_proj(x.float())
-@@ -253,10 +287,22 @@ class IndexerKPool(MultiPlatformOp):
+@@ -253,10 +295,22 @@ class IndexerKPool(MultiPlatformOp):
      ) -> torch.Tensor:
          return weights.unsqueeze(-1) * q_scale * self.softmax_scale
  
@@ -4696,7 +4704,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
  
      def _can_overlap_prefill(
          self,
-@@ -1063,6 +1109,7 @@ class IndexerKPool(MultiPlatformOp):
+@@ -1063,6 +1117,7 @@ class IndexerKPool(MultiPlatformOp):
                  clean_logits=False,
              )
  
@@ -4704,7 +4712,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
          page_table_1, topk_offsets, _ = self._kpool_fused_topk_mapping(metadata)
          topk_result = self._topk_from_kpool_logits(
              logits,
-@@ -1090,9 +1137,86 @@ class IndexerKPool(MultiPlatformOp):
+@@ -1090,9 +1145,89 @@ class IndexerKPool(MultiPlatformOp):
          topk_row_starts: Optional[torch.Tensor],
          row_chunks: Tuple[slice, ...],
          out_rows: Optional[int],
@@ -4739,10 +4747,12 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
 +            )
 +
 +        # The same independence lets each rank score a contiguous share of the
-+        # rows; the gathered shares equal one pass on every rank.
-+        share = ceil_div(num_rows, group.world_size)
-+        lo = min(group.rank_in_group * share, num_rows)
-+        hi = min(lo + share, num_rows)
++        # rows; the gathered shares equal one pass on every rank. Shares differ
++        # by at most one row and are padded to the largest for the gather.
++        world = group.world_size
++        bounds = [r * num_rows // world for r in range(world + 1)]
++        share = ceil_div(num_rows, world)
++        lo, hi = bounds[group.rank_in_group], bounds[group.rank_in_group + 1]
 +        local_chunks = tuple(
 +            slice(max(c.start, lo), min(c.stop, hi))
 +            for c in row_chunks
@@ -4758,16 +4768,17 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
 +        )
 +        group.all_gather_into_tensor(gathered, local)
 +        num_out_rows = num_rows if out_rows is None else out_rows
-+        if num_out_rows <= gathered.shape[0]:
-+            return gathered[:num_out_rows]
-+        padded = torch.full(
++        result = torch.full(
 +            (num_out_rows, gathered.shape[1]),
 +            -1,
 +            dtype=gathered.dtype,
 +            device=gathered.device,
 +        )
-+        padded[: gathered.shape[0]] = gathered
-+        return padded
++        for r in range(world):
++            result[bounds[r] : bounds[r + 1]] = gathered[
++                r * share : r * share + bounds[r + 1] - bounds[r]
++            ]
++        return result
 +
 +    def _kpool_topk_rows(
 +        self,
@@ -4791,7 +4802,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
          single_chunk = len(row_chunks) == 1
          topk_result = None
          for rows in row_chunks:
-@@ -1139,14 +1263,16 @@ class IndexerKPool(MultiPlatformOp):
+@@ -1139,14 +1274,16 @@ class IndexerKPool(MultiPlatformOp):
              del logits
              if topk_result is None:
                  # Rows past the last chunk are padding, matching out_rows.
@@ -4810,7 +4821,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
          assert topk_result is not None
          return topk_result
  
-@@ -1227,6 +1353,7 @@ class IndexerKPool(MultiPlatformOp):
+@@ -1227,6 +1364,7 @@ class IndexerKPool(MultiPlatformOp):
                  num_rows=n_real, num_cols=total_k_rows, device=device
              ),
              out_rows=total_q,
@@ -4818,7 +4829,7 @@ index 8aae41a421407056d2101357ad10a74091622143..0c5b4bbc3aa8ae284b7653c4b07de864
          )
  
      def _get_topk_ragged_kpool(
-@@ -1473,6 +1600,7 @@ class IndexerKPool(MultiPlatformOp):
+@@ -1473,6 +1611,7 @@ class IndexerKPool(MultiPlatformOp):
                      num_rows=q_len, num_cols=pool_seq_len, device=q_fp8.device
                  ),
                  out_rows=None,
@@ -10990,10 +11001,10 @@ index 0000000000000000000000000000000000000000..6229911ad5015e84bf196004fbf1e629
 +    sys.exit(pytest.main([__file__, "-q"]))
 diff --git a/test/registered/kernels/ops/attention/test_dsa_kpool_indexer_row_split.py b/test/registered/kernels/ops/attention/test_dsa_kpool_indexer_row_split.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..3c613e03951f105f981aa794eb84ff7a4ac7d4fc
+index 0000000000000000000000000000000000000000..3ce052d9c357c416f29b66d2fd3d5924030ed0e6
 --- /dev/null
 +++ b/test/registered/kernels/ops/attention/test_dsa_kpool_indexer_row_split.py
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,160 @@
 +"""Row-split k-pool indexer prefill: every rank scores a share of the query rows and
 +the shares are all-gathered. The gathered top-k must select what one rank scoring
 +every row selects.
@@ -11139,6 +11150,16 @@ index 0000000000000000000000000000000000000000..3c613e03951f105f981aa794eb84ff7a
 +            groups=2048,
 +            row_chunks=(slice(0, 200), slice(200, 400), slice(400, 515)),
 +            out_rows=520,
++        )
++
++    def test_eight_ranks_with_uneven_shares(self):
++        # 33 rows over 8 ranks: ceil-sized shares would leave the last rank none.
++        self._check(
++            rows=33,
++            groups=2048,
++            row_chunks=(slice(0, 33),),
++            out_rows=None,
++            world_size=8,
 +        )
 +
 +
