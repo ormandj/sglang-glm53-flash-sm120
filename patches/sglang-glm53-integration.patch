@@ -5626,7 +5626,7 @@ index 6aa41f9d80b5cd15b88d4af0824ebc1cb0991d86..8a82cc572f825109b5c4375379331113
      @staticmethod
      def _resolve_out_norm(out_norm):
 diff --git a/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py b/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
-index 1db31e073889fc02a263dc277b9d753393368ad1..c1837ca7785b1d52ccba22bcda2dc28f9be65ca2 100644
+index 1db31e073889fc02a263dc277b9d753393368ad1..7ed77d9d0a117bf1d3ae97b08da2a218766365dd 100644
 --- a/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 +++ b/python/sglang/srt/layers/moe/moe_runner/flashinfer_cutlass.py
 @@ -9,7 +9,7 @@ small quant_info payload and route through ``MoeRunner``.
@@ -5695,7 +5695,7 @@ index 1db31e073889fc02a263dc277b9d753393368ad1..c1837ca7785b1d52ccba22bcda2dc28f
 +            "FlashInfer b12x W4A16 currently supports TP without expert "
 +            "all-to-all; use TP2/EP1."
 +        )
-+    if quant_info.moe_ep_size != 1:
++    if runner_config.moe_ep_size != 1:
 +        raise NotImplementedError("FlashInfer b12x W4A16 requires EP size 1.")
 +    if runner_config.num_local_experts != runner_config.num_experts:
 +        raise NotImplementedError(
@@ -15568,6 +15568,60 @@ index 0000000000000000000000000000000000000000..86f75de034904de86e30571c5ae68db6
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/test/registered/unit/layers/moe/test_flashinfer_b12x_w4a16_guards.py b/test/registered/unit/layers/moe/test_flashinfer_b12x_w4a16_guards.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..972138b4d2b1bd2826f2ee00003808f78f64aa53
+--- /dev/null
++++ b/test/registered/unit/layers/moe/test_flashinfer_b12x_w4a16_guards.py
+@@ -0,0 +1,48 @@
++"""The b12x W4A16 runner reads its expert placement from the runner config."""
++
++from types import SimpleNamespace
++
++import pytest
++import torch
++
++from sglang.srt.layers.moe.moe_runner.base import MoeRunnerConfig
++from sglang.srt.layers.moe.moe_runner.flashinfer_cutlass import (
++    FlashInferCutlassMoeQuantInfo,
++    _run_flashinfer_b12x_w4a16,
++)
++from sglang.test.ci.ci_register import register_cpu_ci
++
++register_cpu_ci(est_time=5, suite="base-a-test-cpu")
++
++
++def _run(*, ep_size):
++    quant_info = FlashInferCutlassMoeQuantInfo(
++        quant_type="w4a16_e4m3_k32",
++        w13_weight=torch.empty(0),
++        w2_weight=torch.empty(0),
++        quant_scales=[torch.empty(0)] * 4,
++    )
++    runner_config = MoeRunnerConfig(
++        num_experts=8,
++        num_local_experts=4,
++        layer=SimpleNamespace(moe_ep_size=ep_size),
++    )
++    _run_flashinfer_b12x_w4a16(
++        dispatch_output=None,
++        quant_info=quant_info,
++        runner_config=runner_config,
++        output=None,
++        enable_alltoall=False,
++    )
++
++
++def test_expert_parallel_layer_is_rejected():
++    with pytest.raises(NotImplementedError, match="EP size 1"):
++        _run(ep_size=2)
++
++
++def test_ep1_layer_passes_the_placement_check():
++    # The next guard requires every expert to be local; reaching it means the
++    # placement was read from the layer rather than the quant payload.
++    with pytest.raises(NotImplementedError, match="every expert to be local"):
++        _run(ep_size=1)
 diff --git a/test/registered/unit/layers/quantization/test_linear_fusion_quantization_gate.py b/test/registered/unit/layers/quantization/test_linear_fusion_quantization_gate.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..ac91e857b66f27392e502107ca446168bed685bb
