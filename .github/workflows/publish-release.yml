@@ -99,7 +99,11 @@ jobs:
           [[ "$image_source_revision" =~ ^[0-9a-f]{40}$ ]]
           git merge-base --is-ancestor "$image_source_revision" "$RELEASE_TARGET"
           git diff --exit-code "$image_source_revision" "$RELEASE_TARGET" -- \
-            Containerfile release.json stack.lock.json acceptance_check.py patches/
+            Containerfile stack.lock.json acceptance_check.py patches/
+          # The build does not read release.json; its published block records the
+          # stable release the documentation describes and may change after the build.
+          diff <(git show "${image_source_revision}:release.json" | jq -S 'del(.published)') \
+            <(git show "${RELEASE_TARGET}:release.json" | jq -S 'del(.published)')
           echo "RELEASE_DIGEST=$stable_digest" >>"$GITHUB_ENV"
           echo "RELEASE_IMAGE_SOURCE_REVISION=$image_source_revision" >>"$GITHUB_ENV"
 
