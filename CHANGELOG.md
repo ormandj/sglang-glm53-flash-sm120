@@ -1,8 +1,41 @@
 # Changelog
 
-Post-release documentation update (2026-09-30): add [TP2 W4A16 fixed-MTP decode and cold-prefill measurements](BENCHMARKS.md#v050-tp2-w4a16-fixed-native-mtp), with per-request and per-repetition data.
+## v0.6.0 (stable; 2026-10-11)
+
+### Upgrading from v0.5.x
+
+**Action required: replace your launch scripts.** v0.6.0 is not a drop-in image update; v0.5.x launch commands were not qualified with this image.
+
+1. TP4 users: download `zai-org/GLM-5.3-Flash` at revision `eb9eb208eb0d988989d07a6a12d0fdeb5f52574a`. The NVIDIA NVFP4 checkpoint is no longer the TP4 profile.
+2. Use the v0.6.0 `examples/serve-glm53-flash-tp4.sh` or `examples/serve-glm53-flash.sh` instead of copies of older launchers. If you maintain a custom launch command, compare it line by line with the new script. From both profiles, remove `--speculative-adaptive`, `--speculative-adaptive-config` and its mount, and set three steps, top-k one and four verification tokens. From TP2 commands, replace `SGLANG_LM_HEAD_FP8=1` with `SGLANG_DRAFT_LM_HEAD_FP8=1`: v0.6.0 implements `SGLANG_LM_HEAD_FP8`, and it would also quantize the target head and change outputs. From TP4 commands, remove the NVFP4 `--quantization modelopt_fp4`, `--moe-runner-backend flashinfer_cutlass`, `--disable-shared-experts-fusion`, `--json-model-override-args` and `--speculative-draft-model-quantization` settings and the `SGLANG_BCG_*` variables. `SGLANG_ENABLE_PCIE_IPC_ALLREDUCE`, `SGLANG_PCIE_IPC_MAX_NUMEL`, `SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION` and `CUBLAS_WORKSPACE_CONFIG` are image defaults and no longer need to be set.
+3. Point `CACHE_DIR` at a fresh directory: `/srv/cache/sglang-glm53-flash-sm120-v90-tp4` or `/srv/cache/sglang-glm53-flash-sm120-v90-tp2`.
+4. TP4 now admits 16 requests with a 1,048,576-token shared pool; plan client concurrency accordingly.
+
+### Changes
+
+- Serve Z.ai's FP8 checkpoint `zai-org/GLM-5.3-Flash` at TP4 with FP8 E4M3 KV, a 1,048,576-token request limit and shared device pool, 16-request admission, 96 recurrent-state slots, 8,192-token prefill chunks and 40 GB of HiCache per rank. This replaces the NVIDIA NVFP4 TP4 profile.
+- Keep the `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO` checkpoint and TP2 launcher.
+- Refresh the pinned SGLang and FlashInfer sources to current main, with FlashInfer 0.7.2 and Transformers 5.19.0.
+- Overlap tensor-parallel all-reduces with compute for single-request prefill chunks of 4,096 tokens or more by running each chunk as two interleaved halves. The TP2 launcher disables it (`SGLANG_PREFILL_MBO=0`) because it was slower with 4,096-token chunks.
+- Split the sparse-attention indexer's query rows across GPUs at long context and gather the selected tokens. Set `SGLANG_DSA_INDEXER_ROW_SPLIT_MIN_ELEMS=0` to disable it.
+- Run both launchers with fixed native MTP (three draft steps, top-k one, four verification tokens). The adaptive three/five-step ladder and `examples/glm53-adaptive.json` are removed.
+- Run the draft model's LM head as an FP8 GEMM (`SGLANG_DRAFT_LM_HEAD_FP8=1`) and keep the target LM head in BF16. The v0.5.0 TP2 launcher set `SGLANG_LM_HEAD_FP8=1`, which v0.5.0 did not implement. v0.6.0 implements it again, and it also quantizes the target head, which changes output logits; neither launcher enables it.
+- Add FP8 fused-MoE kernel configurations for this model's 289-expert layout on RTX PRO 6000 Blackwell Max-Q GPUs, and fix BF16 recurrent-state tracking in captured prefill graphs.
+- Use separate fresh kernel caches: `/srv/cache/sglang-glm53-flash-sm120-v90-tp2` and `/srv/cache/sglang-glm53-flash-sm120-v90-tp4`.
+
+### Measurements
+
+Fixed-MTP measurements on RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W with 16K coding prompts and 4,096-token capped outputs including reasoning and a post-answer tail. TP4 with the FP8 checkpoint measured 222.0 mean output tok/s and 77.8 target forwards/s at C1, 428.1 tok/s and 37.5 forwards/s at C4, and 10.1–10.6K prompt tok/s of cold prefill from 8K to 128K. TP2 with the W4A16 checkpoint measured 192.0 tok/s and 64.9 forwards/s at C1 (61.8 on v0.5.0), 391.1 tok/s and 32.8 forwards/s at C4, and 6.1–6.2K prompt tok/s from 32K to 128K. Both profiles scored 97.0% on GSM8K. Measurements used validation builds; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. See [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.6.0/BENCHMARKS.md) for windows, medians, C2 results and capacity coverage.
+
+### Known limitations
+
+- The device token pool is shared; 16 admitted requests do not each receive a 1M-token reservation.
+- Reasoning can exhaust the output budget before producing a final answer. Requesting input logprobs across a long prompt can exhaust GPU memory; score the continuation at the prompt boundary.
+- The documented memory envelope applies to the supplied profiles. Larger pools, image budgets or concurrency require memory acceptance checks.
 
 ## v0.5.0 (stable; 2026-09-30)
+
+Post-release documentation update (2026-09-30): add [TP2 W4A16 fixed-MTP decode and cold-prefill measurements](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.5.0/BENCHMARKS.md), with per-request and per-repetition data.
 
 - Add a TP4 launcher for `nvidia/GLM-5.3-Flash-NVFP4`, with a 1,048,576-token request limit, 2,621,440 shared FP8 KV tokens, 32-request admission and 8,192-token prefill chunks on four 96 GB SM120 GPUs.
 - Preserve the previous `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO` checkpoint and TP2 launcher. TP2 performance has not been measured for this release.

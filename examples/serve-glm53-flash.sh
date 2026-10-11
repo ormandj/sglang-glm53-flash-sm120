@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# TP2 profile for the previous owner W4A16 NVFP4 K32 checkpoint.
+# TP2 profile for the ormandj W4A16 NVFP4 K32 checkpoint.
 # TP2 fixed-MTP measurements: see BENCHMARKS.md.
 set -euo pipefail
 
 : "${MODEL_DIR:?set MODEL_DIR to the local GLM-5.3-Flash W4A16 artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a version-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.5.0}
+IMAGE=${IMAGE:-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 TP_SIZE=${TP_SIZE:-2}
@@ -47,7 +47,7 @@ if [[ "$TP_SIZE" != 2 ]]; then
   echo "This launcher is scoped to TP_SIZE=2" >&2
   exit 2
 fi
-for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS; do
+for value in MAX_TOTAL_TOKENS MAX_RUNNING_REQUESTS MAX_MAMBA_CACHE_SIZE CUDA_GRAPH_MAX_BS HICACHE_SIZE_GB; do
   current=${!value}
   if ! [[ "$current" =~ ^[1-9][0-9]*$ ]]; then
     echo "$value must be a positive integer" >&2
@@ -62,16 +62,6 @@ fi
 mkdir -p "$CACHE_DIR"
 model_dir=$(cd "$MODEL_DIR" && pwd)
 cache_dir=$(cd "$CACHE_DIR" && pwd)
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-# The adaptive spec-decode step config is REQUIRED at long context: without
-# it the adaptive controller sizes its speculative state buffers for the
-# default step ladder, which scales with the token pool and OOMs once real
-# context accumulates. The shipped config pins candidate_steps [3, 5].
-ADAPTIVE_CONFIG=${ADAPTIVE_CONFIG:-$script_dir/glm53-adaptive.json}
-if [[ ! -f "$ADAPTIVE_CONFIG" ]]; then
-  echo "ADAPTIVE_CONFIG not found: $ADAPTIVE_CONFIG" >&2
-  exit 2
-fi
 container_model_path=/models/glm53-flash-w4a16-e4m3-k32
 
 # EP is deliberately absent: TP=2 keeps half of the routed-expert bank on each
@@ -86,15 +76,11 @@ exec docker run --rm \
   --publish "${PORT}:8000" \
   --volume "${model_dir}:${container_model_path}:ro" \
   --volume "${cache_dir}:/root/.cache" \
-  --volume "${ADAPTIVE_CONFIG}:/etc/glm53-adaptive/adaptive.json:ro" \
   --env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   --env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0 \
   --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  --env CUBLAS_WORKSPACE_CONFIG=:4096:2:16:8 \
-  --env SGLANG_ENABLE_PCIE_IPC_ALLREDUCE=1 \
-  --env SGLANG_PCIE_IPC_MAX_NUMEL=786432 \
-  --env SGLANG_EXPERIMENTAL_DSA_KPOOL_METADATA_FUSION=1 \
-  --env SGLANG_LM_HEAD_FP8=1 \
+  --env SGLANG_DRAFT_LM_HEAD_FP8=1 \
+  --env SGLANG_PREFILL_MBO=0 \
   --env TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor \
   --env TILELANG_CACHE_DIR=/root/.cache/tilelang \
   --env TRITON_CACHE_DIR=/root/.cache/triton \
@@ -133,11 +119,9 @@ exec docker run --rm \
   --dsa-prefill-backend flashinfer_sparse_mla \
   --dsa-decode-backend flashinfer_sparse_mla \
   --speculative-algorithm EAGLE \
-  --speculative-num-steps 5 \
+  --speculative-num-steps 3 \
   --speculative-eagle-topk 1 \
-  --speculative-num-draft-tokens 6 \
-  --speculative-adaptive \
-  --speculative-adaptive-config /etc/glm53-adaptive/adaptive.json \
+  --speculative-num-draft-tokens 4 \
   --reasoning-parser glm45 \
   --tool-call-parser glm47 \
   --enable-metrics \

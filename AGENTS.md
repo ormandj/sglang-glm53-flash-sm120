@@ -49,10 +49,9 @@ Include reasoning in output throughput. Publish only fixed-MTP performance
 measurements and comparisons against a matching fixed-MTP baseline. Current
 README, BENCHMARKS, changelog, release notes and performance updates must not
 include adaptive throughput panels or older adaptive/supplemental rates.
-Preserve immutable published history. Adaptive serving remains the launcher
-default and is qualified separately; its throughput is not a second published
-benchmark series. Quality scores and reliability checks identify the serving
-configuration used.
+Preserve immutable published history. The launchers serve with the same fixed
+MTP configuration that is measured. Quality scores and reliability checks
+identify the serving configuration used.
 
 Performance and quality claims require measured evidence for the stated artifact, hardware, configuration and workload. If measurements use a validation build produced separately from the public image, say so plainly. Do not imply the public image was tested. Keep detailed private artifact bindings and operational receipts in the private qualification project.
 

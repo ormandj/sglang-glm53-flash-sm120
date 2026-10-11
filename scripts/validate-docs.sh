@@ -23,7 +23,8 @@ require_text "$repo/README.md" "$local_image"
 require_text "$repo/RUN.md" "IMAGE=${local_image}"
 require_text "$launcher" "IMAGE=\${IMAGE:-${local_image}}"
 require_text "$repo/README.md" "The current published stable image is \`${published_tag}\`"
-require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${published_cache_schema}"
+require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${published_cache_schema}-tp4"
+require_text "$repo/RUN.md" "/srv/cache/sglang-glm53-flash-sm120-${published_cache_schema}-tp2"
 require_text "$repo/CHANGELOG.md" "# Changelog"
 require_text "$repo/AGENTS.md" 'always uses the complete release name'
 
@@ -60,11 +61,12 @@ critical=(
   '--dsa-prefill-backend flashinfer_sparse_mla'
   '--dsa-decode-backend flashinfer_sparse_mla'
   '--mamba-ssm-dtype bfloat16'
+  '--env SGLANG_DRAFT_LM_HEAD_FP8=1'
+  '--env SGLANG_PREFILL_MBO=0'
   '--speculative-algorithm EAGLE'
-  '--speculative-num-steps 5'
+  '--speculative-num-steps 3'
   '--speculative-eagle-topk 1'
-  '--speculative-num-draft-tokens 6'
-  '--speculative-adaptive'
+  '--speculative-num-draft-tokens 4'
   '--reasoning-parser glm45'
   '--tool-call-parser glm47'
 )
@@ -74,25 +76,32 @@ tp4_critical=(
   "IMAGE=\${IMAGE:-${local_image}}"
   'TP_SIZE=${TP_SIZE:-4}'
   'CONTEXT_LENGTH=${CONTEXT_LENGTH:-1048576}'
-  'MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-2621440}'
-  'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-32}'
-  'MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-224}'
+  'MAX_TOTAL_TOKENS=${MAX_TOTAL_TOKENS:-1048576}'
+  'MAX_RUNNING_REQUESTS=${MAX_RUNNING_REQUESTS:-16}'
+  'MAX_MAMBA_CACHE_SIZE=${MAX_MAMBA_CACHE_SIZE:-96}'
   'HICACHE_SIZE_GB=${HICACHE_SIZE_GB:-40}'
-  '--quantization modelopt_fp4'
+  'MEM_FRACTION=${MEM_FRACTION:-0.935}'
   '--chunked-prefill-size 8192 --max-prefill-tokens 8192'
-  '--cuda-graph-bs-decode 1 2 3 4 8 16 32'
-  '--speculative-draft-model-quantization unquant'
-  '--json-model-override-args'
-  'model.layers.45.*'
+  '--cuda-graph-bs-prefill 16 32 64 128 256 512'
+  '--cuda-graph-bs-decode 1 2 3 4 8 16'
+  '--env SGLANG_DRAFT_LM_HEAD_FP8=1'
+  '--env SGLANG_KDA_EXTEND_BLOCK_TOKENS=2048'
+  '--speculative-num-steps 3'
+  '--speculative-num-draft-tokens 4'
   '--env NCCL_P2P_LEVEL="${NCCL_P2P_LEVEL:-SYS}"'
 )
 for value in "${tp4_critical[@]}"; do require_text "$launcher_tp4" "$value"; done
-for value in '--enable-multimodal' '--mm-preprocessing-device cpu' '--image-processor-backend torchvision' '--kv-cache-dtype fp8_e4m3' '--dsa-prefill-backend flashinfer_sparse_mla' '--dsa-decode-backend flashinfer_sparse_mla' '--speculative-adaptive' '--reasoning-parser glm45' '--tool-call-parser glm47'; do
+for value in '--enable-multimodal' '--mm-preprocessing-device cpu' '--image-processor-backend torchvision' '--kv-cache-dtype fp8_e4m3' '--dsa-prefill-backend flashinfer_sparse_mla' '--dsa-decode-backend flashinfer_sparse_mla' '--speculative-algorithm EAGLE' '--speculative-eagle-topk 1' '--reasoning-parser glm45' '--tool-call-parser glm47'; do
   require_text "$launcher_tp4" "$value"
 done
 require_text "$launcher" '--quantization modelopt_mixed'
+if grep -E -- '--quantization|--json-model-override-args|--speculative-draft-model-quantization' "$launcher_tp4" >/dev/null; then
+  echo "the TP4 FP8 launcher must load the checkpoint's own FP8 quantization without overrides" >&2
+  exit 1
+fi
 require_text "$repo/README.md" 'ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO'
-require_text "$repo/README.md" 'nvidia/GLM-5.3-Flash-NVFP4'
+require_text "$repo/README.md" 'zai-org/GLM-5.3-Flash'
+require_text "$repo/BENCHMARKS.md" "## ${published_tag}: TP4 FP8 fixed native MTP"
 require_text "$repo/BENCHMARKS.md" "## ${published_tag}: TP2 W4A16 fixed native MTP"
 
 for profile in "$launcher" "$launcher_tp4"; do
@@ -100,10 +109,10 @@ for profile in "$launcher" "$launcher_tp4"; do
     echo "launcher must keep expert parallel 1: $profile" >&2
     exit 1
   fi
-  if grep -E -- 'flashinfer_mxfp4|--trust-remote-code' "$profile" >/dev/null; then
-    echo "launcher carries an unsupported runner or remote-code setting: $profile" >&2
+  if grep -E -- 'flashinfer_mxfp4|--trust-remote-code|--speculative-adaptive|SGLANG_LM_HEAD_FP8' "$profile" >/dev/null; then
+    echo "launcher carries an unsupported runner, remote-code, adaptive-MTP or target FP8 head setting: $profile" >&2
     exit 1
   fi
 done
 
-echo "documentation contract valid: ${published_tag}, cache ${published_cache_schema}, TP2 W4A16 and TP4 NVIDIA NVFP4 vision+MTP profiles"
+echo "documentation contract valid: ${published_tag}, cache ${published_cache_schema}, TP2 W4A16 and TP4 Z.ai FP8 vision+MTP profiles"

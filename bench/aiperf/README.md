@@ -4,7 +4,7 @@ This harness measures an already running OpenAI-compatible server. It does not s
 
 ## Fixed-MTP comparison standard
 
-Run GLM performance comparisons with fixed native MTP: three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Include reasoning tokens in output throughput. The default launcher uses adaptive MTP for serving; [RUN.md](../../RUN.md) explains the benchmark argument changes.
+Run GLM performance comparisons with fixed native MTP: three draft steps, top-k one and four verification tokens, with adaptive switching disabled. Include reasoning tokens in output throughput. The supplied launchers use this configuration.
 
 Use `glm-qualification` for the core panel. It runs five repetitions at each of C1, C2 and C4, plus five cold prefill requests at each of 8k, 32k, 64k and 128k prompt tokens. Use `glm-capacity` for five repetitions at C8 and C16 and three at C32 when the serving profile admits those cohorts. Availability of a benchmark mode does not establish that a model configuration supports its concurrency levels.
 
@@ -49,6 +49,6 @@ Keep the server process and configuration unchanged throughout a panel. No other
 
 ## Quality and targeted diagnostics
 
-Quality checks use the adaptive serving configuration separately from the fixed-MTP performance panel. `gsm8k.yaml` runs all 1,319 questions with a 16,384-token output cap. Retain all responses in the denominator, report the answer extraction method and identify output-cap hits. Long-context, image, cache-restoration and tool-response checks exercise different serving behaviors and do not count as additional performance repetitions.
+Quality checks use the supplied serving configuration. `gsm8k.yaml` runs all 1,319 questions with a 16,384-token output cap. Retain all responses in the denominator, report the answer extraction method and identify output-cap hits. Long-context, image, cache-restoration and tool-response checks exercise different serving behaviors and do not count as additional performance repetitions.
 
 The shared harness also contains turnover and AgentX modes. Select them when the changed path or workload warrants that investigation, with concurrency supported by the tested profile. Their presence does not require unrelated high-concurrency workloads for every GLM release. Optional diagnostics must retain their own definitions and must not replace a failed measurement without a documented reason.
