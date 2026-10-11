@@ -1,18 +1,18 @@
 # Measured results
 
-## v0.6.0: TP4 FP8 fixed native MTP
+## v0.6.1: TP4 FP8 fixed native MTP
 
-Measured on 2026-10-11 on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs (SM120) at 250 W, with PCIe Gen4 ×16 links, working GPU peer access across CPU roots and no NVLink. The checkpoint was `zai-org/GLM-5.3-Flash`, revision `eb9eb208eb0d988989d07a6a12d0fdeb5f52574a`. Measurements used a v0.6.0 validation build whose source differs from the release only in the W4A16 MoE path, which this profile does not execute; the release image passed TP4 startup and first-traffic checks. The GHCR image is built separately from the same pinned inputs and was not separately benchmarked.
+Measured on 2026-10-11 on four RTX PRO 6000 Blackwell Max-Q 96 GB GPUs (SM120) at 250 W, with PCIe Gen4 ×16 links, working GPU peer access across CPU roots and no NVLink. The checkpoint was `zai-org/GLM-5.3-Flash`, revision `eb9eb208eb0d988989d07a6a12d0fdeb5f52574a`. Measurements used the internal v0.6.1 release build (candidate `v0.6.1-rc.1`, promoted unchanged). The GHCR image is built separately from the same pinned inputs and was not separately benchmarked.
 
 TP4/EP1 used the checkpoint's FP8 block-scaled weights, FP8 E4M3 KV, a 1,048,576-token context limit and shared device pool, 16-request admission, 96 BF16 recurrent-state slots, 8,192-token prefill chunks and 40 GB of HiCache per rank, as in the supplied launcher. Native MTP used three draft steps, top-k one and four verification tokens, with the draft LM head in FP8 and the target LM head in BF16.
 
 | Decode concurrency | Repetitions | Mean aggregate output tok/s after MTP | Median aggregate output tok/s after MTP | Mean target forwards/s | Median target forwards/s | Output tok/forward/request, mean / median |
 |---|---:|---:|---:|---:|---:|---:|
-| C1 | 5 | 222.03 | 212.56 | 77.79 | 77.80 | 2.866 / 2.742 |
-| C2 | 5 | 322.53 | 314.91 | 54.93 | 54.94 | 2.944 / 2.937 |
-| C4 | 5 | 428.05 | 428.21 | 37.53 | 37.69 | 2.838 / 2.818 |
+| C1 | 5 | 230.50 | 210.97 | 78.24 | 78.18 | 2.966 / 2.752 |
+| C2 | 5 | 312.74 | 309.81 | 54.86 | 54.73 | 2.868 / 2.867 |
+| C4 | 5 | 433.77 | 423.11 | 37.97 | 38.05 | 2.857 / 2.769 |
 
-The workload used 16K coding prompts with chat framing and a forced 4,096-token output cap (`ignore_eos`), including reasoning at the template's default `max` effort and a post-answer tail. Output rates are aggregate across the stated concurrency. Target forwards count batch iterations on rank zero, not one forward per request. Rates use least-squares counter slopes during exact-concurrency decode windows with average context between 17,408 and 20,480 tokens. Output tok/forward/request uses emitted-token and target-forward counter deltas divided by concurrency. The 15 windows lasted 11.00–29.33 seconds with 34–89 samples each and had no prefill and no other traffic; every window retained three-step/four-token verification.
+The workload used 16K coding prompts with chat framing and a forced 4,096-token output cap (`ignore_eos`), including reasoning at the template's default `max` effort and a post-answer tail. Output rates are aggregate across the stated concurrency. Target forwards count batch iterations on rank zero, not one forward per request. Rates use least-squares counter slopes during exact-concurrency decode windows with average context between 17,408 and 20,480 tokens. Output tok/forward/request uses emitted-token and target-forward counter deltas divided by concurrency. The 15 windows lasted 9.67–28.00 seconds with 30–85 samples each and had no prefill and no other traffic; every window retained three-step/four-token verification.
 
 Five prompt-seed repetitions ran per concurrency within one server startup. They are prompt-path samples, not independent deployment replicates. The post-answer tail can increase speculative acceptance; these controlled rates do not necessarily represent naturally completed answers or application throughput.
 
@@ -20,14 +20,18 @@ Cold prefill used five sequential C1 requests per shape, stopped after the first
 
 | Nominal prompt size | Requests | Mean request prompt tok/s | Median request prompt tok/s | Window prompt tok/s | Median TTFT, seconds |
 |---|---:|---:|---:|---:|---:|
-| 8K | 5 | 10,487.31 | 10,564.13 | 10,457.76 | 0.777 |
-| 32K | 5 | 10,616.46 | 10,665.30 | 10,608.32 | 3.073 |
-| 64K | 5 | 10,479.86 | 10,499.22 | 10,475.80 | 6.243 |
-| 128K | 5 | 10,134.28 | 10,133.47 | 10,131.14 | 12.911 |
+| 8K | 5 | 10,446.47 | 10,573.97 | 10,418.53 | 0.776 |
+| 32K | 5 | 10,213.83 | 10,556.18 | 10,159.56 | 3.105 |
+| 64K | 5 | 10,476.89 | 10,499.96 | 10,472.78 | 6.243 |
+| 128K | 5 | 10,165.51 | 10,173.82 | 10,162.44 | 12.859 |
 
-Token targets were 8,192, 32,768, 65,536 and 130,816 before chat framing. All cells completed without request errors or server restarts. [Per-repetition and per-request data](bench/results/v0.6.0-tp4-fp8-fixed-mtp.json) includes exact input sizes, windows and settings.
+Token targets were 8,192, 32,768, 65,536 and 130,816 before chat framing. All cells completed without request errors or server restarts. [Per-repetition and per-request data](bench/results/v0.6.1-tp4-fp8-fixed-mtp.json) includes exact input sizes, windows and settings.
 
-## v0.6.0: TP2 W4A16 fixed native MTP
+Against [v0.6.0](bench/results/v0.6.0-tp4-fp8-fixed-mtp.json), measured the same way, mean target forwards/s changed from 77.79 to 78.24 at C1, 54.93 to 54.86 at C2 and 37.53 to 37.97 at C4, and cold prefill stayed at 10.1–10.6K prompt tok/s. These differences are within the spread of repeated runs. v0.6.1 changes no numerics: the draft MoE configuration produces bitwise-identical outputs ([kernel measurements](https://github.com/sgl-project/sglang/pull/43647)), and the prefill-overlap changes only add safeguards.
+
+## v0.6.1: TP2 W4A16 fixed native MTP
+
+v0.6.1 changes no code that this profile executes: the TP2 launcher disables the prefill microbatch overlap, and the new draft MoE configuration applies only to the TP4 expert shape. The v0.6.1 image passed TP2 startup and first-traffic checks. The measurements below are the v0.6.0 ones.
 
 Measured on 2026-10-11 on two RTX PRO 6000 Blackwell Max-Q 96 GB GPUs (SM120) at 250 W, with PCIe Gen4 ×16 links across CPU roots, working P2P/IPC and no NVLink. The checkpoint was `ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`, revision `ee0989a944b0e213589191d7fca63af825a0741e`. Measurements used a v0.6.0 validation build; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked.
 
@@ -56,9 +60,9 @@ Window prompt tok/s at 8K, 32K, 64K and 128K was 5,135, 6,074, 6,123 and 6,131 o
 
 ## Correctness and capacity
 
-Both profiles completed the 1,319 GSM8K test questions at temperature zero with the default `max` reasoning effort and a 16,384-token output cap, without request errors: 1,279 correct (97.0%) at TP4 and 1,280 (97.0%) at TP2, scored on the final numeric answer extracted from each response.
+Both profiles completed the 1,319 GSM8K test questions at temperature zero with the default `max` reasoning effort and a 16,384-token output cap, without request errors: 1,279 correct (97.0%) at TP4 on v0.6.1, as on v0.6.0, and 1,280 (97.0%) at TP2 on v0.6.0, scored on the final numeric answer extracted from each response.
 
-At TP4, a 1,025,012-token prompt with seven ordered recall markers returned all seven in 107.9 seconds. Sixteen concurrent 60K-token cold requests completed without errors, and a 200K-token prefix evicted to the host cache was restored with a 0.19-second time to first token. Startup checks on both profiles covered a 7680×4320 image followed by a full cohort of cold text requests, multiple-image requests and cached-prefix reuse across increasing prefixes, without an out-of-memory failure or restart. The processor resizes images according to its token budget; these fixtures test capacity and execution, not OCR or photographic accuracy.
+At TP4 on v0.6.1, a 1,025,012-token prompt with seven ordered recall markers returned all seven in 107.8 seconds (107.9 on v0.6.0). On v0.6.0, sixteen concurrent 60K-token cold requests completed without errors, and a 200K-token prefix evicted to the host cache was restored with a 0.19-second time to first token. v0.6.1 leaves 3.5 GB per GPU free after graph capture, unchanged from v0.6.0. Startup checks on both profiles covered a 7680×4320 image followed by a full cohort of cold text requests, multiple-image requests and cached-prefix reuse across increasing prefixes, without an out-of-memory failure or restart. The processor resizes images according to its token budget; these fixtures test capacity and execution, not OCR or photographic accuracy.
 
 The shared device pool is not a per-request reservation. Image tokens, text tokens and other live requests consume that shared capacity.
 

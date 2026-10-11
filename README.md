@@ -1,17 +1,19 @@
 # GLM-5.3-Flash on RTX PRO 6000 Blackwell GPUs
 
 > [!IMPORTANT]
-> **Upgrading from v0.5.x: replace your launch scripts and the TP4 checkpoint.** v0.6.0 is not a drop-in image update. The four-GPU profile now serves Z.ai's FP8 checkpoint `zai-org/GLM-5.3-Flash` instead of `nvidia/GLM-5.3-Flash-NVFP4`, with different memory and admission settings. Both launchers now use fixed native MTP, `examples/glm53-adaptive.json` is removed, and the kernel cache directories change to `-v90-tp2` and `-v90-tp4`. v0.5.x launch commands and the NVIDIA NVFP4 checkpoint were not qualified with this image. Download the checkpoint below and start from the v0.6.0 `examples/` scripts; see the [upgrade steps](CHANGELOG.md#upgrading-from-v05x).
+> **Upgrading from v0.6.0:** change the image tag to `v0.6.1`. Checkpoints, launch arguments and the `-v90` cache directories are unchanged.
+>
+> **Upgrading from v0.5.x: replace your launch scripts and the TP4 checkpoint.** v0.6.x is not a drop-in image update. The four-GPU profile now serves Z.ai's FP8 checkpoint `zai-org/GLM-5.3-Flash` instead of `nvidia/GLM-5.3-Flash-NVFP4`, with different memory and admission settings. Both launchers now use fixed native MTP, `examples/glm53-adaptive.json` is removed, and the kernel cache directories change to `-v90-tp2` and `-v90-tp4`. v0.5.x launch commands and the NVIDIA NVFP4 checkpoint were not qualified with this image. Download the checkpoint below and start from the v0.6.1 `examples/` scripts; see the [upgrade steps](CHANGELOG.md#upgrading-from-v05x).
 
 A SGLang image for serving GLM-5.3-Flash on two or four NVIDIA RTX PRO 6000 Blackwell 96 GB GPUs (SM120) over PCIe. Both profiles provide an OpenAI-compatible API, vision, reasoning, tool calling, FP8 KV cache and native speculative decoding.
 
 | | |
 |---|---|
-| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0` |
+| Image | `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1` |
 | TP4 checkpoint | [`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash) (FP8) |
 | TP2 checkpoint | [`ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO`](https://huggingface.co/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO) (4-bit experts) |
 
-The current published stable image is `v0.6.0`. TP4 now serves Z.ai's FP8 checkpoint, which replaces the NVIDIA NVFP4 TP4 profile of `v0.5.0`. TP2 keeps the W4A16 checkpoint. The release refreshes SGLang, FlashInfer and Transformers, overlaps tensor-parallel all-reduces with compute during large TP4 prefills, splits long-context sparse-attention indexer work across GPUs, and runs both launchers with fixed three-step native MTP. See the [changelog](CHANGELOG.md) and [releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases).
+The current published stable image is `v0.6.1`, a drop-in update to `v0.6.0` that hardens the prefill all-reduce overlap and tunes the MTP draft layer's MoE kernel. Since `v0.6.0`, TP4 serves Z.ai's FP8 checkpoint, which replaces the NVIDIA NVFP4 TP4 profile of `v0.5.0`. TP2 keeps the W4A16 checkpoint. The release refreshes SGLang, FlashInfer and Transformers, overlaps tensor-parallel all-reduces with compute during large TP4 prefills, splits long-context sparse-attention indexer work across GPUs, and runs both launchers with fixed three-step native MTP. See the [changelog](CHANGELOG.md) and [releases](https://github.com/ormandj/sglang-glm53-flash-sm120/releases).
 
 | Default setting | TP2 | TP4 |
 |---|---:|---:|
@@ -43,8 +45,8 @@ HF_XET_HIGH_PERFORMANCE=1 hf download zai-org/GLM-5.3-Flash \
   --revision eb9eb208eb0d988989d07a6a12d0fdeb5f52574a --local-dir "$MODEL_DIR"
 git clone https://github.com/ormandj/sglang-glm53-flash-sm120
 cd sglang-glm53-flash-sm120
-git checkout v0.6.0
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0
+git checkout v0.6.1
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v90-tp4
 ./examples/serve-glm53-flash-tp4.sh
 ```
@@ -60,8 +62,8 @@ HF_XET_HIGH_PERFORMANCE=1 hf download ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Expe
   --revision ee0989a944b0e213589191d7fca63af825a0741e --local-dir "$MODEL_DIR"
 git clone https://github.com/ormandj/sglang-glm53-flash-sm120
 cd sglang-glm53-flash-sm120
-git checkout v0.6.0
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0
+git checkout v0.6.1
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v90-tp2
 ./examples/serve-glm53-flash.sh
 ```
@@ -86,12 +88,12 @@ Fixed-MTP measurements on RTX PRO 6000 Blackwell Max-Q 96 GB GPUs at 250 W. Deco
 
 | Profile | C1 output tok/s, mean / median | C1 target forwards/s | C4 output tok/s | C4 target forwards/s | Cold prefill, 32K / 128K prompt tok/s |
 |---|---:|---:|---:|---:|---:|
-| TP4, Z.ai FP8 | 222.0 / 212.6 | 77.8 | 428.1 | 37.5 | 10,616 / 10,134 |
+| TP4, Z.ai FP8 | 230.5 / 211.0 | 78.2 | 433.8 | 38.0 | 10,214 / 10,166 |
 | TP2, W4A16 | 192.0 / 181.8 | 64.9 | 391.1 | 32.8 | 6,160 / 6,086 |
 
-TP4 cold prefill measured 10.1–10.6K prompt tokens per second from 8K to 128K prompts. At TP2, target forward rates rose 5.1% at C1 over the matched v0.5.0 measurement.
+TP4 cold prefill measured 10.2–10.5K prompt tokens per second from 8K to 128K prompts. TP4 figures are from v0.6.1; TP2 figures are from v0.6.0, whose TP2 code v0.6.1 leaves unchanged. At TP2, target forward rates rose 5.1% at C1 over the matched v0.5.0 measurement.
 
-Measurements used v0.6.0 validation builds; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. These controlled measurements do not necessarily represent real-world performance. [BENCHMARKS.md](BENCHMARKS.md) provides all means and medians, C2 results, windows, sample counts, prefill shapes, GSM8K scores and configuration details.
+Measurements used internal release and validation builds; the GHCR image is built separately from the same pinned inputs and was not separately benchmarked. These controlled measurements do not necessarily represent real-world performance. [BENCHMARKS.md](BENCHMARKS.md) provides all means and medians, C2 results, windows, sample counts, prefill shapes, GSM8K scores and configuration details.
 
 ## Limitations
 

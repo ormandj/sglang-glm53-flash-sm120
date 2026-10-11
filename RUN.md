@@ -1,12 +1,12 @@
 # Running GLM-5.3-Flash
 
-Download the checkpoint for the desired GPU count using [README.md](README.md). Both profiles use `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0`.
+Download the checkpoint for the desired GPU count using [README.md](README.md). Both profiles use `ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1`.
 
 ## TP4: Z.ai FP8 checkpoint
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v90-tp4
 ./examples/serve-glm53-flash-tp4.sh
 ```
@@ -19,7 +19,7 @@ HiCache defaults to 40 decimal GB per rank, or 160 GB across four ranks, in addi
 
 ```bash
 export MODEL_DIR=/srv/models/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO
-export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0
+export IMAGE=ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1
 export CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v90-tp2
 ./examples/serve-glm53-flash.sh
 ```
@@ -47,7 +47,7 @@ The image enables two prefill optimizations by default. A single-request prefill
 
 ## Reproduce the fixed-MTP measurements
 
-The [v0.6.0 measurements](BENCHMARKS.md) use the supplied launchers. Keep reasoning enabled and the default chat grammar. Measure C1/C2/C4 decode with 16K coding prompts including chat framing and a deliberate 4,096-token output cap using `ignore_eos`; derive target forward and output rates over the steady decode window described in BENCHMARKS.md. Cold prefill uses C1 and five requests per 8K/32K/64K/128K shape, ending at the first output token.
+The [v0.6.1 measurements](BENCHMARKS.md) use the supplied launchers. Keep reasoning enabled and the default chat grammar. Measure C1/C2/C4 decode with 16K coding prompts including chat framing and a deliberate 4,096-token output cap using `ignore_eos`; derive target forward and output rates over the steady decode window described in BENCHMARKS.md. Cold prefill uses C1 and five requests per 8K/32K/64K/128K shape, ending at the first output token.
 
 ## Build from source
 
@@ -58,9 +58,9 @@ The [v0.6.0 measurements](BENCHMARKS.md) use the supplied launchers. Keep reason
 docker build -f Containerfile \
   --build-arg IMAGE_SOURCE=https://github.com/ormandj/sglang-glm53-flash-sm120 \
   --build-arg IMAGE_SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t sglang-glm53-flash-sm120:v0.6.0-rc.5 .
+  -t sglang-glm53-flash-sm120:v0.6.1-rc.1 .
 CACHE_DIR=/srv/cache/sglang-glm53-flash-sm120-v90-tp4 \
-  IMAGE=sglang-glm53-flash-sm120:v0.6.0-rc.5 ./examples/serve-glm53-flash-tp4.sh
+  IMAGE=sglang-glm53-flash-sm120:v0.6.1-rc.1 ./examples/serve-glm53-flash-tp4.sh
 ```
 
 For a local TP2 build, use the W4A16 checkpoint and `./examples/serve-glm53-flash.sh` with a separate TP2 cache directory.

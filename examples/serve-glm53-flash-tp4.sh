@@ -5,7 +5,7 @@ set -euo pipefail
 : "${MODEL_DIR:?set MODEL_DIR to the local zai-org/GLM-5.3-Flash artifact}"
 : "${CACHE_DIR:?set CACHE_DIR to a version-specific persistent cache directory}"
 
-IMAGE=${IMAGE:-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.0}
+IMAGE=${IMAGE:-ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1}
 PORT=${PORT:-8000}
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3}
 TP_SIZE=${TP_SIZE:-4}

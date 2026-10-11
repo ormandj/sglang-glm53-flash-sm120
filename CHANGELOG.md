@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.1 (stable; 2026-10-11)
+
+### Upgrading from v0.6.0
+
+Change the image tag to `v0.6.1`. Checkpoints, launch arguments and the `-v90` cache directories are unchanged. Upgrading from v0.5.x still requires the v0.6.0 steps below.
+
+### Changes
+
+- Harden the prefill all-reduce overlap. The summed tensor is recorded on the communication stream, so its memory cannot be reused before the all-reduce ends even if a prefill fails partway. The overlap state is cleared after a failed forward. The overlap runs only for models and parallel layouts it supports, and each layer checks that its sum covers the tensor-parallel group.
+- Use the tuned FP8 fused-MoE configuration for the MTP draft layer's 288-expert layout on RTX PRO 6000 Blackwell Max-Q GPUs. Draft MoE kernel time drops 6–49% for 1–64 tokens with bitwise-identical outputs ([kernel measurements](https://github.com/sgl-project/sglang/pull/43647)); the end-to-end effect is within run-to-run spread.
+
+### Measurements
+
+TP4 with the FP8 checkpoint measured 230.5 mean output tok/s and 78.2 target forwards/s at C1, 433.8 tok/s and 38.0 forwards/s at C4, and 10.2–10.5K prompt tok/s of cold prefill from 8K to 128K, within run-to-run spread of v0.6.0. GSM8K scored 1,279/1,319 and a 1,025,012-token recall prompt returned all seven markers. TP2 runs unchanged code; its v0.6.0 measurements apply, and the v0.6.1 image passed TP2 startup and first-traffic checks. Measurement conditions match v0.6.0; see [BENCHMARKS.md](https://github.com/ormandj/sglang-glm53-flash-sm120/blob/v0.6.1/BENCHMARKS.md).
+
 ## v0.6.0 (stable; 2026-10-11)
 
 ### Upgrading from v0.5.x
