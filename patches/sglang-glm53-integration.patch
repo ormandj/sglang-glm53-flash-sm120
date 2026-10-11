@@ -3158,7 +3158,7 @@ index b5785fa8e6de618c730b71aae3dd8f80bccf376f..68fee06e42b301bb0c9cf09ca714b697
      if not buckets_rule:
          return
 diff --git a/python/sglang/srt/batch_overlap/operations.py b/python/sglang/srt/batch_overlap/operations.py
-index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8833dbf33 100644
+index 5e8829277c5bf471b450dd9bdaa398516d43217f..13c5d25d27c02c42439046cbc83450850407537e 100644
 --- a/python/sglang/srt/batch_overlap/operations.py
 +++ b/python/sglang/srt/batch_overlap/operations.py
 @@ -14,6 +14,7 @@ from typing import (
@@ -3184,11 +3184,7 @@ index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8
  
      for _ in range(delta_stage):
          executor_a.next()
-@@ -77,9 +82,13 @@ def _resolve_tbo_child_contexts():
-     backend that handles TBO splitting internally like DeepSeek MHA's
-     resolve_attn_backend path)."""
-     # Lazy import to avoid circular dependency at module load time.
-+    from sglang.srt.batch_overlap import prefill_mbo
+@@ -80,6 +85,9 @@ def _resolve_tbo_child_contexts():
      from sglang.srt.layers.attention.tbo_backend import TboAttnBackend
  
      ctx = get_forward_context()
@@ -3198,7 +3194,7 @@ index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8
      backend = ctx.attn_backend
      if not isinstance(backend, TboAttnBackend):
          return None, None
-@@ -111,8 +120,10 @@ class _StageExecutor:
+@@ -111,8 +119,10 @@ class _StageExecutor:
          stages: List[Stage],
          inputs: dict,
          child_ctx: Optional[ForwardContext] = None,
@@ -3209,7 +3205,7 @@ index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8
          self._stages = stages
          self._index = 0
          self._stage_state = _StateDict()
-@@ -128,7 +139,10 @@ class _StageExecutor:
+@@ -128,7 +138,10 @@ class _StageExecutor:
          self._global_dp_buffer_len = forward_batch.global_dp_buffer_len
          self._local_dp_buffer_len = forward_batch.tbo_padded_len
          self._global_num_tokens = forward_batch.global_num_tokens_cpu
@@ -3221,7 +3217,7 @@ index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8
  
      def next(self):
          assert not self.done
-@@ -138,12 +152,14 @@ class _StageExecutor:
+@@ -138,12 +151,14 @@ class _StageExecutor:
          # TODO: We currently always call set_dp_buffer_len here because sub-batches
          # may have different padded lengths. It can likely be removed after TBO slice &
          # pad logic is refactored.
@@ -3243,14 +3239,27 @@ index 5e8829277c5bf471b450dd9bdaa398516d43217f..97d680e3d8bfed0c0a691c0a476992b8
          ctx_mgr = (
              forward_context(self._child_ctx)
 diff --git a/python/sglang/srt/batch_overlap/operations_strategy.py b/python/sglang/srt/batch_overlap/operations_strategy.py
-index af2171e3d8d17bf3a877c76be7956b9699cb573b..eebb57ece623acf6ccc6031a1f2ae9dbef7354f0 100644
+index af2171e3d8d17bf3a877c76be7956b9699cb573b..b7572d9be9dcb636b134b423fb47e73c57591de9 100644
 --- a/python/sglang/srt/batch_overlap/operations_strategy.py
 +++ b/python/sglang/srt/batch_overlap/operations_strategy.py
-@@ -63,6 +63,17 @@ class OperationsStrategy:
+@@ -3,7 +3,7 @@ from typing import List, Optional
+ 
+ import torch
+ 
+-from sglang.srt.batch_overlap import operations
++from sglang.srt.batch_overlap import operations, prefill_mbo
+ from sglang.srt.batch_overlap.operations import Operation
+ from sglang.srt.layers.moe.token_dispatcher import DeepEPConfig
+ from sglang.srt.model_executor.forward_batch_info import ForwardMode
+@@ -63,6 +63,21 @@ class OperationsStrategy:
                      for layer in layers
                  ]
              )
-+        elif layer_name == "Glm5NextDecoderLayer":
++        elif (
++            layer_name == "Glm5NextDecoderLayer"
++            and prefill_mbo.active_child_backends() is not None
++        ):
++            # Only prefill microbatches; GLM-5-Next has no two-batch overlap.
 +            ops: List[Operation] = []
 +            for layer in layers:
 +                ops += [
@@ -3266,16 +3275,17 @@ index af2171e3d8d17bf3a877c76be7956b9699cb573b..eebb57ece623acf6ccc6031a1f2ae9db
                  [
 diff --git a/python/sglang/srt/batch_overlap/prefill_mbo.py b/python/sglang/srt/batch_overlap/prefill_mbo.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6a27c02d2
+index 0000000000000000000000000000000000000000..051fab87dd47c810a86ee9f69b74f5f8c2be6862
 --- /dev/null
 +++ b/python/sglang/srt/batch_overlap/prefill_mbo.py
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,239 @@
 +"""Two-microbatch prefill for TP all-reduce models.
 +
 +A large single-request extend is split into two halves that run layer by layer
 +in turn. Each half's tensor-parallel all-reduce runs on a side stream, on its own
 +NCCL communicator, while the other half computes. Opt in with
-+``SGLANG_PREFILL_MBO``.
++``SGLANG_PREFILL_MBO``; a model takes part by implementing
++``supports_prefill_mbo()`` and the microbatch operations strategy.
 +"""
 +
 +from __future__ import annotations
@@ -3301,17 +3311,23 @@ index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6
 +_microbatch = 0
 +_comm_stream: Optional[torch.cuda.Stream] = None
 +_comm_group = None
++_comm_ranks: List[int] = []
 +
 +
-+def enabled() -> bool:
-+    return envs.SGLANG_PREFILL_MBO.get()
++def enabled(model_runner) -> bool:
++    """Whether the target model of ``model_runner`` runs prefill microbatches."""
++    if not envs.SGLANG_PREFILL_MBO.get() or model_runner.is_draft_worker:
++        return False
++    supports = getattr(model_runner.model, "supports_prefill_mbo", None)
++    return supports is not None and supports()
 +
 +
 +def setup(child_backends: List[AttentionBackend], tp_ranks: List[int]) -> None:
 +    """Called once on every TP rank in the same order (creates a process group)."""
-+    global _child_backends, _comm_group
++    global _child_backends, _comm_group, _comm_ranks
 +    _child_backends = child_backends
-+    _comm_group = torch.distributed.new_group(ranks=tp_ranks, backend="nccl")
++    _comm_ranks = list(tp_ranks)
++    _comm_group = torch.distributed.new_group(ranks=_comm_ranks, backend="nccl")
 +
 +
 +def active_child_backends() -> Optional[List[AttentionBackend]]:
@@ -3374,6 +3390,12 @@ index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6
 +    _active = False
 +    split = _split_tokens(forward_batch)
 +    if split is None:
++        return False
++    # The tracked state's owner is chosen from the CPU track metadata.
++    if forward_batch.mamba_track_mask is not None and (
++        forward_batch.mamba_prefill_track_mask_cpu is None
++        or forward_batch.mamba_track_seqlens_cpu is None
++    ):
 +        return False
 +
 +    from sglang.srt.batch_overlap.two_batch_overlap import (
@@ -3440,7 +3462,7 @@ index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6
 +
 +    tracks = track["mamba_track_mask"] is not None
 +    if tracks:
-+        tracked = (track["mamba_prefill_track_mask_cpu"] or [True])[0]
++        tracked = track["mamba_prefill_track_mask_cpu"][0]
 +        owner = (
 +            child_a
 +            if not tracked or track["mamba_track_seqlens_cpu"][0] <= prefix + split
@@ -3463,6 +3485,9 @@ index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6
 +    if _comm_stream is None:
 +        _comm_stream = torch.cuda.Stream()
 +    _comm_stream.wait_stream(torch.cuda.current_stream())
++    # Keep the block from being reused before the all-reduce ends, even if the
++    # forward is abandoned before the sum is joined.
++    tensor.record_stream(_comm_stream)
 +    with torch.cuda.stream(_comm_stream):
 +        torch.distributed.all_reduce(tensor, group=_comm_group)
 +        event = torch.cuda.Event()
@@ -3486,13 +3511,15 @@ index 0000000000000000000000000000000000000000..8e21d826b979c5fc626b253f5db012f6
 +
 +def start_pending_sum(stream) -> None:
 +    """Start the all-reduce a stage's recorded partial output owes."""
++    from sglang.srt.layers.layer_boundary.layout import _sum_group
 +    from sglang.srt.layers.layer_boundary.residual.stream import DeclaredSum
 +
 +    pending = stream.pending
 +    assert pending is not None and isinstance(pending.owed, DeclaredSum)
++    assert list(_sum_group(pending.owed.group).ranks) == _comm_ranks
 +    pending.owed = InFlightSum(pending.value)
 diff --git a/python/sglang/srt/batch_overlap/two_batch_overlap.py b/python/sglang/srt/batch_overlap/two_batch_overlap.py
-index c4e457851eaf5a8cf2b734070c154ad7fb0a7a4e..c91e200b1d498f0296c2ead6db9e46afc5ba9267 100644
+index c4e457851eaf5a8cf2b734070c154ad7fb0a7a4e..da8026d55c100b4e492efdf5ce9dfe2a4743da03 100644
 --- a/python/sglang/srt/batch_overlap/two_batch_overlap.py
 +++ b/python/sglang/srt/batch_overlap/two_batch_overlap.py
 @@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence
@@ -3512,11 +3539,25 @@ index c4e457851eaf5a8cf2b734070c154ad7fb0a7a4e..c91e200b1d498f0296c2ead6db9e46af
      )
      inputs = dict(
          positions=positions,
-@@ -994,6 +995,7 @@ def model_forward_stages(
-             operations_arr=[strategy.operations] * 2,
-             delta_stages=[0, strategy.tbo_delta_stages],
-         )
-+    prefill_mbo.end_forward()
+@@ -988,12 +989,15 @@ def model_forward_stages(
+         if _is_hip
+         else deep_gemm_wrapper.configure_deep_gemm_num_sms(strategy.deep_gemm_num_sms)
+     )
+-    with context:
+-        outputs = execute_overlapped_operations(
+-            inputs_arr=parts,
+-            operations_arr=[strategy.operations] * 2,
+-            delta_stages=[0, strategy.tbo_delta_stages],
+-        )
++    try:
++        with context:
++            outputs = execute_overlapped_operations(
++                inputs_arr=parts,
++                operations_arr=[strategy.operations] * 2,
++                delta_stages=[0, strategy.tbo_delta_stages],
++            )
++    finally:
++        prefill_mbo.end_forward()
      for output in outputs:
          output["residual"] = residual_batch.stream_of(output["forward_batch"])
      hidden_states, forward_batch.residual_stream = _model_forward_tbo_merge_outputs(
@@ -5765,6 +5806,158 @@ index 1db31e073889fc02a263dc277b9d753393368ad1..7ed77d9d0a117bf1d3ae97b08da2a218
      flashinfer_cutlass_fused_moe, _ = _flashinfer_cutlass_fused_moe()
  
      dispatch_output = _prescale_router_weight_on_input(dispatch_output, runner_config)
+diff --git a/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_8_0/E=288,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json b/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_8_0/E=288,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a33a2d77c5a2a801739a7c7bd055538d85da0fd
+--- /dev/null
++++ b/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_8_0/E=288,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json	
+@@ -0,0 +1,146 @@
++{
++    "1": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "2": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 4
++    },
++    "4": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "8": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "12": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 5
++    },
++    "16": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "24": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 32,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "32": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "48": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "64": {
++        "BLOCK_SIZE_M": 16,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 8,
++        "num_stages": 3
++    },
++    "96": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "128": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 64,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "256": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "512": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 3
++    },
++    "1024": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "2048": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "4096": {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 16,
++        "num_warps": 4,
++        "num_stages": 2
++    },
++    "8192": {
++        "BLOCK_SIZE_M": 128,
++        "BLOCK_SIZE_N": 128,
++        "BLOCK_SIZE_K": 128,
++        "GROUP_SIZE_M": 1,
++        "num_warps": 8,
++        "num_stages": 2
++    }
++}
 diff --git a/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_8_0/E=289,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json b/python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_8_0/E=289,N=512,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,block_shape=[128, 128].json
 new file mode 100644
 index 0000000000000000000000000000000000000000..9a33a2d77c5a2a801739a7c7bd055538d85da0fd
@@ -7762,7 +7955,7 @@ index 949f134da97195d43c6833e36f716dd5e1259bd1..e18e610848804f77843d138812f1c4d4
          return observer_state
  
 diff --git a/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py b/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py
-index dd4544de5c623bba4a059e5def71ac8e7810befd..36bab11371929168260631bd58016fbd3fc22dd4 100644
+index dd4544de5c623bba4a059e5def71ac8e7810befd..73f55a42fb31be78aaa05ab592c5d14f5ac4a874 100644
 --- a/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py
 +++ b/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py
 @@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional
@@ -7777,7 +7970,7 @@ index dd4544de5c623bba4a059e5def71ac8e7810befd..36bab11371929168260631bd58016fbd
          )
          decode_attn_backend = None
          decode_attn_backend_group = []
-+        if prefill_mbo.enabled() and not model_runner.is_draft_worker:
++        if prefill_mbo.enabled(model_runner):
 +            from sglang.srt.distributed.parallel_state import get_tp_group
 +
 +            prefill_mbo.setup(
@@ -7876,7 +8069,7 @@ index 3413fc7114ce0ef7b712030adf71f2843fdd2414..364ad017776f8dc06114b121bdb7665e
              "Sorted by CUDA Time:\n"
              + prof_context.key_averages(group_by_input_shape=True).table(
 diff --git a/python/sglang/srt/model_executor/runner/eager_runner.py b/python/sglang/srt/model_executor/runner/eager_runner.py
-index 5115e4c90c7752cbb0d033d5fd4aa6d3b6ef709c..ffd03e1de78951ed3521fb91de0ea74331ee97a7 100644
+index 5115e4c90c7752cbb0d033d5fd4aa6d3b6ef709c..71f719e7dc0eb10dbff6461a0e835eb84a80c33d 100644
 --- a/python/sglang/srt/model_executor/runner/eager_runner.py
 +++ b/python/sglang/srt/model_executor/runner/eager_runner.py
 @@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Tuple, Union
@@ -7891,7 +8084,7 @@ index 5115e4c90c7752cbb0d033d5fd4aa6d3b6ef709c..ffd03e1de78951ed3521fb91de0ea743
                  # e.g. Moss-VL's prefill cross-attention custom mask.
                  model_runner.model.prepare_forward_batch(forward_batch)
              model_runner.attn_backend.init_forward_metadata(forward_batch)
-+            if prefill_mbo.enabled() and not model_runner.is_draft_worker:
++            if prefill_mbo.enabled(model_runner):
 +                prefill_mbo.maybe_split(forward_batch)
              model_runner.attn_backend.prepare_prefill_shared_read_snapshot(
                  forward_batch,
@@ -8451,10 +8644,10 @@ index 462b2039c70ef001193db96bdc1c335dcbbcb095..de4e9a6c354a9f2e5bc817070eea2098
          self.lm_head = ParallelLMHead(
              config.vocab_size,
 diff --git a/python/sglang/srt/models/glm5_next.py b/python/sglang/srt/models/glm5_next.py
-index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebbd34691af 100644
+index 7fce8b739380ccbbd6ba03e134a6395f516b0029..9c42e21fe4cc52fca13e7d90b9ffbf61275b8a5b 100644
 --- a/python/sglang/srt/models/glm5_next.py
 +++ b/python/sglang/srt/models/glm5_next.py
-@@ -11,6 +11,7 @@ from sglang.kernels.ops.attention.fla.fused_norm_gate import FusedRMSNormGated
+@@ -11,11 +11,12 @@ from sglang.kernels.ops.attention.fla.fused_norm_gate import FusedRMSNormGated
  from sglang.kernels.ops.layernorm.mhc import hc_contract
  from sglang.kernels.ops.layernorm.mhc import hc_post as _hc_post_fn
  from sglang.kernels.ops.layernorm.mhc import hc_pre as _hc_pre_fn
@@ -8462,6 +8655,12 @@ index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebb
  from sglang.srt.batch_overlap.two_batch_overlap import (
      model_forward_stages,
  )
+ from sglang.srt.configs.glm5_next import Glm5NextConfig, Glm5NextTextConfig
+-from sglang.srt.configs.model_config import is_deepseek_dsa
++from sglang.srt.configs.model_config import dsa_layer_skips_topk, is_deepseek_dsa
+ from sglang.srt.distributed.utils import divide
+ from sglang.srt.environ import envs
+ from sglang.srt.eplb.expert_distribution import (
 @@ -123,6 +124,7 @@ from sglang.srt.runtime_context import (
  from sglang.srt.speculative.spec_info import SpeculativeAlgorithm
  from sglang.srt.utils.common import (
@@ -8478,7 +8677,7 @@ index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebb
          self.attn_boundary, self.ffn_boundary = append_stages(
              (
                  declare_attn(
-@@ -924,6 +927,67 @@ class Glm5NextDecoderLayer(nn.Module):
+@@ -924,6 +927,69 @@ class Glm5NextDecoderLayer(nn.Module):
              hc_mult=self.config.hc_mult,
          )
  
@@ -8524,6 +8723,8 @@ index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebb
 +        hidden_states = residual_batch.stream_of(forward_batch).complete(hidden_states)
 +        hidden_states = self.ffn_boundary.prepare(hidden_states, forward_batch)
 +        hidden_states = self.mlp(hidden_states, forward_batch, None)
++        # Under the model gate (EP1, attention TP equal to TP) the FFN's
++        # declared sum group is the TP group.
 +        return dict(
 +            hidden_states=None,
 +            ffn_sum=(prefill_mbo.InFlightSum(hidden_states), self._ffn_update),
@@ -8546,7 +8747,7 @@ index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebb
      def _is_layer_sparse(self, layer_id: int, is_nextn: bool) -> bool:
          return is_nextn or (
              self.config.n_routed_experts is not None
-@@ -1308,6 +1372,222 @@ class Glm5NextForConditionalGeneration(nn.Module):
+@@ -1308,6 +1374,222 @@ class Glm5NextForConditionalGeneration(nn.Module):
              self.config.rope_scaling or {}
          )
  
@@ -8769,6 +8970,36 @@ index 7fce8b739380ccbbd6ba03e134a6395f516b0029..00361add16e091dffd75d74b82f20ebb
      def get_input_embeddings(self) -> nn.Embedding:
          if self.model is None:
              raise AttributeError(
+@@ -1537,6 +1819,29 @@ class Glm5NextForConditionalGeneration(nn.Module):
+         # Capturing before layer k + 1 gives the completed output of layer k.
+         self.model.layers_to_capture = [val + 1 for val in layer_ids]
+ 
++    def supports_prefill_mbo(self) -> bool:
++        # The microbatch stages assume mHC layers whose attention and FFN each
++        # end in one all-reduce over the whole TP group. They do not capture
++        # auxiliary hidden states or carry DSA top-k indices between layers.
++        parallel = get_parallel()
++        return (
++            self.model is not None
++            and bool(self.config.mhc)
++            and not self.capture_aux_hidden_states
++            and not (
++                self.use_dsa
++                and any(
++                    dsa_layer_skips_topk(self.config, layer_id)
++                    for layer_id in range(self.config.num_hidden_layers)
++                )
++            )
++            and self.model.first_k_dense_replace < self.model.end_layer
++            and parallel.pp_size == 1
++            and parallel.attn_tp_size == parallel.tp_size
++            and parallel.attn_dcp_size == 1
++            and parallel.moe_ep_size == 1
++        )
++
+     def pad_input_ids(self, input_ids: array, mm_inputs: MultimodalInputs) -> array:
+         pattern = MultiModalityDataPaddingPatternMultimodalTokens()
+         return pattern.pad_input_tokens(input_ids, mm_inputs)
 diff --git a/python/sglang/srt/models/glm5_next_nextn.py b/python/sglang/srt/models/glm5_next_nextn.py
 index d32162c9976842c21e55dccc69fbca9a25fc5857..7d0440f55947902946839e77ec7a89c9cd8f8358 100644
 --- a/python/sglang/srt/models/glm5_next_nextn.py
@@ -13570,11 +13801,12 @@ index 6084fdd4c682dc539fdd5d91a644bbc294214367..33c8fc45ea7bb949b14d0aa435e6f340
  if __name__ == "__main__":
 diff --git a/test/registered/unit/batch_overlap/test_prefill_mbo.py b/test/registered/unit/batch_overlap/test_prefill_mbo.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..f279a3b8ae197871422f2fa3ab9c2ce71dfd96a4
+index 0000000000000000000000000000000000000000..e05288fa3d5241ba64691907ce31e7a12dddd47f
 --- /dev/null
 +++ b/test/registered/unit/batch_overlap/test_prefill_mbo.py
-@@ -0,0 +1,78 @@
-+"""Two-microbatch prefill: the split point and per-microbatch mHC coefficients."""
+@@ -0,0 +1,189 @@
++"""Two-microbatch prefill: model gating, the split point, the layer operations
++and per-microbatch mHC coefficients."""
 +
 +import unittest
 +from types import SimpleNamespace
@@ -13583,6 +13815,8 @@ index 0000000000000000000000000000000000000000..f279a3b8ae197871422f2fa3ab9c2ce7
 +import torch
 +
 +from sglang.srt.batch_overlap import prefill_mbo
++from sglang.srt.batch_overlap.operations_strategy import OperationsStrategy
++from sglang.srt.environ import envs
 +from sglang.srt.layers.layer_boundary.residual.mhc import MHCState
 +from sglang.srt.model_executor.forward_batch_info import ForwardMode
 +from sglang.test.ci.ci_register import register_cpu_ci
@@ -13601,6 +13835,75 @@ index 0000000000000000000000000000000000000000..f279a3b8ae197871422f2fa3ab9c2ce7
 +    )
 +
 +
++def _runner(supports=None, *, draft=False):
++    model = SimpleNamespace()
++    if supports is not None:
++        model.supports_prefill_mbo = lambda: supports
++    return SimpleNamespace(model=model, is_draft_worker=draft)
++
++
++class TestEnabled(CustomTestCase):
++    def test_only_a_supporting_target_model_takes_part(self):
++        with envs.SGLANG_PREFILL_MBO.override(True):
++            self.assertTrue(prefill_mbo.enabled(_runner(True)))
++            self.assertFalse(prefill_mbo.enabled(_runner(False)))
++            self.assertFalse(prefill_mbo.enabled(_runner()))
++            self.assertFalse(prefill_mbo.enabled(_runner(True, draft=True)))
++
++    def test_off_without_the_env(self):
++        with envs.SGLANG_PREFILL_MBO.override(False):
++            self.assertFalse(prefill_mbo.enabled(_runner(True)))
++
++
++class TestGlm5NextGate(CustomTestCase):
++    def _supports(self, *, shared_topk=False, model=None, **parallel):
++        from sglang.srt.models import glm5_next
++
++        lm = object.__new__(glm5_next.Glm5NextForConditionalGeneration)
++        lm.config = SimpleNamespace(mhc=True, num_hidden_layers=4)
++        lm.use_dsa = True
++        lm.capture_aux_hidden_states = False
++        lm.model = SimpleNamespace(first_k_dense_replace=1, end_layer=4)
++        for k, v in (model or {}).items():
++            setattr(lm, k, v)
++        widths = dict(tp_size=4, attn_tp_size=4, pp_size=1, attn_dcp_size=1)
++        widths.update(moe_ep_size=1)
++        widths.update(parallel)
++        with (
++            patch.object(
++                glm5_next, "get_parallel", return_value=SimpleNamespace(**widths)
++            ),
++            patch.object(
++                glm5_next,
++                "dsa_layer_skips_topk",
++                side_effect=lambda config, layer_id: shared_topk and layer_id == 2,
++            ),
++        ):
++            return lm.supports_prefill_mbo()
++
++    def test_tp_only_mhc_model_is_supported(self):
++        self.assertTrue(self._supports())
++        # Without DSA there are no top-k indices to share.
++        self.assertTrue(self._supports(shared_topk=True, model=dict(use_dsa=False)))
++
++    def test_unsupported_configurations(self):
++        cases = {
++            "no mhc": dict(model=dict(config=SimpleNamespace(mhc=False))),
++            "aux capture": dict(model=dict(capture_aux_hidden_states=True)),
++            "shared dsa top-k": dict(shared_topk=True),
++            "no layers after the dense ones": dict(
++                model=dict(model=SimpleNamespace(first_k_dense_replace=4, end_layer=4))
++            ),
++            "pp": dict(pp_size=2),
++            "dp attention": dict(attn_tp_size=2),
++            "dcp": dict(attn_dcp_size=2),
++            "moe ep": dict(moe_ep_size=4),
++        }
++        for name, kwargs in cases.items():
++            with self.subTest(name):
++                self.assertFalse(self._supports(**kwargs))
++
++
 +class TestSplitPoint(CustomTestCase):
 +    def setUp(self):
 +        patcher = patch.object(prefill_mbo, "_child_backends", [object(), object()])
@@ -13615,12 +13918,51 @@ index 0000000000000000000000000000000000000000..f279a3b8ae197871422f2fa3ab9c2ce7
 +        self.assertEqual((300 + split) % prefill_mbo._SPLIT_ALIGN, 0)
 +        self.assertLessEqual(abs(split - 2500), prefill_mbo._SPLIT_ALIGN)
 +
++    def test_tracked_state_without_cpu_metadata_is_not_split(self):
++        batch = _batch(0, 8192)
++        batch.mamba_track_mask = torch.ones(1, dtype=torch.bool)
++        batch.mamba_prefill_track_mask_cpu = None
++        batch.mamba_track_seqlens_cpu = None
++        self.assertFalse(prefill_mbo.maybe_split(batch))
++        self.assertIsNone(prefill_mbo.active_child_backends())
++
 +    def test_ineligible_batches_are_not_split(self):
 +        self.assertIsNone(prefill_mbo._split_tokens(_batch(0, 1024)))
 +        self.assertIsNone(prefill_mbo._split_tokens(_batch(0, 8192, batch_size=2)))
 +        self.assertIsNone(
 +            prefill_mbo._split_tokens(_batch(0, 8192, mode=ForwardMode.MIXED))
 +        )
++
++
++class Glm5NextDecoderLayer:
++    def __init__(self, name):
++        self.op_mbo_attn = f"{name}.attn"
++        self.op_mbo_ffn = f"{name}.ffn"
++        self.op_mbo_finish = f"{name}.finish"
++
++
++class TestLayerOperations(CustomTestCase):
++    def tearDown(self):
++        prefill_mbo.end_forward()
++
++    def test_glm5_next_runs_only_split_prefills(self):
++        layers = [Glm5NextDecoderLayer("l0"), Glm5NextDecoderLayer("l1")]
++        with self.assertRaises(NotImplementedError):
++            OperationsStrategy.init_new_tbo(layers, ForwardMode.DECODE)
++
++        with patch.object(prefill_mbo, "_child_backends", [object(), object()]):
++            with patch.object(prefill_mbo, "_active", True):
++                strategy = OperationsStrategy.init_new_tbo(layers, ForwardMode.EXTEND)
++        names = [op if isinstance(op, str) else "yield" for op in strategy.operations]
++        self.assertEqual(
++            names,
++            [
++                *("l0.attn", "yield", "l0.ffn", "yield"),
++                *("l1.attn", "yield", "l1.ffn", "yield"),
++                "l1.finish",
++            ],
++        )
++        self.assertEqual(strategy.tbo_delta_stages, 0)
 +
 +
 +class TestMhcCoefficientsPerMicrobatch(CustomTestCase):

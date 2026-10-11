@@ -1,6 +1,6 @@
 # Exact upstream sources and checked integration patches; CUDA/PyTorch from the pinned base.
-ARG GLM53_RELEASE_VERSION=0.6.0
-ARG GLM53_RELEASE_CANDIDATE=5
+ARG GLM53_RELEASE_VERSION=0.6.1
+ARG GLM53_RELEASE_CANDIDATE=1
 ARG GLM53_CACHE_SCHEMA=v90
 ARG GLM53_SGLANG_BASE=lmsysorg/sglang@sha256:53efab7e8255a47b19edc81a0f1ad37cd6c8341bfe8f448d268700b182b2f03d
 ARG GLM53_SGLANG_BASE_TAG=nightly-dev-cu13-20261010-961bcf48
@@ -9,8 +9,8 @@ ARG GLM53_SGLANG_BASE_AMD64_MANIFEST=sha256:53efab7e8255a47b19edc81a0f1ad37cd6c8
 ARG GLM53_SGLANG_REPOSITORY=https://github.com/sgl-project/sglang.git
 ARG GLM53_SGLANG_HEAD=3831e7e0918052be50ef38b3ff62154573e213d7
 ARG GLM53_SGLANG_UPSTREAM_TREE=eb4fd3d60d53b7ea11eb100c29fd0bd110d7cb1c
-ARG GLM53_SGLANG_TREE=393b4ae2136a0848ad73b4b480a0a278a40d2462
-ARG GLM53_SGLANG_PATCH_SHA256=e8d7bef238f287d74664d999a82552eb2a92099fe5ad9308bf44874fc489c55c
+ARG GLM53_SGLANG_TREE=1cc651d42121e1eb06dca3650106c7f81f55c15b
+ARG GLM53_SGLANG_PATCH_SHA256=6dfd5879ce990fc4565571e519cd80f2a9541c334b83a28157ff7b144721b496
 ARG GLM53_FLASHINFER_REPOSITORY=https://github.com/flashinfer-ai/flashinfer.git
 ARG GLM53_FLASHINFER_VERSION=0.7.2
 ARG GLM53_FLASHINFER_HEAD=e9c723a90888a9523c190c779860c19f0f7b7c0f
@@ -35,6 +35,8 @@ ARG GLM53_TRANSFORMERS_VERSION=5.19.0
 FROM ${GLM53_SGLANG_BASE} AS runtime
 ARG IMAGE_SOURCE
 ARG IMAGE_SOURCE_REVISION
+ARG GLM53_RELEASE_VERSION
+ARG GLM53_RELEASE_CANDIDATE
 ENV PATH=/root/.cargo/bin:/opt/sglang/bin:/usr/local/cuda/bin:${PATH} \
     PYTHONPATH="" \
     FLASHINFER_CUDA_ARCH_LIST=12.0f \
@@ -59,8 +61,8 @@ RUN bash /opt/glm53/scripts/build-stack.sh
 COPY acceptance_check.py /opt/glm53/acceptance_check.py
 RUN CUDA_VISIBLE_DEVICES=9 /opt/sglang/bin/python /opt/glm53/acceptance_check.py
 LABEL org.opencontainers.image.title="GLM-5.3-Flash on SM120" \
-      org.opencontainers.image.description="Z.ai FP8 target, FP8 KV and native MTP on four RTX PRO 6000 GPUs" \
-      org.opencontainers.image.version="0.6.0-rc.1" \
+      org.opencontainers.image.description="GLM-5.3-Flash with FP8 KV and native MTP on two or four RTX PRO 6000 GPUs" \
+      org.opencontainers.image.version="${GLM53_RELEASE_VERSION}-rc.${GLM53_RELEASE_CANDIDATE}" \
       org.opencontainers.image.source=${IMAGE_SOURCE} \
       org.opencontainers.image.revision=${IMAGE_SOURCE_REVISION} \
       ai.hardware.target-architecture="sm120" \
