@@ -1,6 +1,6 @@
 diff --git a/benchmarks/bench_b12x_w4a16_route_pack.py b/benchmarks/bench_b12x_w4a16_route_pack.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..09efc9d9a261830b154903f8b6da725592a5f94e
+index 000000000..09efc9d9a
 --- /dev/null
 +++ b/benchmarks/bench_b12x_w4a16_route_pack.py
 @@ -0,0 +1,283 @@
@@ -289,7 +289,7 @@ index 0000000000000000000000000000000000000000..09efc9d9a261830b154903f8b6da7255
 +    main()
 diff --git a/benchmarks/bench_b12x_w4a16_route_pack_sm120.json b/benchmarks/bench_b12x_w4a16_route_pack_sm120.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..c64e28bb598a9dcd3566f856e0db2ead8502a329
+index 000000000..c64e28bb5
 --- /dev/null
 +++ b/benchmarks/bench_b12x_w4a16_route_pack_sm120.json
 @@ -0,0 +1,752 @@
@@ -1046,7 +1046,7 @@ index 0000000000000000000000000000000000000000..c64e28bb598a9dcd3566f856e0db2ead
 +  "gpu_status": "uuid, temperature.gpu, clocks.current.sm [MHz], power.draw [W], power.limit [W]\nGPU-4b6a1e3a-4e8f-95c7-9f90-be37abc0b7a4, 72, 2355 MHz, 111.28 W, 300.00 W\nGPU-bfdf4699-e4d9-b46a-6503-21a001973e6c, 42, 180 MHz, 16.00 W, 300.00 W\n"
 +}
 diff --git a/flashinfer/fused_moe/api.py b/flashinfer/fused_moe/api.py
-index e7f6d24b9db504e61a97c9e1bc07424fd4cd7592..9efe5282a5f32e01095c947932d3c2db59117f62 100644
+index e7f6d24b9..9efe5282a 100644
 --- a/flashinfer/fused_moe/api.py
 +++ b/flashinfer/fused_moe/api.py
 @@ -2446,6 +2446,9 @@ class B12xW4A16Config:
@@ -1060,7 +1060,7 @@ index e7f6d24b9db504e61a97c9e1bc07424fd4cd7592..9efe5282a5f32e01095c947932d3c2db
          See :func:`flashinfer.fused_moe.prepare.prepare_b12x_w4a16_weights`.
          """
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
-index 0143f258fe1eeacb20af39f62757e0af8e74eb95..a3a6c75817f2fa7a412fbba9f978ae7894d5d3b7 100644
+index 0143f258f..a3a6c7581 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/__init__.py
 @@ -11,6 +11,7 @@ from .moe_dispatch import (
@@ -1080,7 +1080,7 @@ index 0143f258fe1eeacb20af39f62757e0af8e74eb95..a3a6c75817f2fa7a412fbba9f978ae78
      "launch_sm120_dynamic_moe",
      "launch_sm120_moe",
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
-index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae46095c2c8 100644
+index 1f191afe6..a5dabc245 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py
 @@ -8,7 +8,9 @@ selection.
@@ -1093,7 +1093,44 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
  import weakref
  from dataclasses import dataclass
  from typing import Any, Dict, Optional, Tuple, Union
-@@ -564,10 +566,17 @@ class _WeightViews:
+@@ -205,12 +207,14 @@ def _normalize_quant_mode(
+         "mxfp4": "mxfp4",
+         "bf16": "w4a16",
+         "w4a16": "w4a16",
++        # Exact prepared weights with per-row FP8 activation quantization.
++        "w4a8_fp8_exact": "w4a8_fp8_exact",
+     }
+     try:
+         return aliases[normalized]
+     except KeyError as exc:
+         raise ValueError(
+-            "quant_mode must be 'nvfp4'/'w4a4', 'mxfp4', or 'w4a16' "
++            "quant_mode must be 'nvfp4'/'w4a4', 'mxfp4', 'w4a16' or 'w4a8_fp8_exact' "
+             f"(got {quant_mode!r})."
+         ) from exc
+ 
+@@ -223,13 +227,18 @@ def _sf_params_for_quant_mode(quant_mode: str):
+     return _NVFP4_BLOCK_SIZE, cutlass.Float8E4M3FN
+ 
+ 
++# BF16 input API shared by W4A16 and the opt-in FP8 activation path.
++_B12X_FP8_LEVELS = {"w4a8_fp8_exact": 3}
++_B12X_W4A16_FAMILY = ("w4a16",) + tuple(_B12X_FP8_LEVELS)
++
++
+ def _activation_precision_from_quant_mode(quant_mode: str) -> str:
+-    return "bf16" if _normalize_quant_mode(quant_mode) == "w4a16" else "fp4"
++    return "bf16" if _normalize_quant_mode(quant_mode) in _B12X_W4A16_FAMILY else "fp4"
+ 
+ 
+ def _normalize_source_format_for_quant_mode(source_format: str, quant_mode: str) -> str:
+     normalized = _normalize_source_format(source_format)
+-    if quant_mode != "w4a16" and normalized == "compressed_tensors":
++    if quant_mode not in _B12X_W4A16_FAMILY and normalized == "compressed_tensors":
+         raise ValueError(
+             "source_format='compressed_tensors' requires quant_mode='w4a16'."
+         )
+@@ -564,10 +573,17 @@ class _WeightViews:
  def _register_cache_eviction(cache: Dict, key: Tuple, *source_tensors) -> None:
      """Evict ``key`` when a source weight tensor is collected, so the cache
      follows the weights' lifetime instead of growing for the whole process.
@@ -1112,7 +1149,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
  
  
  _WEIGHT_CACHE: Dict[Tuple, Tuple] = {}
-@@ -612,7 +621,7 @@ def _get_weight_views(
+@@ -612,7 +628,7 @@ def _get_weight_views(
          w2_blockscale.data_ptr(),
          w2_alphas.data_ptr(),
      )
@@ -1121,7 +1158,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
      if cached is None:
          # Cache the fresh buffers (scale factors + fp32 alphas).
          w1_rows = w1_fp4.shape[1]  # 2*n for gated, n for non-gated
-@@ -634,10 +643,10 @@ def _get_weight_views(
+@@ -634,10 +650,10 @@ def _get_weight_views(
              w1_alphas.contiguous().to(torch.float32),
              w2_alphas.contiguous().to(torch.float32),
          )
@@ -1134,7 +1171,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
              w1_fp4,
              w1_blockscale,
              w1_alphas,
-@@ -2745,7 +2754,7 @@ def _get_w4a16_packed_weights(
+@@ -2745,7 +2761,7 @@ def _get_w4a16_packed_weights(
          w2_weight_sf.data_ptr(),
          w2_alpha.data_ptr(),
      )
@@ -1143,7 +1180,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
      if cached is not None:
          return cached
      if _is_cuda_graph_capturing():
-@@ -2764,10 +2773,10 @@ def _get_w4a16_packed_weights(
+@@ -2764,10 +2780,10 @@ def _get_w4a16_packed_weights(
          params_dtype=params_dtype,
          source_format=source_format,
      )
@@ -1156,7 +1193,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
          w1_weight,
          w1_weight_sf,
          w1_alpha,
-@@ -2775,7 +2784,6 @@ def _get_w4a16_packed_weights(
+@@ -2775,7 +2791,6 @@ def _get_w4a16_packed_weights(
          w2_weight_sf,
          w2_alpha,
      )
@@ -1164,7 +1201,39 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
  
  
  def _validate_w4a16_workspace(
-@@ -2924,21 +2932,171 @@ _Sm120Workspace = Union[
+@@ -2831,6 +2846,7 @@ def _launch_sm120_w4a16_moe(
+     source_format: str = "modelopt",
+     _workspace=None,
+     _prepared_weights=None,
++    a_fp8: int = 0,
+ ) -> torch.Tensor:
+     prepared = (
+         _prepared_weights
+@@ -2859,6 +2875,15 @@ def _launch_sm120_w4a16_moe(
+             raise ValueError(
+                 f"expert_map must be on {a.device}, got {expert_map.device}"
+             )
++    if a_fp8 and (
++        getattr(prepared, "scale_format", None) != "e4m3_k32"
++        or getattr(prepared, "weight_layout", "packed") != "packed"
++        or a.dtype != torch.bfloat16
++    ):
++        raise ValueError(
++            "quant_mode='w4a8_fp8_exact' needs bf16 activations and packed E4M3-K32 "
++            "prepared weights (source_format='modelopt_e4m3_k32')"
++        )
+     num_tokens = int(topk_ids.size(0))
+     routed_rows = num_tokens * int(top_k)
+     k = int(a.size(1))
+@@ -2910,6 +2935,7 @@ def _launch_sm120_w4a16_moe(
+         expert_offsets=workspace.expert_offsets,
+         expert_map=expert_map if expert_map is not None else workspace.expert_map,
+         fast_math=fast_math,
++        a_fp8=a_fp8,
+     )
+ 
+ 
+@@ -2924,21 +2950,171 @@ _Sm120Workspace = Union[
  ]
  
  # Stores the workspace with the largest capacity seen per key and never
@@ -1342,7 +1411,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
      _STATIC_KERNEL_CACHE.clear()
      _MICRO_KERNEL_CACHE.clear()
      _DIRECT_MICRO_LAUNCH_CACHE.clear()
-@@ -3064,43 +3222,45 @@ def _get_cached_workspace(
+@@ -3064,43 +3240,45 @@ def _get_cached_workspace(
          activation,
          tile_m,
      )
@@ -1423,7 +1492,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
  
  
  # ==========================================================================
-@@ -3146,7 +3306,7 @@ def _pad_intermediate_to_tile(
+@@ -3146,7 +3324,7 @@ def _pad_intermediate_to_tile(
          w2_weight_sf.data_ptr(),
          fc2_input_scale_src.data_ptr() if fc2_input_scale_src is not None else 0,
      )
@@ -1432,7 +1501,7 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
      if cached is not None:
          return cached
  
-@@ -3225,17 +3385,16 @@ def _pad_intermediate_to_tile(
+@@ -3225,17 +3403,16 @@ def _pad_intermediate_to_tile(
      if fc2_input_scale_src is not None and fc2_input_scale_src.numel() == n:
          fc2_input_scale = pad_dim(fc2_input_scale_src, 0, n, n_pad)
      result = (w1p, w1_sf_p, w2p, w2_sf_p, fc2_input_scale, n_pad)
@@ -1452,8 +1521,448 @@ index 1f191afe647b431c998a87471a489ea89a78e270..a7d7f0d04e7d59c662e38719568b0ae4
  
  
  def _validate_static_workspace_for_launch(
+@@ -3457,7 +3634,11 @@ def launch_sm120_moe(
+         raise ValueError(f"MXFP4 b12x hidden_size ({k}) must be a multiple of 128.")
+ 
+     # W4A4 kernels need a tile-aligned gate/up split.
+-    if quant_mode != "w4a16" and n % _LEVEL_TILE_N != 0 and _weight_views is None:
++    if (
++        quant_mode not in _B12X_W4A16_FAMILY
++        and n % _LEVEL_TILE_N != 0
++        and _weight_views is None
++    ):
+         (
+             w1_weight,
+             w1_weight_sf,
+@@ -3481,7 +3662,7 @@ def launch_sm120_moe(
+ 
+     routed_rows = num_tokens * top_k
+ 
+-    if quant_mode == "w4a16":
++    if quant_mode in _B12X_W4A16_FAMILY:
+         return _launch_sm120_w4a16_moe(
+             a=a,
+             topk_ids=topk_ids,
+@@ -3502,6 +3683,7 @@ def launch_sm120_moe(
+             source_format=source_format,
+             _workspace=_workspace,
+             _prepared_weights=_prepared_weights,
++            a_fp8=_B12X_FP8_LEVELS.get(quant_mode, 0),
+         )
+ 
+     if quant_mode == "nvfp4" and input_global_scale is not None:
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_fp8_act.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_fp8_act.py
+new file mode 100644
+index 000000000..dcf1861b5
+--- /dev/null
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_fp8_act.py
+@@ -0,0 +1,92 @@
++"""FC1-input FP8 activation quantization for the b12x W4A16 FP8-prefill mode.
++
++Per-row (per-token) dynamic E4M3 quantization with an fp32 scale (amax / 448), written in
++the sigma K-slot order the kernel's m16n8k32 A fragments expect (see
++moe_w4a16_fp8_helpers.SIGMA16): inside every 16-wide K group, source element k lands in
++slot  s = 4 * ((k % 8) // 2) + (k % 2) + 2 * (k // 8).
++
++"""
++
++from __future__ import annotations
++
++import torch
++import triton
++import triton.language as tl
++
++
++@triton.jit
++def _quant_rows_fp8_sigma_kernel(
++    x_ptr,
++    q_ptr,
++    s_ptr,
++    K: tl.constexpr,
++    BLOCK: tl.constexpr,
++):
++    row = tl.program_id(0).to(tl.int64)
++    offs = tl.arange(0, BLOCK)
++    mask = offs < K
++    x = tl.load(x_ptr + row * K + offs, mask=mask, other=0.0).to(tl.float32)
++    amax = tl.maximum(tl.max(tl.abs(x), axis=0), 1e-12)
++    q = (x * (448.0 / amax)).to(tl.float8e4nv)
++    k16 = offs % 16
++    slot = 4 * ((k16 % 8) // 2) + (k16 % 2) + 2 * (k16 // 8)
++    tl.store(q_ptr + row * K + (offs - k16) + slot, q, mask=mask)
++    tl.store(s_ptr + row, amax / 448.0)
++
++
++def quant_rows_fp8_sigma(
++    x: torch.Tensor,
++    out_q: torch.Tensor | None = None,
++    out_scale: torch.Tensor | None = None,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """x [M, K] bf16/fp16 -> (q [M, K] float8_e4m3fn in sigma order, scale [M] fp32)."""
++    if x.ndim != 2 or not x.is_contiguous() or x.shape[1] == 0 or x.shape[1] % 16:
++        raise ValueError("x must be contiguous [M, K] with positive K divisible by 16")
++    if not x.is_cuda or x.dtype not in (torch.bfloat16, torch.float16):
++        raise ValueError("x must be a CUDA BF16 or FP16 tensor")
++    m, k = x.shape
++    q = (
++        out_q
++        if out_q is not None
++        else torch.empty((m, k), dtype=torch.float8_e4m3fn, device=x.device)
++    )
++    s = (
++        out_scale
++        if out_scale is not None
++        else torch.empty((m,), dtype=torch.float32, device=x.device)
++    )
++    for name, tensor, shape, dtype in (
++        ("out_q", q, (m, k), torch.float8_e4m3fn),
++        ("out_scale", s, (m,), torch.float32),
++    ):
++        if (
++            tensor.shape != shape
++            or tensor.dtype != dtype
++            or tensor.device != x.device
++            or not tensor.is_contiguous()
++        ):
++            raise ValueError(
++                f"{name} has an incompatible shape, dtype, device or stride"
++            )
++    if m:
++        _quant_rows_fp8_sigma_kernel[(m,)](
++            x, q, s, K=k, BLOCK=triton.next_power_of_2(k), num_warps=8
++        )
++    return q, s
++
++
++def quant_rows_fp8_sigma_reference(
++    x: torch.Tensor,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """Torch reference of quant_rows_fp8_sigma (same rounding: RNE via .to(float8))."""
++    xf = x.float()
++    amax = xf.abs().amax(-1, keepdim=True).clamp_min(1e-12)
++    q = (xf * (448.0 / amax)).to(torch.float8_e4m3fn)
++    k = x.shape[-1]
++    sigma = [2 * (s // 4) + (0, 1, 8, 9)[s % 4] for s in range(16)]
++    idx = torch.tensor(sigma, device=x.device)
++    idx = (torch.arange(0, k, 16, device=x.device)[:, None] + idx[None, :]).reshape(-1)
++    return q.index_select(-1, idx).contiguous(), (amax / 448.0).squeeze(-1)
++
++
++__all__ = ["quant_rows_fp8_sigma", "quant_rows_fp8_sigma_reference"]
+diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_fp8_helpers.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_fp8_helpers.py
+new file mode 100644
+index 000000000..c03190e2f
+--- /dev/null
++++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_fp8_helpers.py
+@@ -0,0 +1,306 @@
++"""PTX helpers for FP8 activations with prepared E2M1 weights.
++
++Prepared K32 scales are decoded to FP32 and applied after each unscaled MMA.
++Weight nibbles are rearranged into native E2M1 containers without quantizing them.
++The global scale correction reverses the BF16 preparation multiplier.
++"""
++
++from __future__ import annotations
++
++
++from typing import Tuple
++
++
++from cutlass import Uint32
++
++
++from cutlass._mlir.dialects import llvm
++
++
++from cutlass.cutlass_dsl import T, dsl_user_op
++
++
++GLOBAL_FP8_FIXUP = 2.0**-119  # g_fp8 = g_prep * 2**-119  (bf16 params_dtype)
++
++
++@dsl_user_op
++def f32x4_to_e4m3x4(v0, v1, v2, v3, *, loc=None, ip=None) -> Uint32:
++    """4 x f32 -> 4 E4M3 bytes (RN, satfinite); v0 -> byte 0 ... v3 -> byte 3."""
++    from cutlass import Float32
++
++    return Uint32(
++        llvm.inline_asm(
++            T.i32(),
++            [
++                Float32(v0).ir_value(loc=loc, ip=ip),
++                Float32(v1).ir_value(loc=loc, ip=ip),
++                Float32(v2).ir_value(loc=loc, ip=ip),
++                Float32(v3).ir_value(loc=loc, ip=ip),
++            ],
++            """
++            {
++                .reg .b16 lo, hi;
++                cvt.rn.satfinite.e4m3x2.f32 lo, $2, $1;
++                cvt.rn.satfinite.e4m3x2.f32 hi, $4, $3;
++                mov.b32 $0, {lo, hi};
++            }
++            """,
++            "=r,f,f,f,f",
++            has_side_effects=False,
++            is_align_stack=False,
++            asm_dialect=llvm.AsmDialect.AD_ATT,
++            loc=loc,
++            ip=ip,
++        )
++    )
++
++
++@dsl_user_op
++def e2m1x8_to_e2m1c_nblk(
++    q: Uint32, shift: int = 2, *, loc=None, ip=None
++) -> Tuple[Uint32, Uint32]:
++    """Exact-weight variant (native .e2m1 B for kind::f8f6f4): spread 8 nibbles (b12x order) to
++    two registers of 8-bit containers, nibble at bits [shift+3:shift] (ISA: [5:2] -> shift=2).
++
++    out0 = (n0, n4, n1, n5), out1 = (n2, n6, n3, n7): the same k slots as the E4M3 routes.
++    x = prmt(q,0,0x2020) = [B0,B2,B0,B2]; low nibbles -> bytes 0,1, high nibbles -> bytes 2,3.
++    """
++    shift = int(shift)
++    if shift == 2:
++        body = """
++            prmt.b32 x, $2, 0, 0x2020;
++            shl.b32 lo, x, 2;  and.b32 lo, lo, 0x00003C3C;
++            shr.b32 hi, x, 2;  and.b32 hi, hi, 0x3C3C0000;
++            or.b32 $0, lo, hi;
++            prmt.b32 x, $2, 0, 0x3131;
++            shl.b32 lo, x, 2;  and.b32 lo, lo, 0x00003C3C;
++            shr.b32 hi, x, 2;  and.b32 hi, hi, 0x3C3C0000;
++            or.b32 $1, lo, hi;"""
++    elif shift == 0:
++        body = """
++            prmt.b32 x, $2, 0, 0x2020;
++            and.b32 lo, x, 0x00000F0F;
++            shr.b32 hi, x, 4;  and.b32 hi, hi, 0x0F0F0000;
++            or.b32 $0, lo, hi;
++            prmt.b32 x, $2, 0, 0x3131;
++            and.b32 lo, x, 0x00000F0F;
++            shr.b32 hi, x, 4;  and.b32 hi, hi, 0x0F0F0000;
++            or.b32 $1, lo, hi;"""
++    else:
++        raise ValueError(f"unsupported e2m1 container shift {shift}")
++    res = llvm.inline_asm(
++        llvm.StructType.get_literal([T.i32(), T.i32()]),
++        [Uint32(q).ir_value(loc=loc, ip=ip)],
++        "{ .reg .b32 x, lo, hi;" + body + " }",
++        "=r,=r,r",
++        has_side_effects=False,
++        is_align_stack=False,
++        asm_dialect=llvm.AsmDialect.AD_ATT,
++        loc=loc,
++        ip=ip,
++    )
++    b0 = llvm.extractvalue(T.i32(), res, [0], loc=loc, ip=ip)
++    b1 = llvm.extractvalue(T.i32(), res, [1], loc=loc, ip=ip)
++    return Uint32(b0), Uint32(b1)
++
++
++@dsl_user_op
++def e2m1x8_to_e2m1c_nblk6(q: Uint32, *, loc=None, ip=None) -> Tuple[Uint32, Uint32]:
++    """bit-identical output to e2m1x8_to_e2m1c_nblk(q, shift=2) in 6 ops
++    instead of 10.  y = (q<<2)&0x3C3C3C3C holds the low nibbles (n0,n2,n4,n6)<<2, z =
++    (q>>2)&0x3C3C3C3C the high nibbles (n1,n3,n5,n7)<<2 (the mask keeps bits 2..5 of every
++    byte, so no bit crosses a byte); out0 = (n0,n4,n1,n5) = prmt(y,z,0x6420), out1 =
++    (n2,n6,n3,n7) = prmt(y,z,0x7531).  Exhaustively checked against the 10-op form
++    with exhaustive nibble and randomized word checks."""
++    res = llvm.inline_asm(
++        llvm.StructType.get_literal([T.i32(), T.i32()]),
++        [Uint32(q).ir_value(loc=loc, ip=ip)],
++        """
++        {
++            .reg .b32 y, z;
++            shl.b32 y, $2, 2;
++            and.b32 y, y, 0x3C3C3C3C;
++            shr.b32 z, $2, 2;
++            and.b32 z, z, 0x3C3C3C3C;
++            prmt.b32 $0, y, z, 0x6420;
++            prmt.b32 $1, y, z, 0x7531;
++        }
++        """,
++        "=r,=r,r",
++        has_side_effects=False,
++        is_align_stack=False,
++        asm_dialect=llvm.AsmDialect.AD_ATT,
++        loc=loc,
++        ip=ip,
++    )
++    b0 = llvm.extractvalue(T.i32(), res, [0], loc=loc, ip=ip)
++    b1 = llvm.extractvalue(T.i32(), res, [1], loc=loc, ip=ip)
++    return Uint32(b0), Uint32(b1)
++
++
++@dsl_user_op
++def prep_scale_byte_to_f32_v2(packed: Uint32, byte_idx: int, *, loc=None, ip=None):
++    """same bits as prep_scale_byte_to_f32 ((b + 840) << 20, b == 0 -> 0.0)
++    as prmt (zero-extended byte) + mad (b * 2**20 + 0x34800000) + setp/selp."""
++    from cutlass import Float32
++
++    sel = 0x4440 + int(byte_idx)
++    return Float32(
++        llvm.inline_asm(
++            T.f32(),
++            [Uint32(packed).ir_value(loc=loc, ip=ip)],
++            f"""
++            {{
++                .reg .b32 b, r;
++                .reg .pred z;
++                prmt.b32 b, $1, 0, {sel:#06x};
++                mad.lo.u32 r, b, 1048576, 880803840;
++                setp.eq.u32 z, b, 0;
++                selp.b32 r, 0, r, z;
++                mov.b32 $0, r;
++            }}
++            """,
++            "=f,r",
++            has_side_effects=False,
++            is_align_stack=False,
++            asm_dialect=llvm.AsmDialect.AD_ATT,
++            loc=loc,
++            ip=ip,
++        )
++    )
++
++
++@dsl_user_op
++def bf16x2_bits_to_f32x2(packed: Uint32, *, loc=None, ip=None):
++    """one u32 of two bf16 (element 2i in the low half) -> two exact f32
++    (bf16 -> f32 is exact: the bf16 bits are the top half of the f32)."""
++    from cutlass import Float32
++
++    res = llvm.inline_asm(
++        llvm.StructType.get_literal([T.f32(), T.f32()]),
++        [Uint32(packed).ir_value(loc=loc, ip=ip)],
++        """
++        {
++            .reg .b32 lo, hi;
++            shl.b32 lo, $2, 16;
++            and.b32 hi, $2, 0xFFFF0000;
++            mov.b32 $0, lo;
++            mov.b32 $1, hi;
++        }
++        """,
++        "=f,=f,r",
++        has_side_effects=False,
++        is_align_stack=False,
++        asm_dialect=llvm.AsmDialect.AD_ATT,
++        loc=loc,
++        ip=ip,
++    )
++    return (
++        Float32(llvm.extractvalue(T.f32(), res, [0], loc=loc, ip=ip)),
++        Float32(llvm.extractvalue(T.f32(), res, [1], loc=loc, ip=ip)),
++    )
++
++
++@dsl_user_op
++def pack_f32x2_to_bf16x2_rn(x0, x1, *, loc=None, ip=None) -> Uint32:
++    """(x0 -> low half, x1 -> high half), RN, NO satfinite -- the same
++    rounding as the scalar cvt.rn.bf16.f32 of the stock top-k sum (inf stays inf)."""
++    from cutlass import Float32
++
++    return Uint32(
++        llvm.inline_asm(
++            T.i32(),
++            [
++                Float32(x0).ir_value(loc=loc, ip=ip),
++                Float32(x1).ir_value(loc=loc, ip=ip),
++            ],
++            "cvt.rn.bf16x2.f32 $0, $2, $1;",
++            "=r,f,f",
++            has_side_effects=False,
++            is_align_stack=False,
++            asm_dialect=llvm.AsmDialect.AD_ATT,
++            loc=loc,
++            ip=ip,
++        )
++    )
++
++
++@dsl_user_op
++def prep_scale_byte_to_f32(packed: Uint32, byte_idx: int, *, loc=None, ip=None):
++    """Byte `byte_idx` of 4 prepared E5M3 scales -> exact f32 2**(E5-22) * (1 + M/8).
++
++    f32 bits = (b + 840) << 20  (E5 lands in the exponent with bias 127-22=105=840/8, M in the
++    top 3 mantissa bits); b == 0 (flushed) -> 0.0.
++    """
++    from cutlass import Float32
++
++    shift = 8 * int(byte_idx)
++    return Float32(
++        llvm.inline_asm(
++            T.f32(),
++            [Uint32(packed).ir_value(loc=loc, ip=ip)],
++            f"""
++            {{
++                .reg .b32 b, r;
++                .reg .pred z;
++                shr.u32 b, $1, {shift};
++                and.b32 b, b, 0xFF;
++                add.u32 r, b, 840;
++                shl.b32 r, r, 20;
++                setp.eq.u32 z, b, 0;
++                selp.b32 r, 0, r, z;
++                mov.b32 $0, r;
++            }}
++            """,
++            "=f,r",
++            has_side_effects=False,
++            is_align_stack=False,
++            asm_dialect=llvm.AsmDialect.AD_ATT,
++            loc=loc,
++            ip=ip,
++        )
++    )
++
++
++@dsl_user_op
++def f8f6f4_mma_m16n8k32_f32(
++    a0: Uint32,
++    a1: Uint32,
++    a2: Uint32,
++    a3: Uint32,
++    b0: Uint32,
++    b1: Uint32,
++    btype: str = "e4m3",
++    *,
++    loc=None,
++    ip=None,
++):
++    """Unscaled `mma.sync.aligned.m16n8k32.row.col.kind::f8f6f4.f32.e4m3.<btype>.f32` with C = 0.
++
++    Returns the k32 partial sum (D) so the caller can apply a per-column f32 scale (exact
++    variant).  btype: "e4m3" or "e2m1" (8-bit containers, value at bits [5:2])."""
++    from cutlass import Float32
++
++    if btype not in ("e4m3", "e2m1"):
++        raise ValueError(btype)
++    res = llvm.inline_asm(
++        llvm.StructType.get_literal([T.f32(), T.f32(), T.f32(), T.f32()]),
++        [Uint32(x).ir_value(loc=loc, ip=ip) for x in (a0, a1, a2, a3, b0, b1)],
++        f"""
++        {{
++            .reg .f32 z;
++            mov.f32 z, 0f00000000;
++            mma.sync.aligned.m16n8k32.row.col.kind::f8f6f4.f32.e4m3.{btype}.f32
++            {{$0, $1, $2, $3}}, {{$4, $5, $6, $7}}, {{$8, $9}}, {{z, z, z, z}};
++        }}
++        """,
++        "=f,=f,=f,=f,r,r,r,r,r,r",
++        has_side_effects=False,
++        is_align_stack=False,
++        asm_dialect=llvm.AsmDialect.AD_ATT,
++        loc=loc,
++        ip=ip,
++    )
++    return tuple(
++        Float32(llvm.extractvalue(T.f32(), res, [i], loc=loc, ip=ip)) for i in range(4)
++    )
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
-index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e261d3655 100644
+index 9578667a3..5c130cc68 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_kernel.py
 @@ -2,6 +2,7 @@
@@ -1479,15 +1988,55 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
  )
  from .moe_w4a16_fp4_helpers import (
      atomic_add_global_i32,
-@@ -75,6 +73,7 @@ from .moe_w4a16_fp4_helpers import (
+@@ -39,6 +37,7 @@ from .moe_w4a16_fp4_helpers import (
+     ld_global_acquire_i32,
+     ld_global_nc_u32,
+     ld_global_v4_f32,
++    ld_global_v4_u32,
+     ld_shared_f32,
+     ld_shared_i32_relaxed,
+     ld_shared_u32,
+@@ -75,6 +74,18 @@ from .moe_w4a16_fp4_helpers import (
      warp_reduce,
  )
  from flashinfer.cute_dsl.utils import current_cuda_stream, make_ptr
++from .moe_w4a16_fp8_helpers import (
++    GLOBAL_FP8_FIXUP as _FP8_GLOBAL_FIXUP,
++    bf16x2_bits_to_f32x2,
++    pack_f32x2_to_bf16x2_rn,
++    e2m1x8_to_e2m1c_nblk,
++    e2m1x8_to_e2m1c_nblk6,
++    f32x4_to_e4m3x4,
++    f8f6f4_mma_m16n8k32_f32,
++    prep_scale_byte_to_f32,
++    prep_scale_byte_to_f32_v2,
++)
 +from flashinfer.jit.cute_dsl_core import build_and_load_cute_dsl_kernel
  from .moe_w4a16_route_pack import (
      pack_topk_routes_by_expert as _pack_topk_routes_by_expert,
  )
-@@ -117,6 +116,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
+@@ -105,6 +116,20 @@ def raise_if_kernel_resolution_frozen(*args, **kwargs) -> None:
+ _ALLOWED_ROUTED_SIZES = _W4A16_ALLOWED_ROUTED_SIZES
+ _PACK_FACTOR = 8
+ _STAGES = 4
++# FP8 activation quantization preserves the prepared E2M1 weights and K32 scales.
++# The activation approximation is opt-in. Use a fixed, tested pipeline configuration.
++_FP8_KIND_EXACT_NATIVE = 3
++_FP8_TUNE_DEFAULTS = {
++    "conv6": 1,  # Six-instruction E2M1 container conversion.
++    "sdec": 1,  # Decode prepared scale bytes with prmt and mad.
++    "mskip": 2,  # Specialize the K loop for the number of valid M16 blocks.
++    "stages": 6,  # Shared-memory ring depth.
++    "pair": 1,  # One CTA barrier per two K tiles.
++    "actvec": 1,  # Vectorized activation loads.
++    "abuf1": 1,  # Load A fragments at the even K16 step.
++}
++
++
+ _E8M0_LOGICAL_TAIL_SCALE_N_ALIGNMENT = 64
+ _DEVICE_MAX_REG_BYTES = 255 * 1024
+ _DEFAULT_MAX_SHARED_MEM = 101_376
+@@ -117,6 +142,7 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
  _NF3_CODEBOOK = (-1.0, -0.6047, -0.3563, -0.1275, 0.1275, 0.3563, 0.6047, 1.0)
  _SCALE_FORMATS = {
      "e4m3_k16": "e4m3_k16",
@@ -1495,7 +2044,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      "e8m0_k32": "e8m0_k32",
  }
  _E8M0_K32_FP16_GLOBAL_COMPENSATION = float(2.0**7)
-@@ -361,6 +361,7 @@ def _candidate_tile_fits(
+@@ -361,6 +387,7 @@ def _candidate_tile_fits(
      scale_format: str = "e4m3_k16",
      weight_layout: str = "packed",
      allow_logical_tail: bool = False,
@@ -1503,7 +2052,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
  ) -> bool:
      if int(tile_k) == -1 or int(tile_n) == -1 or int(cta_threads) == -1:
          return False
-@@ -381,7 +382,8 @@ def _candidate_tile_fits(
+@@ -381,7 +408,8 @@ def _candidate_tile_fits(
          or int(tile_k) % scale_group_size != 0
      ):
          return False
@@ -1513,7 +2062,162 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          return False
      smem_bytes = _shared_memory_footprint(
          cta_m_blocks=cta_m_blocks,
-@@ -1490,8 +1492,12 @@ class W4A16GemmKernel:
+@@ -529,6 +557,7 @@ class W4A16FusedMoeCompileResult:
+     scale_format: str = "e4m3_k16"
+     tc_decode_fused_sum: bool = False
+     collect_activation_amax: bool = False
++    a_fp8: int = 0
+ 
+ 
+ @dataclass(frozen=True)
+@@ -562,9 +591,29 @@ class W4A16GemmKernel:
+         fused_topk_sum: bool = False,
+         fused_sum_topk: int = 1,
+         schedule_whole_tiles: bool = False,
++        a_fp8: int = 0,
+     ):
+         if element_dtype not in {"bf16", "fp16"}:
+             raise ValueError(f"unsupported element_dtype {element_dtype!r}")
++        self.a_fp8 = int(a_fp8)
++        if self.a_fp8 not in (0, _FP8_KIND_EXACT_NATIVE):
++            raise ValueError(f"unsupported a_fp8 level {a_fp8!r}")
++        self.tune = {
++            key: value if self.a_fp8 else (4 if key == "stages" else 0)
++            for key, value in _FP8_TUNE_DEFAULTS.items()
++        }
++        self.stages = self.tune["stages"] if self.a_fp8 else _STAGES
++        if self.a_fp8:
++            # FP8 prefill mode: route-packed large-M blocks only, bf16-prepared E4M3-K32
++            # scales (the K/32 group == one m16n8k32 MMA), packed Marlin weight layout.
++            if moe_block_size == 8 or direct_topk_routes or fused_topk_sum:
++                raise ValueError("a_fp8 requires route-packed moe_block_size >= 16")
++            if element_dtype != "bf16" or weight_layout != "packed":
++                raise ValueError("a_fp8 requires bf16 params and packed weights")
++            if _normalize_scale_format(scale_format) != "e4m3_k32":
++                raise ValueError("a_fp8 requires scale_format='e4m3_k32'")
++            if epilogue_activation is not None:
++                raise ValueError("a_fp8 supports gated activations only")
+         if weight_layout not in _WEIGHT_LAYOUTS:
+             raise ValueError(f"unsupported W4A16 weight_layout {weight_layout!r}")
+         scale_format = _normalize_scale_format(scale_format)
+@@ -722,9 +771,17 @@ class W4A16GemmKernel:
+         )
+ 
+         # W4A16 shared-memory geometry, in int4 units unless noted.
+-        self.a_sh_stride = 16 * self.cta_k_blocks // 8
++        # FP8 mode streams A as "virtual bf16": the fp8 [M, K] buffer is addressed as a
++        # bf16 [M, K/2] one, so one tile of tile_k fp8 values is geometrically a bf16
++        # tile of tile_k/2 and one ldmatrix x4 (32 bytes/row) is one m16n8k32 A fragment.
++        a_k_blocks = self.cta_k_blocks // 2 if self.a_fp8 else self.cta_k_blocks
++        self.a_k_blocks = int(a_k_blocks)
++        self.a_sh_stride = 16 * a_k_blocks // 8
+         self.a_sh_stage = self.a_sh_stride * (16 * self.cta_m_blocks)
+-        self.a_gl_rd_delta_o = 16 * self.cta_k_blocks // 8
++        self.a_gl_rd_delta_o = 16 * a_k_blocks // 8
++        # Row-XOR swizzle must stay inside a row: 8 int4/row (bf16 tile_k>=64) keeps the
++        # historical mask 7; fp8 tile_k=64 has 4 int4/row -> mask 3.
++        self.a_swizzle_mask = min(7, self.a_gl_rd_delta_o - 1)
+         self.a_sh_wr_delta = self.a_sh_stride * (
+             self.cta_threads // self.a_gl_rd_delta_o
+         )
+@@ -753,6 +810,11 @@ class W4A16GemmKernel:
+             self.b_sh_chunks = self.b_sh_stage
+             self.b_sh_wr_iters_nf3 = self.b_sh_wr_iters
+ 
++        if self.a_fp8 and self.b_sh_wr_iters % 2 != 0:
++            raise ValueError(
++                "a_fp8 needs an even number of K16 steps per warp row "
++                f"(b_sh_wr_iters={self.b_sh_wr_iters}, tile_n={tile_n}, tile_k={tile_k})"
++            )
+         self.s_sh_stride = 16 * self.cta_n_blocks // 16
+         self.s_tb_groups = (
+             self.cta_k_blocks // 2 if self.scale_k32 else self.cta_k_blocks
+@@ -771,21 +833,33 @@ class W4A16GemmKernel:
+         self.sh_topk_off = sh_block_route_indices + sh_rd_block_route_indices
+ 
+         sh_red_size = (2 * self.cta_n_blocks + 1) * 16 * self.cta_m_blocks
+-        # B region size in int4 (16-byte) units. NF3 units are 12 bytes, so the
+-        # region is 0.75x; round the total up to a 16-byte multiple so the
+-        # following SMEM regions keep their 16-byte alignment (exact for all
+-        # supported tiles since b_sh_stage is a multiple of 4).
+-        sh_b_size = _covering_count(_STAGES * self.b_sh_stage_bytes, 16)
+-        sh_size_min = min(sh_red_size, sh_b_size)
+-        sh_size_max = max(sh_red_size, sh_b_size)
+         sh_bias_size = self.cta_n_blocks * 16 // 8
+-        sh_b_red_bias_size = max(sh_size_max, sh_size_min + sh_bias_size)
+-        self.sh_b_off = self.sh_valid_count_off
+-        self.sh_red_off = self.sh_valid_count_off
+-        self.sh_s_off = self.sh_valid_count_off + sh_b_red_bias_size
+-        self.sh_a_off = self.sh_s_off + _STAGES * self.s_sh_stage
+-        self.shared_int4 = self.sh_a_off + _STAGES * self.a_sh_stage
+-        self.shared_words = self.shared_int4 * 4
++        while True:
++            # B region size in int4 (16-byte) units. NF3 units are 12 bytes, so the
++            # region is 0.75x; round the total up to a 16-byte multiple so the
++            # following SMEM regions keep their 16-byte alignment (exact for all
++            # supported tiles since b_sh_stage is a multiple of 4).
++            sh_b_size = _covering_count(self.stages * self.b_sh_stage_bytes, 16)
++            sh_size_min = min(sh_red_size, sh_b_size)
++            sh_size_max = max(sh_red_size, sh_b_size)
++            sh_b_red_bias_size = max(sh_size_max, sh_size_min + sh_bias_size)
++            self.sh_b_off = self.sh_valid_count_off
++            self.sh_red_off = self.sh_valid_count_off
++            self.sh_s_off = self.sh_valid_count_off + sh_b_red_bias_size
++            self.sh_a_off = self.sh_s_off + self.stages * self.s_sh_stage
++            self.shared_int4 = self.sh_a_off + self.stages * self.a_sh_stage
++            self.shared_words = self.shared_int4 * 4
++            # FP8 pipeline stages>4: the fused kernel's software grid barrier needs every planned CTA
++            # resident, so a deeper ring must fit blocks_per_sm x (smem + 1 KiB reserve) in
++            # 97 KiB/SM (sm_120 has 100 KiB/SM; 3 KiB margin).  Otherwise this block size keeps the
++            # stock 4-stage ring (and no pair mode) -- never a co-residency gamble.
++            if (
++                self.stages == _STAGES
++                or (self.shared_words * 4 + 1024) * self.blocks_per_sm <= 97 * 1024
++            ):
++                break
++            self.stages = _STAGES
++            self.tune = dict(self.tune, stages=_STAGES, pair=0)
+ 
+     @property
+     def __cache_key__(self) -> tuple[object, ...]:
+@@ -821,13 +895,13 @@ class W4A16GemmKernel:
+             # entry even when their arithmetic geometry otherwise matches.
+             self.blocks_per_sm,
+             self.schedule_whole_tiles,
+-        )
++        ) + ((("fp8_exact_v1", self.a_fp8),) if self.a_fp8 else ())
+ 
+     @cute.jit
+     def _activation_smem_permuted_offset(self, i: Int32) -> Int32:
+         row = i // Int32(self.a_gl_rd_delta_o)
+         return Int32(self.a_gl_rd_delta_o) * row + (
+-            (i - row * Int32(self.a_gl_rd_delta_o)) ^ (row & Int32(7))
++            (i - row * Int32(self.a_gl_rd_delta_o)) ^ (row & Int32(self.a_swizzle_mask))
+         )
+ 
+     @cute.jit
+@@ -1435,6 +1509,10 @@ class W4A16GemmKernel:
+         active_size_m: Int32,
+     ):
+         global_scale_f32 = global_scale[expert_idx].to(cutlass.Float32)
++        if cutlass.const_expr(self.a_fp8):
++            # prepared global = g * 2**119 / F compensates the bf16 bit-trick dequant;
++            # the FP8 path applies the decoded K32 scale after each MMA.
++            global_scale_f32 *= cutlass.Float32(_FP8_GLOBAL_FIXUP)
+         if cutlass.const_expr(self.scale_format_e8m0_k32):
+             if cutlass.const_expr(self.is_fp16):
+                 global_scale_f32 *= cutlass.Float32(_E8M0_K32_FP16_GLOBAL_COMPENSATION)
+@@ -1480,7 +1558,8 @@ class W4A16GemmKernel:
+ 
+     @cute.jit
+     def _tile_stream_offsets(self, tid: Int32, expert_idx: Int32, output_n_tile: Int32):
+-        a_gl_stride = Int32(self.size_k // 8)
++        # int4 (16 B) units per A row: 8 bf16 or 16 fp8 values.
++        a_gl_stride = Int32(self.size_k // (16 if self.a_fp8 else 8))
+         b_gl_stride = Int32(16 * self.size_n // (_PACK_FACTOR * 4))
+         s_gl_stride = Int32(self.scale_n_groups)
+         if cutlass.const_expr(self.scale_k32):
+@@ -1490,8 +1569,12 @@ class W4A16GemmKernel:
                  scales_expert_stride = Int32((self.size_n * self.size_k) // (32 * 16))
          else:
              scales_expert_stride = Int32((self.size_n * self.size_k) // (16 * 16))
@@ -1528,7 +2232,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          )
          scales_expert_off = scales_expert_stride * expert_idx
  
-@@ -1503,12 +1509,12 @@ class W4A16GemmKernel:
+@@ -1503,12 +1586,12 @@ class W4A16GemmKernel:
          a_rows_per_iter = Int32(self.cta_threads // self.a_gl_rd_delta_o)
  
          if cutlass.const_expr(self.cta_threads <= self.b_sh_stride):
@@ -1546,7 +2250,126 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          b_sh_rd = tid
          b_sh_rd += (b_sh_rd // Int32(self.b_sh_stride)) * Int32(
              self.b_sh_stride * (self.b_sh_wr_iters - 1)
-@@ -1910,7 +1916,7 @@ class W4A16GemmKernel:
+@@ -1536,8 +1619,10 @@ class W4A16GemmKernel:
+         a_sh_rd = Int32(self.a_sh_stride) * (
+             (tid & Int32(31)) % Int32(lanes_per_row)
+         ) + (tid & Int32(31)) // Int32(lanes_per_row)
++        # Each warp row owns b_sh_wr_iters K16 weight steps; in fp8 mode that is
++        # b_sh_wr_iters/2 A fragments of 2 int4 each.
+         a_sh_rd += (
+-            Int32(2)
++            Int32(1 if self.a_fp8 else 2)
+             * ((tid // Int32(32)) // Int32(self.tb_n_warps))
+             * Int32(self.b_sh_wr_iters)
+         )
+@@ -1831,39 +1916,73 @@ class W4A16GemmKernel:
+             Int32(0),
+             False,
+         )
+-        self._run_mma_pipeline(
+-            a_bf16_flat,
+-            b_i32_flat,
+-            scales_i32_flat,
+-            smem_base,
+-            tid,
+-            acc0,
+-            acc1,
+-            acc2,
+-            acc3,
+-            b_scale_cur,
+-            b_scale_next,
+-            a_regs,
+-            a_regs_next,
+-            b_sh_rd,
+-            s_sh_rd,
+-            a_sh_rd,
+-            k_tiles,
+-            reduce_k_tile,
+-            block_valid_rows,
+-            a_gl_stride,
+-            b_gl_stride,
+-            s_gl_stride,
+-            scales_expert_off,
+-            b_gl_rd_base,
+-            a_gl_rd_row,
+-            a_gl_rd_col0,
+-            a_sh_wr,
+-            a_rows_per_iter,
+-            output_n_tile,
+-            expert_idx,
+-            False,
+-        )
++        if cutlass.const_expr(self.a_fp8):
++            self._run_fp8_pipeline_mskip(
++                a_bf16_flat,
++                b_i32_flat,
++                scales_i32_flat,
++                smem_base,
++                tid,
++                acc0,
++                acc1,
++                acc2,
++                acc3,
++                b_scale_cur,
++                b_scale_next,
++                a_regs,
++                a_regs_next,
++                b_sh_rd,
++                s_sh_rd,
++                a_sh_rd,
++                k_tiles,
++                reduce_k_tile,
++                block_valid_rows,
++                a_gl_stride,
++                b_gl_stride,
++                s_gl_stride,
++                scales_expert_off,
++                b_gl_rd_base,
++                a_gl_rd_row,
++                a_gl_rd_col0,
++                a_sh_wr,
++                a_rows_per_iter,
++                output_n_tile,
++                expert_idx,
++            )
++        else:
++            self._run_mma_pipeline(
++                a_bf16_flat,
++                b_i32_flat,
++                scales_i32_flat,
++                smem_base,
++                tid,
++                acc0,
++                acc1,
++                acc2,
++                acc3,
++                b_scale_cur,
++                b_scale_next,
++                a_regs,
++                a_regs_next,
++                b_sh_rd,
++                s_sh_rd,
++                a_sh_rd,
++                k_tiles,
++                reduce_k_tile,
++                block_valid_rows,
++                a_gl_stride,
++                b_gl_stride,
++                s_gl_stride,
++                scales_expert_off,
++                b_gl_rd_base,
++                a_gl_rd_row,
++                a_gl_rd_col0,
++                a_sh_wr,
++                a_rows_per_iter,
++                output_n_tile,
++                expert_idx,
++                False,
++            )
+ 
+         self._finish_tile(
+             acc0,
+@@ -1910,7 +2029,7 @@ class W4A16GemmKernel:
          b_gl_stride: Int32,
          s_gl_stride: Int32,
          scales_expert_off: Int32,
@@ -1555,7 +2378,723 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          a_gl_rd_row: Int32,
          a_gl_rd_col0: Int32,
          a_sh_wr: Int32,
-@@ -3010,7 +3016,7 @@ class W4A16GemmKernel:
+@@ -1922,7 +2041,7 @@ class W4A16GemmKernel:
+         b_frag = cute.make_rmem_tensor((2, 2), Uint32)
+         tile_idx = Int32(0)
+         while tile_idx < k_tiles:
+-            for pipe in cutlass.range_constexpr(_STAGES):
++            for pipe in cutlass.range_constexpr(self.stages):
+                 if tile_idx < k_tiles:
+                     for kk in cutlass.range_constexpr(self.b_sh_wr_iters):
+                         self._load_next_fragment_bundle(
+@@ -2047,6 +2166,643 @@ class W4A16GemmKernel:
+                     uses_m_block_8,
+                 )
+ 
++    @cute.jit
++    def _load_next_fragment_bundle_fp8(
++        self,
++        b_scale_next: cute.Tensor,
++        a_regs_next: cute.Tensor,
++        a_regs_cur: cute.Tensor,
++        smem_base: Int32,
++        tid: Int32,
++        b_sh_rd: Int32,
++        s_sh_rd: Int32,
++        a_sh_rd: Int32,
++        pipe: cutlass.Constexpr[int],
++        kk: cutlass.Constexpr[int],
++        tile_idx: Int32,
++        k_tiles: Int32,
++        n_mb=None,
++    ):
++        """Register prefetch for step kk+1.  A changes only every second K16 step.
++        n_mb (FP8 pipeline mskip=2): only the first n_mb m16 A fragments are live."""
++        self._clear_b_scale_register_bundle(b_scale_next)
++        abuf1 = self.tune["abuf1"]
++        if cutlass.const_expr(kk + 1 < self.b_sh_wr_iters):
++            self._load_b_scale_register_bundle(
++                b_scale_next,
++                smem_base,
++                tid,
++                b_sh_rd,
++                s_sh_rd,
++                Int32(pipe),
++                Int32(kk + 1),
++            )
++            if cutlass.const_expr(abuf1):
++                pass
++            elif cutlass.const_expr((kk + 1) % 2 == 0):
++                self._load_a_registers_large_m_bundle(
++                    a_regs_next,
++                    smem_base,
++                    a_sh_rd,
++                    Int32(pipe),
++                    Int32((kk + 1) // 2),
++                    n_mb,
++                )
++            else:
++                self._copy_a_register_bundle_large_m(a_regs_next, a_regs_cur, n_mb)
++        else:
++            if cutlass.const_expr(not abuf1):
++                self._clear_a_register_bundle_large_m(a_regs_next, n_mb)
++            next_tile = tile_idx + Int32(1)
++            if next_tile < k_tiles:
++                self._load_b_scale_register_bundle(
++                    b_scale_next,
++                    smem_base,
++                    tid,
++                    b_sh_rd,
++                    s_sh_rd,
++                    Int32((pipe + 1) % self.stages),
++                    Int32(0),
++                )
++                if cutlass.const_expr(not abuf1):
++                    self._load_a_registers_large_m_bundle(
++                        a_regs_next,
++                        smem_base,
++                        a_sh_rd,
++                        Int32((pipe + 1) % self.stages),
++                        Int32(0),
++                        n_mb,
++                    )
++
++    @cute.jit
++    def _exact_k32_step_fp8(
++        self,
++        acc0,
++        acc1,
++        acc2,
++        acc3,
++        a_regs: cute.Tensor,
++        q_even: cute.Tensor,
++        b_scale_cur: cute.Tensor,
++        tid: Int32,
++        n_mb=None,
++        nmb_rt=None,
++    ):
++        """Native E2M1 FP8 step for one k32 = (even, odd) K16 pair.
++
++        B = E2M1 exactly (as E4M3 bytes, or native .e2m1 containers); one unscaled
++        kind::f8f6f4 m16n8k32 per (m-block, jj, n-block) into a zero C, then
++        acc += D * scale_f32(column).  This thread's C columns are 2t and 2t+1 of the n8
++        block; column c's prepared-scale word lives in lane 4c (the B-fragment column is
++        the groupID, every lane of a quad loads its column's word), i.e. lanes 8t, 8t+4.
++        Word w = b_scale_cur[1, w] covers jj = 2w, 2w+1: n-block0 byte jj%2, n-block1
++        byte jj%2+2.
++        FP8 pipeline: conv6 / sdec swap in bit-identical cheaper helpers; n_mb (mskip=2) limits
++        the m-blocks at trace time, nmb_rt (mskip=1) skips m-blocks >= nmb_rt at run time.
++        """
++        t4 = (tid & Int32(31)) & Int32(3)
++        src_lo = t4 * Int32(8)
++        src_hi = src_lo + Int32(4)
++        w_lo0 = Uint32(cute.arch.shuffle_sync(b_scale_cur[1, 0], src_lo))
++        w_hi0 = Uint32(cute.arch.shuffle_sync(b_scale_cur[1, 0], src_hi))
++        w_lo1 = Uint32(cute.arch.shuffle_sync(b_scale_cur[1, 1], src_lo))
++        w_hi1 = Uint32(cute.arch.shuffle_sync(b_scale_cur[1, 1], src_hi))
++        for jj in cutlass.range_constexpr(4):
++            w_lo = w_lo0
++            w_hi = w_hi0
++            if cutlass.const_expr(jj >= 2):
++                w_lo = w_lo1
++                w_hi = w_hi1
++            if cutlass.const_expr(self.tune["sdec"]):
++                sc_n0_lo = prep_scale_byte_to_f32_v2(w_lo, jj % 2)
++                sc_n0_hi = prep_scale_byte_to_f32_v2(w_hi, jj % 2)
++                sc_n1_lo = prep_scale_byte_to_f32_v2(w_lo, jj % 2 + 2)
++                sc_n1_hi = prep_scale_byte_to_f32_v2(w_hi, jj % 2 + 2)
++            else:
++                sc_n0_lo = prep_scale_byte_to_f32(w_lo, jj % 2)
++                sc_n0_hi = prep_scale_byte_to_f32(w_hi, jj % 2)
++                sc_n1_lo = prep_scale_byte_to_f32(w_lo, jj % 2 + 2)
++                sc_n1_hi = prep_scale_byte_to_f32(w_hi, jj % 2 + 2)
++            if cutlass.const_expr(self.tune["conv6"]):
++                b0_n0, b0_n1 = e2m1x8_to_e2m1c_nblk6(q_even[jj])
++                b1_n0, b1_n1 = e2m1x8_to_e2m1c_nblk6(b_scale_cur[0, jj])
++            else:
++                b0_n0, b0_n1 = e2m1x8_to_e2m1c_nblk(q_even[jj], 2)
++                b1_n0, b1_n1 = e2m1x8_to_e2m1c_nblk(b_scale_cur[0, jj], 2)
++            for mb in cutlass.range_constexpr(
++                self.cta_m_blocks if n_mb is None else n_mb
++            ):
++                acc = (acc0, acc1, acc2, acc3)[mb]
++                if cutlass.const_expr(nmb_rt is not None and mb > 0):
++                    if Int32(mb) < nmb_rt:
++                        self._exact_mma_ffma_fp8(
++                            acc,
++                            a_regs,
++                            mb,
++                            jj,
++                            b0_n0,
++                            b1_n0,
++                            b0_n1,
++                            b1_n1,
++                            sc_n0_lo,
++                            sc_n0_hi,
++                            sc_n1_lo,
++                            sc_n1_hi,
++                        )
++                else:
++                    self._exact_mma_ffma_fp8(
++                        acc,
++                        a_regs,
++                        mb,
++                        jj,
++                        b0_n0,
++                        b1_n0,
++                        b0_n1,
++                        b1_n1,
++                        sc_n0_lo,
++                        sc_n0_hi,
++                        sc_n1_lo,
++                        sc_n1_hi,
++                    )
++
++    @cute.jit
++    def _exact_mma_ffma_fp8(
++        self,
++        acc,
++        a_regs: cute.Tensor,
++        mb: cutlass.Constexpr[int],
++        jj: cutlass.Constexpr[int],
++        b0_n0: Uint32,
++        b1_n0: Uint32,
++        b0_n1: Uint32,
++        b1_n1: Uint32,
++        sc_n0_lo: cutlass.Float32,
++        sc_n0_hi: cutlass.Float32,
++        sc_n1_lo: cutlass.Float32,
++        sc_n1_hi: cutlass.Float32,
++    ):
++        """Same accumulator slots as _mma_accumulate_large_m(_fp8)."""
++        W = _SCALAR_ACC_FRAGMENT_WIDTH
++        btype = "e2m1"
++        d0, d1, d2, d3 = f8f6f4_mma_m16n8k32_f32(
++            a_regs[mb, 0],
++            a_regs[mb, 1],
++            a_regs[mb, 2],
++            a_regs[mb, 3],
++            b0_n0,
++            b1_n0,
++            btype,
++        )
++        e0, e1, e2, e3 = f8f6f4_mma_m16n8k32_f32(
++            a_regs[mb, 0],
++            a_regs[mb, 1],
++            a_regs[mb, 2],
++            a_regs[mb, 3],
++            b0_n1,
++            b1_n1,
++            btype,
++        )
++        i0 = jj * 8
++        acc[(i0 + 0) // W][(i0 + 0) % W] = (
++            acc[(i0 + 0) // W][(i0 + 0) % W] + d0 * sc_n0_lo
++        )
++        acc[(i0 + 1) // W][(i0 + 1) % W] = (
++            acc[(i0 + 1) // W][(i0 + 1) % W] + d1 * sc_n0_hi
++        )
++        acc[(i0 + 2) // W][(i0 + 2) % W] = (
++            acc[(i0 + 2) // W][(i0 + 2) % W] + d2 * sc_n0_lo
++        )
++        acc[(i0 + 3) // W][(i0 + 3) % W] = (
++            acc[(i0 + 3) // W][(i0 + 3) % W] + d3 * sc_n0_hi
++        )
++        acc[(i0 + 4) // W][(i0 + 4) % W] = (
++            acc[(i0 + 4) // W][(i0 + 4) % W] + e0 * sc_n1_lo
++        )
++        acc[(i0 + 5) // W][(i0 + 5) % W] = (
++            acc[(i0 + 5) // W][(i0 + 5) % W] + e1 * sc_n1_hi
++        )
++        acc[(i0 + 6) // W][(i0 + 6) % W] = (
++            acc[(i0 + 6) // W][(i0 + 6) % W] + e2 * sc_n1_lo
++        )
++        acc[(i0 + 7) // W][(i0 + 7) % W] = (
++            acc[(i0 + 7) // W][(i0 + 7) % W] + e3 * sc_n1_hi
++        )
++
++    @cute.jit
++    def _run_fp8_pipeline_mskip(
++        self,
++        a_bf16_flat: cute.Tensor,
++        b_i32_flat: cute.Tensor,
++        scales_i32_flat: cute.Tensor,
++        smem_base: Int32,
++        tid: Int32,
++        acc0,
++        acc1,
++        acc2,
++        acc3,
++        b_scale_cur: cute.Tensor,
++        b_scale_next: cute.Tensor,
++        a_regs_cur: cute.Tensor,
++        a_regs_next: cute.Tensor,
++        b_sh_rd: Int32,
++        s_sh_rd: Int32,
++        a_sh_rd: Int32,
++        k_tiles: Int32,
++        reduce_k_tile: Int32,
++        block_valid_rows: Int32,
++        a_gl_stride: Int32,
++        b_gl_stride: Int32,
++        s_gl_stride: Int32,
++        scales_expert_off: Int32,
++        b_gl_rd_base: Int64,
++        a_gl_rd_row: Int32,
++        a_gl_rd_col0: Int32,
++        a_sh_wr: Int32,
++        a_rows_per_iter: Int32,
++        output_n_tile: Int32,
++        expert_idx: Int32,
++    ):
++        """FP8 pipeline `mskip`: m16 blocks whose rows are all route padding (valid rows are a
++        prefix of the block, block_valid_rows of them) are never stored, so their MMAs can
++        be skipped without touching any stored value.  mskip=1 guards each m-block >= 1 at
++        run time; mskip=2 instantiates the k-loop once per live m-block count."""
++        pa = (
++            a_bf16_flat,
++            b_i32_flat,
++            scales_i32_flat,
++            smem_base,
++            tid,
++            acc0,
++            acc1,
++            acc2,
++            acc3,
++            b_scale_cur,
++            b_scale_next,
++            a_regs_cur,
++            a_regs_next,
++            b_sh_rd,
++            s_sh_rd,
++            a_sh_rd,
++            k_tiles,
++            reduce_k_tile,
++            block_valid_rows,
++            a_gl_stride,
++            b_gl_stride,
++            s_gl_stride,
++            scales_expert_off,
++            b_gl_rd_base,
++            a_gl_rd_row,
++            a_gl_rd_col0,
++            a_sh_wr,
++            a_rows_per_iter,
++            output_n_tile,
++            expert_idx,
++        )
++        if cutlass.const_expr(self.tune["mskip"] == 0 or self.cta_m_blocks == 1):
++            self._run_mma_pipeline_fp8(*pa)
++        elif cutlass.const_expr(self.tune["mskip"] == 1):
++            nmb_rt = (block_valid_rows + Int32(15)) // Int32(16)
++            self._run_mma_pipeline_fp8(*pa, None, nmb_rt)
++        else:
++            nmb = (block_valid_rows + Int32(15)) // Int32(16)
++            if cutlass.const_expr(self.cta_m_blocks == 4):
++                if nmb >= Int32(4):
++                    self._run_mma_pipeline_fp8(*pa, 4, None)
++                elif nmb == Int32(3):
++                    self._run_mma_pipeline_fp8(*pa, 3, None)
++                elif nmb == Int32(2):
++                    self._run_mma_pipeline_fp8(*pa, 2, None)
++                else:
++                    self._run_mma_pipeline_fp8(*pa, 1, None)
++            elif cutlass.const_expr(self.cta_m_blocks == 3):
++                if nmb >= Int32(3):
++                    self._run_mma_pipeline_fp8(*pa, 3, None)
++                elif nmb == Int32(2):
++                    self._run_mma_pipeline_fp8(*pa, 2, None)
++                else:
++                    self._run_mma_pipeline_fp8(*pa, 1, None)
++            else:
++                if nmb >= Int32(2):
++                    self._run_mma_pipeline_fp8(*pa, 2, None)
++                else:
++                    self._run_mma_pipeline_fp8(*pa, 1, None)
++
++    @cute.jit
++    def _fp8_k16_compute(
++        self,
++        kk: cutlass.Constexpr[int],
++        acc0,
++        acc1,
++        acc2,
++        acc3,
++        q_even: cute.Tensor,
++        b_scale_cur: cute.Tensor,
++        a_regs_cur: cute.Tensor,
++        tid: Int32,
++        n_mb=None,
++        nmb_rt=None,
++    ):
++        """One K16 step of the FP8 MMA pipeline (shared by the 1-barrier-per-stage and the
++        FP8 pipeline `pair` pipelines): even steps stash their E2M1 words, odd steps convert both
++        halves and issue the k32 MMAs."""
++        if cutlass.const_expr(kk % 2 == 0):
++            for jj in cutlass.range_constexpr(4):
++                q_even[jj] = b_scale_cur[0, jj]
++        else:
++            self._exact_k32_step_fp8(
++                acc0,
++                acc1,
++                acc2,
++                acc3,
++                a_regs_cur,
++                q_even,
++                b_scale_cur,
++                tid,
++                n_mb,
++                nmb_rt,
++            )
++
++    @cute.jit
++    def _run_mma_pipeline_fp8(
++        self,
++        a_bf16_flat: cute.Tensor,
++        b_i32_flat: cute.Tensor,
++        scales_i32_flat: cute.Tensor,
++        smem_base: Int32,
++        tid: Int32,
++        acc0,
++        acc1,
++        acc2,
++        acc3,
++        b_scale_cur: cute.Tensor,
++        b_scale_next: cute.Tensor,
++        a_regs_cur: cute.Tensor,
++        a_regs_next: cute.Tensor,
++        b_sh_rd: Int32,
++        s_sh_rd: Int32,
++        a_sh_rd: Int32,
++        k_tiles: Int32,
++        reduce_k_tile: Int32,
++        block_valid_rows: Int32,
++        a_gl_stride: Int32,
++        b_gl_stride: Int32,
++        s_gl_stride: Int32,
++        scales_expert_off: Int32,
++        b_gl_rd_base: Int64,
++        a_gl_rd_row: Int32,
++        a_gl_rd_col0: Int32,
++        a_sh_wr: Int32,
++        a_rows_per_iter: Int32,
++        output_n_tile: Int32,
++        expert_idx: Int32,
++        n_mb=None,
++        nmb_rt=None,
++    ):
++        """FP8 twin of _run_mma_pipeline: identical cp.async staging / barriers; the
++        even K16 step only stashes its E2M1 words, the odd step converts both halves to
++        E2M1 containers and issues one m16n8k32 MMA per n-block, followed by FP32 scaling.
++        FP8 pipeline `pair`: one CTA barrier per two k-tiles (6-slot ring, see
++        _run_mma_pipeline_fp8_pair)."""
++        q_even = cute.make_rmem_tensor((4,), Uint32)
++        for jj in cutlass.range_constexpr(4):
++            q_even[jj] = Uint32(0)
++        tile_idx = Int32(0)
++        if cutlass.const_expr(self.tune["pair"]):
++            while tile_idx < k_tiles:
++                for pipe in cutlass.range_constexpr(self.stages):
++                    if tile_idx < k_tiles:
++                        for kk in cutlass.range_constexpr(self.b_sh_wr_iters):
++                            self._load_next_fragment_bundle_fp8(
++                                b_scale_next,
++                                a_regs_next,
++                                a_regs_cur,
++                                smem_base,
++                                tid,
++                                b_sh_rd,
++                                s_sh_rd,
++                                a_sh_rd,
++                                pipe,
++                                kk,
++                                tile_idx,
++                                k_tiles,
++                                n_mb,
++                            )
++                            if cutlass.const_expr(self.tune["abuf1"] and kk % 2 == 0):
++                                # abuf1: this stage's A fragments, read BEFORE the stage's refill
++                                # + barrier (like the stock B read) so the next refill of this
++                                # slot is ordered after every warp's last read
++                                self._load_a_registers_large_m_bundle(
++                                    a_regs_cur,
++                                    smem_base,
++                                    a_sh_rd,
++                                    Int32(pipe),
++                                    Int32(kk // 2),
++                                    n_mb,
++                                )
++                            if cutlass.const_expr(kk == 0 and pipe % 2 == 0):
++                                self._pair_refill(
++                                    a_bf16_flat,
++                                    b_i32_flat,
++                                    scales_i32_flat,
++                                    smem_base,
++                                    tid,
++                                    pipe,
++                                    tile_idx,
++                                    k_tiles,
++                                    reduce_k_tile,
++                                    block_valid_rows,
++                                    a_gl_stride,
++                                    b_gl_stride,
++                                    s_gl_stride,
++                                    scales_expert_off,
++                                    b_gl_rd_base,
++                                    a_gl_rd_row,
++                                    a_gl_rd_col0,
++                                    a_sh_wr,
++                                    a_rows_per_iter,
++                                    output_n_tile,
++                                    expert_idx,
++                                )
++                            self._fp8_k16_compute(
++                                kk,
++                                acc0,
++                                acc1,
++                                acc2,
++                                acc3,
++                                q_even,
++                                b_scale_cur,
++                                a_regs_cur,
++                                tid,
++                                n_mb,
++                                nmb_rt,
++                            )
++                            self._copy_b_scale_register_bundle(
++                                b_scale_cur, b_scale_next
++                            )
++                            if cutlass.const_expr(not self.tune["abuf1"]):
++                                self._copy_a_register_bundle_large_m(
++                                    a_regs_cur, a_regs_next, n_mb
++                                )
++                        tile_idx += Int32(1)
++            # every real cp.async was consumed; the epilogue reuses the B region
++            cute.arch.sync_threads()
++        else:
++            while tile_idx < k_tiles:
++                for pipe in cutlass.range_constexpr(self.stages):
++                    if tile_idx < k_tiles:
++                        for kk in cutlass.range_constexpr(self.b_sh_wr_iters):
++                            self._load_next_fragment_bundle_fp8(
++                                b_scale_next,
++                                a_regs_next,
++                                a_regs_cur,
++                                smem_base,
++                                tid,
++                                b_sh_rd,
++                                s_sh_rd,
++                                a_sh_rd,
++                                pipe,
++                                kk,
++                                tile_idx,
++                                k_tiles,
++                                n_mb,
++                            )
++                            if cutlass.const_expr(self.tune["abuf1"] and kk % 2 == 0):
++                                # abuf1: this stage's A fragments, read BEFORE the stage's refill
++                                # + barrier (like the stock B read) so the next refill of this
++                                # slot is ordered after every warp's last read
++                                self._load_a_registers_large_m_bundle(
++                                    a_regs_cur,
++                                    smem_base,
++                                    a_sh_rd,
++                                    Int32(pipe),
++                                    Int32(kk // 2),
++                                    n_mb,
++                                )
++                            self._prefetch_pipeline_step(
++                                a_bf16_flat,
++                                b_i32_flat,
++                                scales_i32_flat,
++                                smem_base,
++                                tid,
++                                pipe,
++                                kk,
++                                tile_idx,
++                                k_tiles,
++                                reduce_k_tile,
++                                block_valid_rows,
++                                a_gl_stride,
++                                b_gl_stride,
++                                s_gl_stride,
++                                scales_expert_off,
++                                b_gl_rd_base,
++                                a_gl_rd_row,
++                                a_gl_rd_col0,
++                                a_sh_wr,
++                                a_rows_per_iter,
++                                output_n_tile,
++                                expert_idx,
++                            )
++                            self._fp8_k16_compute(
++                                kk,
++                                acc0,
++                                acc1,
++                                acc2,
++                                acc3,
++                                q_even,
++                                b_scale_cur,
++                                a_regs_cur,
++                                tid,
++                                n_mb,
++                                nmb_rt,
++                            )
++                            self._copy_b_scale_register_bundle(
++                                b_scale_cur, b_scale_next
++                            )
++                            if cutlass.const_expr(not self.tune["abuf1"]):
++                                self._copy_a_register_bundle_large_m(
++                                    a_regs_cur, a_regs_next, n_mb
++                                )
++                        tile_idx += Int32(1)
++                cute.arch.sync_threads()
++                if tile_idx < k_tiles:
++                    self._load_b_scale_register_bundle(
++                        b_scale_cur,
++                        smem_base,
++                        tid,
++                        b_sh_rd,
++                        s_sh_rd,
++                        Int32(0),
++                        Int32(0),
++                    )
++                    if cutlass.const_expr(not self.tune["abuf1"]):
++                        self._load_a_registers_large_m_bundle(
++                            a_regs_cur,
++                            smem_base,
++                            a_sh_rd,
++                            Int32(0),
++                            Int32(0),
++                            n_mb,
++                        )
++
++    @cute.jit
++    def _pair_refill(
++        self,
++        a_bf16_flat: cute.Tensor,
++        b_i32_flat: cute.Tensor,
++        scales_i32_flat: cute.Tensor,
++        smem_base: Int32,
++        tid: Int32,
++        pipe: cutlass.Constexpr[int],
++        tile_idx: Int32,
++        k_tiles: Int32,
++        reduce_k_tile: Int32,
++        block_valid_rows: Int32,
++        a_gl_stride: Int32,
++        b_gl_stride: Int32,
++        s_gl_stride: Int32,
++        scales_expert_off: Int32,
++        b_gl_rd_base: Int64,
++        a_gl_rd_row: Int32,
++        a_gl_rd_col0: Int32,
++        a_sh_wr: Int32,
++        a_rows_per_iter: Int32,
++        output_n_tile: Int32,
++        expert_idx: Int32,
++    ):
++        """FP8 pipeline `pair` (6-slot ring, one commit group per k-tile): at the start of the
++        pair (t, t+1) wait until tiles <= t+2 landed (t+3 may still fly), barrier, then
++        refill the slots of t-2 / t-1 with t+4 / t+5.  The refill is issued AFTER the
++        barrier, so every warp has finished reading those slots (race-free by construction;
++        the stock pipeline refills before its barrier)."""
++        cute.arch.cp_async_wait_group(1)
++        cute.arch.sync_threads()
++        for j in cutlass.range_constexpr(2):
++            fetch_tile = tile_idx + Int32(4 + j)
++            if fetch_tile < k_tiles:
++                self._stage_k_tile_async(
++                    a_bf16_flat,
++                    b_i32_flat,
++                    scales_i32_flat,
++                    smem_base,
++                    tid,
++                    Int32((pipe + 4 + j) % self.stages),
++                    reduce_k_tile + fetch_tile,
++                    block_valid_rows,
++                    a_gl_stride,
++                    b_gl_stride,
++                    s_gl_stride,
++                    scales_expert_off,
++                    b_gl_rd_base,
++                    a_gl_rd_row,
++                    a_gl_rd_col0,
++                    a_sh_wr,
++                    a_rows_per_iter,
++                    output_n_tile,
++                    expert_idx,
++                )
++            else:
++                cute.arch.cp_async_commit_group()
++
+     @cute.jit
+     def _finish_tile(
+         self,
+@@ -2415,8 +3171,9 @@ class W4A16GemmKernel:
+         a_sh_rd: Int32,
+         pipe: Int32,
+         kk: Int32,
++        n_mb=None,
+     ):
+-        for mb in cutlass.range_constexpr(self.cta_m_blocks):
++        for mb in cutlass.range_constexpr(self.cta_m_blocks if n_mb is None else n_mb):
+             a0, a1, a2, a3 = self._load_a_registers_large_m(
+                 smem_base,
+                 a_sh_rd,
+@@ -2443,8 +3200,8 @@ class W4A16GemmKernel:
+         regs[1] = a1
+ 
+     @cute.jit
+-    def _clear_a_register_bundle_large_m(self, regs: cute.Tensor):
+-        for mb in cutlass.range_constexpr(self.cta_m_blocks):
++    def _clear_a_register_bundle_large_m(self, regs: cute.Tensor, n_mb=None):
++        for mb in cutlass.range_constexpr(self.cta_m_blocks if n_mb is None else n_mb):
+             for reg in cutlass.range_constexpr(4):
+                 regs[mb, reg] = Uint32(0)
+ 
+@@ -2454,8 +3211,10 @@ class W4A16GemmKernel:
+             regs[reg] = Uint32(0)
+ 
+     @cute.jit
+-    def _copy_a_register_bundle_large_m(self, dst: cute.Tensor, src: cute.Tensor):
+-        for mb in cutlass.range_constexpr(self.cta_m_blocks):
++    def _copy_a_register_bundle_large_m(
++        self, dst: cute.Tensor, src: cute.Tensor, n_mb=None
++    ):
++        for mb in cutlass.range_constexpr(self.cta_m_blocks if n_mb is None else n_mb):
+             for reg in cutlass.range_constexpr(4):
+                 dst[mb, reg] = src[mb, reg]
+ 
+@@ -2566,6 +3325,10 @@ class W4A16GemmKernel:
+             + (s_sh_rd + scale_group_id * Int32(2 * self.s_sh_stride)) * Int32(8)
+         )
+         s_pack0, s_pack1 = ld_shared_v2_u32(s_addr)
++        if cutlass.const_expr(self.a_fp8):
++            # Keep the prepared E5M3 bytes: jj -> word jj//2, n-block0 byte jj%2,
++            # n-block1 byte jj%2+2 (same lanes the bf16 decode below broadcasts).
++            return q0, q1, q2, q3, s_pack0, s_pack1, Uint32(0), Uint32(0)
+         s0, s1 = self._dequant_scale_x4_to_elem2x2(s_pack0)
+         s2, s3 = self._dequant_scale_x4_to_elem2x2(s_pack1)
+         return q0, q1, q2, q3, s0, s1, s2, s3
+@@ -2661,14 +3424,14 @@ class W4A16GemmKernel:
+                     tid,
+                     b_sh_rd,
+                     s_sh_rd,
+-                    Int32((pipe + 1) % _STAGES),
++                    Int32((pipe + 1) % self.stages),
+                     Int32(0),
+                 )
+                 self._load_a_register_bundle(
+                     a_regs_next,
+                     smem_base,
+                     a_sh_rd,
+-                    Int32((pipe + 1) % _STAGES),
++                    Int32((pipe + 1) % self.stages),
+                     Int32(0),
+                     uses_m_block_8,
+                 )
+@@ -3010,7 +3773,7 @@ class W4A16GemmKernel:
          b_gl_stride: Int32,
          s_gl_stride: Int32,
          scales_expert_off: Int32,
@@ -1564,7 +3103,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          a_gl_rd_row: Int32,
          a_gl_rd_col0: Int32,
          a_sh_wr: Int32,
-@@ -3064,9 +3070,9 @@ class W4A16GemmKernel:
+@@ -3064,9 +3827,9 @@ class W4A16GemmKernel:
              nf3_units_per_expert = (self.size_n * self.size_k) // 32
              nf3_ntile_stride = (self.size_k // 16) * (self.tile_n // 2)
              nf3_span_base_unit = (
@@ -1577,7 +3116,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
              )
              for i in cutlass.range_constexpr(self.b_sh_wr_iters_nf3):
                  nf3_chunk = Int32(i * self.cta_threads) + tid
-@@ -3078,7 +3084,7 @@ class W4A16GemmKernel:
+@@ -3078,7 +3841,7 @@ class W4A16GemmKernel:
                  )
                  # int32-element index of the chunk's first word:
                  # (span_base_unit*12 + chunk*16) / 4 = span_base_unit*3 + chunk*4.
@@ -1586,7 +3125,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
                  cp_async4_shared_global_pred(
                      b_dst,
                      get_ptr_as_int64(b_i32_flat, b_src_i32),
-@@ -3090,8 +3096,8 @@ class W4A16GemmKernel:
+@@ -3090,8 +3853,8 @@ class W4A16GemmKernel:
          ):
              b_src_int4 = (
                  b_gl_rd_base
@@ -1597,7 +3136,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
              )
              b_dst = self._int4_addr(
                  smem_base,
-@@ -3103,7 +3109,7 @@ class W4A16GemmKernel:
+@@ -3103,7 +3866,7 @@ class W4A16GemmKernel:
              if cutlass.const_expr(self.weight_layout == "packed"):
                  cp_async4_shared_global(
                      b_dst,
@@ -1606,7 +3145,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
                  )
              else:
                  self._stage_b_tile_modelopt_native(
-@@ -3163,7 +3169,7 @@ class W4A16GemmKernel:
+@@ -3163,7 +3926,7 @@ class W4A16GemmKernel:
          b_gl_stride: Int32,
          s_gl_stride: Int32,
          scales_expert_off: Int32,
@@ -1615,7 +3154,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          a_gl_rd_row: Int32,
          a_gl_rd_col0: Int32,
          a_sh_wr: Int32,
-@@ -3211,7 +3217,7 @@ class W4A16GemmKernel:
+@@ -3211,7 +3974,7 @@ class W4A16GemmKernel:
          b_gl_stride: Int32,
          s_gl_stride: Int32,
          scales_expert_off: Int32,
@@ -1624,7 +3163,27 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          a_gl_rd_row: Int32,
          a_gl_rd_col0: Int32,
          a_sh_wr: Int32,
-@@ -3264,7 +3270,7 @@ class W4A16GemmKernel:
+@@ -3219,7 +3982,9 @@ class W4A16GemmKernel:
+         output_n_tile: Int32,
+         expert_idx: Int32,
+     ):
+-        for pipe in cutlass.range_constexpr(_STAGES - 1):
++        for pipe in cutlass.range_constexpr(
++            4 if self.tune["pair"] else self.stages - 1
++        ):
+             if Int32(pipe) < k_tiles:
+                 self._stage_k_tile_async(
+                     a_bf16_flat,
+@@ -3244,7 +4009,7 @@ class W4A16GemmKernel:
+                 )
+             else:
+                 cute.arch.cp_async_commit_group()
+-        cute.arch.cp_async_wait_group(_STAGES - 2)
++        cute.arch.cp_async_wait_group(3 if self.tune["pair"] else self.stages - 2)
+         cute.arch.sync_threads()
+ 
+     @cute.jit
+@@ -3264,7 +4029,7 @@ class W4A16GemmKernel:
          b_gl_stride: Int32,
          s_gl_stride: Int32,
          scales_expert_off: Int32,
@@ -1633,7 +3192,79 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          a_gl_rd_row: Int32,
          a_gl_rd_col0: Int32,
          a_sh_wr: Int32,
-@@ -4298,8 +4304,8 @@ class W4A16FusedMoeKernel:
+@@ -3272,7 +4037,7 @@ class W4A16GemmKernel:
+         output_n_tile: Int32,
+         expert_idx: Int32,
+     ):
+-        fetch_tile = tile_idx + Int32(_STAGES - 1)
++        fetch_tile = tile_idx + Int32(self.stages - 1)
+         if fetch_tile < k_tiles:
+             self._stage_k_tile_async(
+                 a_bf16_flat,
+@@ -3280,7 +4045,7 @@ class W4A16GemmKernel:
+                 scales_i32_flat,
+                 smem_base,
+                 tid,
+-                Int32((pipe + _STAGES - 1) % _STAGES),
++                Int32((pipe + self.stages - 1) % self.stages),
+                 reduce_k_tile + fetch_tile,
+                 block_valid_rows,
+                 a_gl_stride,
+@@ -3297,7 +4062,7 @@ class W4A16GemmKernel:
+             )
+         else:
+             cute.arch.cp_async_commit_group()
+-        cute.arch.cp_async_wait_group(_STAGES - 2)
++        cute.arch.cp_async_wait_group(self.stages - 2)
+         cute.arch.sync_threads()
+ 
+     @cute.jit
+@@ -4122,9 +4887,28 @@ class W4A16FusedMoeKernel:
+         tc_zero_output: bool = True,
+         collect_activation_amax: bool = False,
+         schedule_whole_tiles: bool = False,
++        a_fp8: int = 0,
+     ):
+         activation = normalize_moe_activation(activation)
+         is_gated = validate_activation(activation)
++        self.a_fp8 = int(a_fp8)
++        self.tune = {
++            key: value if self.a_fp8 else (4 if key == "stages" else 0)
++            for key, value in _FP8_TUNE_DEFAULTS.items()
++        }
++        if self.a_fp8:
++            if not is_gated or activation == SWIGLUOAI_UNINTERLEAVE:
++                raise ValueError("a_fp8 fused MoE supports gated SiLU only")
++            if direct_topk_routes or tc_decode_fused_sum or collect_activation_amax:
++                raise ValueError(
++                    "a_fp8 fused MoE requires the route-packed prefill path"
++                )
++            if apply_router_weight_on_input:
++                raise ValueError("a_fp8 folds the FC2 row scale into the top-k weights")
++            if int(intermediate_size) % 512 != 0:
++                raise ValueError(
++                    "a_fp8 activation phase needs intermediate_size % 512 == 0"
++                )
+         swiglu_limit, swiglu_alpha, swiglu_beta = _normalize_activation_swiglu_params(
+             activation,
+             swiglu_limit,
+@@ -4206,6 +4990,7 @@ class W4A16FusedMoeKernel:
+             single_token_route_fast_path=size_m == 1 and not self.direct_topk_routes,
+             direct_topk_routes=self.direct_topk_routes,
+             schedule_whole_tiles=self.schedule_whole_tiles,
++            a_fp8=self.a_fp8,
+         )
+         self.fc2 = W4A16GemmKernel(
+             size_m=routed_rows,
+@@ -4227,6 +5012,7 @@ class W4A16FusedMoeKernel:
+             fused_topk_sum=self.tc_decode_fused_sum,
+             fused_sum_topk=int(top_k),
+             schedule_whole_tiles=self.schedule_whole_tiles,
++            a_fp8=self.a_fp8,
+         )
+         self.cta_threads = max(self.fc1.cta_threads, self.fc2.cta_threads)
+         if self.fc1.cta_threads != self.fc2.cta_threads:
+@@ -4298,8 +5084,8 @@ class W4A16FusedMoeKernel:
      def __call__(
          self,
          a_bf16_ptr: cute.Pointer,
@@ -1644,7 +3275,15 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          fc1_bf16_flat: cute.Tensor,
          activated_bf16_flat: cute.Tensor,
          fc2_bf16_flat: cute.Tensor,
-@@ -4324,6 +4330,40 @@ class W4A16FusedMoeKernel:
+@@ -4313,6 +5099,7 @@ class W4A16FusedMoeKernel:
+         activation_amax_flat: cute.Tensor,
+         layer_idx: cutlass.Int32,
+         topk_weights_ptr: cute.Pointer,
++        fp8_side_ptr: cute.Pointer,
+         fc1_c_tmp_f32_flat: cute.Tensor,
+         fc2_c_tmp_f32_flat: cute.Tensor,
+         locks_i32_flat: cute.Tensor,
+@@ -4324,10 +5111,55 @@ class W4A16FusedMoeKernel:
              a_bf16_ptr,
              layout=cute.make_layout((active_m * Int32(self.hidden_size),), stride=(1,)),
          )
@@ -1685,7 +3324,287 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          topk_weights_flat = cute.make_tensor(
              topk_weights_ptr,
              layout=cute.make_layout((active_m * Int32(self.top_k),), stride=(1,)),
-@@ -4943,10 +4983,19 @@ class W4A16TopKSumKernel:
+         )
++        # fp8 side buffer (fp32): [0, active_m) FC1 per-token act scales, then
++        # [active_m, active_m*(1+top_k)) FC2 top-k weights x per-route act scale.
++        # Non-fp8 launches pass any fp32 pointer; both views are const_expr-dead.
++        a_scale_flat = cute.make_tensor(
++            fp8_side_ptr,
++            layout=cute.make_layout((active_m,), stride=(1,)),
++        )
++        fc2_topk_flat = cute.make_tensor(
++            fp8_side_ptr + active_m,
++            layout=cute.make_layout((active_m * Int32(self.top_k),), stride=(1,)),
++        )
+         grid = (grid_x, 1, 1)
+         self.kernel(
+             a_bf16_flat,
+@@ -4346,6 +5178,8 @@ class W4A16FusedMoeKernel:
+             activation_amax_flat,
+             layer_idx,
+             topk_weights_flat,
++            a_scale_flat,
++            fc2_topk_flat,
+             fc1_c_tmp_f32_flat,
+             fc2_c_tmp_f32_flat,
+             locks_i32_flat,
+@@ -4381,6 +5215,8 @@ class W4A16FusedMoeKernel:
+         activation_amax_flat: cute.Tensor,
+         layer_idx: cutlass.Int32,
+         topk_weights_flat: cute.Tensor,
++        a_scale_flat: cute.Tensor,
++        fc2_topk_flat: cute.Tensor,
+         fc1_c_tmp_f32_flat: cute.Tensor,
+         fc2_c_tmp_f32_flat: cute.Tensor,
+         locks_i32_flat: cute.Tensor,
+@@ -4430,6 +5266,8 @@ class W4A16FusedMoeKernel:
+             cta,
+             grid_x,
+             active_m,
++            a_scale_flat=a_scale_flat,
++            fc2_topk_flat=fc2_topk_flat,
+         )
+ 
+     @cute.jit
+@@ -4461,6 +5299,8 @@ class W4A16FusedMoeKernel:
+         active_m: cutlass.Int32,
+         fc1_emit_tile: cutlass.Constexpr = None,
+         fc2_emit_tile: cutlass.Constexpr = None,
++        a_scale_flat: cute.Tensor = None,
++        fc2_topk_flat: cute.Tensor = None,
+     ):
+         # Phase assembly shared by the single-tier fused kernel and the hybrid
+         # multi-tier entry: zero prologue, FC1, grid barrier, activation, grid
+@@ -4517,14 +5357,27 @@ class W4A16FusedMoeKernel:
+                 fc1_emit_tile,
+             )
+             self._grid_barrier(locks_i32_flat, tid, grid_x)
+-            self._run_activation(
+-                fc1_bf16_flat,
+-                activated_bf16_flat,
+-                tid,
+-                cta,
+-                grid_x,
+-                active_m,
+-            )
++            if cutlass.const_expr(self.a_fp8):
++                self._run_activation_fp8(
++                    fc1_bf16_flat,
++                    activated_bf16_flat,
++                    a_scale_flat,
++                    topk_weights_flat,
++                    fc2_topk_flat,
++                    tid,
++                    cta,
++                    grid_x,
++                    active_m,
++                )
++            else:
++                self._run_activation(
++                    fc1_bf16_flat,
++                    activated_bf16_flat,
++                    tid,
++                    cta,
++                    grid_x,
++                    active_m,
++                )
+         else:
+             self.fc1._run_persistent_gemm(
+                 a_bf16_flat,
+@@ -4564,6 +5417,9 @@ class W4A16FusedMoeKernel:
+         if cutlass.const_expr(self.zero_fc2_output):
+             self._zero_fc2_output(fc2_bf16_flat, tid, cta, grid_x, active_m)
+             self._grid_barrier(locks_i32_flat, tid, grid_x)
++        fc2_topk_arg = topk_weights_flat
++        if cutlass.const_expr(self.a_fp8):
++            fc2_topk_arg = fc2_topk_flat
+         self.fc2._run_persistent_gemm(
+             activated_bf16_flat,
+             w2_i32_flat,
+@@ -4573,7 +5429,7 @@ class W4A16FusedMoeKernel:
+             packed_route_indices,
+             block_expert_ids,
+             packed_route_count,
+-            topk_weights_flat,
++            fc2_topk_arg,
+             fc2_c_tmp_f32_flat,
+             locks_i32_flat,
+             smem_base,
+@@ -4771,15 +5627,140 @@ class W4A16FusedMoeKernel:
+                 if cutlass.const_expr(self.activation_is_swigluoai):
+                     activated_bf16_flat[idx] = self._cast_elem(silu * up_term)
+                 else:
+-                    activated_bf16_flat[idx] = self._cast_elem(
+-                        self._cast_elem(silu) * self._cast_elem(up_term)
++                    activated_bf16_flat[idx] = self._cast_elem(
++                        self._cast_elem(silu) * self._cast_elem(up_term)
++                    )
++            else:
++                x = fc1_bf16_flat[idx].to(cutlass.Float32)
++                if x < cutlass.Float32(0.0):
++                    x = cutlass.Float32(0.0)
++                activated_bf16_flat[idx] = self._cast_elem(x * x)
++            idx += stride
++
++    @cute.jit
++    def _run_activation_fp8(
++        self,
++        fc1_bf16_flat: cute.Tensor,
++        activated_bf16_flat: cute.Tensor,
++        a_scale_flat: cute.Tensor,
++        topk_weights_flat: cute.Tensor,
++        fc2_topk_flat: cute.Tensor,
++        tid: Int32,
++        cta: Int32,
++        grid_x: Int32,
++        active_m: cutlass.Int32,
++    ):
++        """Warp-per-routed-row SiLU(g)*u -> per-row dynamic E4M3 (sigma K order).
++
++        FC1 ran on unscaled FP8 activations, so both halves are first multiplied by the
++        token's FC1 act scale.  The row's FP8 scale (amax/448) is folded into the FC2
++        top-k weight so the FC2 GEMM epilogue needs no change.  Output bytes overwrite
++        the head of the bf16 activation buffer (fp8 row r at byte r*I).
++        """
++        warps = self.cta_threads // 32
++        epl = self.intermediate_size // 32  # values per lane, multiple of 16
++        lane = tid & Int32(31)
++        warp = tid // Int32(32)
++        row = cta * Int32(warps) + warp
++        rstride = grid_x * Int32(warps)
++        rows = active_m * Int32(self.top_k)
++        while row < rows:
++            token = row // Int32(self.top_k)
++            s_tok = a_scale_flat[token].to(cutlass.Float32)
++            base = row * Int32(self.fc1_cols) + lane * Int32(epl)
++            vals = cute.make_rmem_tensor((epl,), cutlass.Float32)
++            local_max = cutlass.Float32(0.0)
++            if cutlass.const_expr(self.tune["actvec"]):
++                # FP8 pipeline `actvec`: 2 x epl/8 128-bit loads instead of 2 x epl 16-bit loads;
++                # bf16 -> f32 is exact, so every value below is bit-identical.
++                g_raw = cute.make_rmem_tensor((epl,), cutlass.Float32)
++                u_raw = cute.make_rmem_tensor((epl,), cutlass.Float32)
++                for c in cutlass.range_constexpr(epl // 8):
++                    gw = ld_global_v4_u32(
++                        get_ptr_as_int64(fc1_bf16_flat, base + Int32(8 * c))
++                    )
++                    uw = ld_global_v4_u32(
++                        get_ptr_as_int64(
++                            fc1_bf16_flat, base + Int32(self.intermediate_size + 8 * c)
++                        )
++                    )
++                    for w in cutlass.range_constexpr(4):
++                        g_lo, g_hi = bf16x2_bits_to_f32x2(gw[w])
++                        u_lo, u_hi = bf16x2_bits_to_f32x2(uw[w])
++                        g_raw[8 * c + 2 * w] = g_lo
++                        g_raw[8 * c + 2 * w + 1] = g_hi
++                        u_raw[8 * c + 2 * w] = u_lo
++                        u_raw[8 * c + 2 * w + 1] = u_hi
++            for i in cutlass.range_constexpr(epl):
++                if cutlass.const_expr(self.tune["actvec"]):
++                    gate = g_raw[i] * s_tok
++                    up = u_raw[i] * s_tok
++                else:
++                    gate = fc1_bf16_flat[base + Int32(i)].to(cutlass.Float32) * s_tok
++                    up = (
++                        fc1_bf16_flat[base + Int32(self.intermediate_size + i)].to(
++                            cutlass.Float32
++                        )
++                        * s_tok
+                     )
+-            else:
+-                x = fc1_bf16_flat[idx].to(cutlass.Float32)
+-                if x < cutlass.Float32(0.0):
+-                    x = cutlass.Float32(0.0)
+-                activated_bf16_flat[idx] = self._cast_elem(x * x)
+-            idx += stride
++                gate, up = self._clamp_swiglu_inputs(gate, up)
++                if cutlass.const_expr(self.fast_math):
++                    exp_neg_gate = cute.math.exp(-gate, fastmath=True)
++                else:
++                    exp_neg_gate = cute.math.exp(-gate, fastmath=False)
++                silu = gate / (cutlass.Float32(1.0) + exp_neg_gate)
++                h = self._cast_elem(
++                    self._cast_elem(silu).to(cutlass.Float32)
++                    * self._cast_elem(up).to(cutlass.Float32)
++                ).to(cutlass.Float32)
++                vals[i] = h
++                local_max = fmax_f32(local_max, fabs_f32(h))
++            amax = fmax_f32(warp_reduce(local_max, fmax_f32), cutlass.Float32(1e-12))
++            inv = cutlass.Float32(448.0) / amax
++            out_byte = row * Int32(self.intermediate_size) + lane * Int32(epl)
++            for grp in cutlass.range_constexpr(epl // 16):
++                g0 = grp * 16
++                w0 = f32x4_to_e4m3x4(
++                    vals[g0 + 0] * inv,
++                    vals[g0 + 1] * inv,
++                    vals[g0 + 8] * inv,
++                    vals[g0 + 9] * inv,
++                )
++                w1 = f32x4_to_e4m3x4(
++                    vals[g0 + 2] * inv,
++                    vals[g0 + 3] * inv,
++                    vals[g0 + 10] * inv,
++                    vals[g0 + 11] * inv,
++                )
++                w2 = f32x4_to_e4m3x4(
++                    vals[g0 + 4] * inv,
++                    vals[g0 + 5] * inv,
++                    vals[g0 + 12] * inv,
++                    vals[g0 + 13] * inv,
++                )
++                w3 = f32x4_to_e4m3x4(
++                    vals[g0 + 6] * inv,
++                    vals[g0 + 7] * inv,
++                    vals[g0 + 14] * inv,
++                    vals[g0 + 15] * inv,
++                )
++                # activated buffer is typed bf16: element offset = byte offset / 2
++                st_global_v4_u32(
++                    get_ptr_as_int64(
++                        activated_bf16_flat, (out_byte + Int32(g0)) // Int32(2)
++                    ),
++                    w0,
++                    w1,
++                    w2,
++                    w3,
++                )
++            if lane == Int32(0):
++                fc2_topk_flat[row] = (
++                    topk_weights_flat[row].to(cutlass.Float32)
++                    * amax
++                    * cutlass.Float32(1.0 / 448.0)
++                )
++            row += rstride
+ 
+ 
+ class W4A16ActivationKernel:
+@@ -4921,7 +5902,9 @@ class W4A16ActivationKernel:
+ 
+ 
+ class W4A16TopKSumKernel:
+-    def __init__(self, *, topk: int, hidden_size: int, element_dtype: str = "bf16"):
++    def __init__(
++        self, *, topk: int, hidden_size: int, element_dtype: str = "bf16", vec: int = 1
++    ):
+         if element_dtype not in {"bf16", "fp16"}:
+             raise ValueError(f"unsupported element_dtype {element_dtype!r}")
+         if topk <= 0 or hidden_size <= 0:
+@@ -4931,6 +5914,13 @@ class W4A16TopKSumKernel:
+         self.element_dtype = element_dtype
+         self.is_fp16 = element_dtype == "fp16"
+         self.cta_threads = 256
++        # FP8 pipeline `tsumvec`: vec=8 -> one thread per 8 consecutive columns (bf16 only); every
++        # output element is still sum_{route 0..topk-1} f32(route value) in route order, RN.
++        self.vec = int(vec)
++        if self.vec not in (1, 8) or (
++            self.vec == 8 and (element_dtype != "bf16" or self.hidden_size % 8)
++        ):
++            raise ValueError(f"unsupported top-k sum vec={vec}")
+ 
+     @cute.jit
+     def _cast_elem(self, x: cutlass.Float32):
+@@ -4943,10 +5933,19 @@ class W4A16TopKSumKernel:
          self,
          fc2_ptr: cute.Pointer,
          topk_ids_ptr: cute.Pointer,
@@ -1706,7 +3625,53 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          fc2_flat = cute.make_tensor(
              fc2_ptr,
              layout=cute.make_layout(
-@@ -5002,6 +5051,64 @@ _ACTIVATION_CACHE: dict[tuple, W4A16ActivationCompileResult] = {}
+@@ -4961,7 +5960,7 @@ class W4A16TopKSumKernel:
+             output_ptr,
+             layout=cute.make_layout((active_m * Int32(self.hidden_size),), stride=(1,)),
+         )
+-        total = active_m * Int32(self.hidden_size)
++        total = active_m * Int32(self.hidden_size // self.vec)
+         grid = (_covering_count(total, self.cta_threads), 1, 1)
+         self.kernel(fc2_flat, topk_ids_flat, output_flat, active_m).launch(
+             grid=grid,
+@@ -4980,6 +5979,36 @@ class W4A16TopKSumKernel:
+         tidx, _, _ = cute.arch.thread_idx()
+         bidx, _, _ = cute.arch.block_idx()
+         idx = Int32(bidx) * Int32(self.cta_threads) + Int32(tidx)
++        if cutlass.const_expr(self.vec == 8):
++            nvec = active_m * Int32(self.hidden_size // 8)
++            if idx < nvec:
++                e0 = idx * Int32(8)
++                token = e0 // Int32(self.hidden_size)
++                col = e0 - token * Int32(self.hidden_size)
++                acc = cute.make_rmem_tensor((8,), cutlass.Float32)
++                for e in cutlass.range_constexpr(8):
++                    acc[e] = cutlass.Float32(0.0)
++                for route in cutlass.range_constexpr(self.topk):
++                    row = token * Int32(self.topk) + Int32(route)
++                    # Negative route IDs have no FC2 row; do not read stale scratch.
++                    if topk_ids_flat[row].to(Int32) >= Int32(0):
++                        wv = ld_global_v4_u32(
++                            get_ptr_as_int64(
++                                fc2_flat, row * Int32(self.hidden_size) + col
++                            )
++                        )
++                        for w in cutlass.range_constexpr(4):
++                            lo, hi = bf16x2_bits_to_f32x2(wv[w])
++                            acc[2 * w] += _materialize_w4a16_topk_route_f32(lo)
++                            acc[2 * w + 1] += _materialize_w4a16_topk_route_f32(hi)
++                st_global_v4_u32(
++                    get_ptr_as_int64(output_flat, e0),
++                    pack_f32x2_to_bf16x2_rn(acc[0], acc[1]),
++                    pack_f32x2_to_bf16x2_rn(acc[2], acc[3]),
++                    pack_f32x2_to_bf16x2_rn(acc[4], acc[5]),
++                    pack_f32x2_to_bf16x2_rn(acc[6], acc[7]),
++                )
++            return
+         total = active_m * Int32(self.hidden_size)
+         if idx < total:
+             token = idx // Int32(self.hidden_size)
+@@ -5002,6 +6031,66 @@ _ACTIVATION_CACHE: dict[tuple, W4A16ActivationCompileResult] = {}
  _SUM_CACHE: dict[tuple, W4A16TopKSumCompileResult] = {}
  
  
@@ -1741,6 +3706,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 +    from . import (
 +        moe_w4a16_activations,
 +        moe_w4a16_fp4_helpers,
++        moe_w4a16_fp8_helpers,
 +        moe_w4a16_route_pack,
 +    )
 +
@@ -1748,6 +3714,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 +        __file__,
 +        moe_w4a16_activations.__file__,
 +        moe_w4a16_fp4_helpers.__file__,
++        moe_w4a16_fp8_helpers.__file__,
 +        moe_w4a16_route_pack.__file__,
 +        cute_dsl_utils.__file__,
 +    )
@@ -1771,7 +3738,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
  def _normalize_element_dtype(dtype: torch.dtype) -> str:
      if dtype == torch.bfloat16:
          return "bf16"
-@@ -5015,7 +5122,8 @@ def _normalize_scale_format(scale_format: str) -> str:
+@@ -5015,7 +6104,8 @@ def _normalize_scale_format(scale_format: str) -> str:
          return _SCALE_FORMATS[scale_format.lower()]
      except KeyError as exc:
          raise ValueError(
@@ -1781,7 +3748,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
              f"got {scale_format!r}"
          ) from exc
  
-@@ -5111,11 +5219,14 @@ def compile_w4a16_gemm(
+@@ -5111,11 +6201,14 @@ def compile_w4a16_gemm(
          )
  
      compile_size_m = _fake_m_for_specialization(size_m)
@@ -1799,7 +3766,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          assumed_align=16,
      )
      b_fake = cute.runtime.make_fake_compact_tensor(
-@@ -5125,7 +5236,7 @@ def compile_w4a16_gemm(
+@@ -5125,7 +6218,7 @@ def compile_w4a16_gemm(
      )
      c_fake = cute.runtime.make_fake_compact_tensor(
          cutlass_dtype,
@@ -1808,7 +3775,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          assumed_align=16,
      )
      scales_fake = cute.runtime.make_fake_compact_tensor(
-@@ -5147,12 +5258,12 @@ def compile_w4a16_gemm(
+@@ -5147,12 +6240,12 @@ def compile_w4a16_gemm(
      )
      packed_routes_fake = cute.runtime.make_fake_compact_tensor(
          cutlass.Int32,
@@ -1823,7 +3790,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          assumed_align=16,
      )
      route_count_fake = cute.runtime.make_fake_compact_tensor(
-@@ -5162,49 +5273,56 @@ def compile_w4a16_gemm(
+@@ -5162,49 +6255,56 @@ def compile_w4a16_gemm(
      )
      topk_fake = cute.runtime.make_fake_compact_tensor(
          cutlass.Float32,
@@ -1907,7 +3874,17 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      )
      result = W4A16GemmCompileResult(
          compiled=compiled,
-@@ -5465,16 +5583,18 @@ def compile_w4a16_fused_moe(
+@@ -5245,7 +6345,9 @@ def compile_w4a16_fused_moe(
+     tc_decode_fused_sum: bool = False,
+     collect_activation_amax: bool = False,
+     force_tile_config: tuple[int, int, int, int] | None = None,
++    a_fp8: int = 0,
+ ) -> W4A16FusedMoeCompileResult:
++    a_fp8 = int(a_fp8)
+     scale_format = _normalize_scale_format(scale_format)
+     cutlass_dtype = _cutlass_element_dtype(element_dtype)
+     device = int(torch.cuda.current_device()) if torch.cuda.is_available() else None
+@@ -5465,16 +6567,18 @@ def compile_w4a16_fused_moe(
          and fc1_mn_after <= int(sms)
      ):
          ultra_fc2_tile_k = 32
@@ -1931,7 +3908,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          ):
              fc2_tile_n = 512
              fc2_tile_k = ultra_fc2_tile_k
-@@ -5511,6 +5631,12 @@ def compile_w4a16_fused_moe(
+@@ -5511,6 +6615,12 @@ def compile_w4a16_fused_moe(
                  scale_format=scale_format,
                  weight_layout=weight_layout,
                  allow_logical_tail=allow_native_logical_tail,
@@ -1944,7 +3921,15 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
              ):
                  raise ValueError(
                      f"force_tile_config {name} tile "
-@@ -5559,61 +5685,40 @@ def compile_w4a16_fused_moe(
+@@ -5544,6 +6654,7 @@ def compile_w4a16_fused_moe(
+         direct_topk_routes=direct_topk_routes,
+         tc_decode_fused_sum=tc_decode_fused_sum,
+         collect_activation_amax=collect_activation_amax,
++        a_fp8=a_fp8,
+     )
+     cache_key = (
+         "w4a16_fused_moe",
+@@ -5559,61 +6670,40 @@ def compile_w4a16_fused_moe(
              blocks_per_sm=kernel.blocks_per_sm,
          )
  
@@ -2025,7 +4010,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          assumed_align=16,
      )
      w13_scales_fake = cute.runtime.make_fake_compact_tensor(
-@@ -5654,12 +5759,12 @@ def compile_w4a16_fused_moe(
+@@ -5654,12 +6744,12 @@ def compile_w4a16_fused_moe(
      )
      packed_routes_fake = cute.runtime.make_fake_compact_tensor(
          cutlass.Int32,
@@ -2040,10 +4025,13 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
          assumed_align=16,
      )
      route_count_fake = cute.runtime.make_fake_compact_tensor(
-@@ -5673,65 +5778,82 @@ def compile_w4a16_fused_moe(
+@@ -5673,65 +6763,86 @@ def compile_w4a16_fused_moe(
          assumed_align=4,
      )
      topk_fake = make_ptr(cutlass.Float32, 4, cute.AddressSpace.gmem, assumed_align=4)
++    fp8_side_fake = make_ptr(
++        cutlass.Float32, 4, cute.AddressSpace.gmem, assumed_align=4
++    )
 +    # Pure scratch: the historical max(..., 4*256*mbs*256) extents were
 +    # fiction (the real allocation follows packed_gemm_scratch_elements
 +    # and is far smaller), and TVM-FFI exact-checks baked extents at
@@ -2136,11 +4124,12 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 +            activation_amax_fake,
 +            0,
 +            topk_fake,
++            fp8_side_fake,
 +            fc1_c_tmp_fake,
 +            fc2_c_tmp_fake,
 +            locks_fake,
-+            1,
              1,
++            1,
 +            stream_fake,
 +            options="--opt-level 3 --enable-tvm-ffi",
 +        )
@@ -2153,7 +4142,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 +        _CUTE_DSL_MODULE,
 +        _w4a16_disk_kernel_name(
 +            "fused",
-+            f"{element_dtype}_e{num_experts}_t{top_k}"
++            f"{element_dtype}{('_a8k%d' % a_fp8) if a_fp8 else ''}_e{num_experts}_t{top_k}"
 +            f"_h{hidden_size}_i{intermediate_size}_b{moe_block_size}",
              cache_key,
          ),
@@ -2163,7 +4152,15 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      )
      result = W4A16FusedMoeCompileResult(
          compiled=compiled,
-@@ -5787,7 +5909,7 @@ def compile_w4a16_activation(
+@@ -5761,6 +6872,7 @@ def compile_w4a16_fused_moe(
+         scale_format=scale_format,
+         tc_decode_fused_sum=bool(tc_decode_fused_sum),
+         collect_activation_amax=collect_activation_amax,
++        a_fp8=int(a_fp8),
+     )
+     _FUSED_CACHE[cache_key] = result
+     return result
+@@ -5787,7 +6899,7 @@ def compile_w4a16_activation(
  ) -> W4A16ActivationCompileResult:
      cutlass_dtype = _cutlass_element_dtype(element_dtype)
      activation = normalize_moe_activation(activation)
@@ -2172,7 +4169,7 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      swiglu_limit, swiglu_alpha, swiglu_beta = _normalize_activation_swiglu_params(
          activation,
          swiglu_limit,
-@@ -5812,32 +5934,57 @@ def compile_w4a16_activation(
+@@ -5812,32 +6924,57 @@ def compile_w4a16_activation(
      if cached is not None:
          return replace(cached, rows=rows)
  
@@ -2243,7 +4240,20 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      )
      result = W4A16ActivationCompileResult(
          compiled=compiled,
-@@ -5867,7 +6014,11 @@ def compile_w4a16_topk_sum(
+@@ -5858,36 +6995,61 @@ def compile_w4a16_topk_sum(
+     topk: int,
+     hidden_size: int,
+     element_dtype: str = "bf16",
++    vec: int = 1,
+ ) -> W4A16TopKSumCompileResult:
+     cutlass_dtype = _cutlass_element_dtype(element_dtype)
+-    cache_key = ("w4a16_topk_sum", element_dtype, topk, hidden_size)
++    cache_key = ("w4a16_topk_sum", element_dtype, topk, hidden_size) + (
++        (("vec", int(vec)),) if int(vec) != 1 else ()
++    )
+     cached = _SUM_CACHE.get(cache_key)
+     if cached is not None:
+         return cached
  
      fc2_fake = make_ptr(cutlass_dtype, 16, cute.AddressSpace.gmem, assumed_align=16)
      topk_ids_fake = make_ptr(Int32, 16, cute.AddressSpace.gmem, assumed_align=4)
@@ -2256,7 +4266,9 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      kernel = W4A16TopKSumKernel(
          topk=topk,
          hidden_size=hidden_size,
-@@ -5876,18 +6027,33 @@ def compile_w4a16_topk_sum(
+         element_dtype=element_dtype,
++        vec=int(vec),
+     )
      raise_if_kernel_resolution_frozen(
          "cute.compile", target=kernel, cache_key=cache_key
      )
@@ -2285,7 +4297,6 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 +            topk_ids_fake,
 +            output_anchor_fake,
              1,
--            cache_key,
 +            stream_fake,
 +            options="--opt-level 2 --enable-tvm-ffi",
 +        )
@@ -2293,14 +4304,25 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 +    compiled = build_and_load_cute_dsl_kernel(
 +        _CUTE_DSL_MODULE,
 +        _w4a16_disk_kernel_name(
-+            "topk_sum", f"{element_dtype}_t{topk}_h{hidden_size}", cache_key
++            "topk_sum",
++            f"{element_dtype}_t{topk}_h{hidden_size}{'_v%d' % int(vec) if int(vec) != 1 else ''}",
+             cache_key,
          ),
 +        compile_fn,
 +        extra_key_files=_w4a16_kernel_source_files(),
      )
      result = W4A16TopKSumCompileResult(
          compiled=compiled,
-@@ -5954,9 +6120,6 @@ def _w4a16_fused_moe_launch_flat(
+@@ -5949,14 +7111,15 @@ def _w4a16_fused_moe_launch_flat(
+     tc_decode_fused_sum: bool,
+     collect_activation_amax: bool,
+     stream_int: int,
++    a_fp8: int = 0,
++    fp8_side: torch.Tensor | None = None,
+ ) -> None:
++    if a_fp8 and fp8_side is None:
++        raise ValueError("a_fp8 launch requires the fp32 fp8_side buffer")
+     swiglu_limit = float(swiglu_limit_value) if has_swiglu_limit else None
      collect_activation_amax = bool(collect_activation_amax)
      if collect_activation_amax and activation_amax is None:
          raise ValueError("activation_amax is required for calibrated W4A16 launch")
@@ -2310,9 +4332,11 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      fused = compile_w4a16_fused_moe(
          size_m=size_m,
          hidden_size=hidden_size,
-@@ -5986,36 +6149,66 @@ def _w4a16_fused_moe_launch_flat(
+@@ -5985,37 +7148,69 @@ def _w4a16_fused_moe_launch_flat(
+         # its selected geometry so tile-specific packs (notably NF3) resolve the
          # identical cache entry instead of silently recompiling with auto tiles.
          force_tile_config=(fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n),
++        a_fp8=int(a_fp8),
      )
 +    # TVM-FFI launch ABI (see compile_w4a16_fused_moe): pointer params travel
 +    # as raw ``data_ptr()`` ints, including weights whose device-side
@@ -2398,13 +4422,14 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
 -        fc2_scratch,
 -        workspace,
 +        topk_weights.data_ptr(),
++        (fp8_side if a_fp8 else topk_weights).data_ptr(),
 +        _cut(fc1_scratch, 1, "fc1_scratch"),
 +        _cut(fc2_scratch, 1, "fc2_scratch"),
 +        _cut(workspace, 1, "workspace locks"),
          m,
          _w4a16_fused_persistent_grid_x(
              fused=fused,
-@@ -6026,7 +6219,6 @@ def _w4a16_fused_moe_launch_flat(
+@@ -6026,7 +7221,6 @@ def _w4a16_fused_moe_launch_flat(
              direct_topk_routes=bool(direct_topk_routes),
              sms=sms,
          ),
@@ -2412,9 +4437,148 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      )
  
  
-@@ -6443,27 +6635,25 @@ def _w4a16_topk_sum_launch_flat(
+@@ -6262,6 +7456,129 @@ def _w4a16_fused_moe_launch_fake(
+     return None
+ 
+ 
++@torch.library.custom_op(
++    "flashinfer::w4a16_fp8_fused_moe_launch",
++    mutates_args=(
++        "fc1_out",
++        "activated",
++        "fc2_out",
++        "fp8_side",
++        "fc1_scratch",
++        "fc2_scratch",
++        "workspace",
++    ),
++)
++def _w4a16_fp8_fused_moe_launch_op(
++    a_input: torch.Tensor,
++    w13_arg: torch.Tensor,
++    w2_arg: torch.Tensor,
++    fc1_out: torch.Tensor,
++    activated: torch.Tensor,
++    fc2_out: torch.Tensor,
++    w13_scale_i32: torch.Tensor,
++    w2_scale_i32: torch.Tensor,
++    w13_global_scale: torch.Tensor,
++    w2_global_scale: torch.Tensor,
++    packed_route_indices: torch.Tensor,
++    block_expert_ids: torch.Tensor,
++    packed_route_count: torch.Tensor,
++    fp8_side: torch.Tensor,
++    topk_weights: torch.Tensor,
++    fc1_scratch: torch.Tensor,
++    fc2_scratch: torch.Tensor,
++    workspace: torch.Tensor,
++    m: int,
++    size_m: int,
++    hidden_size: int,
++    intermediate_size: int,
++    num_experts: int,
++    topk: int,
++    activation: str,
++    apply_router_weight_on_input: bool,
++    zero_fc2_output: bool,
++    moe_block_size: int,
++    max_m_blocks: int,
++    element_dtype: str,
++    fast_math: bool,
++    sms: int,
++    max_shared_mem: int,
++    has_swiglu_limit: bool,
++    swiglu_limit_value: float,
++    swiglu_alpha: float,
++    swiglu_beta: float,
++    weight_layout: str,
++    scale_format: str,
++    w13_layout: str,
++    fc1_tile_k: int,
++    fc1_tile_n: int,
++    fc2_tile_k: int,
++    fc2_tile_n: int,
++    stream_int: int,
++    a_fp8_mode: int,
++) -> None:
++    """FP8-activation prefill launch: a_input is the sigma-ordered E4M3 [m, K] buffer
++    viewed as bf16 [m, K/2]; fp8_side[:m] holds its per-row fp32 scales.
++    a_fp8_mode: 0 for BF16 activations, 3 for FP8 activations with native E2M1 weights."""
++    _w4a16_fused_moe_launch_flat(
++        a_input=a_input,
++        w13_arg=w13_arg,
++        w2_arg=w2_arg,
++        fc1_out=fc1_out,
++        activated=activated,
++        fc2_out=fc2_out,
++        w13_scale_i32=w13_scale_i32,
++        w2_scale_i32=w2_scale_i32,
++        w13_global_scale=w13_global_scale,
++        w2_global_scale=w2_global_scale,
++        packed_route_indices=packed_route_indices,
++        block_expert_ids=block_expert_ids,
++        packed_route_count=packed_route_count,
++        activation_amax=None,
++        layer_idx=0,
++        topk_weights=topk_weights,
++        fc1_scratch=fc1_scratch,
++        fc2_scratch=fc2_scratch,
++        workspace=workspace,
++        m=m,
++        size_m=size_m,
++        hidden_size=hidden_size,
++        intermediate_size=intermediate_size,
++        num_experts=num_experts,
++        topk=topk,
++        activation=activation,
++        apply_router_weight_on_input=apply_router_weight_on_input,
++        zero_fc2_output=zero_fc2_output,
++        moe_block_size=moe_block_size,
++        max_m_blocks=max_m_blocks,
++        element_dtype=element_dtype,
++        fast_math=fast_math,
++        sms=sms,
++        max_shared_mem=max_shared_mem,
++        has_swiglu_limit=has_swiglu_limit,
++        swiglu_limit_value=swiglu_limit_value,
++        swiglu_alpha=swiglu_alpha,
++        swiglu_beta=swiglu_beta,
++        weight_layout=weight_layout,
++        scale_format=scale_format,
++        w13_layout=w13_layout,
++        fc1_tile_k=fc1_tile_k,
++        fc1_tile_n=fc1_tile_n,
++        fc2_tile_k=fc2_tile_k,
++        fc2_tile_n=fc2_tile_n,
++        direct_topk_routes=False,
++        tc_decode_fused_sum=False,
++        collect_activation_amax=False,
++        stream_int=stream_int,
++        a_fp8=int(a_fp8_mode),
++        fp8_side=fp8_side,
++    )
++
++
++@_w4a16_fp8_fused_moe_launch_op.register_fake
++def _w4a16_fp8_fused_moe_launch_fake(*args, **kwargs) -> None:
++    return None
++
++
+ @torch.library.custom_op(
+     "flashinfer::w4a16_fused_moe_calibrated_launch",
+     mutates_args=(
+@@ -6436,34 +7753,34 @@ def _w4a16_topk_sum_launch_flat(
+     hidden_size: int,
+     element_dtype: str,
+     stream_int: int,
++    vec: int = 1,
+ ) -> None:
+     sum_kernel = compile_w4a16_topk_sum(
+         m=m,
+         topk=topk,
          hidden_size=hidden_size,
          element_dtype=element_dtype,
++        vec=vec,
      )
 +    # TVM-FFI ABI (see ``compile_w4a16_topk_sum``): the fc2 pointer travels
 +    # as a raw ``data_ptr()`` int, ``output`` as a length-1 view of the real
@@ -2457,8 +4621,108 @@ index 9578667a37ca69ed1de819115109e651772e2d67..e2fe203ba951c0127176758c599aa65e
      )
  
  
+@@ -6722,8 +8039,14 @@ def run_w4a16_moe(
+     fused_launch: W4A16FusedMoeCompileResult | None = None,
+     topk_sum_launch: W4A16TopKSumCompileResult | None = None,
+     stream: cuda.CUstream | None = None,
++    a_fp8: int = 0,
+ ) -> torch.Tensor:
+     activation = normalize_moe_activation(activation)
++    a_fp8 = int(a_fp8)
++    if a_fp8 and (fused_launch is not None or activation_amax is not None):
++        raise ValueError(
++            "a_fp8 supports only the runtime-compiled, uncalibrated launch"
++        )
+     is_gated = validate_activation(activation)
+     swiglu_limit, swiglu_alpha, swiglu_beta = _normalize_activation_swiglu_params(
+         activation,
+@@ -6796,6 +8119,8 @@ def run_w4a16_moe(
+     )
+     if fused_launch is None:
+         block_size_m = select_route_block_size_m(m, topk, route_num_experts)
++        if a_fp8 and block_size_m == 8:
++            block_size_m = 16  # fp8 mode has no m8 (TC-decode) specialization
+     else:
+         block_size_m = int(fused_launch.moe_block_size)
+     if block_size_m not in _ALLOWED_ROUTED_SIZES:
+@@ -6812,6 +8137,7 @@ def run_w4a16_moe(
+     preplanned_tc_decode = bool(getattr(fused_launch, "tc_decode_fused_sum", False))
+     use_tc_decode = bool(
+         (not collect_activation_amax)
++        and (not a_fp8)
+         and (fused_launch is None or preplanned_tc_decode)
+         and weight_layout in ("packed", "nf3_2p1")
+         and expert_map is None
+@@ -6827,6 +8153,7 @@ def run_w4a16_moe(
+ 
+     direct_topk_eligible = (
+         (not collect_activation_amax)
++        and (not a_fp8)
+         and (m <= _MAX_DIRECT_TOPK_ROUTE_M or use_tc_decode)
+         and weight_layout in ("packed", "nf3_2p1")
+         and expert_map is None
+@@ -6975,6 +8302,7 @@ def run_w4a16_moe(
+             direct_topk_routes=use_direct_topk_routes,
+             tc_decode_fused_sum=use_tc_decode,
+             collect_activation_amax=collect_activation_amax,
++            a_fp8=a_fp8,
+         )
+     else:
+         if int(fused_launch.size_m) < m:
+@@ -7150,7 +8478,24 @@ def run_w4a16_moe(
+         int(fused.fc2_tile_k),
+         int(fused.fc2_tile_n),
+     )
+-    if collect_activation_amax:
++    if a_fp8:
++        from .moe_w4a16_fp8_act import quant_rows_fp8_sigma
++
++        # FC1 input: per-token E4M3 in sigma K order + fp32 scales in fp8_side[:m];
++        # the activation phase writes FC2's scaled top-k weights to fp8_side[m:].
++        fp8_side = torch.empty(
++            (m * (1 + topk),), dtype=torch.float32, device=a_input.device
++        )
++        a_q, _ = quant_rows_fp8_sigma(a_input, out_scale=fp8_side[:m])
++        torch.ops.flashinfer.w4a16_fp8_fused_moe_launch(
++            a_q.view(torch.uint8).view(torch.bfloat16),
++            *launch_common[1:],
++            fp8_side,
++            *launch_tail,
++            int(stream),
++            int(a_fp8),
++        )
++    elif collect_activation_amax:
+         assert activation_amax is not None
+         assert layer_idx_int is not None
+         torch.ops.flashinfer.w4a16_fused_moe_calibrated_launch(
+@@ -7173,6 +8518,25 @@ def run_w4a16_moe(
+         # FC2 already wrote the top-k-summed result into `output`.
+         return output
+ 
++    # The compiled sum ABI reads int32 IDs, including negative unrouted slots.
++    if topk_ids.dtype != torch.int32:
++        topk_ids = topk_ids.to(torch.int32)
++
++    if a_fp8:
++        # Vectorize the eager FP8 route reduction with the same route order as W4A16.
++        _w4a16_topk_sum_launch_flat(
++            fc2_out,
++            topk_ids,
++            output,
++            m,
++            topk,
++            hidden_size,
++            element_dtype,
++            int(stream),
++            vec=8,
++        )
++        return output
++
+     if topk_sum_launch is not None:
+         expected_sum = (topk, hidden_size)
+         actual_sum = (
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
-index ce043109ab9b6f1c666c7da782a6f2b2266481f0..71351036f32720714fcc3e254006525b78e45016 100644
+index ce043109a..71351036f 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_prepare.py
 @@ -23,6 +23,8 @@ _MODEL_OPT_W13_LAYOUTS = {"w13", "w31"}
@@ -2668,7 +4932,7 @@ index ce043109ab9b6f1c666c7da782a6f2b2266481f0..71351036f32720714fcc3e254006525b
          return prepare_w4a16_compressed_tensors_weights(
              *args, w13_layout=w13_layout, **kwargs
 diff --git a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
-index 664f2a886faaac20f86d4c184528359f53988cd9..278eac0309901070188d4187972583e07671ca4c 100644
+index 664f2a886..278eac030 100644
 --- a/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
 +++ b/flashinfer/fused_moe/cute_dsl/blackwell_sm12x/moe_w4a16_route_pack.py
 @@ -162,6 +162,7 @@ def _pack_topk_routes_small_prefix_kernel(
@@ -2726,7 +4990,7 @@ index 664f2a886faaac20f86d4c184528359f53988cd9..278eac0309901070188d4187972583e0
          )
      else:
 diff --git a/flashinfer/fused_moe/prepare.py b/flashinfer/fused_moe/prepare.py
-index 0e5767159d9dc3550332ee1a517c0f1a7f2ea53d..89503fa7cfe4759771bef5a75a7f845c3c0b4d1d 100644
+index 0e5767159..89503fa7c 100644
 --- a/flashinfer/fused_moe/prepare.py
 +++ b/flashinfer/fused_moe/prepare.py
 @@ -2779,8 +2779,8 @@ def prepare_b12x_w4a16_weights(
@@ -2754,8 +5018,74 @@ index 0e5767159d9dc3550332ee1a517c0f1a7f2ea53d..89503fa7cfe4759771bef5a75a7f845c
      w1_global_scale = _source_global_scale(w1_global_scale, source_format=source_format)
      w2_global_scale = _source_global_scale(w2_global_scale, source_format=source_format)
      _get_w4a16_packed_weights(
+diff --git a/tests/moe/test_b12x_fp8_prefill_contract.py b/tests/moe/test_b12x_fp8_prefill_contract.py
+new file mode 100644
+index 000000000..d1b675e8e
+--- /dev/null
++++ b/tests/moe/test_b12x_fp8_prefill_contract.py
+@@ -0,0 +1,60 @@
++"""Host configuration and masked-route contracts for opt-in FP8 activations."""
++
++import pytest
++import torch
++
++pytest.importorskip("cutlass")
++
++from flashinfer.fused_moe.cute_dsl.blackwell_sm12x.moe_w4a16_kernel import (
++    W4A16GemmKernel,
++    _w4a16_topk_sum_launch_flat,
++)
++
++
++def test_disabled_fp8_preserves_four_stage_pipeline(monkeypatch):
++    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
++    kernel = W4A16GemmKernel(
++        size_m=1024,
++        size_n=2048,
++        size_k=4096,
++        num_experts=288,
++        top_k=8,
++        mul_topk_weights=False,
++        tile_n=128,
++        tile_k=64,
++        moe_block_size=32,
++        max_m_blocks=512,
++        element_dtype="bf16",
++        scale_format="e4m3_k32",
++    )
++    assert kernel.stages == 4
++    assert kernel.tune["pair"] == 0
++    assert all(value == 0 for key, value in kernel.tune.items() if key != "stages")
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
++def test_vector_sum_never_reads_unrouted_scratch():
++    if torch.cuda.get_device_capability() != (12, 0):
++        pytest.skip("SM120 required")
++    values = torch.full((3, 4, 128), float("nan"), dtype=torch.bfloat16, device="cuda")
++    ids = torch.tensor(
++        [[0, -1, 1, -1], [-1, -1, -1, -1], [2, 0, -1, 1]],
++        dtype=torch.int32,
++        device="cuda",
++    )
++    values[ids >= 0] = 1
++    expected = (ids >= 0).sum(-1)[:, None].expand(3, 128).bfloat16()
++    for vec in (1, 8):
++        output = torch.empty((3, 128), dtype=torch.bfloat16, device="cuda")
++        _w4a16_topk_sum_launch_flat(
++            values,
++            ids,
++            output,
++            3,
++            4,
++            128,
++            "bf16",
++            int(torch.cuda.current_stream().cuda_stream),
++            vec=vec,
++        )
++        torch.testing.assert_close(output, expected, rtol=0, atol=0)
 diff --git a/tests/moe/test_b12x_fused_moe.py b/tests/moe/test_b12x_fused_moe.py
-index 3876f2241b5c0b51c8a773a61936558d1d4fe315..574384333d604d3568b6cfc22e875458e49e1996 100644
+index 3876f2241..574384333 100644
 --- a/tests/moe/test_b12x_fused_moe.py
 +++ b/tests/moe/test_b12x_fused_moe.py
 @@ -220,6 +220,29 @@ def test_w4a16_static_tiler_uses_64_when_intermediate_not_128_aligned():
@@ -2855,7 +5185,7 @@ index 3876f2241b5c0b51c8a773a61936558d1d4fe315..574384333d604d3568b6cfc22e875458
      methods = {n.name: n for n in class_def.body if isinstance(n, ast.FunctionDef)}
 diff --git a/tests/moe/test_b12x_w4a16_kernel_cache.py b/tests/moe/test_b12x_w4a16_kernel_cache.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..f897834f54e45f574f559836cc1df83bd2c8d453
+index 000000000..f897834f5
 --- /dev/null
 +++ b/tests/moe/test_b12x_w4a16_kernel_cache.py
 @@ -0,0 +1,234 @@
@@ -3094,7 +5424,7 @@ index 0000000000000000000000000000000000000000..f897834f54e45f574f559836cc1df83b
 +        torch.cuda.synchronize()
 +        assert activated.abs().sum().item() > 0, f"no output written at rows={rows}"
 diff --git a/tests/moe/test_b12x_w4a16_route_pack.py b/tests/moe/test_b12x_w4a16_route_pack.py
-index 4e122e2f688e59673ebe92394d58b3edef010105..fdb8f08a08a916567b2d8da1cddfbe9e1cfdf055 100644
+index 4e122e2f6..fdb8f08a0 100644
 --- a/tests/moe/test_b12x_w4a16_route_pack.py
 +++ b/tests/moe/test_b12x_w4a16_route_pack.py
 @@ -330,3 +330,83 @@ def test_w4a16_workspace_route_buffers_cover_route_pack_capacity(monkeypatch):
@@ -3183,7 +5513,7 @@ index 4e122e2f688e59673ebe92394d58b3edef010105..fdb8f08a08a916567b2d8da1cddfbe9e
 +            assert bool((expected_ids[routes] == expert).all())
 diff --git a/tests/moe/test_b12x_workspace_graph_pinning.py b/tests/moe/test_b12x_workspace_graph_pinning.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..a069ebb4279e759d4dd3157ceca3955e258a2960
+index 000000000..a069ebb42
 --- /dev/null
 +++ b/tests/moe/test_b12x_workspace_graph_pinning.py
 @@ -0,0 +1,601 @@
@@ -3789,7 +6119,7 @@ index 0000000000000000000000000000000000000000..a069ebb4279e759d4dd3157ceca3955e
 +
 +    sys.exit(pytest.main([__file__, "-q"]))
 diff --git a/tests/moe/test_unified_moe_b12x.py b/tests/moe/test_unified_moe_b12x.py
-index 92157c5db9ca87051d1dd157be75c4dfb959e851..9e66ea9eb98bad40563d6a3cd7de26108ea34433 100644
+index 92157c5db..9e66ea9eb 100644
 --- a/tests/moe/test_unified_moe_b12x.py
 +++ b/tests/moe/test_unified_moe_b12x.py
 @@ -96,6 +96,26 @@ class TestB12xBackendOptions:
